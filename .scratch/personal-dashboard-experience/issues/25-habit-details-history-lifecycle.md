@@ -60,3 +60,27 @@ The installed local Management helper confirmed native claim operation
 packaged acceptance remains under PDEX-26. The exact worktree start commit and
 path are recorded in the shared [restart record](../refinement-reimplementation-2026-10-13.md)
 after worktree creation.
+
+## Implementation evidence — 2026-10-13
+
+- Working branch: `codex/pdex-25-refinement-reimplementation`; worktree:
+  `/Users/tingranwang/.codex/worktrees/pdex-25-refinement-reimplementation/personal-dashboard`.
+- Worktree base: `ad697e01cf5a51a619fb97bbad174ebb50161d91`.
+- Implementation commit: `cb527de02e8373ccbb30014b0be0a6c369c13841`.
+- Integrated current local tip `cac527d8f12c1fdb1ad8576022bc80edf75e59d1`
+  with merge commit `82a3586318f30ab8e8313b925bb1f26bdff8ab0d`; branch remains
+  local and unmerged to `main`.
+- Checks passed after the merge: `node scripts/prepare-frontend.mjs`;
+  TypeScript `tsc --noEmit`; `node --test tests/frontend/habit*.test.ts`
+  (29 passed); `cargo test --manifest-path src-tauri/Cargo.toml
+  --test habit_definition_workflow` (10 passed); `git diff --check`.
+- The Rust workflow tests use temporary synthetic Vault files and fresh
+  application instances to verify lifecycle persistence/readback/reopen,
+  canonical completion retention, stale/retry behavior, and detail history
+  older than the 12-week projection. The production detail renderer has a
+  focused fake-DOM test; a real browser/WebView or packaged-app visual pass
+  was not available in this worktree. PDEX-26 remains responsible for
+  packaged acceptance; this evidence does not close this ticket.
+- Repository-wide `cargo fmt --check` was not clean on the inherited source
+  formatting baseline; broad formatting was not applied to avoid changing
+  unrelated code.

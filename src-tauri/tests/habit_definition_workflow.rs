@@ -1,10 +1,11 @@
 use personal_dashboard_lib::habit_catalog::{
-    HabitDefinitionMutationInput, HabitGoalTarget, HabitMutationOutcome,
+    HabitDefinitionMutationInput, HabitGoalTarget, HabitLifecycleMutationInput,
+    HabitMutationOutcome,
 };
 use personal_dashboard_lib::habits::DayRelation;
 use personal_dashboard_lib::today::{
-    HabitCompletionMutationInput, TodayApplication, TodayClock, TodayClockView,
-    TodayWorkspaceExchange, TodayWorkspacePersistence,
+    HabitCompletionMutationInput, TodayApplication, TodayClock,
+    TodayClockView, TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -89,7 +90,7 @@ impl TodayClock for FixedDateClock {
     }
 
     fn current_timestamp_label(&self) -> String {
-        format!("{}T09:15-04:00", self.0)
+        format!("{}T09:15:00-04:00", self.0)
     }
 }
 
@@ -206,6 +207,193 @@ fn a_new_local_habit_is_recordable_and_survives_a_fresh_application_without_a_sn
         habit.today.completion_source_labels,
         vec!["Personal Dashboard local"]
     );
+}
+
+#[test]
+fn deactivation_preserves_the_same_habit_and_local_history_across_reopen_and_restore() {
+    let vault = TempVault::new("lifecycle-reopen");
+    let monday = app_at(vault.path(), "2026-10-12");
+    let before = monday.habits().unwrap();
+    let created = monday
+        .save_habit_definition(HabitDefinitionMutationInput {
+            operation_id: "create-lifecycle-read".into(),
+            target_binding: before.catalog_target_binding.unwrap(),
+            expected_revision: before.catalog_revision,
+            habit_key: None,
+            language: "en".into(),
+            name: "Read".into(),
+            emoji: Some("📚".into()),
+            group: None,
+            start_date: Some("2026-10-12".into()),
+            goal: Some(HabitGoalTarget::DailyCompletion),
+        })
+        .unwrap();
+    for (date, change_id) in [
+        ("2026-10-12", "read-oct-12"),
+        ("2026-10-13", "read-oct-13"),
+    ] {
+        let day = app_at(vault.path(), date);
+        let before_completion = day.habits().unwrap();
+        day
+            .set_local_habit_completion(HabitCompletionMutationInput {
+                habit_key: created.habit_key.clone(),
+                lived_date: date.into(),
+                completed: true,
+                change_id: change_id.into(),
+                target_binding: before_completion
+                    .completion_target_binding
+                    .clone()
+                    .unwrap(),
+                expected_revision: before_completion.completion_revision.clone(),
+            })
+            .unwrap();
+    }
+
+    let wednesday = app_at(vault.path(), "2026-10-14");
+    let before_deactivation = wednesday.habits().unwrap();
+    let deactivated = wednesday
+        .set_habit_active(HabitLifecycleMutationInput {
+            operation_id: "deactivate-read-oct-14".into(),
+            target_binding: before_deactivation
+                .catalog_target_binding
+                .clone()
+                .unwrap(),
+            expected_revision: before_deactivation.catalog_revision.clone(),
+            habit_key: created.habit_key.clone(),
+            active: false,
+        })
+        .unwrap();
+    let repeated = wednesday
+        .set_habit_active(HabitLifecycleMutationInput {
+            operation_id: "deactivate-read-oct-14".into(),
+            target_binding: before_deactivation
+                .catalog_target_binding
+                .clone()
+                .unwrap(),
+            expected_revision: before_deactivation.catalog_revision.clone(),
+            habit_key: created.habit_key.clone(),
+            active: false,
+        })
+        .unwrap();
+    assert_eq!(repeated.revision, deactivated.revision);
+    assert!(wednesday
+        .set_habit_active(HabitLifecycleMutationInput {
+            operation_id: "stale-restore-read-oct-14".into(),
+            target_binding: before_deactivation
+                .catalog_target_binding
+                .clone()
+                .unwrap(),
+            expected_revision: before_deactivation.catalog_revision.clone(),
+            habit_key: created.habit_key.clone(),
+            active: true,
+        })
+        .is_err());
+    assert!(!wednesday
+        .habits()
+        .unwrap()
+        .habit(&created.habit_key)
+        .unwrap()
+        .active);
+    let inactive = deactivated.snapshot.habit(&created.habit_key).unwrap();
+    assert!(!inactive.active);
+    assert!(inactive.cell("2026-10-12").unwrap().counts_as_completion);
+    assert!(inactive.cell("2026-10-13").unwrap().counts_as_completion);
+    assert!(inactive.definition.as_ref().unwrap().lifecycle_history.iter().any(
+        |entry| !entry.active && entry.effective_from == "2026-10-14"
+    ));
+
+    let reopened_while_inactive = app_at(vault.path(), "2026-10-15").habits().unwrap();
+    let inactive_after_reopen = reopened_while_inactive.habit(&created.habit_key).unwrap();
+    assert!(!inactive_after_reopen.active);
+    assert_eq!(inactive_after_reopen.name, "Read");
+    assert!(inactive_after_reopen.cell("2026-10-12").unwrap().counts_as_completion);
+    assert!(inactive_after_reopen.cell("2026-10-15").unwrap().counts_as_completion == false);
+    assert!(inactive_after_reopen.cell("2026-10-15").unwrap().coverage == "unknown");
+    assert!(app_at(vault.path(), "2026-10-15")
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: created.habit_key.clone(),
+            lived_date: "2026-10-15".into(),
+            completed: true,
+            change_id: "read-during-inactive-period".into(),
+            target_binding: reopened_while_inactive
+                .completion_target_binding
+                .clone()
+                .unwrap(),
+            expected_revision: reopened_while_inactive.completion_revision.clone(),
+        })
+        .is_err());
+
+    let friday = app_at(vault.path(), "2026-10-16");
+    let before_restore = friday.habits().unwrap();
+    let restored = friday
+        .set_habit_active(HabitLifecycleMutationInput {
+            operation_id: "restore-read-oct-16".into(),
+            target_binding: before_restore.catalog_target_binding.unwrap(),
+            expected_revision: before_restore.catalog_revision,
+            habit_key: created.habit_key.clone(),
+            active: true,
+        })
+        .unwrap();
+    let active_again = restored.snapshot.habit(&created.habit_key).unwrap();
+    assert!(active_again.active);
+    assert_eq!(active_again.name, "Read");
+    assert!(active_again.cell("2026-10-12").unwrap().counts_as_completion);
+    assert!(active_again.cell("2026-10-13").unwrap().counts_as_completion);
+    assert_eq!(active_again.cell("2026-10-16").unwrap().coverage, "unknown");
+    let lifecycle = &active_again.definition.as_ref().unwrap().lifecycle_history;
+    assert!(lifecycle.iter().any(|entry| !entry.active && entry.effective_from == "2026-10-14"));
+    assert!(lifecycle.iter().any(|entry| entry.active && entry.effective_from == "2026-10-16"));
+}
+
+#[test]
+fn selected_habit_detail_reads_canonical_history_older_than_the_twelve_week_projection() {
+    let vault = TempVault::new("full-detail-history");
+    let application = app_at(vault.path(), "2026-10-14");
+    let before = application.habits().unwrap();
+    let created = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            operation_id: "create-old-history-detail".into(),
+            target_binding: before.catalog_target_binding.unwrap(),
+            expected_revision: before.catalog_revision,
+            habit_key: None,
+            language: "en".into(),
+            name: "Read before breakfast".into(),
+            emoji: None,
+            group: None,
+            start_date: Some("2026-01-01".into()),
+            goal: Some(HabitGoalTarget::DailyCompletion),
+        })
+        .unwrap();
+    let before_completion = application.habits().unwrap();
+    application
+        .set_historical_habit_completion(HabitCompletionMutationInput {
+            habit_key: created.habit_key.clone(),
+            lived_date: "2026-01-05".into(),
+            completed: true,
+            change_id: "old-read-completion".into(),
+            target_binding: before_completion
+                .completion_target_binding
+                .clone()
+                .unwrap(),
+            expected_revision: before_completion.completion_revision.clone(),
+        })
+        .unwrap();
+
+    let detail = application
+        .habit_detail_history(&created.habit_key)
+        .unwrap();
+    assert_eq!(detail.canonical_state, "ready");
+    assert_eq!(detail.canonical_target_binding, before_completion.completion_target_binding);
+    assert_eq!(detail.local_completions.len(), 1);
+    assert_eq!(detail.local_completions[0].lived_date, "2026-01-05");
+    assert_eq!(detail.local_completions[0].state, personal_dashboard_lib::habits::HabitLocalCompletionState::Completed);
+    assert!(detail.habit.history.iter().all(|cell| cell.date != "2026-01-05"));
+
+    let reopened = app_at(vault.path(), "2026-10-14")
+        .habit_detail_history(&created.habit_key)
+        .unwrap();
+    assert_eq!(reopened.local_completions.len(), 1);
+    assert_eq!(reopened.local_completions[0].lived_date, "2026-01-05");
 }
 
 #[test]

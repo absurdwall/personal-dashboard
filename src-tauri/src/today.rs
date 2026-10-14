@@ -7,6 +7,7 @@ use crate::habits::{
 };
 use crate::habit_catalog::{
     self, FileHabitCatalogStore, HabitDefinitionMutationInput, HabitDefinitionSaveResult,
+    HabitLifecycleMutationInput, HabitLifecycleSaveResult,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -1649,6 +1650,38 @@ pub struct HabitCompletionHistoryView {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct HabitDetailHistoryView {
+    pub habit: crate::habits::HabitView,
+    pub canonical_state: String,
+    pub canonical_revision: Option<String>,
+    pub canonical_target_binding: Option<String>,
+    pub canonical_error: Option<String>,
+    pub local_completions: Vec<HabitCanonicalCompletionView>,
+    pub snapshot_state: HabitSnapshotState,
+    pub snapshot_generated_at: Option<String>,
+    pub snapshot_range: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitCanonicalCompletionView {
+    pub lived_date: String,
+    pub state: HabitLocalCompletionState,
+    pub completed_at: Option<String>,
+    pub modified_at: String,
+    pub changes: Vec<HabitCanonicalCompletionChangeView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitCanonicalCompletionChangeView {
+    pub id: String,
+    pub kind: String,
+    pub changed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HabitHistoryProjectionView {
     pub state: HabitSnapshotState,
     pub message: String,
@@ -2721,6 +2754,9 @@ where
                     "该习惯不是 completion 型；时刻和阈值证据不能用本地完成框记录。".into(),
                 );
             }
+            if !allow_existing_without_catalog && !habit.active {
+                return Err("该 Habit 已停用；请先恢复后再记录今日完成。".into());
+            }
         } else if has_verifiable_catalog || !allow_existing_without_catalog {
             return Err("Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".into());
         }
@@ -3502,6 +3538,188 @@ where
             habit_key: mutation.habit_key,
             revision,
             snapshot,
+        })
+    }
+
+    pub fn set_habit_active(
+        &self,
+        input: HabitLifecycleMutationInput,
+    ) -> Result<HabitLifecycleSaveResult, String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Vault，再更改 Habit 生命周期。".to_string())?;
+        validate_compatible_vault(&vault)
+            .map_err(|error| format!("{error}；Habit 生命周期修改仍可重试，未写入任何内容。"))?;
+        let catalog_path = habit_catalog::canonical_path(&vault);
+        if habit_catalog::target_binding(&catalog_path) != input.target_binding {
+            return Err("所选 Vault 已改变。请刷新 Habits 后重试；没有写入任何内容。".into());
+        }
+
+        let current_view = self.habits()?;
+        if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+            return Err("保存过程中所选 Vault 已改变；没有开始写入。请刷新 Habits 后重试。".into());
+        }
+        if current_view.catalog_error.is_some() {
+            return Err(current_view.catalog_error.unwrap_or_default());
+        }
+        let existing_bytes = self.habit_catalog_store.load(&catalog_path)?;
+        let existing_revision = existing_bytes.as_deref().map(habit_catalog::revision);
+        let existing_document = match existing_bytes.as_deref() {
+            Some(bytes) => Some(habit_catalog::parse_document(bytes)?),
+            None => None,
+        };
+        let mutation = habit_catalog::apply_lifecycle_mutation(
+            existing_document,
+            existing_revision.as_deref(),
+            &input,
+            &current_view,
+            &self.clock.current_lived_date(),
+            &self.clock.current_timestamp_label(),
+        )?;
+        let updated_bytes = if mutation.changed {
+            let encoded = habit_catalog::encode_document(&mutation.document)?;
+            if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+                return Err("保存过程中所选 Vault 已改变；没有开始写入。请刷新 Habits 后重试。".into());
+            }
+            match existing_bytes.as_deref() {
+                Some(expected) => self.habit_catalog_store.save_if_unchanged(
+                    &catalog_path,
+                    expected,
+                    &encoded,
+                )?,
+                None => self.habit_catalog_store.create_new(&catalog_path, &encoded)?,
+            }
+            encoded
+        } else {
+            existing_bytes.clone().ok_or_else(|| {
+                "Habit 生命周期重试找不到已保存的定义；请刷新 Habits 后检查。".to_string()
+            })?
+        };
+        let readback_bytes = self
+            .habit_catalog_store
+            .load(&catalog_path)?
+            .ok_or_else(|| "Habit 生命周期已提交，但无法重新读回；结果未确认。".to_string())?;
+        if readback_bytes != updated_bytes {
+            return Err("Habit 生命周期保存后读回的修订已变化；结果未确认。请刷新后检查。".into());
+        }
+        let readback_document = habit_catalog::parse_document(&readback_bytes)?;
+        if !habit_catalog::operation_applied(
+            &readback_document,
+            &input.operation_id,
+            &input.habit_key,
+        ) {
+            return Err("Habit 生命周期保存后未能核对操作身份；结果未确认。请刷新后检查。".into());
+        }
+        if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+            return Err("保存后所选 Vault 已改变。原 Vault 的 Habit 修改已保留，但当前结果未确认；请刷新后检查。".into());
+        }
+        let snapshot = self.habits()?;
+        let habit = snapshot.habit(&input.habit_key).ok_or_else(|| {
+            "Habit 生命周期已保存，但新实例式读回未能找到该 Habit；结果未确认。".to_string()
+        })?;
+        let active = habit
+            .definition
+            .as_ref()
+            .map(|definition| definition.lifecycle_active)
+            .ok_or_else(|| "Habit 生命周期已保存，但读回未能确认定义；结果未确认。".to_string())?;
+        if mutation.changed && active != input.active {
+            return Err("Habit 生命周期已保存，但读回状态与请求不同；结果未确认。".into());
+        }
+        let revision = habit_catalog::revision(&readback_bytes);
+        if snapshot.catalog_revision.as_deref() != Some(revision.as_str()) {
+            return Err("Habit 生命周期已保存，但界面读回的修订与正本不同；结果未确认。".into());
+        }
+        Ok(HabitLifecycleSaveResult {
+            operation_id: input.operation_id,
+            habit_key: input.habit_key,
+            active,
+            revision,
+            snapshot,
+        })
+    }
+
+    pub fn habit_detail_history(&self, habit_key: &str) -> Result<HabitDetailHistoryView, String> {
+        validate_habit_key(habit_key)?;
+        let snapshot = self.habits()?;
+        let habit = snapshot
+            .habit(habit_key)
+            .cloned()
+            .ok_or_else(|| "Habits 中没有所选的稳定 key；请刷新后重试。".to_string())?;
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "Habit 历史需要先选择 Vault。".to_string())?;
+        let path = canonical_habit_completion_path(&vault);
+        let target_binding = habit_completion_target_binding(&path);
+        if snapshot.completion_target_binding.as_deref() != Some(target_binding.as_str()) {
+            return Err("所选 Vault 已改变；请刷新 Habits 后重新读取历史。".into());
+        }
+        let mut canonical_state = "missing".to_string();
+        let mut canonical_revision = None;
+        let mut canonical_error = None;
+        let mut local_completions = Vec::new();
+        match self.habit_completion_store.load(&path) {
+            Ok(Some(bytes)) => {
+                canonical_revision = Some(document_revision(&bytes));
+                match parse_habit_completion_document(&bytes, &self.clock.current_timestamp_label()) {
+                    Ok(document) => {
+                        canonical_state = "ready".into();
+                        local_completions = document
+                            .completions
+                            .into_iter()
+                            .filter(|record| record.habit_key == habit_key)
+                            .map(|record| HabitCanonicalCompletionView {
+                                lived_date: record.lived_date,
+                                state: if record.completed_at.is_some() {
+                                    HabitLocalCompletionState::Completed
+                                } else {
+                                    HabitLocalCompletionState::Withdrawn
+                                },
+                                completed_at: record.completed_at,
+                                modified_at: record.modified_at,
+                                changes: record
+                                    .changes
+                                    .into_iter()
+                                    .map(|change| HabitCanonicalCompletionChangeView {
+                                        id: change.id,
+                                        kind: match change.kind {
+                                            HabitCompletionChangeKind::Completed => "completed",
+                                            HabitCompletionChangeKind::Withdrawn => "withdrawn",
+                                        }
+                                        .into(),
+                                        changed_at: change.changed_at,
+                                    })
+                                    .collect(),
+                            })
+                            .collect();
+                        local_completions.sort_by(|left, right| left.lived_date.cmp(&right.lived_date));
+                    }
+                    Err(error) => {
+                        canonical_state = "error".into();
+                        canonical_error = Some(error);
+                    }
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                canonical_state = "error".into();
+                canonical_error = Some(error);
+            }
+        }
+        if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+            return Err("所选 Vault 在历史读取期间发生变化；请刷新 Habits 后重新读取。".into());
+        }
+        Ok(HabitDetailHistoryView {
+            habit,
+            canonical_state,
+            canonical_revision,
+            canonical_target_binding: Some(target_binding),
+            canonical_error,
+            local_completions,
+            snapshot_state: snapshot.state,
+            snapshot_generated_at: snapshot.generated_at,
+            snapshot_range: snapshot.range_label,
         })
     }
 

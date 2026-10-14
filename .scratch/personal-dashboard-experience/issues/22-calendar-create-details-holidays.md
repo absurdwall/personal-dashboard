@@ -57,3 +57,11 @@ The installed local Management helper confirmed native claim operation
 packaged acceptance remains under PDEX-26. The exact worktree start commit and
 path are recorded in the shared [restart record](../refinement-reimplementation-2026-10-13.md)
 after worktree creation.
+
+## Reimplementation evidence — 2026-10-13
+
+Implementation details, verified official holiday source URLs, coverage limits,
+commit history, and local checks are recorded in
+[`pdex-22-reimplementation-2026-10-13.md`](../evidence/pdex-22-reimplementation-2026-10-13.md).
+Official China holiday data for 2027 remains unavailable in the verified source
+set, so acceptance requiring that year remains unmet.

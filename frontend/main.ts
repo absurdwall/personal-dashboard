@@ -15,6 +15,7 @@ import {
   refreshTodayPresentation,
 } from "./today-refresh.js";
 import {
+  TODAY_AXIS_LABEL_MINIMUM_MINUTES,
   axisMarkerLayout,
   axisOverlapPlacements,
   clockResultMatchesSession,
@@ -64,6 +65,15 @@ import {
 } from "./interface-language.js";
 import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 import {
+  CALENDAR_HOLIDAY_PREFERENCE_KEY,
+  DEFAULT_CALENDAR_HOLIDAY_PREFERENCES,
+  calendarHolidayCoverageIncludes,
+  calendarHolidayDataForDate,
+  readCalendarHolidayPreferences,
+  type CalendarHolidayPreferences,
+  type CalendarHolidayRegion,
+} from "./calendar-holidays.js";
+import {
   beginVoiceTranscriptSave,
   enqueueCollaborationDraftWrite,
   submitCollaborationDraftSnapshot,
@@ -109,6 +119,7 @@ import {
   type HabitLocalCompletionState,
 } from "./habit-completion.js";
 import { reconcileHabitCompletionWrite } from "./habit-completion-command.js";
+import { habitDetailStatistics } from "./habit-detail-statistics.js";
 import {
   localizedHabitName,
   type HabitLocalizedNames,
@@ -480,11 +491,28 @@ type HabitDefinitionView = Readonly<{
   emoji: string | null;
   group: string | null;
   startDate: string | null;
+  lifecycleActive: boolean;
+  lifecycleHistory: readonly HabitLifecycleChangeView[];
+  goalRevisions: readonly HabitGoalRevisionView[];
   currentGoal: HabitGoalTarget | null;
   currentGoalEffectiveFrom: string | null;
   pendingGoal: HabitGoalTarget | null;
   pendingGoalEffectiveFrom: string | null;
   partialGoalCycle: boolean;
+}>;
+
+type HabitLifecycleChangeView = Readonly<{
+  operationId: string;
+  active: boolean;
+  effectiveFrom: string;
+  changedAt: string;
+}>;
+
+type HabitGoalRevisionView = Readonly<{
+  id: string;
+  effectiveFrom: string;
+  target: HabitGoalTarget;
+  status: "active" | "superseded" | "cancelled" | string;
 }>;
 
 type HabitView = Readonly<{
@@ -505,6 +533,7 @@ type HabitView = Readonly<{
     weekOf: string;
     label: string;
     goalLabel: string;
+    target: HabitGoalTarget | null;
   }>[];
   today: HabitCellView;
   recent: readonly HabitCellView[];
@@ -555,6 +584,55 @@ type HabitDefinitionSaveResult = Readonly<{
   habitKey: string;
   revision: string;
   snapshot: HabitSnapshotView;
+}>;
+
+type HabitLifecycleMutationInput = Readonly<{
+  operationId: string;
+  targetBinding: string;
+  expectedRevision: string | null;
+  habitKey: string;
+  active: boolean;
+}>;
+
+type HabitLifecycleSaveResult = Readonly<{
+  operationId: string;
+  habitKey: string;
+  active: boolean;
+  revision: string;
+  snapshot: HabitSnapshotView;
+}>;
+
+type HabitCanonicalCompletionChangeView = Readonly<{
+  id: string;
+  kind: "completed" | "withdrawn";
+  changedAt: string;
+}>;
+
+type HabitCanonicalCompletionView = Readonly<{
+  livedDate: string;
+  state: HabitLocalCompletionState;
+  completedAt: string | null;
+  modifiedAt: string;
+  changes: readonly HabitCanonicalCompletionChangeView[];
+}>;
+
+type HabitDetailHistoryView = Readonly<{
+  habit: HabitView;
+  canonicalState: "ready" | "missing" | "error" | string;
+  canonicalRevision: string | null;
+  canonicalTargetBinding: string | null;
+  canonicalError: string | null;
+  localCompletions: readonly HabitCanonicalCompletionView[];
+  snapshotState: HabitSnapshotState;
+  snapshotGeneratedAt: string | null;
+  snapshotRange: string | null;
+}>;
+
+type HabitDetailRecordItem = Readonly<{
+  date: string;
+  state: string;
+  source: string;
+  details: readonly string[];
 }>;
 
 type HabitCorrectionHabitView = Readonly<{
@@ -1281,6 +1359,12 @@ const calendarPreviousMonth = document.querySelector<HTMLButtonElement>(
 );
 const calendarNextMonth = document.querySelector<HTMLButtonElement>("#calendar-next-month");
 const calendarToday = document.querySelector<HTMLButtonElement>("#calendar-today");
+const calendarAddTask = document.querySelector<HTMLButtonElement>("#calendar-add-task");
+const calendarHolidaySettings = document.querySelector<HTMLDetailsElement>("#calendar-holiday-settings");
+const calendarHolidaysEnabled = document.querySelector<HTMLInputElement>("#calendar-holidays-enabled");
+const calendarHolidaysChina = document.querySelector<HTMLInputElement>("#calendar-holidays-china");
+const calendarHolidaysUnitedStates = document.querySelector<HTMLInputElement>("#calendar-holidays-united-states");
+const calendarHolidayCoverage = document.querySelector<HTMLElement>("#calendar-holiday-coverage");
 const calendarStatus = document.querySelector<HTMLElement>("#calendar-status");
 const calendarMonthHeading = document.querySelector<HTMLElement>("#calendar-month-heading");
 const calendarGrid = document.querySelector<HTMLElement>("#calendar-grid");
@@ -1302,6 +1386,15 @@ const calendarTaskEmpty = document.querySelector<HTMLElement>("#calendar-task-em
 const calendarTaskCreateForm = document.querySelector<HTMLFormElement>(
   "#calendar-task-create-form",
 );
+const calendarTaskCreateDialog = document.querySelector<HTMLDialogElement>("#calendar-task-create-dialog");
+const calendarTaskCreateCancel = document.querySelector<HTMLButtonElement>("#calendar-task-create-cancel");
+const calendarTaskCreateClose = document.querySelector<HTMLButtonElement>("#calendar-task-create-close");
+const calendarTaskCreateRecheck = document.querySelector<HTMLButtonElement>("#calendar-task-create-recheck");
+const calendarTaskCreateRetry = document.querySelector<HTMLButtonElement>("#calendar-task-create-retry");
+const calendarTaskCreateEndAttempt = document.querySelector<HTMLButtonElement>("#calendar-task-create-end-attempt");
+const calendarTaskCreateStatus = document.querySelector<HTMLElement>("#calendar-task-create-status");
+const calendarTaskCreateEndedAttempts = document.querySelector<HTMLElement>("#calendar-task-create-ended-attempts");
+const calendarTaskEditorDialogRoot = document.querySelector<HTMLElement>("#calendar-task-editor-dialog-root");
 const calendarTaskCreateName = document.querySelector<HTMLInputElement>(
   "#calendar-task-create-name",
 );
@@ -1395,6 +1488,13 @@ const habitsSummaryNote = document.querySelector<HTMLElement>("#habits-summary-n
 const habitsGeneratedAt = document.querySelector<HTMLElement>("#habits-generated-at");
 const habitsProducer = document.querySelector<HTMLElement>("#habits-producer");
 const habitsTodayDate = document.querySelector<HTMLElement>("#habits-today-date");
+const habitsInactiveToggle = document.querySelector<HTMLButtonElement>("#habits-inactive-toggle");
+const habitsCurrentTodayView = document.querySelector<HTMLElement>("#habits-current-today-view");
+const habitDetailPanel = document.querySelector<HTMLElement>("#habit-detail-panel");
+const habitDetailHeading = document.querySelector<HTMLElement>("#habit-detail-heading");
+const habitDetailStatus = document.querySelector<HTMLElement>("#habit-detail-status");
+const habitDetailContent = document.querySelector<HTMLElement>("#habit-detail-content");
+const habitDetailBack = document.querySelector<HTMLButtonElement>("#habit-detail-back");
 const habitsDailyList = document.querySelector<HTMLElement>("#habits-daily-list");
 const habitsWeeklyList = document.querySelector<HTMLElement>("#habits-weekly-list");
 const refreshHabitsButton = document.querySelector<HTMLButtonElement>("#refresh-habits");
@@ -1430,6 +1530,12 @@ const todayBlockCount = document.querySelector<HTMLElement>("#today-block-count"
 const todayPlanEmpty = document.querySelector<HTMLElement>("#today-plan-empty");
 const todayContinuousAxis = document.querySelector<HTMLElement>("#today-continuous-axis");
 const todayAxisScrollSurface = document.querySelector<HTMLElement>("#today-axis-scroll-surface");
+const todayAxisTaskPopup = document.querySelector<HTMLDialogElement>("#today-axis-task-popup");
+const todayAxisTaskPopupHeading = document.querySelector<HTMLElement>("#today-axis-task-popup-heading");
+const todayAxisTaskPopupContent = document.querySelector<HTMLElement>("#today-axis-task-popup-content");
+const todayAxisTaskPopupStatus = document.querySelector<HTMLElement>("#today-axis-task-popup-status");
+const todayAxisTaskPopupClose = document.querySelector<HTMLButtonElement>("#today-axis-task-popup-close");
+let todayAxisTaskPopupOpener: HTMLElement | null = null;
 const todayHourTicks = document.querySelector<HTMLElement>("#today-hour-ticks");
 const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#today-current-arrangement-unlocated");
 const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
@@ -1654,7 +1760,7 @@ type TaskCreateInput = Readonly<{
   tagIds?: readonly string[];
 }>;
 type TaskCreateAttempt = {
-  origin: "quick" | "modal" | "today"; surfaceDate?: string; draft: TaskDraft; input: TaskCreateInput;
+  origin: "quick" | "modal" | "today" | "calendar"; surfaceDate?: string; draft: TaskDraft; input: TaskCreateInput;
   originalInput: TaskCreateInput; listName: string;
   phase: "unverified" | "retry-ready" | "conflict";
 };
@@ -1688,10 +1794,20 @@ let correctingShortRecordId: string | null = null;
 let currentCalendarMonth: CalendarMonthView | null = null;
 let currentCalendarSummaryView: TodayView | null = null;
 let selectedCalendarDate: string | null = null;
+let selectedCalendarTaskDetailId: string | null = null;
+function storedCalendarHolidayPreferences(): CalendarHolidayPreferences {
+  try {
+    return readCalendarHolidayPreferences(window.localStorage.getItem(CALENDAR_HOLIDAY_PREFERENCE_KEY));
+  } catch {
+    return { ...DEFAULT_CALENDAR_HOLIDAY_PREFERENCES };
+  }
+}
+let calendarHolidayPreferences = storedCalendarHolidayPreferences();
 const calendarMonthRequests = new LatestRequest();
 const calendarSelectionRequests = new LatestRequest();
 const habitSnapshotRequests = new LatestRequest();
 const habitDateRequests = new LatestRequest();
+const habitDetailRequests = new LatestRequest();
 const habitCompletionRequests = new LatestRequest();
 let currentHabitSnapshot: HabitSnapshotView | null = null;
 type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
@@ -1701,6 +1817,15 @@ let currentHabitDateView: TodayView | null = null;
 let habitDateOperationCount = 0;
 let habitCompletionOperationCount = 0;
 const habitCompletionOperationIds = new Map<string, string>();
+let showInactiveHabits = false;
+let selectedHabitDetailKey: string | null = null;
+let currentHabitDetailHistory: HabitDetailHistoryView | null = null;
+let habitDetailRecordLimit = 20;
+let habitLifecycleOperationCount = 0;
+const habitLifecycleOperationIds = new Map<string, string>();
+let habitDetailLoading = false;
+let habitDetailLoadError: string | null = null;
+let habitDetailLifecycleNotice: Readonly<{ error: string | null }> | null = null;
 type HabitDefinitionFormValues = Readonly<{
   habitKey: string | null;
   name: string;
@@ -1855,7 +1980,16 @@ async function chooseInterfaceLanguage(interfaceLanguage: InterfaceLanguage): Pr
 }
 
 function resetVaultScopedWorkspaceState(): void {
+  stashCalendarTaskCreateDraft();
+  const calendarTaskEditDraftKeys = new Set<string>();
+  taskEditorForms("calendar").forEach((form) => {
+    stashTaskEditDraft(form);
+    const binding = currentCalendarSummaryView?.tasks.targetBinding;
+    const taskId = form.dataset.taskEditor;
+    if (binding && taskId) calendarTaskEditDraftKeys.add(taskDraftKey(binding, taskId));
+  });
   historicalHabitArrival.clear();
+  habitDetailRequests.invalidate();
   taskRequests.invalidate();
   todayTaskRequests.invalidate();
   calendarMonthRequests.invalidate();
@@ -1893,11 +2027,13 @@ function resetVaultScopedWorkspaceState(): void {
   currentCalendarMonth = null;
   currentCalendarSummaryView = null;
   selectedCalendarDate = null;
+  selectedCalendarTaskDetailId = null;
   currentTodayView = null;
   currentTasksView = null;
   selectedTaskDetailId = null;
   selectedTaskDetailBinding = null;
   taskEditorDialogRoot?.toggleAttribute("hidden", true);
+  calendarTaskEditorDialogRoot?.toggleAttribute("hidden", true);
   taskScope = "all";
   taskStateScope = "all";
   taskCreateOpen = false;
@@ -1905,6 +2041,14 @@ function resetVaultScopedWorkspaceState(): void {
   expandedTaskFolderIds.clear();
   taskRefreshQueued = false;
   currentHabitSnapshot = null;
+  selectedHabitDetailKey = null;
+  currentHabitDetailHistory = null;
+  habitDetailLoading = false;
+  habitDetailLoadError = null;
+  habitDetailLifecycleNotice = null;
+  habitDetailRecordLimit = 20;
+  showInactiveHabits = false;
+  habitLifecycleOperationIds.clear();
   selectedHabitCell = null;
   currentHabitDateView = null;
   activeHabitDefinitionBinding = null;
@@ -1923,14 +2067,23 @@ function resetVaultScopedWorkspaceState(): void {
   compactScheduleTransactions.forEach(transaction => transaction.invalidate());
   taskQuickScheduleDrafts.clear();
   currentTaskLivedDate = null;
-  taskCreateAttempts.clear();
-  taskEndedCreateAttempts.clear();
+  for (const [key, attempt] of taskCreateAttempts) {
+    if (attempt.origin !== "calendar") taskCreateAttempts.delete(key);
+  }
+  for (const [key, attempts] of taskEndedCreateAttempts) {
+    const calendarAttempts = attempts.filter((attempt) => attempt.origin === "calendar");
+    if (calendarAttempts.length) taskEndedCreateAttempts.set(key, calendarAttempts);
+    else taskEndedCreateAttempts.delete(key);
+  }
+  for (const key of taskEditDrafts.keys()) {
+    if (!calendarTaskEditDraftKeys.has(key)) taskEditDrafts.delete(key);
+  }
   taskEndedCreateRegion?.replaceChildren();
   taskQuickForm?.reset();
   taskCreateDialog?.close();
+  calendarTaskCreateDialog?.close();
   todayTaskCreateDrafts.clear();
-  calendarTaskCreateDrafts.clear();
-  taskEditDrafts.clear();
+  calendarTaskEditorDialogRoot?.replaceChildren();
   taskListCreateDrafts.clear();
   taskListRenameDrafts.clear();
   taskFolderRenameDrafts.clear();
@@ -1959,7 +2112,8 @@ function resetVaultScopedWorkspaceState(): void {
   if (calendarTaskCount) calendarTaskCount.textContent = "";
   if (calendarTaskEmpty) calendarTaskEmpty.hidden = true;
   calendarTaskPanel?.toggleAttribute("hidden", true);
-  calendarTaskCreateForm?.toggleAttribute("hidden", true);
+  calendarTaskCreateDialog?.close();
+  calendarTaskEditorDialogRoot?.toggleAttribute("hidden", true);
   setCopy(calendarTaskCreateSubmit, "tasks.add");
   normalizeTaskDateTimeFields(calendarTaskCreateDate, calendarTaskCreateTime);
   todayLegacyTaskList?.replaceChildren();
@@ -5616,7 +5770,9 @@ function todayTimelineItem(block: MorningBlockView): HTMLLIElement {
 
 let todayAxisEarlyExpanded = false;
 let todayAxisLateExpanded = false;
+let todayAxisZoomLevel = 0;
 let todayAxisRenderedDate: string | null = null;
+const todayAxisZoomHeights = [null, "28px", "40px", "56px"] as const;
 function axisBounds(): readonly [number, number] {
   return [todayAxisEarlyExpanded ? 240 : 360, todayAxisLateExpanded ? 1680 : 1440];
 }
@@ -5655,7 +5811,7 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
     return t("today.unlocatedLabel");
   }
   const start = formatAxisMinute(entry.startMinute);
-  if (entry.planPrecision === "broad") return `${entry.period} · ${t("today.planApproximateReference", { time: start })}`;
+  if (entry.planPrecision === "broad") return entry.period || t("today.planApproximatePoint");
   if (entry.planPrecision === "approximatePoint") {
     const label = t("today.planApproximateReference", { time: start });
     return entry.startMinute >= 1440 ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
@@ -5677,8 +5833,10 @@ function appendAxisEntryTimeLabel(
     if (entry.period) target.append(`${entry.period} · `);
     key = entry.period ? "today.unlocatedPlanLabel" :
       lane === "facts" || lane === "facts-unlocated" ? "today.unlocatedConfirmedFactLabel" : "today.unlocatedLabel";
-  } else if (!entry.task && (entry.planPrecision === "broad" || entry.planPrecision === "approximatePoint")) {
-    if (entry.planPrecision === "broad") target.append(`${entry.period} · `);
+  } else if (!entry.task && entry.planPrecision === "broad") {
+    target.textContent = entry.period || t("today.planApproximatePoint");
+    return;
+  } else if (!entry.task && entry.planPrecision === "approximatePoint") {
     key = "today.planApproximateReference";
     variables = { time: formatAxisMinute(entry.startMinute!) };
   } else {
@@ -6253,16 +6411,27 @@ function renderTodayTimeAxisEntries(
   ordered.forEach(({ entry, index }) => {
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
   });
-  const lowerDetailEntries = ordered.filter(({ entry }) => entry.lane !== "arrangement");
+  const lowerDetailEntries = ordered.filter(({ entry }) => entry.lane === "facts");
   todayTimedDetails.replaceChildren(...lowerDetailEntries.map(({ index }) => detailElements.get(index)!));
   todayTimedDetails.toggleAttribute("hidden", lowerDetailEntries.length === 0);
   const [visibleStart, visibleEnd] = axisBounds();
   const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
     entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
+  const hourHeight = Number.parseFloat(
+    getComputedStyle(todayContinuousAxis!).getPropertyValue("--today-axis-hour-height"),
+  );
+  const minimumLabelMinutes = Number.isFinite(hourHeight) && hourHeight > 0
+    ? Math.max(TODAY_AXIS_LABEL_MINIMUM_MINUTES, Math.ceil(32 / hourHeight * 60))
+    : TODAY_AXIS_LABEL_MINIMUM_MINUTES;
   const visibleEntries = timedEntries.map(({ entry: original, index }) => {
     const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
       endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
-    return { original, entry, index, markerLayout: axisMarkerLayout(entry, [visibleStart, visibleEnd]) };
+    return {
+      original,
+      entry,
+      index,
+      markerLayout: axisMarkerLayout(entry, [visibleStart, visibleEnd], minimumLabelMinutes),
+    };
   });
   const stackPlacements = axisOverlapPlacements(
     visibleEntries.map(({ entry }) => ({
@@ -6270,6 +6439,7 @@ function renderTodayTimeAxisEntries(
       endMinute: entry.endMinute,
     })),
     [visibleStart, visibleEnd],
+    minimumLabelMinutes,
   );
   // Dense collisions retain readable targets; the same axis can scroll
   // horizontally in a narrow window rather than clipping every card.
@@ -6293,7 +6463,9 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-completed", entry.task?.state === "completed");
       marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
       if (entry.task) marker.dataset.taskId = entry.task.id;
-      const editablePlan = original.lane === "arrangement" && hasExactPlanTime(original) && original.planId && original.timeEditable &&
+      const editablePlan = original.lane === "arrangement" &&
+        (hasExactPlanTime(original) || original.planPrecision === "broad" || original.planPrecision === "approximatePoint") &&
+        original.planId && original.timeEditable &&
         !original.continuesFromPreviousDay && !original.continuesIntoNextDay;
       if (editablePlan) marker.dataset.planId = original.planId!;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
@@ -6351,6 +6523,10 @@ function renderTodayTimeAxisEntries(
           members.forEach((member) => member.classList.toggle("is-stack-front", member === marker));
           if (editablePlan) {
             openPlanTimeEditor(original);
+            return;
+          }
+          if (entry.task) {
+            openTodayAxisTaskPopup(entry.task.id, marker);
             return;
           }
           const target = detailElements.get(index);
@@ -6438,6 +6614,78 @@ function renderTodayTimeAxisEntries(
   todayTimedEmpty.hidden = entries.length + unlocatedArrangement.length + unlocatedFacts.length > 0;
 }
 
+function positionTodayAxisTaskPopup(): void {
+  if (!todayAxisTaskPopup?.open) return;
+  if (!todayAxisTaskPopupOpener?.isConnected) {
+    closeTodayAxisTaskPopup(false, false);
+    return;
+  }
+  const anchor = todayAxisTaskPopupOpener.getBoundingClientRect();
+  if (anchor.width === 0 && anchor.height === 0) {
+    closeTodayAxisTaskPopup(false, false);
+    return;
+  }
+  const popup = todayAxisTaskPopup.getBoundingClientRect();
+  const margin = 12;
+  const width = popup.width || Math.min(430, window.innerWidth - margin * 2);
+  const height = popup.height || Math.min(340, window.innerHeight - margin * 2);
+  const right = anchor.right + 8;
+  const leftOfAnchor = anchor.left - width - 8;
+  const left = right + width <= window.innerWidth - margin
+    ? right
+    : leftOfAnchor >= margin
+      ? leftOfAnchor
+      : Math.max(margin, Math.min(anchor.left, window.innerWidth - width - margin));
+  const top = Math.max(margin, Math.min(anchor.top, window.innerHeight - height - margin));
+  todayAxisTaskPopup.style.left = `${left}px`;
+  todayAxisTaskPopup.style.top = `${top}px`;
+}
+
+function closeTodayAxisTaskPopup(discardDraft = false, restoreFocus = true): void {
+  if (!todayAxisTaskPopup?.open) return;
+  const taskId = todayAxisTaskPopup.dataset.taskId;
+  const binding = currentTodayView?.tasks.targetBinding;
+  if (discardDraft && taskId && binding) taskEditDrafts.delete(taskDraftKey(binding, taskId));
+  todayAxisTaskPopup.dataset.restoreFocus = String(restoreFocus);
+  todayAxisTaskPopupContent?.replaceChildren();
+  todayAxisTaskPopup.close();
+}
+
+function openTodayAxisTaskPopup(taskId: string, marker: HTMLElement, preserveStatus = false): void {
+  const view = currentTodayView;
+  const stored = view?.tasks.tasks.find((candidate) => candidate.id === taskId);
+  if (!view || !stored || !todayAxisTaskPopup || !todayAxisTaskPopupContent || !todayAxisTaskPopupHeading) return;
+  const writable = canMutateTodayTasks({
+    todayOperationCount,
+    taskOperationCount,
+    hasTargetBinding: Boolean(view.tasks.targetBinding),
+    state: view.tasks.state,
+    isPresentationCurrent: todayPresentationFresh,
+  });
+  const row = taskEditor(stored, writable, view.tasks, "today", true);
+  const form = row.querySelector<HTMLFormElement>("form[data-task-editor]");
+  if (!form) return;
+  if (!preserveStatus && todayAxisTaskPopupStatus) {
+    todayAxisTaskPopupStatus.textContent = "";
+    delete todayAxisTaskPopupStatus.dataset.state;
+  }
+  form.classList.remove("task-editor-inline");
+  form.classList.add("today-axis-task-popup-form");
+  form.querySelector<HTMLButtonElement>("button[data-task-editor-close]")?.remove();
+  todayAxisTaskPopupHeading.removeAttribute("data-i18n");
+  todayAxisTaskPopupHeading.textContent = stored.name;
+  todayAxisTaskPopup.setAttribute("aria-label", t("tasks.editLabel", { task: stored.name }));
+  todayAxisTaskPopup.dataset.taskId = taskId;
+  todayAxisTaskPopup.dataset.restoreFocus = "true";
+  todayAxisTaskPopupOpener = marker.querySelector<HTMLElement>(".today-axis-marker-link") ?? marker;
+  todayAxisTaskPopupContent.replaceChildren(form);
+  if (!todayAxisTaskPopup.open) todayAxisTaskPopup.show();
+  window.requestAnimationFrame(() => {
+    positionTodayAxisTaskPopup();
+    form.querySelector<HTMLInputElement>("[data-task-name]")?.focus({ preventScroll: true });
+  });
+}
+
 function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
   const currentMinute = currentTime ? livedAxisMinute(currentTime) : null;
@@ -6494,10 +6742,17 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     todayUnlocatedOverride = null;
     todaySidebarReadingPosition = null;
     const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
-    todayAxisEarlyExpanded = earlyCount > 0 || (now !== null && now < 360);
-    todayAxisLateExpanded = lateCount > 0 || (now !== null && now >= 1440);
+    todayAxisEarlyExpanded = now !== null && now < 360;
+    todayAxisLateExpanded = now !== null && now >= 1440;
   }
+  const zoomHeight = todayAxisZoomHeights[todayAxisZoomLevel];
+  if (zoomHeight) todayContinuousAxis.style.setProperty("--today-axis-hour-height", zoomHeight);
+  else todayContinuousAxis.style.removeProperty("--today-axis-hour-height");
   todayContinuousAxis.style.setProperty("--today-axis-plot-height", `calc(${(axisBounds()[1] - axisBounds()[0]) / 60} * var(--today-axis-hour-height))`);
+  const zoomOut = document.getElementById("today-axis-zoom-out") as HTMLButtonElement | null;
+  const zoomIn = document.getElementById("today-axis-zoom-in") as HTMLButtonElement | null;
+  if (zoomOut) zoomOut.disabled = todayAxisZoomLevel === 0;
+  if (zoomIn) zoomIn.disabled = todayAxisZoomLevel === todayAxisZoomHeights.length - 1;
   for (const [id, expanded] of [["today-expand-early", todayAxisEarlyExpanded], ["today-expand-late", todayAxisLateExpanded]] as const) {
     const button = document.getElementById(id);
     if (button) {
@@ -6593,6 +6848,28 @@ function toggleTodayAxisSegment(id: string): void {
   if (delta !== 0) {
     scrollSurface.scrollTo({ top: scrollSurface.scrollTop + delta, behavior: "instant" });
   }
+}
+
+function adjustTodayAxisZoom(delta: number): void {
+  if (!currentTodayView || !todayContinuousAxis) return;
+  const scrollSurface = todayAxisScrollSurface ?? workspaceInformation;
+  const viewport = scrollSurface?.getBoundingClientRect();
+  const plot = todayContinuousAxis.querySelector<HTMLElement>(".today-axis-plot");
+  const oldPlot = plot?.getBoundingClientRect();
+  const [start, end] = axisBounds();
+  const anchorY = viewport && oldPlot ? Math.max(viewport.top, oldPlot.top) : null;
+  const anchorMinute = anchorY !== null && oldPlot && viewport && oldPlot.height > 0 &&
+    oldPlot.bottom > viewport.top && oldPlot.top < viewport.bottom
+    ? start + (anchorY - oldPlot.top) / oldPlot.height * (end - start) : null;
+  todayAxisZoomLevel = Math.max(0, Math.min(todayAxisZoomHeights.length - 1, todayAxisZoomLevel + delta));
+  todayAxisFollowState = onManualScroll(todayAxisFollowState);
+  renderTodayTimeAxis(currentTodayView);
+  if (!scrollSurface || anchorMinute === null || anchorY === null || !plot) return;
+  const next = plot.getBoundingClientRect();
+  const [nextStart, nextEnd] = axisBounds();
+  const minute = Math.max(nextStart, Math.min(nextEnd, anchorMinute));
+  const nextY = next.top + (minute - nextStart) / (nextEnd - nextStart) * next.height;
+  scrollSurface.scrollTo({ top: scrollSurface.scrollTop + nextY - anchorY, behavior: "instant" });
 }
 
 function todayEvidenceGroup(group: PlanningEvidenceView): HTMLElement {
@@ -6920,6 +7197,7 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
 }
 
 function renderToday(view: TodayView, preserveTaskEditors = false): void {
+  closeTodayAxisTaskPopup(false, false);
   const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
   stashEveningReviewDraft();
   todayPresentationFresh = true;
@@ -7322,7 +7600,12 @@ function renderLegacyDayTasks(dayTasks: DayTaskListView): void {
   );
 }
 
-function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): void {
+function renderTodayTasks(
+  view: TodayView,
+  openEditors = new Set<string>(),
+  preserveAxisPopup = false,
+): void {
+  if (!preserveAxisPopup) closeTodayAxisTaskPopup(false, false);
   clearTaskEditorDialogs("today");
   const shared = view.tasks;
   const archivedListIds = new Set(
@@ -8067,6 +8350,86 @@ function calendarDateLabel(date: string): string {
   return formatInterfaceDate(date, currentInterfaceLanguage);
 }
 
+function calendarHolidayName(holiday: {
+  region: CalendarHolidayRegion;
+  name: Readonly<{ zh: string; en: string }>;
+}): string {
+  return currentInterfaceLanguage === "zh" ? holiday.name.zh : holiday.name.en;
+}
+
+function calendarHolidayDescription(holiday: {
+  region: CalendarHolidayRegion;
+  name: Readonly<{ zh: string; en: string }>;
+}): string {
+  const region = holiday.region === "china" ? t("calendar.holidayRegionChina") : t("calendar.holidayRegionUs");
+  return `${region} · ${calendarHolidayName(holiday)}`;
+}
+
+function updateCalendarHolidayControls(): void {
+  if (calendarHolidaysEnabled) calendarHolidaysEnabled.checked = calendarHolidayPreferences.enabled;
+  if (calendarHolidaysChina) calendarHolidaysChina.checked = calendarHolidayPreferences.china;
+  if (calendarHolidaysUnitedStates) calendarHolidaysUnitedStates.checked = calendarHolidayPreferences.unitedStates;
+  const year = currentCalendarMonth?.year ?? Number(selectedCalendarDate?.slice(0, 4));
+  if (!calendarHolidayCoverage || !Number.isInteger(year) || year <= 0) return;
+  if (!calendarHolidayCoverageIncludes(year)) {
+    setCopy(calendarHolidayCoverage, "calendar.holidayCoverageUnsupported", { year });
+  } else if (year === 2027 && !calendarHolidayCoverageIncludes(year, "china")) {
+    setCopy(calendarHolidayCoverage, "calendar.holidayCoverageChinaMissing");
+  } else {
+    setCopy(calendarHolidayCoverage, "calendar.holidayCoverageComplete");
+  }
+  if (!calendarHolidayCoverage.querySelector("small")) {
+    const boundary = document.createElement("small");
+    setCopy(boundary, "calendar.holidayNotBusinessDay");
+    calendarHolidayCoverage.append(boundary);
+  }
+}
+
+function saveCalendarHolidayPreferencesFromControls(): void {
+  calendarHolidayPreferences = {
+    enabled: calendarHolidaysEnabled?.checked ?? true,
+    china: calendarHolidaysChina?.checked ?? true,
+    unitedStates: calendarHolidaysUnitedStates?.checked ?? true,
+  };
+  let persisted = true;
+  try {
+    window.localStorage.setItem(
+      CALENDAR_HOLIDAY_PREFERENCE_KEY,
+      JSON.stringify(calendarHolidayPreferences),
+    );
+  } catch {
+    persisted = false;
+  }
+  updateCalendarHolidayControls();
+  if (!persisted && calendarHolidayCoverage) {
+    const warning = document.createElement("small");
+    setCopy(warning, "calendar.holidayPreferenceSaveFailed");
+    calendarHolidayCoverage.append(warning);
+  }
+  if (currentCalendarMonth) renderCalendarGrid(currentCalendarMonth);
+  if (currentCalendarSummaryView) renderCalendarSummary(currentCalendarSummaryView);
+}
+
+function renderCalendarHolidayRecap(date: string): void {
+  const existing = calendarSummaryCopy?.querySelector(".calendar-holiday-recap");
+  existing?.remove();
+  if (!calendarSummaryCopy) return;
+  const holidays = calendarHolidayDataForDate(date, calendarHolidayPreferences);
+  if (!holidays.length) return;
+  const recap = document.createElement("div");
+  recap.className = "calendar-holiday-recap";
+  const label = document.createElement("strong");
+  setCopy(label, "calendar.holidaySummaryLabel");
+  const names = document.createElement("p");
+  names.textContent = holidays.map(calendarHolidayDescription).join(" · ");
+  recap.append(label, names);
+  calendarSummaryCopy.append(recap);
+}
+
+function persistCalendarHolidaySettings(): void {
+  saveCalendarHolidayPreferencesFromControls();
+}
+
 function populateCalendarYears(centerYear: number): void {
   if (!calendarYear) {
     return;
@@ -8085,7 +8448,7 @@ function populateCalendarYears(centerYear: number): void {
 function updateCalendarTaskPreviewRows(): void {
   if (!calendarGrid) return;
 
-  const cells = Array.from(calendarGrid.querySelectorAll<HTMLButtonElement>(".calendar-day"));
+  const cells = Array.from(calendarGrid.querySelectorAll<HTMLElement>(".calendar-day"));
   const firstCell = cells.find((cell) =>
     cell.querySelector<HTMLElement>(".calendar-day-task-summary"),
   );
@@ -8130,6 +8493,14 @@ function updateCalendarTaskPreviewRows(): void {
     items.forEach((item, index) => {
       item.hidden = index >= capacity;
     });
+    const holidayRow = cell.querySelector<HTMLElement>(".calendar-day-holidays");
+    if (holidayRow) {
+      const tasksFit = capacity === items.length;
+      const occupied = capacity > 0 ? capacity * lineHeight + (capacity - 1) * summaryGap : 0;
+      const remaining = Math.max(0, available - occupied);
+      const holidayHeight = Number.parseFloat(window.getComputedStyle(holidayRow).lineHeight) || 12;
+      holidayRow.hidden = !holidayRow.textContent || !tasksFit || remaining < holidayHeight;
+    }
 
     const baseOverflow = Number.parseInt(cell.dataset.calendarTaskOverflowBase ?? "0", 10) || 0;
     const overflowCount = baseOverflow + Math.max(0, items.length - capacity);
@@ -8154,6 +8525,7 @@ function updateCalendarTaskPreviewRows(): void {
 }
 
 function renderCalendarGrid(month: CalendarMonthView): void {
+  updateCalendarHolidayControls();
   if (calendarMonthHeading) {
     calendarMonthHeading.textContent = formatInterfaceMonth(
       month.year,
@@ -8178,26 +8550,27 @@ function renderCalendarGrid(month: CalendarMonthView): void {
     calendarGrid.style.setProperty("--calendar-week-count", String(month.days.length / 7));
     calendarGrid.replaceChildren(
       ...month.days.map((day) => {
-        const button = document.createElement("button");
+        const cell = document.createElement("div");
         const dayNumber = Number(day.date.slice(8));
         const status = calendarAvailabilityLabels[day.availability];
         const selected = day.date === selectedCalendarDate;
-        button.type = "button";
-        button.className = "calendar-day";
-        button.dataset.calendarDate = day.date;
-        button.dataset.availability = day.availability;
-        button.dataset.calendarTaskCount = String(
+        cell.className = "calendar-day";
+        cell.dataset.calendarDate = day.date;
+        cell.dataset.availability = day.availability;
+        cell.dataset.calendarTaskCount = String(
           day.taskSummaries.length + day.taskOverflowCount,
         );
-        button.toggleAttribute("data-outside-month", !day.inMonth);
-        button.toggleAttribute("data-selected", selected);
-        button.classList.toggle(
+        cell.toggleAttribute("data-outside-month", !day.inMonth);
+        cell.toggleAttribute("data-selected", selected);
+        cell.classList.toggle(
           "has-calendar-tasks",
           day.taskSummaries.length + day.taskOverflowCount > 0,
         );
+        const holidays = calendarHolidayDataForDate(day.date, calendarHolidayPreferences);
         const taskNames = day.taskSummaries
           .map((task) => `${task.name} · ${t(taskStateCopyKey(task.state))}`)
           .join(" · ");
+        const holidayNames = holidays.map(calendarHolidayDescription).join(" · ");
         const taskOverflowLabel =
           day.taskOverflowCount > 0
             ? t("calendar.taskOverflow", { count: day.taskOverflowCount })
@@ -8207,13 +8580,18 @@ function renderCalendarGrid(month: CalendarMonthView): void {
           day.isToday ? t("calendar.today") : "",
           t(status.label),
           taskNames,
+          holidayNames,
         ].filter(Boolean).join(" · ");
-        button.dataset.calendarTaskAriaBase = accessibleBase;
-        button.dataset.calendarTaskOverflowBase = String(day.taskOverflowCount);
-        button.setAttribute("aria-label", [accessibleBase, taskOverflowLabel].filter(Boolean).join(" · "));
-        button.setAttribute("aria-pressed", String(selected));
-        const top = document.createElement("span");
+        cell.dataset.calendarTaskAriaBase = accessibleBase;
+        cell.dataset.calendarTaskOverflowBase = String(day.taskOverflowCount);
+        cell.setAttribute("role", "group");
+        cell.setAttribute("aria-label", [accessibleBase, taskOverflowLabel].filter(Boolean).join(" · "));
+        const top = document.createElement("button");
+        top.type = "button";
         top.className = "calendar-day-top";
+        top.dataset.calendarDate = day.date;
+        top.setAttribute("aria-label", [accessibleBase, taskOverflowLabel].filter(Boolean).join(" · "));
+        top.setAttribute("aria-pressed", String(selected));
         const number = document.createElement("strong");
         number.textContent = String(dayNumber);
         const todayLabel = document.createElement("small");
@@ -8228,10 +8606,13 @@ function renderCalendarGrid(month: CalendarMonthView): void {
         taskSummaries.className = "calendar-day-task-summaries";
         taskSummaries.replaceChildren(
           ...day.taskSummaries.map((task) => {
-            const summary = document.createElement("span");
+            const summary = document.createElement("button");
+            summary.type = "button";
             summary.className = "calendar-day-task-summary";
             summary.dataset.calendarTaskSummary = task.id;
             summary.dataset.taskState = task.state;
+            summary.dataset.taskEditorOpen = task.id;
+            summary.dataset.calendarTaskSummary = task.id;
             summary.textContent = task.name;
             summary.title = `${task.name} · ${t(taskStateCopyKey(task.state))}`;
             return summary;
@@ -8243,9 +8624,14 @@ function renderCalendarGrid(month: CalendarMonthView): void {
         if (day.taskOverflowCount > 0) {
           setCopy(overflow, "calendar.taskOverflow", { count: day.taskOverflowCount });
         }
+        const holidayRow = document.createElement("div");
+        holidayRow.className = "calendar-day-holidays";
+        holidayRow.textContent = holidayNames;
+        holidayRow.title = holidayNames;
+        holidayRow.setAttribute("aria-hidden", "true");
         top.append(marker, todayLabel, overflow);
-        button.append(top, taskSummaries);
-        return button;
+        cell.append(top, taskSummaries, holidayRow);
+        return cell;
       }),
     );
     updateCalendarTaskPreviewRows();
@@ -8344,6 +8730,23 @@ function renderCalendarSummary(view: TodayView): void {
     }
     calendarSummaryCopy.append(plan);
   }
+  renderCalendarHolidayRecap(view.date);
+}
+
+function openCalendarTaskEditor(taskId: string): void {
+  const view = currentCalendarSummaryView;
+  if (!view || !view.tasks.tasks.some((task) => task.id === taskId)) return;
+  selectedCalendarTaskDetailId = taskId;
+  renderCalendarTasks(view);
+  const dialog = calendarTaskEditorDialogRoot?.querySelector<HTMLElement>(
+    `[data-task-editor-dialog="${CSS.escape(taskId)}"][data-task-editor-surface="calendar"]`,
+  );
+  if (!dialog) return;
+  dialog.hidden = false;
+  calendarTaskEditorDialogRoot?.toggleAttribute("hidden", false);
+  window.requestAnimationFrame(() =>
+    dialog.querySelector<HTMLInputElement>("[data-task-name]")?.focus(),
+  );
 }
 
 function renderCalendarTasks(view: TodayView): void {
@@ -8382,15 +8785,23 @@ function renderCalendarTasks(view: TodayView): void {
       ...tasks.map((task) => taskEditor(task, writable, shared, "calendar")),
     );
   }
+  if (
+    selectedCalendarTaskDetailId &&
+    !tasks.some((task) => task.id === selectedCalendarTaskDetailId)
+  ) {
+    const selectedTask = shared.tasks.find((task) => task.id === selectedCalendarTaskDetailId);
+    if (selectedTask) taskEditor(selectedTask, writable, shared, "calendar").remove();
+  }
+  const selectedDialog = selectedCalendarTaskDetailId
+    ? calendarTaskEditorDialogRoot?.querySelector<HTMLElement>(
+        `[data-task-editor-dialog="${CSS.escape(selectedCalendarTaskDetailId)}"][data-task-editor-surface="calendar"]`,
+      )
+    : null;
+  calendarTaskEditorDialogRoot?.toggleAttribute("hidden", !selectedDialog);
   const draftKey = shared.targetBinding
     ? calendarTaskCreateDraftKey(shared.targetBinding, view.date)
     : null;
   const draft = draftKey ? calendarTaskCreateDrafts.get(draftKey) : undefined;
-  calendarTaskCreateForm?.toggleAttribute("hidden", !writable);
-  calendarTaskCreateForm?.querySelectorAll("input, textarea, select, button").forEach((element) => {
-    (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
-      !writable;
-  });
   if (calendarTaskCreateForm) {
     renderTaskListSelect(calendarTaskCreateList, shared, draft?.listId ?? "inbox");
     const selectedCreateList = taskListForId(shared, calendarTaskCreateList?.value ?? "inbox");
@@ -8407,8 +8818,8 @@ function renderCalendarTasks(view: TodayView): void {
     if (calendarTaskCreateDate) calendarTaskCreateDate.value = draft?.date ?? view.date;
     if (calendarTaskCreateTime) calendarTaskCreateTime.value = draft?.time ?? "";
     normalizeTaskDateTimeFields(calendarTaskCreateDate, calendarTaskCreateTime, !writable);
-    calendarTaskCreateSubmit?.toggleAttribute("disabled", !writable);
   }
+  updateCalendarTaskCreationControls();
 }
 
 function renderCalendarTaskLoading(): void {
@@ -8420,7 +8831,8 @@ function renderCalendarTaskLoading(): void {
   }
   calendarTaskList?.replaceChildren();
   if (calendarTaskEmpty) calendarTaskEmpty.hidden = true;
-  calendarTaskCreateForm?.toggleAttribute("hidden", true);
+  calendarTaskCreateDialog?.close();
+  calendarTaskEditorDialogRoot?.toggleAttribute("hidden", true);
 }
 
 function renderCalendarTaskError(error: unknown): void {
@@ -8432,7 +8844,8 @@ function renderCalendarTaskError(error: unknown): void {
   }
   calendarTaskList?.replaceChildren();
   if (calendarTaskEmpty) calendarTaskEmpty.hidden = true;
-  calendarTaskCreateForm?.toggleAttribute("hidden", true);
+  calendarTaskCreateDialog?.close();
+  calendarTaskEditorDialogRoot?.toggleAttribute("hidden", true);
 }
 
 function renderCalendarReadError(
@@ -8785,6 +9198,7 @@ function habitCompletionControl(habit: HabitView): HTMLElement {
   input.type = "checkbox";
   input.checked = presentation.checked;
   input.disabled =
+    !habit.active ||
     habitCompletionOperationCount > 0 ||
     !currentHabitSnapshot?.completionTargetBinding ||
     Boolean(currentHabitSnapshot?.catalogError || currentHabitSnapshot?.completionError) ||
@@ -8819,15 +9233,19 @@ function setHabitHistoryDisclosureCopy(
 function habitRow(habit: HabitView): HTMLElement {
   const article = document.createElement("article");
   article.className = "habit-snapshot-row";
+  if (!habit.active) article.classList.add("is-inactive");
   article.dataset.habitKey = habit.key;
-  article.title = t("habits.editHint");
+  article.title = t("habits.openDetails", { habit: displayHabitName(habit) });
   const identity = document.createElement("div");
   identity.className = "habit-snapshot-identity";
   const identityHeading = document.createElement("div");
   identityHeading.className = "habit-identity-heading";
   const emoji = document.createElement("span");
   emoji.className = "habit-emoji";
-  const name = document.createElement("strong");
+  const name = document.createElement("button");
+  name.type = "button";
+  name.className = "habit-name-trigger";
+  name.dataset.habitOpen = habit.key;
   const edit = document.createElement("button");
   edit.type = "button";
   edit.className = "habit-edit-trigger";
@@ -8837,6 +9255,7 @@ function habitRow(habit: HabitView): HTMLElement {
   const metadata = document.createElement("p");
   const sources = document.createElement("small");
   name.textContent = displayHabitName(habit);
+  name.setAttribute("aria-label", t("habits.openDetails", { habit: displayHabitName(habit) }));
   emoji.textContent = habit.definition?.emoji ?? "";
   emoji.hidden = !emoji.textContent;
   const pendingGoal = habit.definition?.pendingGoal;
@@ -8956,6 +9375,361 @@ function habitRow(habit: HabitView): HTMLElement {
   history.append(historyHeading, months, grid, goalContext, detail);
   article.append(identity, value, completion, recent, expand, history);
   return article;
+}
+
+function habitDetailRecords(view: HabitDetailHistoryView): HabitDetailRecordItem[] {
+  const records = new Map<string, { state: string; sources: Set<string>; details: string[] }>();
+  for (const completion of view.localCompletions) {
+    const item = records.get(completion.livedDate) ?? { state: "", sources: new Set<string>(), details: [] };
+    item.state = completion.state === "completed" ? "completed" : "withdrawn";
+    item.sources.add("Personal Dashboard local");
+    if (completion.completedAt) item.details.push(completion.completedAt);
+    for (const change of completion.changes) {
+      item.details.push(`${change.id} · ${change.kind} · ${change.changedAt}`);
+    }
+    records.set(completion.livedDate, item);
+  }
+  for (const cell of view.habit.history) {
+    if (!cell.hasRecord && !cell.countsAsCompletion) continue;
+    const item = records.get(cell.date) ?? { state: "snapshot", sources: new Set<string>(), details: [] };
+    for (const source of cell.completionSourceLabels) item.sources.add(source);
+    for (const record of cell.localRecords) item.details.push(`${record.sourceLabel} · ${record.text}`);
+    for (const detail of cell.details) item.details.push(localizeHabitDetail(detail, currentInterfaceLanguage));
+    if (cell.localCompletionState === "completed") item.state = "completed";
+    else if (!item.state && cell.countsAsCompletion) item.state = "snapshot";
+    records.set(cell.date, item);
+  }
+  return [...records.entries()]
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([date, item]) => ({
+      date,
+      state: item.state,
+      source: [...item.sources].join(currentInterfaceLanguage === "zh" ? "、" : ", ") || t("habits.notDeclared"),
+      details: [...new Set(item.details)],
+    }));
+}
+
+function renderHabitDetailPanel(): void {
+  if (!habitDetailPanel || !habitsCurrentTodayView || !selectedHabitDetailKey) {
+    if (habitDetailPanel) habitDetailPanel.hidden = true;
+    if (habitsCurrentTodayView) habitsCurrentTodayView.hidden = false;
+    return;
+  }
+  const habit = currentHabitDetailHistory?.habit.key === selectedHabitDetailKey
+    ? currentHabitDetailHistory.habit
+    : currentHabitSnapshot?.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
+  habitsCurrentTodayView.hidden = true;
+  habitDetailPanel.hidden = false;
+  if (habitDetailHeading) {
+    const name = habit ? displayHabitName(habit) : selectedHabitDetailKey;
+    const emoji = habit?.definition?.emoji;
+    habitDetailHeading.textContent = `${emoji ? `${emoji} ` : ""}${name}`;
+  }
+  habitDetailContent?.replaceChildren();
+  if (habitDetailLoading) setCopy(habitDetailStatus, "habits.detailLoading");
+  else if (habitDetailLoadError) setCopyError(habitDetailStatus, "habits.detailFailed", habitDetailLoadError);
+  else if (habitDetailLifecycleNotice?.error) {
+    setCopyError(habitDetailStatus, "habits.detailLifecycleError", habitDetailLifecycleNotice.error);
+  } else if (habitDetailLifecycleNotice) setCopy(habitDetailStatus, "habits.detailLifecycleSaved");
+  else if (habitDetailStatus) setRawText(habitDetailStatus, "");
+  if (!habitDetailContent || !habit) return;
+  const detailView = currentHabitDetailHistory?.habit.key === selectedHabitDetailKey
+    ? currentHabitDetailHistory
+    : null;
+  if (!detailView) return;
+
+  const definition = detailView.habit.definition;
+  const stats = habitDetailStatistics({
+    habit: detailView.habit,
+    completions: detailView.localCompletions,
+    today: detailView.habit.today.date,
+    canonicalState: detailView.canonicalState,
+    snapshotGeneratedAt: detailView.snapshotGeneratedAt,
+    snapshotState: detailView.snapshotState,
+  });
+  const intro = document.createElement("p");
+  intro.className = "habit-detail-intro";
+  const currentGoal = definition?.currentGoal ?? detailView.habit.goalTarget;
+  const goalCopy = document.createElement("span");
+  setCopy(goalCopy, "habits.detailGoal", {
+    goal: currentGoal ? habitGoalTargetLabel(currentGoal) : t("habits.unknown"),
+  });
+  const start = document.createElement("span");
+  if (definition?.startDate) setCopy(start, "habits.detailStart", { date: definition.startDate });
+  else setCopy(start, "habits.detailNoStart");
+  intro.append(goalCopy, start);
+  if (definition?.pendingGoal && definition.pendingGoalEffectiveFrom) {
+    const pending = document.createElement("span");
+    setCopy(pending, "habits.detailPendingGoal", {
+      goal: habitGoalTargetLabel(definition.pendingGoal),
+      date: definition.pendingGoalEffectiveFrom,
+    });
+    intro.append(pending);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "habit-detail-actions";
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "secondary-button";
+  edit.dataset.habitEdit = detailView.habit.key;
+  setCopy(edit, "habits.detailEdit");
+  const completion = habitCompletionControl(detailView.habit);
+  completion.classList.add("habit-detail-completion");
+  const lifecycle = document.createElement("button");
+  lifecycle.type = "button";
+  lifecycle.className = "secondary-button";
+  lifecycle.dataset.habitLifecycle = detailView.habit.active ? "deactivate" : "restore";
+  setCopy(lifecycle, detailView.habit.active ? "habits.detailDeactivate" : "habits.detailRestore");
+  lifecycle.disabled = habitLifecycleOperationCount > 0 ||
+    !currentHabitSnapshot?.catalogTargetBinding || Boolean(currentHabitSnapshot.catalogError);
+  actions.append(edit, completion, lifecycle);
+
+  const statsGrid = document.createElement("div");
+  statsGrid.className = "habit-detail-stats";
+  const stat = (key: InterfaceCopyKey, count?: number) => {
+    const item = document.createElement("div");
+    item.className = "habit-detail-stat";
+    setCopy(item, key, count === undefined ? {} : { count });
+    return item;
+  };
+  statsGrid.append(
+    stat(
+      stats.monthAttainedDays === null
+        ? "habits.detailMonthUnknown"
+        : stats.monthExact ? "habits.detailMonthExact" : "habits.detailMonthAtLeast",
+      stats.monthAttainedDays ?? undefined,
+    ),
+    stat(
+      stats.cumulativeAttainedDays === null
+        ? "habits.detailTotalUnknown"
+        : stats.cumulativeExact ? "habits.detailTotalExact" : "habits.detailTotalAtLeast",
+      stats.cumulativeAttainedDays ?? undefined,
+    ),
+    stats.currentStreak === null
+      ? stat("habits.detailCurrentUnknown")
+      : stat(stats.streakUnit === "weeks" ? "habits.detailCurrentWeeks" : "habits.detailCurrentDays", stats.currentStreak),
+    stats.highestConfirmedStreak === null
+      ? stat("habits.detailHighestUnknown")
+      : stat(
+          stats.highestHistoryExact
+            ? stats.streakUnit === "weeks" ? "habits.detailHistoricalHighestWeeks" : "habits.detailHistoricalHighestDays"
+            : stats.streakUnit === "weeks" ? "habits.detailHighestWeeks" : "habits.detailHighestDays",
+          stats.highestConfirmedStreak,
+        ),
+  );
+
+  const freshness = document.createElement("p");
+  freshness.className = "habit-detail-freshness";
+  setCopy(freshness, "habits.detailHistoryCoverage", {
+    from: stats.coverageFrom ?? t("habits.unknown"),
+    to: stats.coverageTo ?? t("habits.unknown"),
+    freshness: detailView.snapshotGeneratedAt
+      ? t("habits.detailSnapshotFresh", { date: detailView.snapshotGeneratedAt.slice(0, 10) })
+      : t("habits.detailSnapshotUnknown"),
+  });
+  const sourceCoverage = document.createElement("p");
+  sourceCoverage.className = "habit-detail-freshness";
+  setCopy(sourceCoverage, "habits.detailSourceCoverage", {
+    range: detailView.snapshotRange ?? t("habits.unknown"),
+  });
+  const canonicalStatus = document.createElement("p");
+  canonicalStatus.className = "habit-detail-freshness";
+  if (detailView.canonicalState === "ready") {
+    setCopy(canonicalStatus, "habits.detailCanonicalReady", {
+      revision: detailView.canonicalRevision ?? t("common.unknown"),
+    });
+  } else if (detailView.canonicalState === "missing") {
+    setCopy(canonicalStatus, "habits.detailCanonicalMissing");
+  } else {
+    setCopyError(canonicalStatus, "habits.detailCanonicalError", detailView.canonicalError ?? t("common.unknown"));
+  }
+
+  const goals = document.createElement("section");
+  goals.className = "habit-detail-goals";
+  const goalsHeading = document.createElement("h4");
+  setCopy(goalsHeading, "habits.detailGoalHistory");
+  const goalEvents = document.createElement("ul");
+  goalEvents.className = "habit-detail-events";
+  const goalLines: string[] = [];
+  for (const revision of definition?.goalRevisions ?? []) {
+    goalLines.push(t("habits.detailGoalRevision", {
+      date: revision.effectiveFrom,
+      goal: habitGoalTargetLabel(revision.target),
+      status: currentInterfaceLanguage === "zh"
+        ? revision.status === "active" ? "生效" : revision.status === "cancelled" ? "已取消" : "已被后续目标取代"
+        : revision.status,
+    }));
+  }
+  for (const context of detailView.habit.goalHistory) {
+    const goal = context.target ? habitGoalTargetLabel(context.target) : localizeHabitGoalLabel(context.goalLabel, currentInterfaceLanguage);
+    goalLines.push(`${context.weekOf} · ${goal}`);
+  }
+  for (const line of [...new Set(goalLines)]) {
+    const item = document.createElement("li");
+    item.textContent = line;
+    goalEvents.append(item);
+  }
+  goals.append(goalsHeading, goalEvents);
+
+  const lifecycleSection = document.createElement("section");
+  lifecycleSection.className = "habit-detail-lifecycle";
+  const lifecycleHeading = document.createElement("h4");
+  setCopy(lifecycleHeading, "habits.detailLifecycleHistory");
+  const lifecycleEvents = document.createElement("ul");
+  lifecycleEvents.className = "habit-detail-events";
+  for (const change of definition?.lifecycleHistory ?? []) {
+    const item = document.createElement("li");
+    setCopy(item, change.active ? "habits.detailActiveFrom" : "habits.detailInactiveFrom", {
+      date: change.effectiveFrom,
+    });
+    lifecycleEvents.append(item);
+  }
+  lifecycleSection.append(lifecycleHeading, lifecycleEvents);
+
+  const recordsSection = document.createElement("section");
+  recordsSection.className = "habit-detail-records";
+  const recordsHeading = document.createElement("h4");
+  setCopy(recordsHeading, "habits.detailRecords");
+  const allRecords = habitDetailRecords(detailView);
+  const recordCount = document.createElement("p");
+  recordCount.className = "habit-detail-record-meta";
+  setCopy(recordCount, "habits.detailRecordCount", { count: allRecords.length });
+  const recordList = document.createElement("ul");
+  recordList.className = "habit-detail-record-list";
+  for (const record of allRecords.slice(0, habitDetailRecordLimit)) {
+    const item = document.createElement("li");
+    item.className = "habit-detail-record";
+    const openDate = document.createElement("button");
+    openDate.type = "button";
+    openDate.dataset.habitDetailDate = record.date;
+    openDate.dataset.habitDetailDateKey = detailView.habit.key;
+    openDate.setAttribute("aria-label", t("habits.detailRecordDate", { date: record.date }));
+    setCopy(openDate,
+      record.state === "completed" ? "habits.detailLocalCompleted" :
+        record.state === "withdrawn" ? "habits.detailLocalWithdrawn" : "habits.detailSnapshotRecord",
+      { date: record.date },
+    );
+    const meta = document.createElement("small");
+    meta.className = "habit-detail-record-meta";
+    const details = [...record.details, record.source].filter(Boolean);
+    meta.textContent = details.join(" · ");
+    item.append(openDate, meta);
+    recordList.append(item);
+  }
+  if (!allRecords.length) {
+    const empty = document.createElement("p");
+    setCopy(empty, "habits.detailNoRecords");
+    recordsSection.append(recordsHeading, empty);
+  } else {
+    recordsSection.append(recordsHeading, recordCount, recordList);
+    if (allRecords.length > habitDetailRecordLimit) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "secondary-button";
+      more.dataset.habitDetailLoadMore = "true";
+      setCopy(more, "habits.detailLoadMore");
+      recordsSection.append(more);
+    }
+  }
+
+  habitDetailContent.append(intro, actions, statsGrid, freshness, sourceCoverage, canonicalStatus, goals, lifecycleSection, recordsSection);
+}
+
+async function loadHabitDetailHistory(habitKey: string): Promise<void> {
+  const request = habitDetailRequests.begin();
+  habitDetailLoading = true;
+  habitDetailLoadError = null;
+  renderHabitDetailPanel();
+  try {
+    const loaded = await window.__TAURI__.core.invoke<HabitDetailHistoryView>("habit_detail_history", { habitKey });
+    if (!habitDetailRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    currentHabitDetailHistory = loaded;
+    habitDetailLoading = false;
+    habitDetailLoadError = null;
+    renderHabitDetailPanel();
+  } catch (error) {
+    if (!habitDetailRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    habitDetailLoading = false;
+    habitDetailLoadError = String(error);
+    renderHabitDetailPanel();
+  }
+}
+
+function openHabitDetail(habitKey: string): void {
+  selectedHabitDetailKey = habitKey;
+  currentHabitDetailHistory = null;
+  habitDetailRecordLimit = 20;
+  habitDetailLoadError = null;
+  habitDetailLifecycleNotice = null;
+  void loadHabitDetailHistory(habitKey);
+}
+
+function closeHabitDetail(): void {
+  const previousKey = selectedHabitDetailKey;
+  habitDetailRequests.invalidate();
+  selectedHabitDetailKey = null;
+  currentHabitDetailHistory = null;
+  habitDetailLoading = false;
+  habitDetailLoadError = null;
+  habitDetailLifecycleNotice = null;
+  habitDetailRecordLimit = 20;
+  renderHabitDetailPanel();
+  if (previousKey) {
+    [...(habitsDestination?.querySelectorAll<HTMLButtonElement>("button[data-habit-open]") ?? [])]
+      .find((button) => button.dataset.habitOpen === previousKey)
+      ?.focus();
+  }
+}
+
+function stableHabitLifecycleOperationId(signature: string): string {
+  const existing = habitLifecycleOperationIds.get(signature);
+  if (existing) return existing;
+  const operationId = localOperationId("habit-lifecycle");
+  habitLifecycleOperationIds.set(signature, operationId);
+  return operationId;
+}
+
+async function setHabitActiveFromDetail(active: boolean): Promise<void> {
+  const key = selectedHabitDetailKey;
+  const snapshot = currentHabitSnapshot;
+  if (!key || !snapshot?.catalogTargetBinding || snapshot.catalogError || habitLifecycleOperationCount > 0) return;
+  const signature = `${snapshot.catalogTargetBinding}:${snapshot.catalogRevision ?? "missing"}:${key}:${active}`;
+  const operationId = stableHabitLifecycleOperationId(signature);
+  habitLifecycleOperationCount += 1;
+  habitDetailLifecycleNotice = null;
+  renderHabitDetailPanel();
+  try {
+    const saved = await window.__TAURI__.core.invoke<HabitLifecycleSaveResult>("set_habit_active", {
+      input: {
+        operationId,
+        targetBinding: snapshot.catalogTargetBinding,
+        expectedRevision: snapshot.catalogRevision,
+        habitKey: key,
+        active,
+      },
+    });
+    if (saved.operationId !== operationId || saved.habitKey !== key || saved.active !== active ||
+        saved.snapshot.catalogTargetBinding !== snapshot.catalogTargetBinding) {
+      throw new Error("Habit 生命周期保存结果与当前操作不匹配；请刷新后核对。");
+    }
+    habitLifecycleOperationIds.delete(signature);
+    currentHabitSnapshot = saved.snapshot;
+    const updatedHabit = saved.snapshot.habits.find((candidate) => candidate.key === key);
+    if (updatedHabit && currentHabitDetailHistory?.habit.key === key) {
+      currentHabitDetailHistory = { ...currentHabitDetailHistory, habit: updatedHabit };
+    }
+    if (active) showInactiveHabits = false;
+    habitDetailLifecycleNotice = { error: null };
+    renderHabitSnapshot(saved.snapshot);
+    void loadHabitDetailHistory(key);
+  } catch (error) {
+    habitDetailLifecycleNotice = { error: String(error) };
+    renderHabitDetailPanel();
+  } finally {
+    habitLifecycleOperationCount = Math.max(0, habitLifecycleOperationCount - 1);
+    renderHabitDetailPanel();
+  }
 }
 
 function selectedHabitContext(): Readonly<{
@@ -9133,6 +9907,19 @@ function renderCanonicalHabitDetail(): void {
     changes.append(item);
   }
   panel.append(heading, evidence, coverage, goal, changes);
+  const snapshotHabit = currentHabitSnapshot?.habits.find((item) => item.key === selected.habitKey);
+  const correctionDate = historicalHabitCorrectionDate(selected.date, snapshotHabit?.today.date ?? "");
+  if (
+    correctionDate && habit?.canRecordCompletion && currentHabitSnapshot?.completionTargetBinding &&
+    (currentHabitSnapshot.state === "ready" || currentHabitSnapshot.state === "stale")
+  ) {
+    const correction = document.createElement("button");
+    correction.type = "button";
+    correction.className = "secondary-button";
+    correction.dataset.habitCorrectionDate = correctionDate;
+    setCopy(correction, "habits.openHistoricalCorrection", { date: correctionDate });
+    panel.append(correction);
+  }
   if (corrections?.message) {
     const message = document.createElement("p");
     setAppMessage(message, corrections.message);
@@ -9381,6 +10168,7 @@ async function setLocalHabitCompletion(
             state: "ready",
           };
           renderHabitSnapshot(view);
+          if (selectedHabitDetailKey === habitKey) void loadHabitDetailHistory(habitKey);
         },
         refresh: async () => {
           habitCompletionStatus = null;
@@ -9727,6 +10515,18 @@ async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<boolean>
 
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   currentHabitSnapshot = view;
+  if (selectedHabitDetailKey && currentHabitDetailHistory?.habit.key === selectedHabitDetailKey) {
+    const latestHabit = view.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
+    if (latestHabit) {
+      currentHabitDetailHistory = {
+        ...currentHabitDetailHistory,
+        habit: latestHabit,
+        snapshotState: view.state,
+        snapshotGeneratedAt: view.generatedAt,
+        snapshotRange: view.rangeLabel,
+      };
+    }
+  }
   if (newHabitButton) {
     newHabitButton.disabled = !view.catalogTargetBinding || Boolean(view.catalogError);
     newHabitButton.title = view.catalogError
@@ -9783,6 +10583,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
       setAppMessage(habitsEmptyCopy, view.message);
     }
     renderSelectedHabitCell();
+    renderHabitDetailPanel();
     return;
   }
   if (habitsSummaryTotal) {
@@ -9800,7 +10601,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   if (habitsSummaryRows) {
     habitsSummaryRows.replaceChildren(
       ...view.habits
-        .filter((habit) => habit.goalKind === "weekly-count")
+        .filter((habit) => habit.active && habit.goalKind === "weekly-count")
         .map((habit) => {
           const row = document.createElement("div");
           const label = document.createElement("span");
@@ -9818,18 +10619,25 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   if (habitsDailyList) {
     habitsDailyList.replaceChildren(
       ...view.habits
-        .filter((habit) => habit.goalKind !== "weekly-count")
+        .filter((habit) => habit.active === !showInactiveHabits && habit.goalKind !== "weekly-count")
         .map(habitRow),
     );
   }
   if (habitsWeeklyList) {
     habitsWeeklyList.replaceChildren(
       ...view.habits
-        .filter((habit) => habit.goalKind === "weekly-count")
+        .filter((habit) => habit.active === !showInactiveHabits && habit.goalKind === "weekly-count")
         .map(habitRow),
     );
   }
+  if (habitsInactiveToggle) {
+    const hasInactive = view.habits.some((habit) => !habit.active);
+    habitsInactiveToggle.hidden = !hasInactive;
+    setCopy(habitsInactiveToggle, showInactiveHabits ? "habits.viewActive" : "habits.viewInactive");
+    habitsInactiveToggle.setAttribute("aria-pressed", String(showInactiveHabits));
+  }
   renderSelectedHabitCell();
+  renderHabitDetailPanel();
 }
 
 async function refreshHabits(): Promise<void> {
@@ -10693,9 +11501,13 @@ function taskEditorForms(surface?: TaskSurface): HTMLFormElement[] {
 }
 
 function clearTaskEditorDialogs(surface: TaskSurface): void {
-  taskEditorDialogRoot?.querySelectorAll<HTMLElement>(
+  taskEditorDialogRootForSurface(surface)?.querySelectorAll<HTMLElement>(
     `[data-task-editor-dialog][data-task-editor-surface="${surface}"]`,
   ).forEach((dialog) => dialog.remove());
+}
+
+function taskEditorDialogRootForSurface(surface: TaskSurface): HTMLElement | null {
+  return surface === "calendar" ? calendarTaskEditorDialogRoot : taskEditorDialogRoot;
 }
 
 function openTaskInTasks(taskId: string): void {
@@ -10737,6 +11549,8 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
   if (!toggle) return false;
   const taskId = toggle.dataset.taskEditorOpen;
   const row = toggle.closest<HTMLElement>("[data-task-editor-row]");
+  const surface = row?.dataset.taskSurface as TaskSurface | undefined;
+  const dialogRoot = surface ? taskEditorDialogRootForSurface(surface) : null;
   const inlineEditor = taskId
     ? row?.querySelector<HTMLFormElement>(
         `form[data-task-editor="${CSS.escape(taskId)}"]`,
@@ -10744,7 +11558,7 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
     : undefined;
   const dialog = taskId
     ? Array.from(
-        taskEditorDialogRoot?.querySelectorAll<HTMLElement>(
+        dialogRoot?.querySelectorAll<HTMLElement>(
           "[data-task-editor-dialog]",
         ) ?? [],
       ).find(
@@ -10757,13 +11571,19 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
   if (!row || !editor) return false;
   const open = dialog ? true : editor.hidden;
   if (dialog) {
-    selectedTaskDetailId = taskId ?? null;
-    selectedTaskDetailBinding = currentTasksView?.targetBinding ?? null;
-    taskEditorDialogRoot?.querySelectorAll<HTMLElement>("[data-task-editor-dialog]").forEach(candidate => {
+    if (surface === "calendar") {
+      selectedCalendarTaskDetailId = taskId ?? null;
+      selectedTaskDetailBinding = currentCalendarSummaryView?.tasks.targetBinding ?? null;
+    } else {
+      selectedTaskDetailId = taskId ?? null;
+      selectedTaskDetailBinding = currentTasksView?.targetBinding ?? null;
+    }
+    dialogRoot?.querySelectorAll<HTMLElement>("[data-task-editor-dialog]").forEach(candidate => {
       candidate.hidden = candidate !== dialog;
     });
-    taskEditorDialogRoot?.toggleAttribute("hidden", false);
-    tasksList?.querySelectorAll<HTMLElement>("[data-task-editor-row]").forEach(candidate => {
+    dialogRoot?.toggleAttribute("hidden", false);
+    const surfaceList = surface === "calendar" ? calendarTaskList : tasksList;
+    surfaceList?.querySelectorAll<HTMLElement>("[data-task-editor-row]").forEach(candidate => {
       const selected = candidate.dataset.taskEditorRow === taskId;
       candidate.classList.toggle("is-selected", selected);
       candidate.querySelectorAll("[data-task-editor-open]").forEach(button => button.setAttribute("aria-expanded", String(selected)));
@@ -10775,7 +11595,7 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
     editor.hidden = !open;
   }
   if (open) {
-    const content = row.dataset.taskSurface === "tasks"
+    const content = surface === "tasks"
       ? editor.querySelector<HTMLTextAreaElement>("[data-task-content]")
       : null;
     (content ?? editor.querySelector<HTMLInputElement>("[data-task-name]"))?.focus();
@@ -10802,6 +11622,7 @@ function taskEditor(
     ? draft.parentTaskId
     : task.parentTaskId ?? null;
   const editingTasks = surface === "tasks";
+  const usesModal = surface === "tasks" || surface === "calendar";
   const deleted = task.deletedAt !== null;
   const editable = writable && !deleted;
   const row = document.createElement("article");
@@ -10831,7 +11652,10 @@ function taskEditor(
   detailsButton.type = "button";
   detailsButton.className = "task-row-action task-editor-toggle";
   detailsButton.dataset.taskEditorOpen = task.id;
-  detailsButton.setAttribute("aria-expanded", String(surface === "today" ? expanded : Boolean(draft)));
+  detailsButton.setAttribute("aria-expanded", String(
+    surface === "today" ? expanded : surface === "calendar"
+      ? selectedCalendarTaskDetailId === task.id : Boolean(draft),
+  ));
   detailsButton.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
   setCopy(detailsButton, "tasks.details");
   stateActions.append(detailsButton);
@@ -10919,7 +11743,10 @@ function taskEditor(
   title.type = "button";
   title.className = "task-title-button task-editor-toggle";
   title.dataset.taskEditorOpen = task.id;
-  title.setAttribute("aria-expanded", String(surface === "today" ? expanded : Boolean(draft)));
+  title.setAttribute("aria-expanded", String(
+    surface === "today" ? expanded : surface === "calendar"
+      ? selectedCalendarTaskDetailId === task.id : Boolean(draft),
+  ));
   title.textContent = task.name;
   title.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
   const taskList = view ? taskListForId(view, task.listId) : undefined;
@@ -10964,9 +11791,9 @@ function taskEditor(
   const grid = document.createElement("div");
   grid.className = "task-form-grid";
   const nameLabel = document.createElement("label");
-  nameLabel.className = editingTasks ? "task-title-field" : "task-form-wide";
+  nameLabel.className = usesModal ? "task-title-field" : "task-form-wide";
   const nameCaption = document.createElement("span");
-  if (!editingTasks) setCopy(nameCaption, "tasks.name");
+  if (!usesModal) setCopy(nameCaption, "tasks.name");
   const name = document.createElement("input");
   name.type = "text";
   name.maxLength = 160;
@@ -10976,7 +11803,7 @@ function taskEditor(
   name.dataset.taskName = "";
   name.setAttribute("aria-label", `${t("tasks.name")} · ${task.name}`);
   let parentDetails: HTMLDetailsElement | null = null;
-  if (editingTasks) {
+  if (usesModal) {
     nameLabel.append(name);
   } else {
     nameCaption.append(name);
@@ -11277,7 +12104,7 @@ function taskEditor(
   close.dataset.taskEditorClose = "";
   close.disabled = !writable;
   setCopy(close, "tasks.cancel");
-  if (editingTasks) {
+  if (usesModal) {
     const actions = document.createElement("div");
     actions.className = "task-editor-footer-actions";
     actions.append(close, save);
@@ -11350,14 +12177,17 @@ function taskEditor(
   editorForm.append(footer);
   const history = taskChangeHistory(task, view);
   if (history) editorForm.append(history);
-  if (!editingTasks) editorForm.append(close);
-  const dialog = surface === "tasks" ? document.createElement("div") : null;
+  if (!usesModal) editorForm.append(close);
+  const dialog = usesModal ? document.createElement("div") : null;
   if (dialog) {
     dialog.className = "task-editor-dialog";
     dialog.dataset.taskEditorDialog = task.id;
     dialog.dataset.taskEditorSurface = surface;
-    dialog.hidden = selectedTaskDetailId !== task.id;
-    dialog.setAttribute("role", "region");
+    dialog.hidden = surface === "calendar"
+      ? selectedCalendarTaskDetailId !== task.id
+      : selectedTaskDetailId !== task.id;
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
     dialog.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
     stateActions.querySelector(".task-completion-toggle")?.remove();
     detailsButton.remove();
@@ -11415,12 +12245,21 @@ function taskEditor(
     editorForm.prepend(titlebar, meta);
     const closeEdit = (): void => {
       if (binding) taskEditDrafts.delete(taskDraftKey(binding, task.id));
-      selectedTaskDetailId = null;
-      selectedTaskDetailBinding = currentTasksView?.targetBinding ?? null;
-      taskEditorDialogRoot?.toggleAttribute("hidden", true);
-      if (currentTasksView) renderTasks(currentTasksView);
+      const root = taskEditorDialogRootForSurface(surface);
+      if (surface === "calendar") {
+        selectedCalendarTaskDetailId = null;
+        selectedTaskDetailBinding = currentCalendarSummaryView?.tasks.targetBinding ?? null;
+        root?.toggleAttribute("hidden", true);
+        if (currentCalendarSummaryView) renderCalendarTasks(currentCalendarSummaryView);
+      } else {
+        selectedTaskDetailId = null;
+        selectedTaskDetailBinding = currentTasksView?.targetBinding ?? null;
+        root?.toggleAttribute("hidden", true);
+        if (currentTasksView) renderTasks(currentTasksView);
+      }
       window.requestAnimationFrame(() =>
-        tasksList?.querySelector<HTMLButtonElement>(`[data-task-editor-open="${CSS.escape(task.id)}"]`)?.focus(),
+        (surface === "calendar" ? calendarTaskList : tasksList)
+          ?.querySelector<HTMLButtonElement>(`[data-task-editor-open="${CSS.escape(task.id)}"]`)?.focus(),
       );
     };
     menu.querySelector<HTMLButtonElement>("[data-task-open-schedule]")?.addEventListener("click", () => {
@@ -11442,7 +12281,7 @@ function taskEditor(
     });
     menu.dataset.taskId = task.id;
     dialog.append(editorForm);
-    (taskEditorDialogRoot ?? document.body).append(dialog);
+    (taskEditorDialogRootForSurface(surface) ?? document.body).append(dialog);
     close.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -11479,8 +12318,9 @@ function taskEditor(
   const closeEditorDialog = (): void => {
     if (dialog) {
       dialog.hidden = true;
-      selectedTaskDetailId = null;
-      taskEditorDialogRoot?.toggleAttribute("hidden", true);
+      if (surface === "calendar") selectedCalendarTaskDetailId = null;
+      else selectedTaskDetailId = null;
+      taskEditorDialogRootForSurface(surface)?.toggleAttribute("hidden", true);
       row.classList.remove("is-selected");
       title.focus();
     } else {
@@ -11500,7 +12340,7 @@ function taskEditor(
   close.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (editingTasks) return;
+    if (usesModal) return;
     closeEditorDialog();
   });
   dialog?.addEventListener("click", (event) => {
@@ -12039,13 +12879,13 @@ function updateTaskOperationState(delta: number): void {
     currentCalendarSummaryView?.tasks.state !== "error" &&
     currentCalendarSummaryView?.tasks.state !== "unconfigured";
   const calendarWritable = calendarCanOperate && taskOperationCount === 0;
-  calendarTaskCreateForm?.toggleAttribute("hidden", !calendarWritable);
   calendarTaskCreateForm?.querySelectorAll("input, textarea, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
       busy || !calendarCanOperate;
   });
   updateTaskEditorOperationState("calendar", calendarWritable, busy);
   updateTaskMutationControls(calendarTaskPanel, calendarCanOperate, busy);
+  updateTaskMutationControls(calendarTaskEditorDialogRoot, calendarWritable, busy);
   taskListCreateForm?.querySelectorAll("input, button").forEach((element) => {
     (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
   });
@@ -12063,6 +12903,7 @@ function updateTaskOperationState(delta: number): void {
   updateTaskEditorOperationState("tasks", writable, busy);
   if (currentTasksView) updateTaskCreationControls(currentTasksView, busy);
   updateTodayTaskCreationControls();
+  updateCalendarTaskCreationControls();
   if (!busy && taskRefreshQueued) {
     taskRefreshQueued = false;
     if (currentWorkspaceDestination === "tasks") void refreshTasks();
@@ -12204,7 +13045,8 @@ function renderEndedTaskCreations(view: TasksView, region = taskEndedCreateRegio
       existing.addEventListener("click", () => {
         if (taskOperationCount > 0) return;
         taskFocusRequestId = attempt.originalInput.taskId;
-        if (attempt.origin === "today") showWorkspaceDestination("tasks");
+        if (attempt.origin === "calendar") openCalendarTaskEditor(attempt.originalInput.taskId);
+        else if (attempt.origin === "today") showWorkspaceDestination("tasks");
         else if (currentTasksView) renderTasks(currentTasksView);
       });
       details.append(existing);
@@ -12213,17 +13055,31 @@ function renderEndedTaskCreations(view: TasksView, region = taskEndedCreateRegio
   }));
 }
 
-function taskCreationContext(today = false) {
-  const surface: TaskSurface = today ? "today" : "tasks";
+function taskCreationContext(surface: TaskSurface = "tasks") {
   const loaded = taskSurfaceView(surface);
   const binding = loaded?.targetBinding;
-  const date = today ? currentTodayView?.date ?? null : null;
-  const key = binding ? today && date ? todayTaskCreateDraftKey(binding, date) : binding : null;
-  return {surface, loaded, binding, date, key, requests: today ? todayTaskRequests : taskRequests};
+  const date = surface === "today"
+    ? currentTodayView?.date ?? null
+    : surface === "calendar"
+      ? selectedCalendarDate ?? currentCalendarSummaryView?.date ?? null
+      : null;
+  const key = binding
+    ? surface === "today" && date
+      ? todayTaskCreateDraftKey(binding, date)
+      : surface === "calendar" && date
+        ? calendarTaskCreateDraftKey(binding, date)
+        : binding
+    : null;
+  const requests = surface === "today"
+    ? todayTaskRequests
+    : surface === "calendar"
+      ? calendarTaskRequests
+      : taskRequests;
+  return {surface, loaded, binding, date, key, requests};
 }
 
 function updateTodayTaskCreationControls(): void {
-  const {loaded, key} = taskCreationContext(true);
+  const {loaded, key} = taskCreationContext("today");
   const attempt = key ? taskCreateAttempts.get(key) : undefined;
   const writable = canMutateTodayTasks({todayOperationCount, taskOperationCount, hasTargetBinding: Boolean(loaded?.targetBinding), state: loaded?.state ?? "unconfigured", isPresentationCurrent: todayPresentationFresh});
   const busy = taskOperationCount > 0;
@@ -12236,21 +13092,49 @@ function updateTodayTaskCreationControls(): void {
   if (loaded) renderEndedTaskCreations(loaded, document.querySelector("#today-task-create-ended-attempts"), key);
 }
 
-function endTaskCreationAttempt(today = false): void {
-  const {surface, loaded, binding, key} = taskCreationContext(today);
+function updateCalendarTaskCreationControls(): void {
+  const {loaded, binding, key} = taskCreationContext("calendar");
+  const attempt = key ? taskCreateAttempts.get(key) : undefined;
+  const canOperate = Boolean(binding) && Boolean(currentCalendarSummaryView) &&
+    loaded?.state !== "error" && loaded?.state !== "unconfigured";
+  const writable = canOperate && taskOperationCount === 0;
+  const busy = taskOperationCount > 0;
+  const fieldsDisabled = busy || !writable || Boolean(attempt);
+  calendarTaskCreateForm?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>(
+    "input, textarea, select",
+  ).forEach((field) => { field.disabled = fieldsDisabled; });
+  calendarTaskCreateSubmit?.toggleAttribute("disabled", fieldsDisabled);
+  calendarTaskCreateCancel?.toggleAttribute("disabled", busy);
+  calendarTaskCreateClose?.toggleAttribute("disabled", busy);
+  calendarAddTask?.toggleAttribute("disabled", !writable || !selectedCalendarDate);
+  calendarTaskCreateRecheck?.toggleAttribute("hidden", !attempt);
+  calendarTaskCreateRetry?.toggleAttribute("hidden", !attempt);
+  calendarTaskCreateEndAttempt?.toggleAttribute("hidden", !attempt);
+  calendarTaskCreateRecheck?.toggleAttribute("disabled", busy || !binding || !attempt);
+  calendarTaskCreateRetry?.toggleAttribute("disabled", busy || !writable || attempt?.phase !== "retry-ready");
+  calendarTaskCreateEndAttempt?.toggleAttribute("disabled", busy || !attempt || attempt.phase === "unverified");
+  if (loaded) renderEndedTaskCreations(loaded, calendarTaskCreateEndedAttempts, key);
+}
+
+function endTaskCreationAttempt(surface: TaskSurface = "tasks"): void {
+  const {loaded, binding, key} = taskCreationContext(surface);
   const attempt = key ? taskCreateAttempts.get(key) : undefined;
   if (!loaded || !binding || !key || !attempt || taskOperationCount > 0 || attempt.phase === "unverified") return;
   taskEndedCreateAttempts.set(key, [...taskEndedCreateAttempts.get(key) ?? [], attempt]);
   taskCreateAttempts.delete(key);
-  if (today) { todayTaskCreateDrafts.delete(key); todayTaskCreateForm?.reset(); }
-  else {
+  if (surface === "today") { todayTaskCreateDrafts.delete(key); todayTaskCreateForm?.reset(); }
+  else if (surface === "calendar") {
+    calendarTaskCreateDrafts.delete(key);
+    calendarTaskCreateForm?.reset();
+    calendarTaskCreateDialog?.close();
+  } else {
     taskQuickDrafts.delete(binding); taskQuickScheduleDrafts.delete(binding); taskQuickPropertyDrafts.delete(binding);
     taskCreateDrafts.delete(binding); taskQuickForm?.reset(); taskCreateForm?.reset();
     taskCreateOpen = false; taskCreateDialog?.close();
   }
   renderTaskSurface(surface, loaded);
   setCopy(taskSurfaceStatus(surface), attempt.phase === "conflict" ? "tasks.endedConflict" : "tasks.endedAbsent");
-  (today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
+  (surface === "today" ? todayTaskCreateName : surface === "calendar" ? calendarAddTask : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
 }
 
 function taskCreateAttemptMatches(task: TaskView, attempt: TaskCreateAttempt): boolean {
@@ -12267,10 +13151,19 @@ function taskCreateAttemptMatches(task: TaskView, attempt: TaskCreateAttempt): b
 }
 
 function finishTaskCreation(binding: string, attempt: TaskCreateAttempt, view: TasksView): void {
-  const key = attempt.origin === "today" ? todayTaskCreateDraftKey(binding, attempt.surfaceDate!) : binding;
+  const key = attempt.origin === "today"
+    ? todayTaskCreateDraftKey(binding, attempt.surfaceDate!)
+    : attempt.origin === "calendar"
+      ? calendarTaskCreateDraftKey(binding, attempt.surfaceDate!)
+      : binding;
   taskCreateAttempts.delete(key);
   if (attempt.origin === "today") {
     todayTaskCreateDrafts.delete(key); todayTaskCreateForm?.reset();
+  } else if (attempt.origin === "calendar") {
+    calendarTaskCreateDrafts.delete(key);
+    calendarTaskCreateForm?.reset();
+    calendarTaskCreateDialog?.close();
+    if (calendarTaskCreateStatus) setRawText(calendarTaskCreateStatus, "");
   } else if (attempt.origin === "quick") {
     taskQuickDrafts.delete(binding);
     taskQuickScheduleDrafts.delete(binding);
@@ -12282,18 +13175,22 @@ function finishTaskCreation(binding: string, attempt: TaskCreateAttempt, view: T
     taskCreateOpen = false;
     taskCreateDialog?.close();
   }
-  const surface = attempt.origin === "today" ? "today" : "tasks";
+  const surface: TaskSurface = attempt.origin === "today"
+    ? "today"
+    : attempt.origin === "calendar"
+      ? "calendar"
+      : "tasks";
   renderTaskSurface(surface, view);
   const status = taskSurfaceStatus(surface);
   setCopy(status, "tasks.saved");
   if (status) status.dataset.state = "ready";
 }
 
-async function recheckTaskCreation(today = false): Promise<boolean> {
-  const {surface, loaded, binding, key, date, requests} = taskCreationContext(today);
+async function recheckTaskCreation(surface: TaskSurface = "tasks"): Promise<boolean> {
+  const {loaded, binding, key, date, requests} = taskCreationContext(surface);
   const attempt = key ? taskCreateAttempts.get(key) : undefined;
   if (!loaded || !binding || !key || !attempt || taskOperationCount > 0) return false;
-  const status = today ? todayTaskStatus : attempt.origin === "quick" ? tasksStatus : taskCreateStatus;
+  const status = taskCreationStatus(surface);
   const request = requests.begin();
   updateTaskOperationState(1);
   try {
@@ -12317,7 +13214,7 @@ async function recheckTaskCreation(today = false): Promise<boolean> {
     return false;
   } finally {
     updateTaskOperationState(-1);
-    if (!taskCreateAttempts.has(key)) (today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
+    if (!taskCreateAttempts.has(key)) (surface === "today" ? todayTaskCreateName : surface === "calendar" ? calendarAddTask : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
   }
 }
 
@@ -12370,18 +13267,31 @@ async function createTask(quick = false, retry = false): Promise<boolean> {
 }
 
 async function submitTaskCreation(attempt: TaskCreateAttempt, loaded: TasksView, binding: string): Promise<boolean> {
-  const today = attempt.origin === "today";
-  compactScheduleTransactions.get(today ? "today-task-create" : "task-quick")?.invalidate();
-  const surface: TaskSurface = today ? "today" : "tasks";
-  const date = today ? attempt.surfaceDate ?? null : null;
-  const key = today ? todayTaskCreateDraftKey(binding, date!) : binding;
-  const status = today ? todayTaskStatus : attempt.origin === "quick" ? tasksStatus : taskCreateStatus;
+  const surface: TaskSurface = attempt.origin === "today"
+    ? "today"
+    : attempt.origin === "calendar"
+      ? "calendar"
+      : "tasks";
+  const datedSurface = surface === "today" || surface === "calendar";
+  compactScheduleTransactions.get(surface === "today" ? "today-task-create" : "task-quick")?.invalidate();
+  const date = datedSurface ? attempt.surfaceDate ?? null : null;
+  const key = surface === "today"
+    ? todayTaskCreateDraftKey(binding, date!)
+    : surface === "calendar"
+      ? calendarTaskCreateDraftKey(binding, date!)
+      : binding;
+  const status = taskCreationStatus(surface);
   attempt.phase = "unverified";
-  const request = (today ? todayTaskRequests : taskRequests).begin();
+  const requests = surface === "today"
+    ? todayTaskRequests
+    : surface === "calendar"
+      ? calendarTaskRequests
+      : taskRequests;
+  const request = requests.begin();
   updateTaskOperationState(1);
   try {
     const hasTaskProperties = Boolean(attempt.input.priority || attempt.input.tagIds?.length || attempt.input.parentTaskId);
-    const command = today || !hasTaskProperties ? "create_task" : "create_task_with_properties";
+    const command = datedSurface || !hasTaskProperties ? "create_task" : "create_task_with_properties";
     const view = await window.__TAURI__.core.invoke<TasksView>(command, {input: attempt.input});
     const responseIsCurrent = taskSurfaceIsCurrent(surface, request, binding, view.targetBinding, date, loaded.revision);
     if (!taskMutationConfirmed(responseIsCurrent, view.state, view.tasks.some(task => taskCreateAttemptMatches(task, attempt)))) {
@@ -12398,12 +13308,14 @@ async function submitTaskCreation(attempt: TaskCreateAttempt, loaded: TasksView,
     return false;
   } finally {
     updateTaskOperationState(-1);
-    if (!taskCreateAttempts.has(key)) (today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
+    if (!taskCreateAttempts.has(key)) {
+      (surface === "today" ? todayTaskCreateName : surface === "calendar" ? calendarAddTask : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
+    }
   }
 }
 
 async function createTodayTask(retry = false): Promise<boolean> {
-  const {loaded, binding, key, date} = taskCreationContext(true);
+  const {loaded, binding, key, date} = taskCreationContext("today");
   if (!loaded || !binding || !key || !date || !canMutateTodayTasks({todayOperationCount, taskOperationCount, hasTargetBinding: true, state: loaded.state, isPresentationCurrent: todayPresentationFresh})) return false;
   let attempt = taskCreateAttempts.get(key);
   if (attempt) {
@@ -12422,106 +13334,54 @@ async function createTodayTask(retry = false): Promise<boolean> {
 }
 
 async function createCalendarTask(): Promise<boolean> {
-  const calendarView = currentCalendarSummaryView;
-  const loaded = calendarView?.tasks;
-  const binding = loaded?.targetBinding;
-  const date = selectedCalendarDate ?? calendarView?.date ?? null;
-  const status = taskSurfaceStatus("calendar");
-  if (
-    !calendarView ||
-    !loaded ||
-    !binding ||
-    !date ||
-    calendarView.date !== date ||
-    loaded.state === "error" ||
-    loaded.state === "unconfigured" ||
-    taskOperationCount > 0
-  ) {
-    setCopyError(status, "tasks.notSaved", t("tasks.refreshFirst"));
-    if (status) status.dataset.state = "error";
-    return false;
-  }
-  const name = calendarTaskCreateName?.value.trim() ?? "";
-  if (!name) {
-    setCopy(status, "tasks.enterName");
-    if (status) status.dataset.state = "error";
-    calendarTaskCreateName?.focus();
-    return false;
-  }
-  const normalized = normalizeTaskSchedule(
-    calendarTaskCreateDate?.value,
-    calendarTaskCreateTime?.value,
-  );
-  const content = calendarTaskCreateContent?.value ?? "";
-  const listId = calendarTaskCreateList?.value || "inbox";
-  const operationKey = JSON.stringify([binding, "calendar-create", date]);
-  const taskId = stableTaskOperationId(operationKey, "manual-task");
-  const request = calendarTaskRequests.begin();
-  updateTaskOperationState(1);
-  try {
-    const view = await window.__TAURI__.core.invoke<TasksView>("create_task", {
-      input: {
-        targetBinding: binding,
-        expectedRevision: loaded.revision,
-        taskId,
-        name,
-        content: content.trim() || null,
-        date: normalized.date,
-        time: normalized.time,
-        listId,
-      },
-    });
-    const responseIsCurrent = taskSurfaceIsCurrent(
-      "calendar",
-      request,
-      binding,
-      view.targetBinding,
-      date,
-      loaded.revision,
-    );
-    const savedTask = view.tasks.find(
-      (task) =>
-        task.id === taskId &&
-        task.name === name &&
-        task.content === (content.trim() || null) &&
-        task.date === normalized.date &&
-        task.time === normalized.time &&
-        task.listId === listId,
-    );
-    const confirmed = taskMutationConfirmed(
-      responseIsCurrent,
-      view.state,
-      Boolean(savedTask),
-    );
-    if (confirmed) {
-      taskOperationIds.delete(operationKey);
-      calendarTaskCreateDrafts.delete(calendarTaskCreateDraftKey(binding, date));
-      if (calendarTaskCreateForm) calendarTaskCreateForm.reset();
-      renderTaskSurface("calendar", view);
-      setCopy(status, "tasks.saved");
-      if (status) status.dataset.state = "ready";
-    } else if (responseIsCurrent) {
-      stashCalendarTaskCreateDraft();
-      renderTaskSurface("calendar", view);
-      setCopyError(
-        status,
-        "tasks.notSaved",
-        view.state === "error" ? view.message : t("tasks.confirmationFailed"),
-      );
-      if (status) status.dataset.state = "error";
+  return createCalendarTaskAttempt(false);
+}
+
+async function createCalendarTaskAttempt(retry: boolean): Promise<boolean> {
+  const {loaded, binding, key, date} = taskCreationContext("calendar");
+  if (!loaded || !binding || !key || !date || currentCalendarSummaryView?.date !== date ||
+    ["error", "unconfigured"].includes(loaded.state) || taskOperationCount > 0) return false;
+  let attempt = taskCreateAttempts.get(key);
+  if (attempt) {
+    if (!retry || attempt.origin !== "calendar" || attempt.phase !== "retry-ready") return false;
+  } else {
+    if (retry || !calendarTaskCreateForm) return false;
+    const draft = readTaskDraft(calendarTaskCreateForm);
+    if (!draft.name.trim()) {
+      setCopy(calendarTaskCreateStatus, "tasks.enterName");
+      calendarTaskCreateName?.focus();
+      return false;
     }
-    return confirmed;
-  } catch (error) {
-    if (taskSurfaceIsCurrent("calendar", request, binding, binding, date, loaded.revision)) {
-      stashCalendarTaskCreateDraft();
-      renderTaskSurface("calendar", loaded);
-      setCopyError(status, "tasks.notSaved", error);
-      if (status) status.dataset.state = "error";
+    const normalized = normalizeTaskSchedule(draft.date, draft.time);
+    if ((draft.endDate || draft.endTime) && (!normalized.date || !normalized.time || !draft.endDate || !draft.endTime ||
+      `${draft.endDate}T${draft.endTime}` <= `${normalized.date}T${normalized.time}`)) {
+      setCopyError(calendarTaskCreateStatus, "tasks.notSaved", t("tasks.invalidExecutionInterval"));
+      return false;
     }
-    return false;
-  } finally {
-    updateTaskOperationState(-1);
+    const input: TaskCreateInput = {
+      targetBinding: binding,
+      expectedRevision: loaded.revision,
+      taskId: localOperationId("manual-task"),
+      name: draft.name.trim(),
+      content: draft.content.trim() || null,
+      date: normalized.date,
+      time: normalized.time,
+      listId: draft.listId || "inbox",
+      executionEnd: null,
+    };
+    attempt = {
+      origin: "calendar",
+      surfaceDate: date,
+      draft,
+      input,
+      originalInput: input,
+      phase: "unverified",
+      listName: taskListDisplayName(taskListForId(loaded, input.listId) ?? {id: input.listId, name: input.listId, isSystem: false, archived: false}, t("tasks.inbox")),
+    };
+    taskCreateAttempts.set(key, attempt);
+    calendarTaskCreateDrafts.set(key, draft);
   }
+  return submitTaskCreation(attempt, loaded, binding);
 }
 
 type TaskListCommand =
@@ -12921,8 +13781,12 @@ type TaskSurface = "tasks" | "today" | "calendar";
 
 function taskSurfaceStatus(surface: TaskSurface): HTMLElement | null {
   if (surface === "tasks") return tasksStatus;
-  if (surface === "today") return todayTaskStatus;
+  if (surface === "today") return todayAxisTaskPopup?.open ? todayAxisTaskPopupStatus : todayTaskStatus;
   return calendarTaskStatus;
+}
+
+function taskCreationStatus(surface: TaskSurface): HTMLElement | null {
+  return surface === "calendar" ? calendarTaskCreateStatus : taskSurfaceStatus(surface);
 }
 
 function taskSurfaceIsCurrent(
@@ -12981,12 +13845,22 @@ function updateSharedTaskView(view: TasksView): void {
 }
 
 function renderTaskSurface(surface: TaskSurface, view: TasksView): void {
+  const axisPopupTaskId = surface === "today" && todayAxisTaskPopup?.open
+    ? todayAxisTaskPopup.dataset.taskId ?? null
+    : null;
   updateSharedTaskView(view);
   if (surface === "tasks") {
     renderTasks(view);
   } else if (surface === "today" && currentTodayView) {
-    renderTodayTasks(currentTodayView);
+    renderTodayTasks(currentTodayView, new Set<string>(), axisPopupTaskId !== null);
     renderTodayTimeAxis(currentTodayView);
+    if (axisPopupTaskId) {
+      const marker = todayTimedEvents?.querySelector<HTMLElement>(
+        `[data-task-id="${CSS.escape(axisPopupTaskId)}"]`,
+      );
+      if (marker) openTodayAxisTaskPopup(axisPopupTaskId, marker, true);
+      else closeTodayAxisTaskPopup(false, false);
+    }
   } else if (surface === "calendar" && currentCalendarSummaryView) {
     renderCalendarTasks(currentCalendarSummaryView);
   }
@@ -13158,6 +14032,9 @@ async function updateTask(
     const { view, responseIsCurrent, confirmed } = result;
     if (confirmed) {
       taskEditDrafts.delete(taskDraftKey(binding, taskId));
+      if (surface === "calendar" && selectedCalendarTaskDetailId === taskId) {
+        selectedCalendarTaskDetailId = null;
+      }
       renderTaskSurface(surface, view);
       setCopy(status, "tasks.saved");
       if (status) status.dataset.state = "ready";
@@ -13609,6 +14486,9 @@ function showWorkspaceDestination(
   if (leavingCalendar) {
     stashCalendarTaskCreateDraft();
     taskEditorForms("calendar").forEach(stashTaskEditDraft);
+    selectedCalendarTaskDetailId = null;
+    calendarTaskCreateDialog?.close();
+    calendarTaskEditorDialogRoot?.toggleAttribute("hidden", true);
     calendarMonthRequests.invalidate();
     calendarSelectionRequests.invalidate();
     calendarTaskRequests.invalidate();
@@ -14004,7 +14884,15 @@ refreshTodayButton?.addEventListener("click", () => {
 });
 
 calendarGrid?.addEventListener("click", (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLButtonElement>(
+  const targetElement = event.target as HTMLElement;
+  const taskPreview = targetElement.closest<HTMLButtonElement>("button[data-calendar-task-summary]");
+  if (taskPreview?.dataset.calendarTaskSummary) {
+    event.preventDefault();
+    event.stopPropagation();
+    openCalendarTaskEditor(taskPreview.dataset.calendarTaskSummary);
+    return;
+  }
+  const target = targetElement.closest<HTMLButtonElement>(
     "button[data-calendar-date]",
   );
   if (target?.dataset.calendarDate) {
@@ -14071,6 +14959,22 @@ calendarMonth?.addEventListener("change", () => {
 calendarToday?.addEventListener("click", () => {
   void showCalendarToday();
 });
+
+calendarAddTask?.addEventListener("click", () => {
+  if (!selectedCalendarDate || !currentCalendarSummaryView || taskOperationCount > 0) return;
+  const {binding, key} = taskCreationContext("calendar");
+  if (calendarTaskCreateStatus && (!key || !taskCreateAttempts.has(key))) {
+    setRawText(calendarTaskCreateStatus, "");
+  }
+  if (binding && currentCalendarSummaryView.tasks.targetBinding !== binding) return;
+  if (currentCalendarSummaryView) renderCalendarTasks(currentCalendarSummaryView);
+  calendarTaskCreateDialog?.showModal();
+  calendarTaskCreateName?.focus();
+});
+
+[calendarHolidaysEnabled, calendarHolidaysChina, calendarHolidaysUnitedStates].forEach((control) =>
+  control?.addEventListener("change", persistCalendarHolidaySettings),
+);
 
 calendarOpenDay?.addEventListener("click", () => {
   if (selectedCalendarDate) {
@@ -14577,6 +15481,40 @@ habitsDestination?.addEventListener("change", (event) => {
 });
 
 habitsDestination?.addEventListener("click", (event) => {
+  const detailBack = (event.target as HTMLElement).closest<HTMLButtonElement>("#habit-detail-back");
+  if (detailBack) {
+    closeHabitDetail();
+    return;
+  }
+  const inactiveToggle = (event.target as HTMLElement).closest<HTMLButtonElement>("#habits-inactive-toggle");
+  if (inactiveToggle && currentHabitSnapshot) {
+    showInactiveHabits = !showInactiveHabits;
+    renderHabitSnapshot(currentHabitSnapshot);
+    return;
+  }
+  const openDetails = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-open]");
+  if (openDetails?.dataset.habitOpen) {
+    openHabitDetail(openDetails.dataset.habitOpen);
+    return;
+  }
+  const lifecycle = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-lifecycle]");
+  if (lifecycle) {
+    void setHabitActiveFromDetail(lifecycle.dataset.habitLifecycle === "restore");
+    return;
+  }
+  const loadMore = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-detail-load-more]");
+  if (loadMore) {
+    habitDetailRecordLimit += 20;
+    renderHabitDetailPanel();
+    return;
+  }
+  const detailDate = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-detail-date]");
+  if (detailDate?.dataset.habitDetailDate && detailDate.dataset.habitDetailDateKey) {
+    const { habitDetailDate: date, habitDetailDateKey: key } = detailDate.dataset;
+    closeHabitDetail();
+    void loadSelectedHabitDate(key, date);
+    return;
+  }
   const editHabit = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "button[data-habit-edit]",
   );
@@ -14591,11 +15529,15 @@ habitsDestination?.addEventListener("click", (event) => {
     const date = historicalCorrection.dataset.habitCorrectionDate;
     const context = selectedHabitContext();
     const snapshot = currentHabitSnapshot;
+    const selectedKey = selectedHabitCell?.habitKey;
+    const snapshotHabit = snapshot?.habits.find((item) => item.key === selectedKey);
+    const correctionHabit = context?.habit ?? currentHabitDateView?.habitCorrections.habits.find((item) => item.key === selectedKey);
     if (
       !date ||
-      context?.cell.date !== date ||
-      historicalHabitCorrectionDate(date, context.habit.today.date) !== date ||
-      !context.habit.canRecordCompletion ||
+      selectedHabitCell?.date !== date ||
+      !snapshotHabit ||
+      historicalHabitCorrectionDate(date, snapshotHabit.today.date) !== date ||
+      !correctionHabit?.canRecordCompletion ||
       !snapshot?.completionTargetBinding ||
       (snapshot.state !== "ready" && snapshot.state !== "stale")
     ) {
@@ -14726,9 +15668,9 @@ todayTaskCreateList?.addEventListener("change", () => {
   stashTodayTaskCreateDraft();
 });
 todayTaskCreateForm?.addEventListener("input", stashTodayTaskCreateDraft);
-document.querySelector("#today-task-create-recheck")?.addEventListener("click", () => void pendingWrites.track(recheckTaskCreation(true)));
+document.querySelector("#today-task-create-recheck")?.addEventListener("click", () => void pendingWrites.track(recheckTaskCreation("today")));
 document.querySelector("#today-task-create-retry")?.addEventListener("click", () => void pendingWrites.track(createTodayTask(true)));
-document.querySelector("#today-task-create-end-attempt")?.addEventListener("click", () => endTaskCreationAttempt(true));
+document.querySelector("#today-task-create-end-attempt")?.addEventListener("click", () => endTaskCreationAttempt("today"));
 todayTaskCreateForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   if (todayTaskCreateForm && composingTaskCreateForms.has(todayTaskCreateForm)) return;
@@ -14842,6 +15784,22 @@ calendarTaskCreateForm?.addEventListener("submit", (event) => {
   stashCalendarTaskCreateDraft();
   void pendingWrites.track(createCalendarTask());
 });
+
+calendarTaskCreateCancel?.addEventListener("click", () => calendarTaskCreateDialog?.close());
+calendarTaskCreateClose?.addEventListener("click", () => calendarTaskCreateDialog?.close());
+calendarTaskCreateDialog?.addEventListener("cancel", (event) => {
+  if (taskOperationCount > 0) event.preventDefault();
+  else stashCalendarTaskCreateDraft();
+});
+calendarTaskCreateDialog?.addEventListener("close", () => {
+  if (!taskCreationContext("calendar").key || !taskCreateAttempts.has(taskCreationContext("calendar").key!)) {
+    stashCalendarTaskCreateDraft();
+  }
+  calendarAddTask?.focus();
+});
+calendarTaskCreateRecheck?.addEventListener("click", () => void pendingWrites.track(recheckTaskCreation("calendar")));
+calendarTaskCreateRetry?.addEventListener("click", () => void pendingWrites.track(createCalendarTaskAttempt(true)));
+calendarTaskCreateEndAttempt?.addEventListener("click", () => endTaskCreationAttempt("calendar"));
 
 calendarTaskPanel?.addEventListener("input", (event) => {
   const form = (event.target as HTMLElement).closest<HTMLFormElement>(
@@ -15102,3 +16060,34 @@ for (const id of ["today-expand-early", "today-expand-late"]) {
     toggleTodayAxisSegment(id);
   });
 }
+
+document.getElementById("today-axis-zoom-out")?.addEventListener("click", () => adjustTodayAxisZoom(-1));
+document.getElementById("today-axis-zoom-in")?.addEventListener("click", () => adjustTodayAxisZoom(1));
+
+todayAxisTaskPopupClose?.addEventListener("click", () => closeTodayAxisTaskPopup(true));
+todayAxisTaskPopup?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeTodayAxisTaskPopup(true);
+});
+todayAxisTaskPopup?.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  closeTodayAxisTaskPopup(true);
+});
+todayAxisTaskPopup?.addEventListener("close", () => {
+  const taskId = todayAxisTaskPopup.dataset.taskId;
+  const restoreFocus = todayAxisTaskPopup.dataset.restoreFocus !== "false";
+  todayAxisTaskPopupContent?.replaceChildren();
+  todayAxisTaskPopup.dataset.taskId = "";
+  todayAxisTaskPopupOpener = null;
+  if (!restoreFocus || !taskId) return;
+  const selector = `[data-task-id="${CSS.escape(taskId)}"] .today-axis-marker-link`;
+  const markerLink = todayTimedEvents?.querySelector<HTMLElement>(selector);
+  const taskRowButton = todayTaskPanel?.querySelector<HTMLButtonElement>(
+    `[data-task-editor-open="${CSS.escape(taskId)}"]`,
+  );
+  (markerLink ?? taskRowButton)?.focus({ preventScroll: true });
+});
+todayAxisScrollSurface?.addEventListener("scroll", positionTodayAxisTaskPopup, { passive: true });
+workspaceInformation?.addEventListener("scroll", positionTodayAxisTaskPopup, { passive: true });
+window.addEventListener("resize", positionTodayAxisTaskPopup);
