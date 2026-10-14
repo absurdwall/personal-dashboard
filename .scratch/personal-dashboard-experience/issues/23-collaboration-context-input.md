@@ -4,13 +4,13 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Triage:** ready-for-agent
 **ID:** PDEX-23
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** open
-**Implementation:** not started
+**Lifecycle:** in-progress
+**Implementation:** claimed for reimplementation; source changes not yet started
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -47,3 +47,12 @@ PDEX-SPEC-02 stories 51–60；共同承担 1–3、88–91 的保存与保留�
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
+
+## Reimplementation claim — 2026-10-13
+
+Owner: Codex implementer `/root/pdex23_reimplementation`. Working branch
+`codex/pdex-23-refinement-reimplementation`; starting integration tip and
+authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. This is a fresh
+claim on the verified unimplemented checkpoint; earlier rejected source and
+its commits remain on the preserved previous integration branch. Local Git
+only; no installation, main merge, or remote operation.
