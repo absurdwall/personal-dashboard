@@ -1181,8 +1181,10 @@ pub fn merge_local_habit_definitions(
     if CalendarDate::parse(current_lived_date).is_none() {
         return Err("当前 lived date 无效；未合并本地 Habit。".into());
     }
-    let local_date = CalendarDate::parse(current_local_date)
+    CalendarDate::parse(current_local_date)
         .ok_or_else(|| "当前本地日期无效；未合并本地 Habit。".to_string())?;
+    let lived_date = CalendarDate::parse(current_lived_date)
+        .expect("current lived date was validated above");
     if timestamp_epoch_seconds(current_timestamp).is_none() {
         return Err("当前本地时间缺少有效 UTC offset；未合并本地 Habit。".into());
     }
@@ -1201,7 +1203,9 @@ pub fn merge_local_habit_definitions(
         .filter(|definition| definition.created_locally || !present_keys.contains(&definition.key))
         .collect();
     if !local_only.is_empty() {
-        let generated_date = &current_timestamp[..10];
+        // The synthetic projection follows the app's 04:00 lived-day boundary,
+        // even when the wall-clock date has already advanced.
+        let generated_at = format!("{current_lived_date}{}", &current_timestamp[10..]);
         let mut synthetic_habits = Vec::with_capacity(local_only.len());
         for definition in &local_only {
             let goal = definition.goal_on(current_lived_date);
@@ -1223,10 +1227,10 @@ pub fn merge_local_habit_definitions(
         }
         let synthetic = serde_json::json!({
             "schemaVersion": 1,
-            "generatedAt": current_timestamp,
+            "generatedAt": generated_at,
             "range": {
-                "from": local_date.monday().plus_days(-7 * (HISTORY_WEEKS - 1)).to_string(),
-                "to": generated_date,
+                "from": lived_date.monday().plus_days(-7 * (HISTORY_WEEKS - 1)).to_string(),
+                "to": current_lived_date,
             },
             "producer": { "kind": "dashboard-local", "label": "Personal Dashboard local definitions" },
             "sources": [],
@@ -1338,6 +1342,23 @@ fn apply_local_habit_definition(
             let Some(effective_on) = CalendarDate::parse(&revision.effective_on) else {
                 continue;
             };
+            let previous_week = effective_on.monday().plus_days(-7);
+            let previous_day = effective_on.plus_days(-1).to_string();
+            if previous_week < current_week {
+                if let Some(previous_goal @ LocalHabitGoal::WeeklyCount { .. }) =
+                    definition.goal_on(&previous_day)
+                {
+                    let week_of = previous_week.to_string();
+                    let goal_label = previous_goal.label();
+                    history.entry(week_of.clone()).or_insert_with(|| {
+                        HabitGoalContextView {
+                            week_of,
+                            label: "本地目标修订前".into(),
+                            goal_label,
+                        }
+                    });
+                }
+            }
             let week = effective_on.monday();
             if week < current_week
                 && revision.disposition == LocalHabitRevisionDisposition::Scheduled
