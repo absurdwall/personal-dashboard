@@ -53,8 +53,8 @@ function webKit(script:string,width=1280,height=720):any {
       function calendarSnapshot(weeks,render=true){
         if(render){const month=fixture(weeks);calendarHarness.render(month,selectedFor(month));}
         const grid=document.querySelector('#calendar-grid'),cells=[...grid.children],dense=cells[10],all=[...dense.querySelectorAll('.calendar-day-task-summary')],visible=all.filter(item=>!item.hidden&&getComputedStyle(item).display!=='none');
-        const overflow=dense.querySelector('.calendar-day-task-overflow'),frame=document.querySelector('.calendar-frame'),summary=document.querySelector('.calendar-summary'),panel=document.querySelector('#calendar-task-panel'),information=document.querySelector('.workspace-information'),form=panel.querySelector('#calendar-task-create-form'),submit=panel.querySelector('#calendar-task-create-submit');
-        return {width:innerWidth,height:innerHeight,frame:rect(frame),grid:rect(grid),cells:cells.map(rect),summary:{rect:rect(summary),hidden:summary.hidden||getComputedStyle(summary).display==='none',display:getComputedStyle(summary).display,scrollHeight:summary.scrollHeight,clientHeight:summary.clientHeight,text:summary.textContent},panel:{rect:rect(panel),hidden:panel.hidden,position:getComputedStyle(panel).position,scrollHeight:panel.scrollHeight,clientHeight:panel.clientHeight,tasks:panel.querySelectorAll('.calendar-task-list > *').length,formHidden:form.hidden,submit:rect(submit)},information:{rect:rect(information),scrollHeight:information.scrollHeight,clientHeight:information.clientHeight,scrollTop:information.scrollTop},dense:{rect:rect(dense),top:rect(dense.querySelector('.calendar-day-top')),number:rect(dense.querySelector('.calendar-day-top strong')),marker:rect(dense.querySelector('.calendar-day-marker')),overflowRect:rect(overflow),overflowText:overflow.textContent,overflowCount:overflow.dataset.calendarTaskOverflow,totalPreviews:all.length,visiblePreviews:visible.map(item=>({rect:rect(item),whiteSpace:getComputedStyle(item).whiteSpace,overflow:getComputedStyle(item).overflow,scroll:item.scrollWidth,client:item.clientWidth,state:item.dataset.taskState,hidden:item.hidden}))}};
+        const overflow=dense.querySelector('.calendar-day-task-overflow'),frame=document.querySelector('.calendar-frame'),summary=document.querySelector('.calendar-summary'),panel=document.querySelector('#calendar-task-panel'),information=document.querySelector('.workspace-information'),form=panel.querySelector('#calendar-task-create-form'),dialog=document.querySelector('#calendar-task-create-dialog'),add=document.querySelector('#calendar-add-task');
+        return {width:innerWidth,height:innerHeight,frame:rect(frame),grid:rect(grid),cells:cells.map(rect),summary:{rect:rect(summary),hidden:summary.hidden||getComputedStyle(summary).display==='none',display:getComputedStyle(summary).display,scrollHeight:summary.scrollHeight,clientHeight:summary.clientHeight,text:summary.textContent},panel:{rect:rect(panel),hidden:panel.hidden,position:getComputedStyle(panel).position,scrollHeight:panel.scrollHeight,clientHeight:panel.clientHeight,tasks:panel.querySelectorAll('.calendar-task-list > *').length,formHidden:form.hidden,dialogOpen:dialog.open,submit:rect(add)},information:{rect:rect(information),scrollHeight:information.scrollHeight,clientHeight:information.clientHeight,scrollTop:information.scrollTop},dense:{rect:rect(dense),top:rect(dense.querySelector('.calendar-day-top')),number:rect(dense.querySelector('.calendar-day-top strong')),marker:rect(dense.querySelector('.calendar-day-marker')),overflowRect:rect(overflow),overflowText:overflow.textContent,overflowCount:overflow.dataset.calendarTaskOverflow,totalPreviews:all.length,visiblePreviews:visible.map(item=>({rect:rect(item),whiteSpace:getComputedStyle(item).whiteSpace,overflow:getComputedStyle(item).overflow,scroll:item.scrollWidth,client:item.clientWidth,state:item.dataset.taskState,hidden:item.hidden}))}};
       }
       async function waitForViewport(width,height){for(let n=0;n<100;n++){if(innerWidth===width&&innerHeight===height)return;await new Promise(r=>setTimeout(r,10));}throw Error('Viewport resize timed out '+innerWidth+'x'+innerHeight);}
       ${script}`);
@@ -74,7 +74,7 @@ test('five-week month fits the shipped 1280×720 workspace while selected-day de
   assert.ok(result.dense.visiblePreviews.length<=4);
   assert.equal(result.dense.overflowText,'+'+(7-result.dense.visiblePreviews.length));
   assert.ok(result.summary.scrollHeight>result.summary.clientHeight,'long selected-day summary should have its own scroll area');
-  assert.equal(result.panel.tasks,7);assert.equal(result.panel.formHidden,false);
+  assert.equal(result.panel.tasks,7);assert.equal(result.panel.formHidden,false);assert.equal(result.panel.dialogOpen,false);
 });
 
 for(const [width,height] of [[640,720],[795,756],[874,688],[1280,720],[830,758],[640,688]]) {
@@ -107,9 +107,13 @@ test('short 640×520 Calendar keeps dates and true overflow reachable while the 
     const state=calendarSnapshot(6),information=document.querySelector('.workspace-information'),dense=document.querySelectorAll('#calendar-grid .calendar-day')[10];
     information.scrollTop=Math.max(0,rect(dense).top-rect(information).top-40);await new Promise(r=>setTimeout(r,20));
     const controls={information:rect(information),date:rect(dense.querySelector('strong')),marker:rect(dense.querySelector('.calendar-day-marker')),overflow:rect(dense.querySelector('.calendar-day-task-overflow'))};
+    const add=document.querySelector('#calendar-add-task');add.click();
+    const createDialog=document.querySelector('#calendar-task-create-dialog'),createSubmit=document.querySelector('#calendar-task-create-submit'),createName=document.querySelector('#calendar-task-create-name');
+    const creation={open:createDialog.open,date:createDialog.querySelector('#calendar-task-create-date').value,focused:document.activeElement===createName,dialog:rect(createDialog),submit:rect(createSubmit)};createDialog.close();
+    information.scrollTop=information.scrollHeight;await new Promise(r=>setTimeout(r,20));
     information.scrollTop=information.scrollHeight;await new Promise(r=>setTimeout(r,20));
     const panel=document.querySelector('#calendar-task-panel'),submit=document.querySelector('#calendar-task-create-submit');
-    return JSON.stringify({state,controls,scrolled:{information:rect(information),scrollHeight:information.scrollHeight,clientHeight:information.clientHeight,panel:rect(panel),submit:rect(submit)}});
+    return JSON.stringify({state,controls,creation,scrolled:{information:rect(information),scrollTop:information.scrollTop,scrollHeight:information.scrollHeight,clientHeight:information.clientHeight,panel:rect(panel),add:rect(add)}});
   `,640,520);
   assert.equal(result.state.cells.length,42);
   assert.ok(result.state.grid.height>0&&Math.max(...result.state.cells.map((cell:any)=>cell.height))-Math.min(...result.state.cells.map((cell:any)=>cell.height))<1);
@@ -120,7 +124,10 @@ test('short 640×520 Calendar keeps dates and true overflow reachable while the 
   assert.ok(result.state.dense.marker.left>=result.state.dense.number.right&&result.state.dense.overflowRect.right<=result.state.dense.rect.right);
   assert.ok(result.state.dense.overflowRect.top>=result.state.dense.marker.bottom||result.state.dense.overflowRect.left>=result.state.dense.marker.right);
   assert.ok(result.scrolled.scrollHeight>result.scrolled.clientHeight);
-  assert.ok(result.scrolled.panel.bottom<=result.scrolled.information.bottom+1&&result.scrolled.submit.bottom<=result.scrolled.information.bottom,JSON.stringify(result.scrolled));
+  assert.ok(result.creation.open&&result.creation.date==='2026-05-06'&&result.creation.focused,JSON.stringify(result.creation));
+  assert.ok(result.creation.dialog.height<520&&result.creation.submit.bottom<=result.creation.dialog.bottom,JSON.stringify(result.creation));
+  assert.ok(result.scrolled.scrollTop>0,JSON.stringify(result.scrolled));
+  assert.ok(result.scrolled.panel.bottom<=result.scrolled.information.bottom+1,JSON.stringify(result.scrolled));
 });
 
 test('selected-day summary and task controls remain reachable in their own scroll areas below a full month',{skip:process.platform!=='darwin'},()=>{
@@ -130,18 +137,18 @@ test('selected-day summary and task controls remain reachable in their own scrol
     summary.scrollTop=summary.scrollHeight;await new Promise(r=>setTimeout(r,20));
     const summaryScrolled={top:rect(summary),last:rect(lastSummary),scrollTop:summary.scrollTop,scrollHeight:summary.scrollHeight,clientHeight:summary.clientHeight};
     information.scrollTop=information.scrollHeight;await new Promise(r=>setTimeout(r,20));
-    const panel=document.querySelector('#calendar-task-panel'),submit=document.querySelector('#calendar-task-create-submit');
-    return JSON.stringify({initial,summaryScrolled,information:{top:rect(information),scrollTop:information.scrollTop,scrollHeight:information.scrollHeight,clientHeight:information.clientHeight,panel:rect(panel),submit:rect(submit)}});
+    const panel=document.querySelector('#calendar-task-panel'),lastTask=panel.querySelector('.calendar-task-list > .task-row:last-child');
+    return JSON.stringify({initial,summaryScrolled,information:{top:rect(information),scrollTop:information.scrollTop,scrollHeight:information.scrollHeight,clientHeight:information.clientHeight,panel:rect(panel),lastTask:rect(lastTask)}});
   `);
   assert.ok(result.initial.grid.bottom<=720,JSON.stringify(result.initial.grid));
   assert.ok(result.initial.panel.rect.top>=result.initial.frame.bottom,JSON.stringify(result.initial));
-  assert.ok(result.initial.panel.tasks===7&&result.initial.panel.formHidden===false,JSON.stringify(result.initial.panel));
+  assert.ok(result.initial.panel.tasks===7&&result.initial.panel.formHidden===false&&result.initial.panel.dialogOpen===false,JSON.stringify(result.initial.panel));
   assert.ok(result.initial.information.scrollHeight>result.initial.information.clientHeight,JSON.stringify(result.initial.information));
   assert.ok(result.initial.information.rect.top+result.initial.information.scrollHeight+1>=result.initial.panel.rect.bottom,JSON.stringify(result.initial));
   assert.ok(result.summaryScrolled.scrollHeight>result.summaryScrolled.clientHeight);
   assert.ok(result.summaryScrolled.last.top>=result.summaryScrolled.top.top&&result.summaryScrolled.last.bottom<=result.summaryScrolled.top.bottom,JSON.stringify(result.summaryScrolled));
   assert.ok(result.information.scrollTop>0,JSON.stringify(result.information));
-  assert.ok(result.information.submit.top>=result.information.top.top&&result.information.submit.bottom<=result.information.top.bottom,JSON.stringify(result.information));
+  assert.ok(result.information.lastTask.top>=result.information.top.top&&result.information.lastTask.bottom<=result.information.top.bottom+1,JSON.stringify(result.information));
 });
 
 test('Calendar viewport resize, navigation collapse, language change, and month navigation retain responsive summary fit',{skip:process.platform!=='darwin'},async()=>{
@@ -196,16 +203,72 @@ for(const [width,height] of [[1280,720],[830,758]]) {
 test('clicking the overflow date reads the full authoritative Daily Record and all shared Tasks including cross-midnight interval',{skip:process.platform!=='darwin'},()=>{
   const result=webKit(`
     selectedView=sourceFixture.selected;calendarHarness.render(sourceFixture.month);
-    document.querySelector('[data-calendar-date="2026-09-09"]').click();
+    document.querySelector('button.calendar-day-top[data-calendar-date="2026-09-09"]').click();
     while(!calendarHarness.selected().view) await new Promise(r=>setTimeout(r,5));
     const tasks=document.querySelector('#calendar-task-list');
-    const editor=tasks.querySelector('[data-task-editor="preview-0"]');
-    return JSON.stringify({date:calendarHarness.selected().date,availability:document.querySelector('#calendar-summary-status').dataset.availability,copy:document.querySelector('#calendar-summary-copy').textContent,count:tasks.children.length,names:[...tasks.children].map(c=>c.textContent),start:editor.querySelector('[data-task-time]').value,endDate:editor.querySelector('[data-task-end-date]').value,endTime:editor.querySelector('[data-task-end-time]').value,commands});
+    tasks.querySelector('button[data-task-editor-open="preview-0"]').click();
+    const editor=document.querySelector('#calendar-task-editor-dialog-root [data-task-editor="preview-0"]');
+    return JSON.stringify({date:calendarHarness.selected().date,availability:document.querySelector('#calendar-summary-status').dataset.availability,copy:document.querySelector('#calendar-summary-copy').textContent,count:tasks.children.length,names:[...tasks.children].map(c=>c.textContent),schedule:editor.querySelector('.task-row-meta').textContent,start:editor.querySelector('[data-task-time]').value,endDate:editor.querySelector('[data-task-end-date]').value,endTime:editor.querySelector('[data-task-end-time]').value,commands});
   `,830,758);
   assert.equal(result.date,'2026-09-09');assert.equal(result.availability,'unreviewed');
   assert.ok(result.copy.includes('合成安排。'));assert.equal(result.count,7);
   assert.equal(result.start,'23:30');assert.equal(result.endDate,'2026-09-10');assert.equal(result.endTime,'00:45');
-  assert.ok(result.names.some((name:string)=>name.includes('23:30') && name.includes('00:45')));
+  assert.ok(result.schedule.includes('23:30') && result.schedule.includes('00:45'));
   assert.deepEqual(result.commands.filter((item:any)=>item.command==='read_daily_view'),[{command:'read_daily_view',args:{date:'2026-09-09'}}]);
   assert.ok(result.commands.every((item:any)=>['read_daily_view','today_view'].includes(item.command)),'date details must read the shared sources without writes');
+});
+
+test('Calendar task previews open a compact editor without selecting another date; create uses the selected date in one modal',{skip:process.platform!=='darwin'},()=>{
+  const result=webKit(`
+    const month=structuredClone(sourceFixture.month),view=structuredClone(sourceFixture.selected);
+    const other=month.days.find(day=>day.date==='2026-09-10');
+    other.taskSummaries=[{id:'preview-0',name:'Preview task',state:'pending'}];other.taskOverflowCount=0;
+    calendarHarness.render(month,view);
+    const beforeScroll=document.querySelector('.workspace-information').scrollTop;
+    document.querySelector('[data-calendar-task-summary="preview-0"]').click();await new Promise(r=>setTimeout(r,20));
+    const editDialog=document.querySelector('#calendar-task-editor-dialog-root [data-task-editor-dialog="preview-0"]');
+    const afterPreview={selected:calendarHarness.selected().date,gridSelected:document.querySelector('.calendar-day[data-calendar-date="2026-09-09"]').dataset.selected!==undefined,
+      open:!document.querySelector('#calendar-task-editor-dialog-root').hidden&&!editDialog.hidden,
+      name:editDialog.querySelector('[data-task-name]').value,scroll:document.querySelector('.workspace-information').scrollTop};
+    document.querySelector('#calendar-task-editor-dialog-root [data-task-editor-close]').click();
+    const add=document.querySelector('#calendar-add-task');add.click();
+    const createDialog=document.querySelector('#calendar-task-create-dialog'),name=document.querySelector('#calendar-task-create-name'),date=document.querySelector('#calendar-task-create-date');
+    const creation={open:createDialog.open,selected:calendarHarness.selected().date,date:date.value,focused:document.activeElement===name,dateEditable:!date.disabled};
+    date.value='2026-09-12';date.dispatchEvent(new Event('change',{bubbles:true}));
+    const editedDate=date.value,selectedAfterDateEdit=calendarHarness.selected().date;
+    document.querySelector('#calendar-task-create-cancel').click();
+    return JSON.stringify({beforeScroll,afterPreview,creation,editedDate,selectedAfterDateEdit,closed:!createDialog.open,commands});
+  `,830,758);
+  assert.equal(result.afterPreview.selected,'2026-09-09');
+  assert.equal(result.afterPreview.gridSelected,true);
+  assert.equal(result.afterPreview.open,true);
+  assert.equal(result.afterPreview.name,'合成任务 0 完整长标题');
+  assert.equal(result.afterPreview.scroll,result.beforeScroll);
+  assert.deepEqual(result.creation,{open:true,selected:'2026-09-09',date:'2026-09-09',focused:true,dateEditable:true});
+  assert.equal(result.editedDate,'2026-09-12');assert.equal(result.selectedAfterDateEdit,'2026-09-09');
+  assert.equal(result.closed,true);
+  assert.equal(result.commands.filter((item:any)=>item.command==='read_daily_view').length,0);
+  assert.equal(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)).length,0);
+});
+
+test('Calendar holiday controls persist region preferences without writing task or Daily Record data',{skip:process.platform!=='darwin'},()=>{
+  const result=webKit(`
+    calendarHarness.render(sourceFixture.month,sourceFixture.selected);
+    const dateCell=()=>document.querySelector('[data-calendar-date="2026-09-07"].calendar-day');
+    const before={holiday:dateCell().querySelector('.calendar-day-holidays').textContent,visible:!dateCell().querySelector('.calendar-day-holidays').hidden};
+    const unitedStates=document.querySelector('#calendar-holidays-united-states');
+    unitedStates.checked=false;unitedStates.dispatchEvent(new Event('change',{bubbles:true}));
+    const saved=JSON.parse(localStorage.getItem('personal-dashboard.calendar-holidays.v1'));
+    const afterRegionChange={text:dateCell().querySelector('.calendar-day-holidays').textContent,checked:unitedStates.checked};
+    calendarHarness.language('en');
+    const afterLanguageChange={checked:document.querySelector('#calendar-holidays-united-states').checked,stored:JSON.parse(localStorage.getItem('personal-dashboard.calendar-holidays.v1'))};
+    return JSON.stringify({before,saved,afterRegionChange,afterLanguageChange,selected:calendarHarness.selected().date,commands});
+  `,830,758);
+  assert.ok(result.before.holiday.includes('劳动节')&&result.before.visible,JSON.stringify(result.before));
+  assert.deepEqual(result.saved,{enabled:true,china:true,unitedStates:false});
+  assert.deepEqual(result.afterRegionChange,{text:'',checked:false});
+  assert.equal(result.afterLanguageChange.checked,false);
+  assert.deepEqual(result.afterLanguageChange.stored,result.saved);
+  assert.equal(result.selected,'2026-09-09');
+  assert.equal(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)).length,0);
 });

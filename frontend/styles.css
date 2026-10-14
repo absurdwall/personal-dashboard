@@ -3695,7 +3695,8 @@ body {
   background: #fff;
 }
 
-.calendar-day:focus-visible {
+.calendar-day-top:focus-visible,
+.calendar-day-task-summary:focus-visible {
   z-index: 2;
   outline: 2px solid #315d4b;
   outline-offset: -3px;
@@ -3706,6 +3707,15 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .calendar-day-top strong {
@@ -8016,15 +8026,41 @@ body {
 .calendar-day-task-summary {
   display: block;
   min-width: 0;
+  min-height: 12px;
   overflow: hidden;
   padding-left: 0.35rem;
+  padding-right: 0;
   border-left: 2px solid var(--parity-accent);
   color: var(--parity-ink);
   font-size: 0.56rem;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
 }
+
+.calendar-day-task-summary:hover { background: var(--parity-accent-soft); }
+
+.calendar-day-holidays {
+  min-width: 0;
+  height: 12px;
+  overflow: hidden;
+  color: var(--parity-muted);
+  font-size: 9px;
+  line-height: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-day-holidays[hidden] { display: none; }
 
 .calendar-day-task-summary[data-task-state="completed"] {
   border-left-color: var(--parity-accent-strong);
@@ -8108,9 +8144,60 @@ body {
   display: none;
 }
 
-.calendar-task-create-form {
-  margin-top: 1rem;
+.calendar-task-create-dialog { width: min(30rem, calc(100vw - 2rem)); }
+.calendar-task-create-form { display: grid; gap: 0.8rem; margin: 0; }
+.calendar-task-create-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.calendar-task-create-heading h3 { margin: 0; color: var(--parity-ink); font-size: 1rem; }
+.calendar-task-create-heading small { display: block; margin-top: 0.25rem; color: var(--parity-muted); font-size: 0.65rem; }
+.calendar-task-create-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+.calendar-task-create-grid > .task-form-wide { grid-column: 1 / -1; }
+.calendar-task-create-form .task-form-boundary { margin: 0; color: var(--parity-muted); font-size: 0.62rem; }
+.calendar-task-create-status { min-height: 0; margin: 0; color: var(--parity-muted); font-size: 0.65rem; }
+.calendar-task-create-status:empty { display: none; }
+.calendar-task-create-status[data-state="error"] { color: #8a3d31; }
+.calendar-task-create-actions { justify-content: flex-end; flex-wrap: wrap; gap: 0.4rem; }
+.calendar-task-create-actions[hidden] { display: none; }
+
+.calendar-toolbar { position: relative; }
+.calendar-holiday-settings { position: relative; flex: 0 0 auto; }
+.calendar-holiday-settings > summary {
+  min-height: 34px; padding: 6px 9px; border: 1px solid var(--parity-border);
+  border-radius: 6px; background: var(--parity-surface); color: var(--parity-ink);
+  font-size: 0.66rem; cursor: pointer; list-style: none;
 }
+.calendar-holiday-settings > summary::-webkit-details-marker { display: none; }
+.calendar-holiday-settings[open] > summary { border-color: var(--parity-accent); }
+.calendar-holiday-settings-popover {
+  position: absolute; z-index: 25; top: calc(100% + 5px); right: 0; width: min(17rem, calc(100vw - 2rem));
+  display: grid; gap: 0.5rem; padding: 0.7rem; border: 1px solid var(--parity-border);
+  border-radius: 8px; background: var(--parity-surface); color: var(--parity-ink);
+  box-shadow: 0 10px 28px rgb(35 39 36 / 14%); font-size: 0.68rem;
+}
+.calendar-holiday-toggle,
+.calendar-holiday-regions label { display: flex; align-items: center; gap: 0.4rem; }
+.calendar-holiday-toggle input,
+.calendar-holiday-regions input { width: 0.9rem; height: 0.9rem; margin: 0; accent-color: var(--parity-accent); }
+.calendar-holiday-regions { display: grid; gap: 0.35rem; padding-left: 1.25rem; }
+.calendar-holiday-coverage { display: grid; gap: 0.25rem; margin: 0; color: var(--parity-muted); font-size: 0.59rem; line-height: 1.4; }
+.calendar-holiday-coverage small { color: var(--parity-muted); font-size: inherit; }
+.calendar-summary-copy .calendar-holiday-recap { margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid var(--parity-border); }
+.calendar-holiday-recap strong { color: var(--parity-accent-strong); font-size: 0.66rem; }
+.calendar-holiday-recap p { margin: 0.2rem 0 0; color: var(--parity-ink); font-size: 0.68rem; line-height: 1.4; }
+
+.calendar-selected-detail { position: static; }
+.calendar-selected-detail .task-editor-dialog > .task-editor-details[data-task-surface="calendar"] {
+  width: min(420px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: 0.85rem;
+  overflow: auto; border: 1px solid var(--parity-border); border-radius: 12px;
+  background: var(--parity-surface); box-shadow: 0 18px 50px rgb(35 39 36 / 20%);
+}
+.calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-form-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem;
+}
+.calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-form-wide { grid-column: 1 / -1; }
+.calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-editor-footer-actions { display: flex; justify-content: flex-end; gap: 0.45rem; }
+.calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-editor-titlebar { display: flex; align-items: flex-start; gap: 0.5rem; }
+.calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-title-field { flex: 1 1 auto; min-width: 0; }
+.calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-more-menu { flex: 0 0 auto; }
 
 @media (max-width: 680px) {
   .app-shell[data-workspace-destination="calendar"] .calendar-day {
@@ -11067,4 +11154,9 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 
 @media (max-width: 720px) {
   #workspace-destination-collaboration.collaboration-destination { padding-bottom: 0; }
+}
+
+/* Keep the Calendar entry point compact even though it shares the Tasks form shell. */
+.tasks-create-dialog.calendar-task-create-dialog {
+  width: min(30rem, calc(100vw - 2rem));
 }
