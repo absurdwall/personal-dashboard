@@ -9,8 +9,9 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const TASK_SCHEMA_VERSION: u32 = 2;
+pub const TASK_SCHEMA_VERSION: u32 = 3;
 const LEGACY_TASK_SCHEMA_VERSION: u32 = 1;
+const PREVIOUS_TASK_SCHEMA_VERSION: u32 = 2;
 pub const TASK_DOCUMENT_RELATIVE_PATH: &str = "life/.personal-dashboard/tasks/v1/tasks.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -107,6 +108,7 @@ pub enum TaskChangeKind {
     Deleted,
     Undeleted,
     CompletionCorrected,
+    ParentChanged,
     Noop,
 }
 
@@ -157,6 +159,10 @@ pub enum TaskChangeOperation {
         #[serde(rename = "tagIds")]
         tag_ids: Vec<String>,
     },
+    SetParent {
+        #[serde(rename = "parentTaskId")]
+        parent_task_id: Option<String>,
+    },
     SetState {
         state: TaskState,
     },
@@ -189,6 +195,10 @@ pub struct TaskChangeView {
     pub previous_list_id: Option<String>,
     pub new_list_id: Option<String>,
     #[serde(default)]
+    pub previous_parent_task_id: Option<String>,
+    #[serde(default)]
+    pub new_parent_task_id: Option<String>,
+    #[serde(default)]
     pub previous_state: Option<TaskState>,
     #[serde(default)]
     pub new_state: Option<TaskState>,
@@ -211,6 +221,14 @@ pub struct TaskListView {
     pub name: String,
     pub is_system: bool,
     pub archived: bool,
+    pub folder_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskFolderView {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -248,6 +266,7 @@ pub struct TaskView {
     pub time: Option<String>,
     pub execution_end: Option<TaskExecutionEnd>,
     pub list_id: String,
+    pub parent_task_id: Option<String>,
     pub priority: TaskPriority,
     pub tag_ids: Vec<String>,
     pub source: TaskSourceView,
@@ -274,6 +293,7 @@ pub struct TasksView {
     pub vault_path: Option<String>,
     pub current_date: Option<String>,
     pub lists: Vec<TaskListView>,
+    pub folders: Vec<TaskFolderView>,
     pub tags: Vec<TaskTagView>,
     pub tasks: Vec<TaskView>,
 }
@@ -295,11 +315,73 @@ pub struct TaskCreateInput {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TaskCreateSubtaskInput {
+    pub task: TaskCreateInput,
+    pub parent_task_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskParentInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub task_id: String,
+    pub change_id: String,
+    pub parent_task_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskListCreateInput {
     pub target_binding: String,
     pub expected_revision: Option<String>,
     pub list_id: String,
     pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskFolderCreateInput {
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub folder_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskFolderRenameInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub folder_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskFolderDeleteInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub folder_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskListCreateInFolderInput {
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub list_id: String,
+    pub name: String,
+    pub folder_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskListFolderInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub list_id: String,
+    pub folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -617,10 +699,24 @@ where
     }
 
     pub fn create(&self, input: TaskCreateInput) -> Result<TasksView, String> {
+        self.create_with_parent(input, None)
+    }
+
+    pub fn create_subtask(&self, input: TaskCreateSubtaskInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.parent_task_id, "父任务标识")?;
+        self.create_with_parent(input.task, Some(input.parent_task_id))
+    }
+
+    fn create_with_parent(
+        &self,
+        input: TaskCreateInput,
+        parent_task_id: Option<String>,
+    ) -> Result<TasksView, String> {
         let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
         let now = self.clock.current_timestamp_label();
         validate_timestamp_label(&now)?;
-        let desired = task_from_create(&input, &now)?;
+        let mut desired = task_from_create(&input, &now)?;
+        desired.parent_task_id = parent_task_id;
         let bytes = self.store.load(&path)?;
         match bytes {
             Some(bytes) => {
@@ -640,6 +736,12 @@ where
                     );
                 }
                 ensure_active_task_list_exists(&document, &desired.list_id)?;
+                validate_parent_assignment(
+                    &document,
+                    &desired.id,
+                    desired.parent_task_id.as_deref(),
+                    true,
+                )?;
                 require_task_revision(&bytes, input_expected_revision(&input)?, &target_binding)?;
                 document.tasks.push(desired);
                 let updated = encode_task_document(&document)?;
@@ -654,9 +756,15 @@ where
                     schema_version: TASK_SCHEMA_VERSION,
                     lists: vec![inbox_record()],
                     tags: Vec::new(),
+                    folders: Vec::new(),
                     tasks: vec![desired],
                 };
                 ensure_active_task_list_exists(&document, &document.tasks[0].list_id)?;
+                if document.tasks[0].parent_task_id.is_some() {
+                    return Err(
+                        "父任务不存在；不能在空任务正本中创建子任务。未写入任何内容。".into(),
+                    );
+                }
                 let encoded = encode_task_document(&document)?;
                 self.ensure_bound_target_current(&path, &target_binding)?;
                 self.store.create_new(&path, &encoded)?;
@@ -666,7 +774,95 @@ where
         self.read()
     }
 
+    pub fn set_parent(&self, input: TaskParentInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.task_id, "任务标识")?;
+        validate_local_identifier(&input.change_id, "任务修改标识")?;
+        if let Some(parent_id) = input.parent_task_id.as_deref() {
+            validate_local_identifier(parent_id, "父任务标识")?;
+        }
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        let task_index = document
+            .tasks
+            .iter()
+            .position(|task| task.id == input.task_id)
+            .ok_or_else(|| "找不到要更新的任务；未写入任何内容。".to_string())?;
+        if document.tasks[task_index].deleted_at.is_some() {
+            return Err(
+                "已删除任务不会被旧编辑操作重新激活；请先恢复任务。未写入任何内容。".into(),
+            );
+        }
+        let operation = TaskChangeOperation::SetParent {
+            parent_task_id: input.parent_task_id.clone(),
+        };
+        if let Some((prior_index, change)) = find_task_change(&document, &input.change_id) {
+            if document.tasks[prior_index].id == input.task_id
+                && change.kind == TaskChangeKind::ParentChanged
+                && change.operation.as_ref() == Some(&operation)
+                && document.tasks[prior_index].parent_task_id == input.parent_task_id
+            {
+                self.ensure_bound_target_current(&path, &target_binding)?;
+                return self.read();
+            }
+            return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        if document.tasks[task_index].parent_task_id == input.parent_task_id {
+            self.ensure_bound_target_current(&path, &target_binding)?;
+            return self.read();
+        }
+        validate_parent_assignment(
+            &document,
+            &input.task_id,
+            input.parent_task_id.as_deref(),
+            true,
+        )?;
+        require_task_revision(&bytes, &input.expected_revision, &target_binding)?;
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        let previous = document.tasks[task_index].clone();
+        let updated = TaskRecord {
+            parent_task_id: input.parent_task_id.clone(),
+            modified_at: now.clone(),
+            ..previous.clone()
+        };
+        let mut change = task_change(&previous, &updated, input.change_id, now.clone())?;
+        change.operation = Some(operation);
+        document.tasks[task_index] = updated;
+        document.tasks[task_index].changes.push(change);
+        self.save_task_document(&path, &target_binding, &bytes, &document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
     pub fn create_list(&self, input: TaskListCreateInput) -> Result<TasksView, String> {
+        self.create_list_with_folder(input, None)
+    }
+
+    pub fn create_list_in_folder(
+        &self,
+        input: TaskListCreateInFolderInput,
+    ) -> Result<TasksView, String> {
+        let folder_id = input.folder_id;
+        self.create_list_with_folder(
+            TaskListCreateInput {
+                target_binding: input.target_binding,
+                expected_revision: input.expected_revision,
+                list_id: input.list_id,
+                name: input.name,
+            },
+            Some(folder_id),
+        )
+    }
+
+    fn create_list_with_folder(
+        &self,
+        input: TaskListCreateInput,
+        folder_id: Option<String>,
+    ) -> Result<TasksView, String> {
         validate_local_identifier(&input.list_id, "任务列表标识")?;
         let name = normalize_list_name(&input.name)?;
         if input.list_id == "inbox" {
@@ -677,9 +873,14 @@ where
         match bytes {
             Some(bytes) => {
                 let mut document = parse_task_document(&bytes)?;
+                validate_folder_membership(&document, folder_id.as_deref())?;
                 if let Some(existing) = document.lists.iter().find(|list| list.id == input.list_id)
                 {
-                    if !existing.system && existing.name == name && !existing.archived {
+                    if !existing.system
+                        && existing.name == name
+                        && !existing.archived
+                        && existing.folder_id == folder_id
+                    {
                         self.ensure_bound_target_current(&path, &target_binding)?;
                         return self.read();
                     }
@@ -696,6 +897,7 @@ where
                     name,
                     system: false,
                     archived: false,
+                    folder_id: folder_id.clone(),
                 });
                 let updated = encode_task_document(&document)?;
                 self.ensure_bound_target_current(&path, &target_binding)?;
@@ -704,6 +906,9 @@ where
             None => {
                 if input.expected_revision.is_some() {
                     return Err("任务正本已不存在。请刷新 Tasks 后重试；未创建替代数据。".into());
+                }
+                if folder_id.is_some() {
+                    return Err("目标文件夹已不存在；请刷新 Tasks 后重试。未写入任何内容。".into());
                 }
                 let document = TaskDocument {
                     schema_version: TASK_SCHEMA_VERSION,
@@ -714,9 +919,11 @@ where
                             name,
                             system: false,
                             archived: false,
+                            folder_id: None,
                         },
                     ],
                     tags: Vec::new(),
+                    folders: Vec::new(),
                     tasks: Vec::new(),
                 };
                 let encoded = encode_task_document(&document)?;
@@ -726,6 +933,153 @@ where
         }
         self.ensure_bound_target_current(&path, &target_binding)?;
         self.read()
+    }
+
+    pub fn create_folder(&self, input: TaskFolderCreateInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.folder_id, "清单文件夹标识")?;
+        let name = normalize_list_name(&input.name)?;
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        match self.store.load(&path)? {
+            Some(bytes) => {
+                let mut document = parse_task_document(&bytes)?;
+                if let Some(existing) = document
+                    .folders
+                    .iter()
+                    .find(|folder| folder.id == input.folder_id)
+                {
+                    if existing.name == name {
+                        self.ensure_bound_target_current(&path, &target_binding)?;
+                        return self.read();
+                    }
+                    return Err(
+                        "该文件夹标识已用于其他文件夹；请使用新的稳定身份。未写入任何内容。".into(),
+                    );
+                }
+                require_task_revision(
+                    &bytes,
+                    input.expected_revision.as_deref().ok_or_else(|| {
+                        "任务正本已经存在。请刷新 Tasks 后重试；未写入任何内容。".to_string()
+                    })?,
+                    &target_binding,
+                )?;
+                document.folders.push(TaskFolderRecord {
+                    id: input.folder_id,
+                    name,
+                });
+                self.save_task_document(&path, &target_binding, &bytes, &document)?;
+            }
+            None => {
+                if input.expected_revision.is_some() {
+                    return Err("任务正本已不存在。请刷新 Tasks 后重试；未创建替代数据。".into());
+                }
+                let document = TaskDocument {
+                    schema_version: TASK_SCHEMA_VERSION,
+                    lists: vec![inbox_record()],
+                    tags: Vec::new(),
+                    folders: vec![TaskFolderRecord {
+                        id: input.folder_id,
+                        name,
+                    }],
+                    tasks: Vec::new(),
+                };
+                let encoded = encode_task_document(&document)?;
+                self.ensure_bound_target_current(&path, &target_binding)?;
+                self.store.create_new(&path, &encoded)?;
+            }
+        }
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn rename_folder(&self, input: TaskFolderRenameInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.folder_id, "清单文件夹标识")?;
+        let name = normalize_list_name(&input.name)?;
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        let index = document
+            .folders
+            .iter()
+            .position(|folder| folder.id == input.folder_id)
+            .ok_or_else(|| "找不到要改名的清单文件夹；未写入任何内容。".to_string())?;
+        if document.folders[index].name == name {
+            self.ensure_bound_target_current(&path, &target_binding)?;
+            return self.read();
+        }
+        require_task_revision(&bytes, &input.expected_revision, &target_binding)?;
+        document.folders[index].name = name;
+        self.save_task_document(&path, &target_binding, &bytes, &document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn delete_folder(&self, input: TaskFolderDeleteInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.folder_id, "清单文件夹标识")?;
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        let index = document
+            .folders
+            .iter()
+            .position(|folder| folder.id == input.folder_id)
+            .ok_or_else(|| "找不到要删除的清单文件夹；未写入任何内容。".to_string())?;
+        require_task_revision(&bytes, &input.expected_revision, &target_binding)?;
+        document.folders.remove(index);
+        for list in &mut document.lists {
+            if list.folder_id.as_deref() == Some(input.folder_id.as_str()) {
+                list.folder_id = None;
+            }
+        }
+        self.save_task_document(&path, &target_binding, &bytes, &document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn set_list_folder(&self, input: TaskListFolderInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.list_id, "任务列表标识")?;
+        if let Some(folder_id) = input.folder_id.as_deref() {
+            validate_local_identifier(folder_id, "清单文件夹标识")?;
+        }
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        validate_folder_membership(&document, input.folder_id.as_deref())?;
+        let index = task_list_index(&document, &input.list_id)
+            .ok_or_else(|| "找不到要移动的清单；未写入任何内容。".to_string())?;
+        if document.lists[index].system {
+            return Err("Inbox 是永久清单；不能归入文件夹。未写入任何内容。".into());
+        }
+        if document.lists[index].folder_id == input.folder_id {
+            self.ensure_bound_target_current(&path, &target_binding)?;
+            return self.read();
+        }
+        require_task_revision(&bytes, &input.expected_revision, &target_binding)?;
+        document.lists[index].folder_id = input.folder_id;
+        self.save_task_document(&path, &target_binding, &bytes, &document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    fn save_task_document(
+        &self,
+        path: &Path,
+        target_binding: &str,
+        previous: &[u8],
+        document: &TaskDocument,
+    ) -> Result<(), String> {
+        let updated = encode_task_document(document)?;
+        self.ensure_bound_target_current(path, target_binding)?;
+        self.store.save_if_unchanged(path, previous, &updated)?;
+        Ok(())
     }
 
     pub fn rename_list(&self, input: TaskListRenameInput) -> Result<TasksView, String> {
@@ -781,7 +1135,10 @@ where
             "任务正本已经存在。请刷新 Tasks 后重试；现有任务未被覆盖。".to_string()
         })?;
         require_task_revision(&bytes, expected, &target_binding)?;
-        document.tags.push(TaskTagRecord { id: input.tag_id, name });
+        document.tags.push(TaskTagRecord {
+            id: input.tag_id,
+            name,
+        });
         let updated = encode_task_document(&document)?;
         self.ensure_bound_target_current(&path, &target_binding)?;
         self.store.save_if_unchanged(&path, &bytes, &updated)?;
@@ -793,9 +1150,10 @@ where
         validate_local_identifier(&input.tag_id, "任务标签标识")?;
         let name = normalize_task_tag_name(&input.name)?;
         let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
-        let bytes = self.store.load(&path)?.ok_or_else(|| {
-            "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string()
-        })?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
         let mut document = parse_task_document(&bytes)?;
         let tag_index = document
             .tags
@@ -823,9 +1181,10 @@ where
     pub fn delete_tag(&self, input: TaskTagDeleteInput) -> Result<TasksView, String> {
         validate_local_identifier(&input.tag_id, "任务标签标识")?;
         let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
-        let bytes = self.store.load(&path)?.ok_or_else(|| {
-            "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string()
-        })?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
         let mut document = parse_task_document(&bytes)?;
         let tag_index = document
             .tags
@@ -926,6 +1285,7 @@ where
         if let Some(current) = document.tasks.iter().find(|task| task.id == input.task_id) {
             desired.priority = current.priority;
             desired.tag_ids = current.tag_ids.clone();
+            desired.parent_task_id = current.parent_task_id.clone();
         }
         let has_properties = properties.is_some();
         if let Some((priority, tag_ids)) = properties {
@@ -1363,6 +1723,7 @@ where
                         schema_version: TASK_SCHEMA_VERSION,
                         lists: vec![inbox_record()],
                         tags: Vec::new(),
+                        folders: Vec::new(),
                         tasks: Vec::new(),
                     },
                     None,
@@ -1462,6 +1823,8 @@ struct TaskDocument {
     lists: Vec<TaskListRecord>,
     #[serde(default)]
     tags: Vec<TaskTagRecord>,
+    #[serde(default)]
+    folders: Vec<TaskFolderRecord>,
     tasks: Vec<TaskRecord>,
 }
 
@@ -1472,6 +1835,15 @@ struct TaskListRecord {
     name: String,
     system: bool,
     archived: bool,
+    #[serde(default)]
+    folder_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TaskFolderRecord {
+    id: String,
+    name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -1492,6 +1864,8 @@ struct TaskRecord {
     #[serde(default)]
     execution_end: Option<TaskExecutionEnd>,
     list_id: String,
+    #[serde(default)]
+    parent_task_id: Option<String>,
     #[serde(default)]
     priority: TaskPriority,
     #[serde(default)]
@@ -1520,6 +1894,7 @@ impl TasksView {
             vault_path: None,
             current_date: None,
             lists: Vec::new(),
+            folders: Vec::new(),
             tags: Vec::new(),
             tasks: Vec::new(),
         }
@@ -1537,6 +1912,7 @@ impl TasksView {
             vault_path: vault.map(|path| path.to_string_lossy().into_owned()),
             current_date: None,
             lists: vec![task_list_view(inbox_record())],
+            folders: Vec::new(),
             tags: Vec::new(),
             tasks: Vec::new(),
         }
@@ -1559,6 +1935,7 @@ impl TasksView {
             vault_path: vault.map(|path| path.to_string_lossy().into_owned()),
             current_date: None,
             lists: Vec::new(),
+            folders: Vec::new(),
             tags: Vec::new(),
             tasks: Vec::new(),
         }
@@ -1600,6 +1977,7 @@ fn inbox_record() -> TaskListRecord {
         name: "Inbox".into(),
         system: true,
         archived: false,
+        folder_id: None,
     }
 }
 
@@ -1609,6 +1987,7 @@ fn task_list_view(list: TaskListRecord) -> TaskListView {
         name: list.name,
         is_system: list.system,
         archived: list.archived,
+        folder_id: list.folder_id,
     }
 }
 
@@ -1621,6 +2000,7 @@ fn task_view_at(task: &TaskRecord, current_date: &str, current_time: &str) -> Ta
         time: task.time.clone(),
         execution_end: task.execution_end.clone(),
         list_id: task.list_id.clone(),
+        parent_task_id: task.parent_task_id.clone(),
         priority: task.priority,
         tag_ids: task.tag_ids.clone(),
         source: task.source.clone(),
@@ -1656,10 +2036,21 @@ fn tasks_view(
         vault_path: vault.map(|path| path.to_string_lossy().into_owned()),
         current_date: Some(current_date.to_owned()),
         lists: document.lists.into_iter().map(task_list_view).collect(),
+        folders: document
+            .folders
+            .into_iter()
+            .map(|folder| TaskFolderView {
+                id: folder.id,
+                name: folder.name,
+            })
+            .collect(),
         tags: document
             .tags
             .into_iter()
-            .map(|tag| TaskTagView { id: tag.id, name: tag.name })
+            .map(|tag| TaskTagView {
+                id: tag.id,
+                name: tag.name,
+            })
             .collect(),
         tasks: document
             .tasks
@@ -1734,7 +2125,10 @@ fn normalize_task_tag_name(value: &str) -> Result<String, String> {
     Ok(name.into())
 }
 
-fn normalize_task_tag_ids(document: &TaskDocument, values: &[String]) -> Result<Vec<String>, String> {
+fn normalize_task_tag_ids(
+    document: &TaskDocument,
+    values: &[String],
+) -> Result<Vec<String>, String> {
     let known = document
         .tags
         .iter()
@@ -1881,6 +2275,7 @@ fn task_from_draft(draft: TaskRecordDraft<'_>) -> Result<TaskRecord, String> {
         time,
         execution_end: None,
         list_id,
+        parent_task_id: None,
         priority: TaskPriority::default(),
         tag_ids: Vec::new(),
         source: TaskSourceView {
@@ -2206,6 +2601,7 @@ fn task_from_update(input: &TaskUpdateInput, current_list_id: &str) -> Result<Ta
         time,
         execution_end: None,
         list_id,
+        parent_task_id: None,
         priority: TaskPriority::default(),
         tag_ids: Vec::new(),
         source: TaskSourceView {
@@ -2229,6 +2625,7 @@ fn task_matches(left: &TaskRecord, right: &TaskRecord) -> bool {
         && left.time == right.time
         && left.execution_end == right.execution_end
         && left.list_id == right.list_id
+        && left.parent_task_id == right.parent_task_id
         && left.priority == right.priority
         && left.tag_ids == right.tag_ids
 }
@@ -2335,9 +2732,12 @@ fn reschedule_operation_matches(
         date: recorded_date,
         time: recorded_time,
         execution_end: recorded_end,
-    }) = change.operation.as_ref() {
-        return matches!(change.kind, TaskChangeKind::Rescheduled | TaskChangeKind::Noop)
-            && recorded_date == date
+    }) = change.operation.as_ref()
+    {
+        return matches!(
+            change.kind,
+            TaskChangeKind::Rescheduled | TaskChangeKind::Noop
+        ) && recorded_date == date
             && recorded_time == time
             && recorded_end == execution_end;
     }
@@ -2414,6 +2814,8 @@ fn task_lifecycle_change(
         new_execution_end: None,
         previous_list_id: None,
         new_list_id: None,
+        previous_parent_task_id: None,
+        new_parent_task_id: None,
         previous_state: Some(previous.state),
         new_state: Some(updated.state),
         previous_deleted_at: previous.deleted_at.clone(),
@@ -2447,6 +2849,8 @@ fn task_noop_change(
         new_execution_end: None,
         previous_list_id: None,
         new_list_id: None,
+        previous_parent_task_id: None,
+        new_parent_task_id: None,
         previous_state: None,
         new_state: None,
         previous_deleted_at: None,
@@ -2507,6 +2911,50 @@ fn ensure_active_task_list_exists(document: &TaskDocument, list_id: &str) -> Res
     Ok(())
 }
 
+fn validate_folder_membership(
+    document: &TaskDocument,
+    folder_id: Option<&str>,
+) -> Result<(), String> {
+    if let Some(folder_id) = folder_id {
+        validate_local_identifier(folder_id, "清单文件夹标识")?;
+        if !document.folders.iter().any(|folder| folder.id == folder_id) {
+            return Err("目标清单文件夹不存在；未写入任何内容。".into());
+        }
+    }
+    Ok(())
+}
+
+fn validate_parent_assignment(
+    document: &TaskDocument,
+    task_id: &str,
+    parent_task_id: Option<&str>,
+    require_active_parent: bool,
+) -> Result<(), String> {
+    let Some(parent_task_id) = parent_task_id else {
+        return Ok(());
+    };
+    validate_local_identifier(parent_task_id, "父任务标识")?;
+    if parent_task_id == task_id {
+        return Err("任务不能以自身为父任务；未写入任何内容。".into());
+    }
+    let mut next = Some(parent_task_id);
+    while let Some(id) = next {
+        if id == task_id {
+            return Err("该关联会形成父子循环；未写入任何内容。".into());
+        }
+        let parent = document
+            .tasks
+            .iter()
+            .find(|candidate| candidate.id == id)
+            .ok_or_else(|| "父任务不存在于当前 Vault；未写入任何内容。".to_string())?;
+        if id == parent_task_id && require_active_parent && parent.deleted_at.is_some() {
+            return Err("已删除任务不能作为新的父任务；未写入任何内容。".into());
+        }
+        next = parent.parent_task_id.as_deref();
+    }
+    Ok(())
+}
+
 fn task_list_index(document: &TaskDocument, list_id: &str) -> Option<usize> {
     document.lists.iter().position(|list| list.id == list_id)
 }
@@ -2539,6 +2987,7 @@ fn task_change_with_source(
         || previous.time != updated.time
         || previous.execution_end != updated.execution_end;
     let list_changed = previous.list_id != updated.list_id;
+    let parent_changed = previous.parent_task_id != updated.parent_task_id;
     let priority_changed = previous.priority != updated.priority;
     let tags_changed = previous.tag_ids != updated.tag_ids;
     let changed_fields = [
@@ -2546,27 +2995,30 @@ fn task_change_with_source(
         content_changed,
         schedule_changed,
         list_changed,
+        parent_changed,
         priority_changed,
         tags_changed,
     ]
     .into_iter()
     .filter(|changed| *changed)
     .count();
-    let kind = if priority_changed || tags_changed {
+    let kind = if parent_changed && changed_fields == 1 {
+        TaskChangeKind::ParentChanged
+    } else if priority_changed || tags_changed {
         TaskChangeKind::Edited
     } else {
         match (
-        name_changed,
-        content_changed,
-        schedule_changed,
-        list_changed,
+            name_changed,
+            content_changed,
+            schedule_changed,
+            list_changed,
         ) {
-        (true, false, false, false) => TaskChangeKind::Renamed,
-        (false, true, false, false) => TaskChangeKind::ContentEdited,
-        (false, false, true, false) => TaskChangeKind::Rescheduled,
-        (false, false, false, true) => TaskChangeKind::ListMoved,
-        _ if changed_fields > 0 => TaskChangeKind::Edited,
-        _ => return Err("任务没有可保存的变化。".into()),
+            (true, false, false, false) => TaskChangeKind::Renamed,
+            (false, true, false, false) => TaskChangeKind::ContentEdited,
+            (false, false, true, false) => TaskChangeKind::Rescheduled,
+            (false, false, false, true) => TaskChangeKind::ListMoved,
+            _ if changed_fields > 0 => TaskChangeKind::Edited,
+            _ => return Err("任务没有可保存的变化。".into()),
         }
     };
     Ok(TaskChangeView {
@@ -2590,6 +3042,12 @@ fn task_change_with_source(
             .flatten(),
         previous_list_id: list_changed.then(|| previous.list_id.clone()),
         new_list_id: list_changed.then(|| updated.list_id.clone()),
+        previous_parent_task_id: (previous.parent_task_id != updated.parent_task_id)
+            .then(|| previous.parent_task_id.clone())
+            .flatten(),
+        new_parent_task_id: (previous.parent_task_id != updated.parent_task_id)
+            .then(|| updated.parent_task_id.clone())
+            .flatten(),
         previous_state: None,
         new_state: None,
         previous_deleted_at: None,
@@ -2626,6 +3084,9 @@ fn parse_task_document(bytes: &[u8]) -> Result<TaskDocument, String> {
         LEGACY_TASK_SCHEMA_VERSION => {
             document.schema_version = TASK_SCHEMA_VERSION;
         }
+        PREVIOUS_TASK_SCHEMA_VERSION => {
+            document.schema_version = TASK_SCHEMA_VERSION;
+        }
         TASK_SCHEMA_VERSION => {}
         version => {
             return Err(format!(
@@ -2654,6 +3115,25 @@ fn parse_task_document(bytes: &[u8]) -> Result<TaskDocument, String> {
     if !inbox {
         return Err("任务正本缺少 Inbox 列表。".into());
     }
+    let mut folder_ids = HashSet::new();
+    for folder in &document.folders {
+        validate_local_identifier(&folder.id, "清单文件夹标识")?;
+        normalize_list_name(&folder.name)?;
+        if !folder_ids.insert(folder.id.clone()) {
+            return Err("任务正本包含重复清单文件夹标识。".into());
+        }
+    }
+    for list in &document.lists {
+        if list.system && list.folder_id.is_some() {
+            return Err("Inbox 不能归入清单文件夹。".into());
+        }
+        if let Some(folder_id) = list.folder_id.as_deref() {
+            validate_local_identifier(folder_id, "清单文件夹标识")?;
+            if !folder_ids.contains(folder_id) {
+                return Err("任务正本包含不存在的清单文件夹归属。".into());
+            }
+        }
+    }
     let mut tag_ids = HashSet::new();
     let mut tag_names = HashSet::new();
     for tag in &document.tags {
@@ -2677,6 +3157,21 @@ fn parse_task_document(bytes: &[u8]) -> Result<TaskDocument, String> {
             && !daily_flow_references.insert(task.source.reference.clone())
         {
             return Err("任务正本包含重复的 daily-flow 来源标识。".into());
+        }
+    }
+    for task in &document.tasks {
+        let mut visited = HashSet::from([task.id.as_str()]);
+        let mut parent_id = task.parent_task_id.as_deref();
+        while let Some(id) = parent_id {
+            if !visited.insert(id) {
+                return Err("任务正本包含循环的父子关系。".into());
+            }
+            let parent = document
+                .tasks
+                .iter()
+                .find(|candidate| candidate.id == id)
+                .ok_or_else(|| "任务正本包含不存在的父任务关联。".to_string())?;
+            parent_id = parent.parent_task_id.as_deref();
         }
     }
     Ok(document)
@@ -2706,6 +3201,9 @@ fn validate_task_record(
     }
     if !list_ids.contains(&task.list_id) {
         return Err("任务正本包含不存在的任务列表归属。".into());
+    }
+    if let Some(parent_task_id) = task.parent_task_id.as_deref() {
+        validate_local_identifier(parent_task_id, "父任务标识")?;
     }
     let mut assigned_tags = HashSet::new();
     for tag_id in &task.tag_ids {
@@ -2823,6 +3321,8 @@ fn validate_change(change: &TaskChangeView) -> Result<(), String> {
         || change.new_execution_end.is_some()
         || change.previous_list_id.is_some()
         || change.new_list_id.is_some()
+        || change.previous_parent_task_id.is_some()
+        || change.new_parent_task_id.is_some()
         || change.previous_state.is_some()
         || change.new_state.is_some()
         || change.previous_deleted_at.is_some()
@@ -2856,7 +3356,9 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
         || change.previous_execution_end.is_some()
         || change.new_execution_end.is_some()
         || change.previous_list_id.is_some()
-        || change.new_list_id.is_some();
+        || change.new_list_id.is_some()
+        || change.previous_parent_task_id.is_some()
+        || change.new_parent_task_id.is_some();
     match change.kind {
         TaskChangeKind::Completed => {
             if has_field_change
@@ -2948,6 +3450,42 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                 return Err("任务完成更正记录的前后状态或完成证据无效。".into());
             }
         }
+        TaskChangeKind::ParentChanged => {
+            let has_other_fields = change.previous_name.is_some()
+                || change.new_name.is_some()
+                || change.previous_content.is_some()
+                || change.new_content.is_some()
+                || change.previous_date.is_some()
+                || change.new_date.is_some()
+                || change.previous_time.is_some()
+                || change.new_time.is_some()
+                || change.previous_execution_end.is_some()
+                || change.new_execution_end.is_some()
+                || change.previous_list_id.is_some()
+                || change.new_list_id.is_some();
+            if has_other_fields
+                || change.previous_state.is_some()
+                || change.new_state.is_some()
+                || change.previous_deleted_at.is_some()
+                || change.new_deleted_at.is_some()
+                || change.previous_completion.is_some()
+                || change.new_completion.is_some()
+                || change.source != TaskChangeSourceKind::User
+                || !matches!(
+                    change.operation.as_ref(),
+                    Some(TaskChangeOperation::SetParent { parent_task_id })
+                        if parent_task_id == &change.new_parent_task_id
+                )
+            {
+                return Err("任务父子关系修改记录无效。".into());
+            }
+            if let Some(parent_id) = change.previous_parent_task_id.as_deref() {
+                validate_local_identifier(parent_id, "父任务标识")?;
+            }
+            if let Some(parent_id) = change.new_parent_task_id.as_deref() {
+                validate_local_identifier(parent_id, "父任务标识")?;
+            }
+        }
         TaskChangeKind::Noop => {
             if change.source != TaskChangeSourceKind::DailyFlow
                 || has_field_change
@@ -2974,6 +3512,9 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                     )?;
                 }
                 Some(TaskChangeOperation::SetState { .. }) => {}
+                Some(TaskChangeOperation::SetParent { .. }) => {
+                    return Err("任务无变化操作记录不能携带父子关系变更。".into());
+                }
                 Some(TaskChangeOperation::CorrectCompletion {
                     completed_on,
                     completed_time,
@@ -3005,13 +3546,15 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                 || change.new_deleted_at.is_some()
                 || change.previous_completion.is_some()
                 || change.new_completion.is_some()
-                || (change.operation.is_some() && !manual_update_history_matches(change)? && !matches!(change.operation.as_ref(),
-                    Some(TaskChangeOperation::Reschedule { date, time, execution_end })
-                    if change.kind == TaskChangeKind::Rescheduled
-                        && change.source == TaskChangeSourceKind::DailyFlow
-                        && date == &change.new_date && time == &change.new_time
-                        && execution_end.as_ref().is_none_or(|end| end == &change.new_execution_end)
-                ))
+                || (change.operation.is_some()
+                    && !manual_update_history_matches(change)?
+                    && !matches!(change.operation.as_ref(),
+                        Some(TaskChangeOperation::Reschedule { date, time, execution_end })
+                        if change.kind == TaskChangeKind::Rescheduled
+                            && change.source == TaskChangeSourceKind::DailyFlow
+                            && date == &change.new_date && time == &change.new_time
+                            && execution_end.as_ref().is_none_or(|end| end == &change.new_execution_end)
+                    ))
             {
                 return Err("任务字段变更记录不能携带状态或完成生命周期字段。".into());
             }
@@ -3023,10 +3566,22 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
 fn manual_update_history_matches(change: &TaskChangeView) -> Result<bool, String> {
     let (name, content, date, time, list_id, execution_end) = match change.operation.as_ref() {
         Some(TaskChangeOperation::ManualUpdate {
-            name, content, date, time, list_id, execution_end,
+            name,
+            content,
+            date,
+            time,
+            list_id,
+            execution_end,
         }) => (name, content, date, time, list_id, execution_end),
         Some(TaskChangeOperation::ManualUpdateWithProperties {
-            name, content, date, time, list_id, execution_end, priority: _, tag_ids,
+            name,
+            content,
+            date,
+            time,
+            list_id,
+            execution_end,
+            priority: _,
+            tag_ids,
         }) => {
             let mut unique = HashSet::new();
             for tag_id in tag_ids {

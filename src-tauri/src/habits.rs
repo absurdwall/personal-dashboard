@@ -7,9 +7,175 @@ use std::path::Path;
 pub const SNAPSHOT_RELATIVE_PATH: &str = "life/.personal-dashboard/derived/habits-v1.json";
 pub const LEGACY_SNAPSHOT_RELATIVE_PATH: &str = ".personal-dashboard/derived/habits-v1.json";
 pub const HABIT_NAMES_RELATIVE_PATH: &str = "life/.personal-dashboard/habit-names/v1/names.json";
+pub const HABIT_DEFINITIONS_RELATIVE_PATH: &str = "life/.personal-dashboard/habits/v1/catalog.json";
 const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const HABIT_NAMES_SCHEMA_VERSION: u32 = 1;
+const HABIT_DEFINITIONS_SCHEMA_VERSION: u32 = 1;
 const HISTORY_WEEKS: i64 = 12;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum LocalHabitGoal {
+    DailyCount,
+    WeeklyCount {
+        days: u8,
+    },
+    DailyTime {
+        standard: String,
+        day_relation: DayRelation,
+    },
+}
+
+impl LocalHabitGoal {
+    pub fn label(&self) -> String {
+        match self {
+            Self::DailyCount => "每日完成".into(),
+            Self::WeeklyCount { days } => format!("每周 {days} 天"),
+            Self::DailyTime {
+                standard,
+                day_relation,
+            } => match day_relation {
+                DayRelation::SameDay => format!("每日 {standard}"),
+                DayRelation::NextDay => format!("每日 次日 {standard}"),
+                DayRelation::Unresolved => format!("每日 {standard} · 日期归属待解释"),
+            },
+        }
+    }
+
+    pub fn kind_label(&self) -> &'static str {
+        match self {
+            Self::DailyCount => "daily-count",
+            Self::WeeklyCount { .. } => "weekly-count",
+            Self::DailyTime { .. } => "daily-time",
+        }
+    }
+
+    pub fn allows_completion(&self) -> bool {
+        matches!(self, Self::DailyCount | Self::WeeklyCount { .. })
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::DailyCount => Ok(()),
+            Self::WeeklyCount { days } if (1..=7).contains(days) => Ok(()),
+            Self::WeeklyCount { .. } => Err("每周目标必须是 1 至 7 个不同达标日。".into()),
+            Self::DailyTime { standard, .. } if valid_time(standard) => Ok(()),
+            Self::DailyTime { .. } => Err("每日目标时刻必须使用 HH:mm。".into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalHabitGoalHistory {
+    pub week_of: String,
+    pub label: String,
+    pub goal: LocalHabitGoal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalHabitRevisionDisposition {
+    Scheduled,
+    Superseded,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalHabitGoalRevision {
+    pub id: String,
+    pub goal: Option<LocalHabitGoal>,
+    pub effective_on: String,
+    pub changed_at: String,
+    pub disposition: LocalHabitRevisionDisposition,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalHabitDefinition {
+    pub key: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub name_override: bool,
+    pub emoji: Option<String>,
+    pub group: Option<String>,
+    pub start_date: Option<String>,
+    pub created_locally: bool,
+    pub base_goal: Option<LocalHabitGoal>,
+    pub source_goal_history: Vec<LocalHabitGoalHistory>,
+    pub goal_revisions: Vec<LocalHabitGoalRevision>,
+}
+
+impl LocalHabitDefinition {
+    pub fn goal_on(&self, date: &str) -> Option<LocalHabitGoal> {
+        let current_revision = self
+            .goal_revisions
+            .iter()
+            .filter(|revision| {
+                revision.disposition == LocalHabitRevisionDisposition::Scheduled
+                    && revision.effective_on.as_str() <= date
+            })
+            .max_by(|left, right| {
+                left.effective_on
+                    .cmp(&right.effective_on)
+                    .then_with(|| left.changed_at.cmp(&right.changed_at))
+            });
+        current_revision
+            .map(|revision| revision.goal.clone())
+            .unwrap_or_else(|| self.base_goal.clone())
+    }
+
+    pub fn pending_goal(&self, date: &str) -> Option<&LocalHabitGoalRevision> {
+        self.goal_revisions
+            .iter()
+            .filter(|revision| {
+                revision.disposition == LocalHabitRevisionDisposition::Scheduled
+                    && revision.effective_on.as_str() > date
+            })
+            .min_by(|left, right| {
+                left.effective_on
+                    .cmp(&right.effective_on)
+                    .then_with(|| left.changed_at.cmp(&right.changed_at))
+            })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalHabitOperationReceipt {
+    pub id: String,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalHabitDefinitionsDocument {
+    pub schema_version: u32,
+    pub habits: Vec<LocalHabitDefinition>,
+    pub operations: Vec<LocalHabitOperationReceipt>,
+}
+
+impl Default for LocalHabitDefinitionsDocument {
+    fn default() -> Self {
+        Self {
+            schema_version: HABIT_DEFINITIONS_SCHEMA_VERSION,
+            habits: Vec::new(),
+            operations: Vec::new(),
+        }
+    }
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalHabitSource {
+    pub name: String,
+    pub goal: Option<LocalHabitGoal>,
+    pub goal_history: Vec<LocalHabitGoalHistory>,
+}
 
 // Snapshot v1 retains this verified association in the existing source label.
 // Keep its encoder and readers together without changing the persisted schema.
@@ -75,6 +241,153 @@ impl HabitNamesConfiguration {
     fn names_for(&self, key: &str) -> HabitLocalizedNames {
         self.names.get(key).cloned().unwrap_or_default()
     }
+}
+
+pub fn parse_local_habit_definitions(
+    bytes: &[u8],
+    current_timestamp: &str,
+) -> Result<LocalHabitDefinitionsDocument, String> {
+    let document: LocalHabitDefinitionsDocument = serde_json::from_slice(bytes)
+        .map_err(|error| format!("本地 Habit catalog 不是有效的 schema v1 JSON：{error}"))?;
+    if document.schema_version != HABIT_DEFINITIONS_SCHEMA_VERSION {
+        return Err(format!(
+            "本地 Habit catalog schemaVersion {} 不受支持；当前只读取版本 1。",
+            document.schema_version
+        ));
+    }
+    let now = timestamp_epoch_seconds(current_timestamp)
+        .ok_or_else(|| "当前本地时间缺少有效 UTC offset。".to_string())?;
+    let mut keys = HashSet::new();
+    let mut revision_ids = HashSet::new();
+    for habit in &document.habits {
+        validate_key(&habit.key, "local Habit key")?;
+        if !keys.insert(habit.key.as_str()) {
+            return Err(format!(
+                "本地 Habit catalog 有重复稳定 key：{}。",
+                habit.key
+            ));
+        }
+        validate_text(&habit.name, "local Habit name")?;
+        if habit.name.trim().chars().count() > 80 {
+            return Err("本地 Habit 名称不能超过 80 个字符。".into());
+        }
+        if let Some(emoji) = habit.emoji.as_deref() {
+            let trimmed = emoji.trim();
+            if trimmed.is_empty()
+                || trimmed.chars().count() > 8
+                || trimmed.chars().any(char::is_control)
+            {
+                return Err("Habit emoji 只能是一个简短、非空的图标。".into());
+            }
+        }
+        if let Some(group) = habit.group.as_deref() {
+            if group.trim().is_empty() || group.trim().chars().count() > 48 {
+                return Err("Habit 分组名称必须是 1 至 48 个字符。".into());
+            }
+        }
+        if habit
+            .start_date
+            .as_deref()
+            .is_some_and(|date| CalendarDate::parse(date).is_none())
+        {
+            return Err(format!("Habit {} 的开始日期无效。", habit.key));
+        }
+        if let Some(goal) = &habit.base_goal {
+            goal.validate()?;
+        }
+        let mut source_weeks = HashSet::new();
+        for context in &habit.source_goal_history {
+            let week = CalendarDate::parse(&context.week_of)
+                .ok_or_else(|| format!("Habit {} 的历史目标周日期无效。", habit.key))?;
+            if week.monday() != week || !source_weeks.insert(context.week_of.as_str()) {
+                return Err(format!(
+                    "Habit {} 的历史目标周必须唯一且从周一开始。",
+                    habit.key
+                ));
+            }
+            validate_text(&context.label, "local Habit historical goal label")?;
+            context.goal.validate()?;
+        }
+        for revision in &habit.goal_revisions {
+            validate_local_id(&revision.id, "Habit goal revision id")?;
+            if !revision_ids.insert(revision.id.as_str()) {
+                return Err(format!(
+                    "本地 Habit catalog 有重复目标修订 id：{}。",
+                    revision.id
+                ));
+            }
+            if let Some(goal) = &revision.goal {
+                goal.validate()?;
+            }
+            if CalendarDate::parse(&revision.effective_on).is_none() {
+                return Err(format!("Habit {} 有无效的目标生效日期。", habit.key));
+            }
+            let changed_at = timestamp_epoch_seconds(&revision.changed_at)
+                .ok_or_else(|| format!("Habit {} 的目标修订时间缺少 UTC offset。", habit.key))?;
+            if changed_at > now {
+                return Err(format!("Habit {} 的目标修订时间晚于当前时间。", habit.key));
+            }
+        }
+    }
+    let mut operation_ids = HashSet::new();
+    for operation in &document.operations {
+        validate_local_id(&operation.id, "Habit operation id")?;
+        if !operation_ids.insert(operation.id.as_str()) {
+            return Err(format!(
+                "本地 Habit catalog 有重复操作 id：{}。",
+                operation.id
+            ));
+        }
+        if operation.fingerprint.len() != 16
+            || !operation
+                .fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err("本地 Habit catalog 的操作收据指纹无效。".into());
+        }
+    }
+    Ok(document)
+}
+
+fn validate_local_id(value: &str, label: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 96
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(format!("{label}格式无效。"));
+    }
+    Ok(())
+}
+
+pub fn local_habit_source(
+    snapshot: &[u8],
+    key: &str,
+    today: &str,
+    local_date: &str,
+) -> Result<Option<LocalHabitSource>, String> {
+    let snapshot = parse_and_validate_at_local_date(snapshot, today, local_date)?;
+    Ok(snapshot
+        .habits
+        .iter()
+        .find(|habit| habit.key == key)
+        .map(|habit| LocalHabitSource {
+            name: habit.name.clone(),
+            goal: snapshot_local_goal(habit),
+            goal_history: habit
+                .goal_history
+                .iter()
+                .filter_map(|context| {
+                    Some(LocalHabitGoalHistory {
+                        week_of: context.week_of.clone(),
+                        label: context.label.clone(),
+                        goal: snapshot_goal(&context.goal)?,
+                    })
+                })
+                .collect(),
+        }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -241,11 +554,22 @@ pub struct HabitView {
     pub key: String,
     pub name: String,
     pub localized_names: HabitLocalizedNames,
+    pub is_local_definition: bool,
+    pub local_name_override: bool,
+    pub created_locally: bool,
+    pub emoji: Option<String>,
+    pub group: Option<String>,
+    pub start_date: Option<String>,
+    pub current_goal: Option<LocalHabitGoal>,
+    pub pending_goal: Option<LocalHabitGoal>,
+    pub pending_goal_label: Option<String>,
     pub active: bool,
     pub goal_kind: String,
     pub goal_label: String,
     pub weekly_target: Option<u32>,
     pub completed_count: Option<u32>,
+    pub weekly_period_start: Option<String>,
+    pub weekly_period_partial: bool,
     pub can_record_completion: bool,
     pub source_labels: Vec<String>,
     pub coverage_label: String,
@@ -268,6 +592,7 @@ pub struct HabitSummaryView {
     pub target_completions: u32,
     pub coverage_note: String,
     pub excluded_no_goal: u32,
+    pub partial_weeks_excluded: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -275,12 +600,17 @@ pub struct HabitSummaryView {
 pub struct HabitSnapshotView {
     pub state: HabitSnapshotState,
     pub message: String,
+    pub read_error: Option<String>,
     pub generated_at: Option<String>,
+    pub current_lived_date: Option<String>,
+    pub snapshot_revision: Option<String>,
     pub display_range_label: Option<String>,
     pub range_label: Option<String>,
     pub producer_label: Option<String>,
     pub completion_revision: Option<String>,
     pub completion_target_binding: Option<String>,
+    pub definition_revision: Option<String>,
+    pub definition_target_binding: Option<String>,
     pub names_configuration_state: HabitNamesConfigurationState,
     pub summary: HabitSummaryView,
     pub habits: Vec<HabitView>,
@@ -370,12 +700,17 @@ impl HabitSnapshotView {
         Self {
             state,
             message: message.into(),
+            read_error: None,
             generated_at: None,
+            current_lived_date: None,
+            snapshot_revision: None,
             display_range_label: None,
             range_label: None,
             producer_label: None,
             completion_revision: None,
             completion_target_binding: None,
+            definition_revision: None,
+            definition_target_binding: None,
             names_configuration_state: HabitNamesConfigurationState::Missing,
             summary: HabitSummaryView::default(),
             habits: Vec::new(),
@@ -567,7 +902,11 @@ struct Observation {
 pub fn snapshot_dates(document: &[u8], today: &str) -> Result<Vec<String>, String> {
     snapshot_dates_at_local_date(document,today,today)
 }
-pub fn snapshot_dates_at_local_date(document: &[u8], today: &str, local_date: &str) -> Result<Vec<String>, String> {
+pub fn snapshot_dates_at_local_date(
+    document: &[u8],
+    today: &str,
+    local_date: &str,
+) -> Result<Vec<String>, String> {
     let snapshot = parse_and_validate_at_local_date(document, today, local_date)?;
     let end = CalendarDate::parse(today).expect("validated current date");
     let snapshot_start =
@@ -601,7 +940,14 @@ pub fn project_snapshot_with_names(
     local_completions: Vec<LocalHabitCompletion>,
     names_configuration: &HabitNamesConfiguration,
 ) -> Result<HabitSnapshotView, String> {
-    project_snapshot_with_names_at_local_date(document,today,today,local_records,local_completions,names_configuration)
+    project_snapshot_with_names_at_local_date(
+        document,
+        today,
+        today,
+        local_records,
+        local_completions,
+        names_configuration,
+    )
 }
 
 pub fn project_snapshot_with_names_at_local_date(
@@ -753,6 +1099,15 @@ pub fn project_snapshot_with_names_at_local_date(
             key: habit.key.clone(),
             name: habit.name.clone(),
             localized_names: names_configuration.names_for(&habit.key),
+            is_local_definition: false,
+            local_name_override: false,
+            created_locally: false,
+            emoji: None,
+            group: None,
+            start_date: None,
+            current_goal: habit.goal.as_ref().and_then(snapshot_goal),
+            pending_goal: None,
+            pending_goal_label: None,
             active: habit.active,
             goal_kind,
             goal_label: current_goal_label,
@@ -761,6 +1116,8 @@ pub fn project_snapshot_with_names_at_local_date(
                 _ => None,
             },
             completed_count,
+            weekly_period_start: None,
+            weekly_period_partial: false,
             can_record_completion: habit.tracking_kind == TrackingKind::WeeklyCount,
             source_labels,
             coverage_label: format!(
@@ -802,7 +1159,10 @@ pub fn project_snapshot_with_names_at_local_date(
     Ok(HabitSnapshotView {
         state,
         message,
+        read_error: None,
         generated_at: Some(snapshot.generated_at.clone()),
+        current_lived_date: None,
+        snapshot_revision: None,
         display_range_label: Some(format!("{history_start} — {history_end}")),
         range_label: Some(format!("{} — {}", snapshot.range.from, snapshot.range.to)),
         producer_label: Some(format!(
@@ -811,10 +1171,389 @@ pub fn project_snapshot_with_names_at_local_date(
         )),
         completion_revision: None,
         completion_target_binding: None,
+        definition_revision: None,
+        definition_target_binding: None,
         names_configuration_state: names_configuration.state,
         summary,
         habits: projected,
     })
+}
+
+pub fn merge_local_habit_definitions(
+    view: &mut HabitSnapshotView,
+    definitions: &LocalHabitDefinitionsDocument,
+    completions: Vec<LocalHabitCompletion>,
+    names_configuration: &HabitNamesConfiguration,
+    current_lived_date: &str,
+    current_local_date: &str,
+    current_timestamp: &str,
+) -> Result<(), String> {
+    if definitions.habits.is_empty() {
+        return Ok(());
+    }
+    if CalendarDate::parse(current_lived_date).is_none() {
+        return Err("当前 lived date 无效；未合并本地 Habit。".into());
+    }
+    CalendarDate::parse(current_local_date)
+        .ok_or_else(|| "当前本地日期无效；未合并本地 Habit。".to_string())?;
+    let lived_date =
+        CalendarDate::parse(current_lived_date).expect("current lived date was validated above");
+    if timestamp_epoch_seconds(current_timestamp).is_none() {
+        return Err("当前本地时间缺少有效 UTC offset；未合并本地 Habit。".into());
+    }
+
+    let present_keys: HashSet<String> = view.habits.iter().map(|habit| habit.key.clone()).collect();
+    if let Some(definition) = definitions
+        .habits
+        .iter()
+        .find(|definition| definition.created_locally && present_keys.contains(&definition.key))
+    {
+        return Err(format!(
+            "本地 Habit catalog 的 createdLocally key 与来源 Habit key 冲突：{}。",
+            definition.key
+        ));
+    }
+    for habit in &mut view.habits {
+        let Some(definition) = definitions.habits.iter().find(|item| item.key == habit.key) else {
+            continue;
+        };
+        apply_local_habit_definition(habit, definition, current_lived_date, true);
+    }
+
+    let local_only: Vec<&LocalHabitDefinition> = definitions
+        .habits
+        .iter()
+        .filter(|definition| definition.created_locally || !present_keys.contains(&definition.key))
+        .collect();
+    if !local_only.is_empty() {
+        // The synthetic projection follows the app's 04:00 lived-day boundary,
+        // even when the wall-clock date has already advanced.
+        let generated_at = format!("{current_lived_date}{}", &current_timestamp[10..]);
+        let mut synthetic_habits = Vec::with_capacity(local_only.len());
+        for definition in &local_only {
+            let goal = definition.goal_on(current_lived_date);
+            let tracking_kind = match goal.as_ref() {
+                Some(LocalHabitGoal::DailyTime { .. }) => "daily-time",
+                _ => "weekly-count",
+            };
+            let serialized_goal = goal.as_ref().and_then(local_goal_snapshot_value);
+            let goal_history = historical_snapshot_goals(definition);
+            synthetic_habits.push(serde_json::json!({
+                "key": definition.key,
+                "name": definition.name,
+                "active": true,
+                "trackingKind": tracking_kind,
+                "goal": serialized_goal,
+                "goalHistory": goal_history,
+                "days": [],
+            }));
+        }
+        let synthetic = serde_json::json!({
+            "schemaVersion": 1,
+            "generatedAt": generated_at,
+            "range": {
+                "from": lived_date.monday().plus_days(-7 * (HISTORY_WEEKS - 1)).to_string(),
+                "to": current_lived_date,
+            },
+            "producer": { "kind": "dashboard-local", "label": "Personal Dashboard local definitions" },
+            "sources": [],
+            "habits": synthetic_habits,
+        });
+        let local_keys: HashSet<&str> = local_only.iter().map(|item| item.key.as_str()).collect();
+        let local_completions = completions
+            .into_iter()
+            .filter(|completion| local_keys.contains(completion.key.as_str()))
+            .collect();
+        let mut projected = project_snapshot_with_names_at_local_date(
+            &serde_json::to_vec(&synthetic).map_err(|error| error.to_string())?,
+            current_lived_date,
+            current_local_date,
+            Vec::new(),
+            local_completions,
+            names_configuration,
+        )?;
+        for habit in &mut projected.habits {
+            if let Some(definition) = local_only.iter().find(|item| item.key == habit.key) {
+                apply_local_habit_definition(habit, definition, current_lived_date, false);
+                habit.coverage_label = "没有可用的外部历史覆盖".into();
+            }
+        }
+        view.habits.extend(projected.habits);
+    }
+
+    view.summary = summary_for_habits(&view.habits);
+    Ok(())
+}
+
+fn apply_local_habit_definition(
+    habit: &mut HabitView,
+    definition: &LocalHabitDefinition,
+    current_lived_date: &str,
+    source_present: bool,
+) {
+    if definition.name_override || !source_present {
+        habit.name = definition.name.clone();
+    }
+    habit.is_local_definition = true;
+    habit.local_name_override = definition.name_override;
+    habit.created_locally = definition.created_locally;
+    habit.emoji = definition.emoji.clone();
+    habit.group = definition.group.clone();
+    habit.start_date = definition.start_date.clone();
+    habit.weekly_period_start = None;
+    habit.weekly_period_partial = false;
+    let current_goal = definition.goal_on(current_lived_date);
+    habit.current_goal = current_goal.clone();
+    let pending_revision = definition.pending_goal(current_lived_date);
+    habit.pending_goal = pending_revision.and_then(|revision| revision.goal.clone());
+    habit.pending_goal_label = pending_revision.map(|revision| {
+        revision
+            .goal
+            .as_ref()
+            .map(LocalHabitGoal::label)
+            .unwrap_or_else(|| "未配置目标 · 不计入汇总".into())
+    });
+    if let Some(goal) = current_goal {
+        habit.goal_kind = goal.kind_label().into();
+        habit.goal_label = goal.label();
+        habit.weekly_target = match goal {
+            LocalHabitGoal::WeeklyCount { days } => Some(u32::from(days)),
+            LocalHabitGoal::DailyCount => Some(1),
+            LocalHabitGoal::DailyTime { .. } => None,
+        };
+        habit.can_record_completion = goal.allows_completion();
+        match goal {
+            LocalHabitGoal::DailyCount => {
+                habit.completed_count = Some(u32::from(habit.today.counts_as_completion));
+            }
+            LocalHabitGoal::WeeklyCount { .. } => {
+                let period_start = local_weekly_period_start(definition, current_lived_date);
+                habit.weekly_period_start = Some(period_start.to_string());
+                habit.weekly_period_partial = period_start > today_week(current_lived_date);
+                habit.completed_count = Some(
+                    habit
+                        .history
+                        .iter()
+                        .filter(|cell| {
+                            cell.counts_as_completion
+                                && CalendarDate::parse(&cell.date).is_some_and(|date| {
+                                    date.monday() == today_week(current_lived_date)
+                                        && date >= period_start
+                                })
+                        })
+                        .count() as u32,
+                );
+            }
+            LocalHabitGoal::DailyTime { .. } => habit.completed_count = None,
+        }
+    } else {
+        habit.goal_kind = "weekly-count".into();
+        habit.goal_label = "未配置目标 · 不计入汇总".into();
+        habit.weekly_target = None;
+        habit.completed_count = Some(0);
+        habit.can_record_completion = false;
+    }
+
+    if !definition.source_goal_history.is_empty() || !definition.goal_revisions.is_empty() {
+        let current_week = today_week(current_lived_date);
+        let mut history: BTreeMap<String, HabitGoalContextView> = definition
+            .source_goal_history
+            .iter()
+            .filter(|context| context.week_of < current_week.to_string())
+            .map(|context| {
+                (
+                    context.week_of.clone(),
+                    HabitGoalContextView {
+                        week_of: context.week_of.clone(),
+                        label: context.label.clone(),
+                        goal_label: context.goal.label(),
+                    },
+                )
+            })
+            .collect();
+        for revision in &definition.goal_revisions {
+            let Some(effective_on) = CalendarDate::parse(&revision.effective_on) else {
+                continue;
+            };
+            let previous_week = effective_on.monday().plus_days(-7);
+            let previous_day = effective_on.plus_days(-1).to_string();
+            if previous_week < current_week {
+                if let Some(previous_goal @ LocalHabitGoal::WeeklyCount { .. }) =
+                    definition.goal_on(&previous_day)
+                {
+                    let week_of = previous_week.to_string();
+                    let goal_label = previous_goal.label();
+                    history
+                        .entry(week_of.clone())
+                        .or_insert_with(|| HabitGoalContextView {
+                            week_of,
+                            label: "本地目标修订前".into(),
+                            goal_label,
+                        });
+                }
+            }
+            let week = effective_on.monday();
+            if week < current_week
+                && revision.disposition == LocalHabitRevisionDisposition::Scheduled
+            {
+                let week_of = week.to_string();
+                history.insert(
+                    week_of.clone(),
+                    HabitGoalContextView {
+                        week_of,
+                        label: "本地目标修订".into(),
+                        goal_label: revision
+                            .goal
+                            .as_ref()
+                            .map(LocalHabitGoal::label)
+                            .unwrap_or_else(|| "未配置目标 · 不计入汇总".into()),
+                    },
+                );
+            }
+        }
+        habit.goal_history = history.into_values().collect();
+    }
+}
+
+fn today_week(date: &str) -> CalendarDate {
+    CalendarDate::parse(date)
+        .expect("current lived date was validated before local habit projection")
+        .monday()
+}
+
+fn local_weekly_period_start(
+    definition: &LocalHabitDefinition,
+    current_lived_date: &str,
+) -> CalendarDate {
+    let week_start = today_week(current_lived_date);
+    let mut period_start = week_start;
+    if let Some(start_date) = definition
+        .start_date
+        .as_deref()
+        .and_then(CalendarDate::parse)
+    {
+        if start_date > period_start {
+            period_start = start_date;
+        }
+    }
+
+    let latest_weekly_transition = definition
+        .goal_revisions
+        .iter()
+        .filter(|revision| {
+            revision.disposition == LocalHabitRevisionDisposition::Scheduled
+                && revision.effective_on.as_str() <= current_lived_date
+        })
+        .filter_map(|revision| {
+            if !matches!(
+                revision.goal.as_ref(),
+                Some(LocalHabitGoal::WeeklyCount { .. })
+            ) {
+                return None;
+            }
+            let revision_date = CalendarDate::parse(&revision.effective_on)
+                .expect("scheduled local goal revisions have validated effective dates");
+            let previous_goal = definition.goal_on(&revision_date.plus_days(-1).to_string());
+            (!matches!(previous_goal, Some(LocalHabitGoal::WeeklyCount { .. })))
+                .then_some(revision_date)
+        })
+        .filter(|revision_date| *revision_date > week_start)
+        .max();
+    if let Some(transition_date) = latest_weekly_transition {
+        if transition_date > period_start {
+            period_start = transition_date;
+        }
+    }
+    period_start
+}
+
+fn summary_for_habits(habits: &[HabitView]) -> HabitSummaryView {
+    let mut summary = HabitSummaryView::default();
+    for habit in habits.iter().filter(|habit| habit.active) {
+        if habit.goal_kind == "weekly-count" {
+            if let Some(target) = habit.weekly_target {
+                if habit.weekly_period_partial {
+                    summary.partial_weeks_excluded += 1;
+                } else {
+                    summary.target_completions += target;
+                    summary.known_completions += habit.completed_count.unwrap_or_default();
+                }
+            } else {
+                summary.excluded_no_goal += 1;
+            }
+        }
+    }
+    summary.coverage_note = "覆盖不足的日期仍保持未知；显示已知次数下界。".into();
+    summary
+}
+
+fn local_goal_snapshot_value(goal: &LocalHabitGoal) -> Option<serde_json::Value> {
+    match goal {
+        LocalHabitGoal::DailyCount => None,
+        LocalHabitGoal::WeeklyCount { days } => Some(serde_json::json!({
+            "kind": "weekly-count",
+            "standard": days,
+        })),
+        LocalHabitGoal::DailyTime {
+            standard,
+            day_relation,
+        } => Some(serde_json::json!({
+            "kind": "daily-time",
+            "standard": standard,
+            "dayRelation": day_relation,
+        })),
+    }
+}
+
+fn historical_snapshot_goals(definition: &LocalHabitDefinition) -> Vec<serde_json::Value> {
+    definition
+        .source_goal_history
+        .iter()
+        .filter_map(|context| {
+            let goal = local_goal_snapshot_value(&context.goal)?;
+            Some(serde_json::json!({
+                "weekOf": context.week_of,
+                "label": context.label,
+                "goal": goal,
+            }))
+        })
+        .collect()
+}
+
+fn snapshot_local_goal(habit: &Habit) -> Option<LocalHabitGoal> {
+    match (habit.tracking_kind, habit.goal.as_ref()) {
+        (TrackingKind::WeeklyCount, Some(Goal::WeeklyCount { standard })) => {
+            u8::try_from(*standard)
+                .ok()
+                .map(|days| LocalHabitGoal::WeeklyCount { days })
+        }
+        (
+            TrackingKind::DailyTime,
+            Some(Goal::DailyTime {
+                standard,
+                day_relation,
+            }),
+        ) => Some(LocalHabitGoal::DailyTime {
+            standard: standard.clone(),
+            day_relation: *day_relation,
+        }),
+        _ => None,
+    }
+}
+
+fn snapshot_goal(goal: &Goal) -> Option<LocalHabitGoal> {
+    match goal {
+        Goal::WeeklyCount { standard } => u8::try_from(*standard)
+            .ok()
+            .map(|days| LocalHabitGoal::WeeklyCount { days }),
+        Goal::DailyTime {
+            standard,
+            day_relation,
+        } => Some(LocalHabitGoal::DailyTime {
+            standard: standard.clone(),
+            day_relation: *day_relation,
+        }),
+    }
 }
 
 pub fn project_habit_corrections(
@@ -1042,6 +1781,115 @@ pub fn project_uncatalogued_habit_corrections_with_recording_limit(
         names_configuration_state: HabitNamesConfigurationState::Missing,
         habits,
     })
+}
+
+pub fn merge_local_habit_corrections(
+    view: &mut HabitCorrectionView,
+    definitions: &LocalHabitDefinitionsDocument,
+    local_completions: &[LocalHabitCompletion],
+    names_configuration: &HabitNamesConfiguration,
+    selected_date: &str,
+    latest_recordable_date: &str,
+) -> Result<(), String> {
+    let selected = CalendarDate::parse(selected_date)
+        .ok_or_else(|| "The selected date is not a valid YYYY-MM-DD calendar date.".to_string())?;
+    let recording_limit = CalendarDate::parse(latest_recordable_date)
+        .ok_or_else(|| "The recording date limit is invalid.".to_string())?;
+    let source_keys: HashSet<String> = view
+        .habits
+        .iter()
+        .filter(|habit| habit.name_known)
+        .map(|habit| habit.key.clone())
+        .collect();
+    if let Some(definition) = definitions
+        .habits
+        .iter()
+        .find(|definition| definition.created_locally && source_keys.contains(&definition.key))
+    {
+        return Err(format!(
+            "本地 Habit catalog 的 createdLocally key 与来源 Habit key 冲突：{}。",
+            definition.key
+        ));
+    }
+
+    for definition in &definitions.habits {
+        if let Some(habit) = view
+            .habits
+            .iter_mut()
+            .find(|habit| habit.key == definition.key)
+        {
+            if definition.created_locally || definition.name_override {
+                habit.name = definition.name.clone();
+                habit.localized_names = HabitLocalizedNames::default();
+            }
+            habit.name_known = true;
+            if definition.created_locally {
+                let goal = definition.goal_on(selected_date);
+                habit.goal_label = goal.as_ref().map(LocalHabitGoal::label);
+                habit.can_record_completion =
+                    goal.as_ref().is_some_and(LocalHabitGoal::allows_completion);
+            } else if let Some(revision) = definition
+                .goal_revisions
+                .iter()
+                .filter(|revision| {
+                    revision.disposition == LocalHabitRevisionDisposition::Scheduled
+                        && revision.effective_on.as_str() <= selected_date
+                })
+                .max_by(|left, right| {
+                    left.effective_on
+                        .cmp(&right.effective_on)
+                        .then_with(|| left.changed_at.cmp(&right.changed_at))
+                })
+            {
+                habit.goal_label = revision.goal.as_ref().map(LocalHabitGoal::label);
+                habit.can_record_completion = revision
+                    .goal
+                    .as_ref()
+                    .is_some_and(LocalHabitGoal::allows_completion);
+            }
+            continue;
+        }
+
+        if source_keys.contains(&definition.key)
+            || definition
+                .start_date
+                .as_deref()
+                .and_then(CalendarDate::parse)
+                .is_some_and(|start_date| start_date > selected)
+        {
+            continue;
+        }
+
+        let goal = definition.goal_on(selected_date);
+        let local_completion = local_completions.iter().find(|completion| {
+            completion.key == definition.key && completion.date == selected_date
+        });
+        let empty_sources: HashMap<&str, &Source> = HashMap::new();
+        let cell = project_cell(
+            selected_date,
+            None,
+            &empty_sources,
+            &[],
+            local_completion,
+            recording_limit,
+        );
+        view.habits.push(HabitCorrectionHabitView {
+            key: definition.key.clone(),
+            name: definition.name.clone(),
+            localized_names: names_configuration.names_for(&definition.key),
+            name_known: true,
+            can_record_completion: goal.as_ref().is_some_and(LocalHabitGoal::allows_completion),
+            goal_label: goal.as_ref().map(LocalHabitGoal::label),
+            local_change_count: local_completion
+                .map(|completion| completion.change_count)
+                .unwrap_or(0),
+            local_changes: local_completion
+                .map(|completion| completion.changes.clone())
+                .unwrap_or_default(),
+            cell,
+        });
+    }
+    Ok(())
 }
 
 fn project_cell(

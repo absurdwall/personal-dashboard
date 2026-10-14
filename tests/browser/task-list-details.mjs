@@ -8,11 +8,11 @@ import {pathToFileURL} from 'node:url';
 // Existing browser tooling only: provide its module path; this does not install a dependency.
 const {chromium} = await import(process.env.PLAYWRIGHT_MODULE_PATH ? pathToFileURL(process.env.PLAYWRIGHT_MODULE_PATH).href : 'playwright');
 const root = resolve(import.meta.dirname, '../..');
-const task = (id,name,time,executionEnd=null,state='pending',priority='none',tagIds=[]) => ({id,name,content:null,date:'2026-10-10',time,executionEnd,listId:'inbox',priority,tagIds,
+const task = (id,name,time,executionEnd=null,state='pending',priority='none',tagIds=[]) => ({id,name,content:null,date:'2026-10-10',time,executionEnd,listId:'inbox',parentTaskId:null,priority,tagIds,
   source:{kind:'manual',reference:null},state,deletedAt:null,completion:state==='completed'?{completedOn:'2026-10-10',completedTime:'08:00',recordedAt:'2026-10-10T08:00-04:00',source:'checkbox'}:null,
   overdue:false,timePassed:false,createdAt:'2026-10-10T08:00-04:00',modifiedAt:'2026-10-10T08:00-04:00',changes:[]});
-const tasks = {state:'ready',errorKind:null,message:'Synthetic Tasks',schemaVersion:2,revision:'r1',targetBinding:'synthetic-task-binding',vaultName:'Synthetic',vaultPath:'/synthetic',currentDate:'2026-10-10',
-  lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false}],tags:[{id:'work',name:'Work'},{id:'home',name:'Home'}],tasks:[task('point','Synthetic point','09:00',null,'pending','none',[]),task('interval','Synthetic interval','13:00',{date:'2026-10-10',time:'14:30'},'completed','medium',['work'])]};
+const tasks = {state:'ready',errorKind:null,message:'Synthetic Tasks',schemaVersion:3,revision:'r1',targetBinding:'synthetic-task-binding',vaultName:'Synthetic',vaultPath:'/synthetic',currentDate:'2026-10-10',
+  lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false,folderId:null}],folders:[],tags:[{id:'work',name:'Work'},{id:'home',name:'Home'}],tasks:[task('point','Synthetic point','09:00',null,'pending','none',[]),task('interval','Synthetic interval','13:00',{date:'2026-10-10',time:'14:30'},'completed','medium',['work'])]};
 const view = {state:'missing',date:'2026-10-10',isToday:true,currentTime:'09:00',canRecord:true,defaultPhase:'daytime',dailyRecordAvailability:'missing',vaultName:'Synthetic',vaultPath:'/synthetic',vaultAvailability:'available',message:'Synthetic browser IPC fixture',revision:null,targetBinding:'synthetic-record-binding',
   baseline:{availability:'missing',message:'No record',timeline:[],evidence:[]},timeline:[],evidence:[],daytime:{updates:[],shortRecords:[]},
   evening:{account:[],comparison:[],summary:[],questions:[],additions:[],corrections:[],other:[],recordSupplements:[],hasLaterRecordRevision:false},tasks,
@@ -27,7 +27,7 @@ async function pageFixture({width=1280,extraTasks=[],tags}={}) {
   const browser=await chromium.launch({channel:'chrome',headless:true});
   const page=await browser.newPage({viewport:{width,height:758}});
   const errors=[];page.on('pageerror',error=>errors.push(String(error)));
-  const fixtureView=structuredClone(view);if(tags)fixtureView.tasks.tags=structuredClone(tags);fixtureView.tasks.tasks[0].changes=[{id:'synthetic-rename',kind:'renamed',changedAt:'2026-10-10T08:30-04:00',source:'user'}];fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false});
+  const fixtureView=structuredClone(view);if(tags)fixtureView.tasks.tags=structuredClone(tags);fixtureView.tasks.tasks[0].changes=[{id:'synthetic-rename',kind:'renamed',changedAt:'2026-10-10T08:30-04:00',source:'user'}];fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false,folderId:null});
   await page.addInitScript(({view})=>{
     window.__fixture=view;window.__calls=[];window.__failNext=null;
     window.__TAURI__={core:{invoke:async(command,args)=>{
@@ -41,8 +41,41 @@ async function pageFixture({width=1280,extraTasks=[],tags}={}) {
       if(command==='today_clock')return {date:v.date,time:v.currentTime,livedDate:v.date};
       if(command==='create_task'){
         const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
-        if(!t.tasks.some(x=>x.id===input.taskId))t.tasks.push({id:input.taskId,...input,source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-10T09:00-04:00',modifiedAt:'2026-10-10T09:00-04:00',changes:[]});
+        if(!t.tasks.some(x=>x.id===input.taskId))t.tasks.push({id:input.taskId,...input,parentTaskId:null,source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-10T09:00-04:00',modifiedAt:'2026-10-10T09:00-04:00',changes:[]});
         t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
+      }
+      if(command==='create_task_subtask'){
+        const {task:input,parentTaskId}=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        if(!t.tasks.some(x=>x.id===input.taskId))t.tasks.push({id:input.taskId,...input,parentTaskId,source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-10T09:00-04:00',modifiedAt:'2026-10-10T09:00-04:00',changes:[]});
+        t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
+      }
+      if(command==='set_task_parent'){
+        const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        const item=t.tasks.find(x=>x.id===input.taskId);item.parentTaskId=input.parentTaskId;item.changes.push({id:input.changeId,kind:'parent-changed',changedAt:'2026-10-10T09:00-04:00',source:'user'});
+        t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
+      }
+      if(command==='create_task_folder'){
+        const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        if(!t.folders.some(x=>x.id===input.folderId))t.folders.push({id:input.folderId,name:input.name});
+        t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
+      }
+      if(command==='rename_task_folder'){
+        const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        t.folders.find(x=>x.id===input.folderId).name=input.name;t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
+      }
+      if(command==='delete_task_folder'){
+        const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        t.folders=t.folders.filter(x=>x.id!==input.folderId);for(const list of t.lists)if(list.folderId===input.folderId)list.folderId=null;
+        t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
+      }
+      if(command==='create_task_list_in_folder'){
+        const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        if(!t.lists.some(x=>x.id===input.listId))t.lists.push({id:input.listId,name:input.name,isSystem:false,archived:false,folderId:input.folderId});
+        t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
+      }
+      if(command==='set_task_list_folder'){
+        const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        t.lists.find(x=>x.id===input.listId).folderId=input.folderId;t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
       }
       if(command==='set_task_state'){
         const input=args.input;const item=t.tasks.find(x=>x.id===input.taskId);item.state=input.state;item.completion=input.state==='completed'?{completedOn:'2026-10-10',completedTime:'09:00',recordedAt:'2026-10-10T09:00-04:00',source:'checkbox'}:null;t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
@@ -141,6 +174,133 @@ test('the selected Task name is directly editable once at the top of the detail'
     assert.equal(await panel.locator('h3').count(),0,'the task name is not repeated as a static heading');
     assert.ok((await title.evaluate(el=>Number.parseFloat(getComputedStyle(el).fontSize)))>=16,'editable title keeps heading emphasis');
     assert.ok((await title.evaluate(el=>Number.parseInt(getComputedStyle(el).fontWeight,10)))>=600,'editable title remains bold');
+  } finally { await f.close(); }
+});
+
+test('parent selection, direct children, and detach save the existing Task identity',async()=>{
+  const parent=task('parent-task','Plan the release',null);
+  parent.date='2026-10-15';
+  const f=await pageFixture({extraTasks:[parent]});const {page}=f;
+  try {
+    await page.locator('#tasks-list [data-task-editor-row=point] .task-title-button').click();
+    let panel=page.locator('[data-task-editor-dialog=point]');
+    const parents=panel.locator('details[data-task-parent-details]');
+    await parents.locator(':scope > summary').click();
+    await parents.locator('[data-task-parent-select]').selectOption('parent-task');
+    await parents.locator('[data-task-parent-save]').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').parentTaskId==='parent-task',null,{timeout:900});
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').id),'point');
+
+    await page.locator('#tasks-list [data-task-editor-row=parent-task] .task-title-button').click();
+    panel=page.locator('[data-task-editor-dialog=parent-task]');
+    assert.equal(await panel.locator('[data-task-focus-child=point]').count(),1,'the parent lists its direct child');
+    await panel.locator('details[data-task-parent-details] > summary').click();
+    await panel.locator('[data-task-focus-child=point]').click();
+    panel=page.locator('[data-task-editor-dialog=point]');
+    await panel.locator('details[data-task-parent-details] > summary').click();
+    await panel.locator('[data-task-parent-select]').selectOption('');
+    await panel.locator('[data-task-parent-save]').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').parentTaskId===null,null,{timeout:900});
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.length),3,'associating and detaching do not copy or delete Tasks');
+  } finally { await f.close(); }
+});
+
+test('adding a subtask creates a separately scheduled Task under the selected parent',async()=>{
+  const parent=task('parent-task','Plan the release',null);
+  parent.date='2026-10-15';parent.time='16:30';parent.listId='home';
+  const f=await pageFixture({extraTasks:[parent]});const {page}=f;
+  try {
+    await page.locator('#tasks-list [data-task-editor-row=parent-task] .task-title-button').click();
+    const panel=page.locator('[data-task-editor-dialog=parent-task]');
+    await panel.locator('details[data-task-parent-details] > summary').click();
+    await panel.locator('[data-task-add-subtask]').click();
+    assert.equal(await page.locator('#task-quick-parent-context').isVisible(),true);
+    assert.equal(await page.locator('#task-quick-list').inputValue(),'home','the child may start in the parent list but keeps an explicit list selector');
+    await page.locator('#task-quick-name').fill('Check one source');
+    await page.locator('#task-quick-submit').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.some(x=>x.name==='Check one source'&&x.parentTaskId==='parent-task'));
+    const child=await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.name==='Check one source'));
+    assert.notEqual(child.id,'parent-task');
+    assert.equal(child.listId,'home');
+    assert.equal(child.date,'2026-10-10','the child uses the current date context rather than the parent date');
+    assert.equal(child.time,null);
+    assert.equal(await page.locator('[data-task-editor-dialog=parent-task] [data-task-focus-child]').count(),1);
+  } finally { await f.close(); }
+});
+
+test('ending an unconfirmed subtask attempt clears its parent before the next quick-add',async()=>{
+  const parent=task('parent-task','Plan the release',null);
+  const f=await pageFixture({extraTasks:[parent]});const {page}=f;
+  try {
+    await page.locator('#tasks-list [data-task-editor-row=parent-task] .task-title-button').click();
+    const panel=page.locator('[data-task-editor-dialog=parent-task]');
+    await panel.locator('details[data-task-parent-details] > summary').click();
+    await panel.locator('[data-task-add-subtask]').click();
+    await page.locator('#task-quick-name').fill('Unconfirmed child');
+    await page.evaluate(()=>window.__failNext='create_task_subtask');
+    await page.locator('#task-quick-submit').click();
+    await page.waitForFunction(()=>document.querySelector('#task-quick-recovery')?.hidden===false);
+    await page.locator('#task-quick-recheck').click();
+    await page.waitForFunction(()=>document.querySelector('#task-quick-end-attempt')?.disabled===false);
+    await page.locator('#task-quick-end-attempt').click();
+    assert.equal(await page.locator('#task-quick-parent-context').isVisible(),false,'ending the uncertain child submission leaves normal quick-add mode');
+
+    await page.locator('#task-quick-name').fill('Independent task');
+    await page.locator('#task-quick-submit').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.some(x=>x.name==='Independent task'));
+    const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.name==='Independent task'));
+    assert.equal(saved.parentTaskId,null,'the next quick-add is not accidentally attached to the prior parent');
+  } finally { await f.close(); }
+});
+
+test('empty folders require a list, aggregate without copying Tasks, and keep quick-add destination explicit',async()=>{
+  const f=await pageFixture();const {page}=f;
+  try {
+    await page.locator('#task-new-list').click();
+    await page.locator('#task-folder-create-name').fill('Projects');
+    await page.locator('#task-folder-create-form').evaluate(form=>form.requestSubmit());
+    await page.waitForFunction(()=>window.__fixture.tasks.folders.some(x=>x.name==='Projects'));
+    const folderId=await page.evaluate(()=>window.__fixture.tasks.folders.find(x=>x.name==='Projects').id);
+    await page.locator('#tasks-list-management-close').click();
+
+    const scope=page.locator(`[data-task-scope="folder:${folderId}"]`);
+    const toggle=page.locator(`[data-task-folder-toggle="${folderId}"]`);
+    await toggle.click();
+    assert.equal(await scope.getAttribute('aria-selected'),'false','the arrow only expands the folder');
+    await scope.click();
+    assert.match(await page.locator('#tasks-empty').innerText(),/no lists yet/i);
+    assert.equal(await page.locator('#task-quick-form').isVisible(),false,'there is no implicit Inbox fallback');
+    await page.locator('[data-task-create-list-for-folder]').click();
+    assert.equal(await page.locator('#task-list-create-folder').inputValue(),folderId);
+    await page.locator('#task-list-create-name').fill('Launch');
+    await page.locator('#task-list-create-form').evaluate(form=>form.requestSubmit());
+    await page.waitForFunction(id=>window.__fixture.tasks.lists.some(x=>x.folderId===id&&x.name==='Launch'),folderId);
+    const listId=await page.evaluate(id=>window.__fixture.tasks.lists.find(x=>x.folderId===id).id,folderId);
+    assert.equal(await page.locator('#task-quick-form').isVisible(),true);
+    assert.equal(await page.locator('#task-quick-list').inputValue(),listId,'folder quick-add has a concrete target list');
+
+    await page.locator('#task-quick-name').fill('Prepare launch notes');
+    await page.locator('#task-quick-submit').click();
+    await page.waitForFunction(id=>window.__fixture.tasks.tasks.some(x=>x.name==='Prepare launch notes'&&x.listId===id),listId);
+    const saved=await page.evaluate(id=>window.__fixture.tasks.tasks.find(x=>x.name==='Prepare launch notes'&&x.listId===id),listId);
+    assert.equal(saved.id.length>0,true);
+    assert.equal(await page.locator('.task-folder-aggregate > h4').innerText(),'Launch');
+    assert.equal(await page.locator(`#tasks-list [data-task-editor-row="${saved.id}"]`).count(),1);
+
+    await toggle.click();
+    assert.equal(await scope.getAttribute('aria-selected'),'true','collapsing navigation does not leave the folder summary');
+    assert.equal(await page.locator(`[data-task-scope="list:${listId}"]`).count(),0);
+
+    assert.equal(await page.locator('#tasks-list-management-panel').isVisible(),true,'the list manager remains available after creating a folder list');
+    await page.locator(`[data-task-folder-delete="${folderId}"]`).click();
+    await page.waitForFunction(id=>!window.__fixture.tasks.folders.some(x=>x.id===id),folderId);
+    const ungrouped=await page.evaluate(id=>({
+      list:window.__fixture.tasks.lists.find(x=>x.id===id),
+      task:window.__fixture.tasks.tasks.find(x=>x.name==='Prepare launch notes'),
+    }),listId);
+    assert.equal(ungrouped.list.folderId,null,'deleting a folder ungroups its list');
+    assert.equal(ungrouped.task.id,saved.id,'the existing Task identity survives folder deletion');
+    assert.equal(await page.locator(`#tasks-list [data-task-editor-row="${saved.id}"]`).count(),1,'the task remains visible once');
   } finally { await f.close(); }
 });
 
@@ -298,6 +458,8 @@ test('row context menu opens the same compact More actions and property shortcut
     assert.equal(await reopened.locator('details[data-task-schedule-details]').evaluate(el=>el.open),true,'schedule shortcut opens the existing schedule disclosure');
     await reopened.locator('[data-task-open-property=list]').click();
     assert.equal(await reopened.locator('details[data-task-list-details]').evaluate(el=>el.open),true,'move-list shortcut opens the existing list disclosure');
+    await reopened.locator('[data-task-open-property=parent]').click();
+    assert.equal(await reopened.locator('details[data-task-parent-details]').evaluate(el=>el.open),true,'parent shortcut opens the same parent/subtask editor');
   }finally{await f.close();}
 });
 

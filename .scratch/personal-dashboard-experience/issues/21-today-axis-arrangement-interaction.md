@@ -47,7 +47,7 @@ PDEX-SPEC-02 stories 35–47、50；共同承担 1–3、88–91 的保存与保
 
 - 2026-10-11：经用户批准发布本地完整票体，未分配assignee、未claim、未开始实现。
 - 2026-10-14：用户授权从已核对的旧实现基线重新实现本票，限制为上述Today时间轴与安排交互；保留现有Dashboard字体、色彩、密度及未要求区域，不把原型整体搬入产品。
-- Claim：本票工作分支为 `codex/pdex-21-restart`，base 为 `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`，独立 worktree 为 `/private/tmp/pdex-restart-20261014.noindex/pdex-21`。该基线含已集成PDEX-19及PDEX-23；integration后来推进到 `071202fb61781436b834bcbdeaac2bce88cbd69c`（PDEX-22），实现完成后须先将该最新 integration merge 到本票分支并验证，再交还 integration owner；本票分支尚未合入 integration。
+- Claim：本票工作分支为 `codex/pdex-21-restart`，base 为 `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`，claim记录 commit `eaec4605883f16158be4945fa8f20874027bc39`，独立 worktree 为 `/private/tmp/pdex-restart-20261014.noindex/pdex-21`。实现 commit 为 `2562f4337850216c9c6a0836612b3e84f5684f25`。该基线含已集成PDEX-19及PDEX-23；实现完成时将 integration 最新 tip `c34ca821cfceb7cdf6262129209cb1f2c3702922`（含PDEX-20、22及24）non-fast-forward merge 到本票分支并验证，再交还 integration owner；本票分支尚未合入 integration。
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。

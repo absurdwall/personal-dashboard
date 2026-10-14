@@ -102,17 +102,98 @@ no integration merge, install, remote operation or main change was recorded.
 - No remote Git operation, protected-main change, app installation, or normal
   user-data write was performed.
 
-## PDEX-21 claim — 2026-10-14
+## PDEX-20 local ticket execution — 2026-10-14
+
+- Claimed after PDEX-19 reached integration tip
+  `e1b28504e62d28ecbb05c5fa3f499204d7abefe1`, on the dedicated branch
+  `codex/pdex-20-restart` in `/private/tmp/pdex-restart-20261014.noindex/pdex-20`.
+  This tip descends from the user-requested clean restart at `918e7e0`; no
+  rejected post-baseline implementation was used as source.
+- Commits retained on the ticket branch: backend/schema/docs and persistence
+  tests `d7ecfda0c1b4590405dbb29da52a8bd7fc9abe0c`; compact parent/folder UI
+  and behavior tests `c0b7aa969196208acc6f73d37d15c8ee09c06c4b`; current
+  lifecycle schema-note update `f1f9c5c7ee6067c67bbe12efb6fbc0d070402ec0`. See the
+  [PDEX-20 implementation record](evidence/pdex-20-implementation-2026-10-14.md)
+  for exact commands, results and remaining acceptance limits.
+- PDEX-20 remains `in-progress`; its ticket branch is not pushed.
+  Packaged App acceptance remains with PDEX-26. PDEX-21/22 and PDEX-25 retain
+  their existing dependency states.
+
+### PDEX-22 claim — 2026-10-14
+
+- Owner: `/root`; branch `codex/pdex-22-restart`; claim base
+  `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`, after non-ff integration of
+  PDEX-19 and PDEX-23. The PDEX-22 publication snapshot and acceptance criteria
+  remain unchanged.
+- Initial source review confirmed the Calendar month shell, selected-date
+  summary, below-month Task panel, and dedicated create form. PDEX-22 kept those
+  regions, replaced only the ticketed create entry, and added the holiday labels,
+  settings, and Task click editor behavior.
+- PDEX-22 implementation commits `135add3c` and `41031c5` were non-fast-forward
+  integrated as `071202fb61781436b834bcbdeaac2bce88cbd69c`. Its focused evidence
+  and packaged-acceptance boundary are in
+  [PDEX-22 implementation evidence](evidence/pdex-22-implementation-2026-10-14.md).
+  No install, push, or normal Vault write was part of that branch work.
+
+### PDEX-20 integration and verification — 2026-10-14
+
+- PDEX-20's ticket branch `codex/pdex-20-restart` first merged integration tip
+  `ebd4354e2e179ab695450a4e1eaf196dc4730062` non-fast-forward as
+  `86e0c4cf2855db6afadf647ef7f872e8a66a26ae`, retaining shared Task/Calendar
+  creation behavior and PDEX-20's folder target and parent-aware child creation.
+- It then merged latest integration tip
+  `2a233c3e4a21d9eaff06b62f1770c86e7671d082` non-fast-forward as
+  `89ab2ca6ae319e9feefcb76fd72da1625d3ba4be`. The integration follow-ups
+  `13c9bc2c45fdbd67f340d982a660a39d2e3120d9` and `2a233c3...` remain reachable.
+- The complete ticket branch was subsequently integrated into
+  `codex/dashboard-experience-refinement-restart-20261014` without conflicts by
+  non-fast-forward merge `2c0fe5e21bc1fbe7b5f7667e35dd589ab7ccdd16`.
+  Both PDEX-20 implementation commits and the intermediate integration merges
+  remain reachable in the merge history.
+- Merged-tree verification: `npm run build` passed; selected interface-language
+  and Task presentation frontend tests passed 37/37; PDEX-20 Playwright
+  `task-list-details.mjs` passed 23/23; Calendar-focused frontend tests passed
+  16/16; Rust `task_workflow` passed 36/36; Calendar preferences passed 2/2;
+  app-local holiday save/read passed 1/1; `git diff --check` passed. Exact
+  commands and the browser cache path are in the
+  [PDEX-20 implementation record](evidence/pdex-20-implementation-2026-10-14.md).
+- No remote Git operation, main change, app installation, or packaged App
+  acceptance was performed. Independent review and PDEX-26 acceptance remain
+  open.
+
+## PDEX-24 local integration and verification — 2026-10-14
+
+- Verified that `codex/pdex-24-restart` at
+  `25c973169aa13d51593ac88887ca5f9dcb29f51d` contains the exact integration
+  tip `13d3ac5feda6efe9f8dc764fff4207203a95888b` as an ancestor. The ticket
+  branch and integration worktree were clean before merge.
+- Integrated the complete ticket branch into
+  `codex/dashboard-experience-refinement-restart-20261014` without conflicts
+  using non-fast-forward merge `59b9d65563ed47b6b930b1e3d8d698609a7a80e1`.
+- Merged-tree verification passed: build; PDEX-24 frontend 30/30 and browser
+  4/4; Habit definition plus historical-correction Rust workflows 23/23 and
+  `cargo check`; Tasks frontend 38/38, browser 23/23 and Rust workflow 36/36;
+  Calendar frontend 16/16, preferences 2/2 and local-file readback 1/1;
+  Collaboration frontend 32/32; `git diff --check`. Exact commands are in the
+  [PDEX-24 integration evidence](evidence/pdex-24-integration-sync-2026-10-14.md).
+- No remote, `main`, installed App, or normal Vault was touched. PDEX-24 remains
+  `in-progress` pending independent review and PDEX-26 packaged acceptance.
+
+## PDEX-21 local ticket execution — 2026-10-14
 
 - User authorized a fresh implementation of Today timeline and arrangement
   interactions. The ticket branch is `codex/pdex-21-restart`, based at
   `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`, in isolated worktree
-  `/private/tmp/pdex-restart-20261014.noindex/pdex-21`.
-- Integration subsequently advanced to `071202fb61781436b834bcbdeaac2bce88cbd69c`
-  with PDEX-22. The latest integration must be merged into the PDEX-21 branch
-  and verified before returning it to the integration owner; PDEX-21 is not
-  integrated yet.
+  `/private/tmp/pdex-restart-20261014.noindex/pdex-21`; claim record commit
+  `eaec4605883f16158be4945fa8f20874027bc39`.
+- Implementation commit `2562f4337850216c9c6a0836612b3e84f5684f25` contains the ticket-scoped Today axis
+  fit/zoom, lived-day boundary access, nearby Task editor, marker density and
+  interaction updates, with targeted frontend/browser regression coverage.
 - Scope is limited to the ticket's Today axis, zoom/fit, lived-day boundary
   access, nearby Task editing, card overlap/pointer behavior, broad-plan
   precision and Current arrangement persistence. Existing design tokens and
   all unspecified Dashboard areas remain the baseline.
+- Before final sync, the P21 branch will merge latest integration tip
+  `c34ca821cfceb7cdf6262129209cb1f2c3702922` non-fast-forward, keep all incoming
+  ticket history, then repeat targeted verification. P21 is not yet integrated
+  back into the integration branch.
