@@ -55,9 +55,55 @@ PDEX-SPEC-02 stories 68–72、75–79、83–85、87；共同承担 1–3、88�
 ## Reimplementation claim — 2026-10-13
 
 Owner: Codex implementer `/root/pdex24_reimplementation`. Working branch
-`codex/pdex-24-refinement-reimplementation`; authorized source baseline
-`918e7e0d9c4b2c524c429bfd309482e328bc4c91`. The claim is recorded on the fresh
-integration branch; the implementer worktree starts from its current tip and
-will retain that full history. Earlier rejected source remains on the preserved
-previous integration branch. Local Git only; no installation, main merge, or
-remote operation.
+`codex/pdex-24-refinement-reimplementation`; actual implementation base
+`b7dcd71b50b42de4a706d460d635f99bf059770d` (the integration branch tip verified
+before edits). The worktree was clean at claim time. Local Git only; no package
+installation, main merge, or remote operation.
+
+## Implementation evidence — 2026-10-13
+
+Implementation commits on `codex/pdex-24-refinement-reimplementation`:
+
+- `b7fc4f3e118f17fc47f34fdee3be16474108a2a9` — canonical local Habit catalog,
+  selected-Vault persistence/readback, goal revisions, completion projection,
+  and application workflow tests.
+- `38214160d23b70f57b68c79363839816ad9758cb` — Habits summary create entry,
+  shared create/edit form, compact row edit affordances, and UI contract tests.
+
+Observed verification:
+
+- `cargo test --manifest-path src-tauri/Cargo.toml --test habit_definition_workflow`:
+  8 passed, 0 failed. Includes create → local check-in → fresh application
+  readback without an external snapshot, weekly goal change/reopen at Monday,
+  daily lived-day boundary, next-day time relation, operation retry/revision
+  conflict, source refresh, damaged catalog, and the
+  `editing_a_sourced_habit_without_a_recognized_goal_preserves_its_source_goal`
+  case.
+- `cargo test --manifest-path src-tauri/Cargo.toml`: exit 0; all non-ignored
+  Rust unit, integration, and doc-test groups passed (6 ignored environment-
+  gated tests).
+- `node --test tests/frontend/habit-definition-ui.test.ts tests/frontend/habit-localized-names.test.ts`:
+  7 passed, 0 failed.
+- `node --experimental-strip-types --check frontend/main.ts` and the same check
+  for `frontend/interface-language.ts`: passed.
+- Local Chrome smoke used the synthetic IPC fixture identifiers
+  `synthetic-habit-target` and `synthetic-completions`, with no Vault or external
+  Habit writes. The existing weekly-summary/today-list layout remained the
+  default; Add opened the shared form with the current lived date; choosing
+  weekly goal exposed the 1–7 target. A synthetic stale-revision response kept
+  the `Daily stretch` / `Health` draft, blocked blind replay, refreshed the same
+  binding to `revision-2`, and then enabled a fresh save. Cancel closed an
+  unsaved form without invoking a write.
+- `npm run build` cannot run in this checkout because `tsc` / the local
+  `node_modules/.bin/tsc` is absent. No dependency was installed. The frontend
+  source was syntax-checked with the available Node runtime; packaged
+  save/readback acceptance remains PDEX-26.
+- `npm run test:frontend` was attempted and exited nonzero. Its output includes
+  child tests that cannot spawn the absent `node_modules/.bin/tsc`; several
+  other checks outside this ticket also reported failures. The focused Habit
+  frontend tests above pass independently.
+
+The PDEX-24 implementation commits above preserve the PDEX-24-only scope.
+Selected-Habit detail and lifecycle remain PDEX-25; packaged acceptance remains
+PDEX-26. The latest integration-branch merge and its post-merge checks are
+recorded below after integration.
