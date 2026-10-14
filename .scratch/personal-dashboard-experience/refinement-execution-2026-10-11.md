@@ -77,8 +77,8 @@ were restored by the close path. The current complete Task-detail browser suite
 passes 19/19 and `npm run build` passes; the full frontend suite was not rerun.
 
 PDEX-19 remains `in-progress` because packaged application acceptance is
-separate and belongs to PDEX-26. No branch merge, install, remote operation or
-main change is recorded here.
+separate and belongs to PDEX-26. At the initial ticket-branch completion point,
+no integration merge, install, remote operation or main change was recorded.
 
 ## Local integration checkpoint — 2026-10-14
 

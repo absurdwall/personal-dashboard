@@ -120,4 +120,12 @@ All failures came from the Swift/WebKit production-page probe timing out; these 
 
 ## Acceptance boundary
 
-PDEX-19 remains `in-progress`: code-level implementation and focused verification are recorded, but no standard App installation, real personal-data use, parent-ticket closure, integration merge or remote operation is claimed. Packaged acceptance remains in PDEX-26.
+PDEX-19 remains `in-progress`: code-level implementation and focused verification are recorded, but no standard App installation, real personal-data use, parent-ticket closure or remote operation is claimed. Packaged acceptance remains in PDEX-26.
+
+## Post-merge integration verification — 2026-10-14
+
+- Non-fast-forward integration merge: `dd472702dc6ff4762e84c6877b4d052d1b5229e4` on `codex/dashboard-experience-refinement-restart-20261014`; tracking commit: `e1b28504e62d28ecbb05c5fa3f499204d7abefe1`.
+- Rebuilt the merged integration worktree with `npm run build` (exit 0), using the existing checkout's `node_modules/.bin` for `tsc`; no dependency was added or installed.
+- Re-ran `tests/browser/task-list-details.mjs` on the merged integration worktree: **19/19 passed**. This uses the production HTML/CSS and real Chromium DOM interactions with only the Tauri IPC boundary replaced by synthetic fixture data.
+- Inspected the 1280px and 830px synthetic browser screenshots at `output/playwright/pdex-19/tasks-wide.png` and `output/playwright/pdex-19/tasks-narrow.png`. The selected detail remains a compact right-side panel at the wide size and moves below the list at the narrow size; the controls retain the existing typography, palette, row density, and primary/secondary action hierarchy. These screenshots are visual source checks, not packaged-App acceptance.
+- No installed App, normal user Vault, real external service, remote Git operation, or packaged acceptance was exercised.
