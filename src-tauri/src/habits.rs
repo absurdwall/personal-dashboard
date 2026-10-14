@@ -233,6 +233,8 @@ pub struct HabitGoalContextView {
     pub week_of: String,
     pub label: String,
     pub goal_label: String,
+    #[serde(default)]
+    pub target: Option<HabitGoalTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -253,11 +255,32 @@ pub struct HabitDefinitionView {
     pub emoji: Option<String>,
     pub group: Option<String>,
     pub start_date: Option<String>,
+    pub lifecycle_active: bool,
+    pub lifecycle_history: Vec<HabitLifecycleChangeView>,
+    pub goal_revisions: Vec<HabitGoalRevisionView>,
     pub current_goal: Option<HabitGoalTarget>,
     pub current_goal_effective_from: Option<String>,
     pub pending_goal: Option<HabitGoalTarget>,
     pub pending_goal_effective_from: Option<String>,
     pub partial_goal_cycle: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitLifecycleChangeView {
+    pub operation_id: String,
+    pub active: bool,
+    pub effective_from: String,
+    pub changed_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitGoalRevisionView {
+    pub id: String,
+    pub effective_from: String,
+    pub target: HabitGoalTarget,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -813,6 +836,7 @@ pub fn project_snapshot_with_names_at_local_date(
                     week_of: context.week_of.clone(),
                     label: context.label.clone(),
                     goal_label: goal_label(&context.goal),
+                    target: Some(goal_target(&context.goal)),
                 })
                 .collect(),
             today: today_cell,

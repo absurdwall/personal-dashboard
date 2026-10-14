@@ -253,9 +253,12 @@ use clock::SystemClock;
 use cutover::{
     CutoverApplication, CutoverPaths, MacLegacyCutoverRuntime, ReviewedCandidateIdentity,
 };
-use habit_catalog::{HabitDefinitionMutationInput, HabitDefinitionSaveResult};
 use interface_language::{
     InterfaceLanguage, InterfaceLanguageApplication, InterfaceLanguagePreferences,
+};
+use habit_catalog::{
+    HabitDefinitionMutationInput, HabitDefinitionSaveResult, HabitLifecycleMutationInput,
+    HabitLifecycleSaveResult,
 };
 use platform::{
     appearance_background_directory_for, appearance_file_for, application_data_directory_for,
@@ -274,9 +277,9 @@ use tasks::{
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
-    EveningUpdateInput, HabitCompletionMutationInput, HabitSnapshotView, PlanTimeEditInput,
-    PlanTimeEditResult, PlanningDayTaskContextView, TodayApplication, TodayClockView, TodayView,
-    VaultSelectionResult,
+    EveningUpdateInput, HabitCompletionMutationInput, HabitDetailHistoryView, HabitSnapshotView,
+    PlanTimeEditInput, PlanTimeEditResult, PlanningDayTaskContextView, TodayApplication,
+    TodayClockView, TodayView, VaultSelectionResult,
 };
 
 type DesktopTodayApplication = TodayApplication<
@@ -775,6 +778,22 @@ fn save_habit_definition(
 }
 
 #[tauri::command]
+fn habit_detail_history(
+    application: State<'_, DesktopTodayApplication>,
+    habit_key: String,
+) -> Result<HabitDetailHistoryView, String> {
+    application.habit_detail_history(&habit_key)
+}
+
+#[tauri::command]
+fn set_habit_active(
+    application: State<'_, DesktopTodayApplication>,
+    input: HabitLifecycleMutationInput,
+) -> Result<HabitLifecycleSaveResult, String> {
+    application.set_habit_active(input)
+}
+
+#[tauri::command]
 fn tasks_view(application: State<'_, DesktopTaskApplication>) -> Result<TasksView, String> {
     application.read()
 }
@@ -1199,6 +1218,8 @@ pub fn run() {
             calendar_month,
             habit_snapshot,
             save_habit_definition,
+            habit_detail_history,
+            set_habit_active,
             tasks_view,
             create_task,
             create_task_with_properties,
