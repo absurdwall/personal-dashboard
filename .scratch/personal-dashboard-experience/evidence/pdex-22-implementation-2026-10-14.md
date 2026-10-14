@@ -32,6 +32,15 @@
 - Targeted `rustfmt --check`, `bash -n scripts/acceptance/macos-ipc-workflow.sh`, and `git diff --check` — passed.
 - An earlier broader frontend diagnostic exposed two unchanged, out-of-scope baseline assertions: a Today quick-schedule minimum input-width expectation and a Tasks row-gap expectation. This ticket did not change those surfaces. The broad suite was not rerun after the targeted repairs; this record does not claim a full-suite pass.
 
+## Integration verification
+
+- Integrated without conflicts into `codex/dashboard-experience-refinement-restart-20261014` with non-fast-forward merge commit `071202fb61781436b834bcbdeaac2bce88cbd69c`; the complete ticket branch history remains reachable.
+- On the integration worktree, `npm run build` passed.
+- On the integration worktree, `node --test tests/frontend/compact-calendar.test.ts tests/frontend/calendar-holidays.test.ts` passed **23/23**.
+- On the integration worktree, `cargo test --manifest-path src-tauri/Cargo.toml --test calendar_holiday_preferences_workflow` passed **2/2**.
+- On the integration worktree, `cargo test --manifest-path src-tauri/Cargo.toml calendar_holiday -- --nocapture` passed **1/1** app-local save/reopen test.
+- `git diff --check` passed after merge. The integration worktree was clean before this tracking update.
+
 ## Acceptance boundary
 
 The focused tests use the production frontend with synthetic IPC fixtures; Rust workflow tests exercise app-local persistence. No packaged App install, normal user Vault, remote Git operation, or human App acceptance was performed. PDEX-22 remains `in-progress`; PDEX-26 owns packaged acceptance. No main merge, push, or parent-spec closure is claimed.
