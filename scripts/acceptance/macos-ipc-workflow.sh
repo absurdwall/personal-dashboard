@@ -3501,16 +3501,22 @@ run_settings_vault_colors_scenario() {
   local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
   local record_a="$vault_a/$record_relative"
   local record_b="$vault_b/$record_relative"
+  local snapshot_relative="life/.personal-dashboard/derived/habits-v1.json"
+  local snapshot_file="$vault_a/$snapshot_relative"
   local appearance_file="$acceptance_data_directory/appearance.json"
   local before_a_hash
   local before_b_hash
+  local before_snapshot_hash
 
   current_step="preparing isolated Settings, Vault, and color fixtures"
   fixed_now_epoch_millis="1788891000000"
   mkdir -p \
     "$vault_a/.obsidian" "$vault_b/.obsidian" \
     "$vault_a/$(dirname "$record_relative")" "$vault_b/$(dirname "$record_relative")" \
+    "$(dirname "$snapshot_file")" \
     "$acceptance_data_directory"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" \
+    "$snapshot_file"
   cat > "$record_a" <<'EOF'
 ---
 type: daily-record
@@ -3535,6 +3541,7 @@ date: 2026-09-08
 EOF
   before_a_hash="$(shasum -a 256 "$record_a" | awk '{print $1}')"
   before_b_hash="$(shasum -a 256 "$record_b" | awk '{print $1}')"
+  before_snapshot_hash="$(shasum -a 256 "$snapshot_file" | awk '{print $1}')"
 
   current_step="opening Settings and selecting an isolated local Vault"
   launch_app_waiting_for_text "连接 Tortilla Flat vault" 30
@@ -3561,7 +3568,7 @@ EOF
   run_driver press "日历" 10
   run_driver assert-same-rendered-color "今天|全局主题色样本" 10
   run_driver press "习惯" 10
-  run_driver assert-same-rendered-color "刷新快照|全局主题色样本" 10
+  run_driver assert-same-rendered-color "2026-09-08 · Exercise|全局主题色样本" 10
   run_driver press "设置" 10
   grep -Fq '"accentColor": "blue"' "$appearance_file" ||
     fail "packaged color choice was not persisted in isolated app data"
@@ -3612,6 +3619,8 @@ EOF
     fail "Settings or appearance actions changed Vault A data"
   [[ "$(shasum -a 256 "$acceptance_directory/settings-vault-b-moved/$record_relative" | awk '{print $1}')" == "$before_b_hash" ]] ||
     fail "Settings or appearance actions changed Vault B data"
+  [[ "$(shasum -a 256 "$snapshot_file" | awk '{print $1}')" == "$before_snapshot_hash" ]] ||
+    fail "Settings or appearance actions changed the external Habits snapshot"
 
   echo "Packaged IPC Settings, Vault, and color acceptance passed"
   echo "Settings: Appearance and Data & Vault remained distinct and exposed the local path/status plus Drive desktop-client boundary"
@@ -5236,6 +5245,16 @@ EOF
   echo "Boundary: focused gate scenarios cover task replan, habit OR, historical corrections, errors, and late responses; Drive cloud/version/trash evidence remains separate and incomplete"
 }
 
+launch_dashboard_4_and_verify_baseline() {
+  local record_marker="$1"
+  launch_app_waiting_for_text "今天" 30
+  run_driver press "今天" 10
+  run_driver wait-active-text "已读取独立早间基准和当前安排" 20
+  run_driver press "早间" 10
+  run_driver wait-active-text "$record_marker" 20
+  run_driver press "当日" 10
+}
+
 run_dashboard_4_scenario() {
   local vault_a="$acceptance_directory/dashboard-4-vault-a"
   local vault_b="$acceptance_directory/dashboard-4-vault-b"
@@ -5414,7 +5433,7 @@ EOF
   fi
 
   current_step="verifying the Tasks destination, Inbox defaults, and persistent lifecycle history"
-  launch_app_waiting_for_text "$record_marker" 30
+  launch_dashboard_4_and_verify_baseline "$record_marker"
   run_driver set-size "1120x760" 10
   run_driver assert-size "1120x760" 10
   run_driver press "任务" 10
@@ -5480,7 +5499,7 @@ EOF
   if ! stop_app; then
     fail "app process did not exit before archived-list relaunch"
   fi
-  launch_app_waiting_for_text "$record_marker" 30
+  launch_dashboard_4_and_verify_baseline "$record_marker"
   run_driver press "任务" 10
   run_driver press "已归档" 20
   run_driver assert-active-text "$shared_task"
@@ -5491,7 +5510,7 @@ EOF
   if ! stop_app; then
     fail "app process did not exit before restored-list relaunch"
   fi
-  launch_app_waiting_for_text "$record_marker" 30
+  launch_dashboard_4_and_verify_baseline "$record_marker"
   run_driver press "任务" 10
   run_driver wait-active-text "$shared_task" 20
   assert_task_property "$tasks_a" "shared-task" "listId" "focus-list" ||
@@ -5632,7 +5651,7 @@ EOF
   if ! stop_app; then
     fail "app process did not exit before 4.0 packaged relaunch"
   fi
-  launch_app_waiting_for_text "$record_marker" 30
+  launch_dashboard_4_and_verify_baseline "$record_marker"
   run_driver press "Tasks" 10
   run_driver wait-active-text "$new_task" 20
   run_driver assert-active-absent-text "$shared_task"
@@ -5657,7 +5676,7 @@ EOF
   if ! stop_app; then
     fail "app process did not exit before deleted-task persistence relaunch"
   fi
-  launch_app_waiting_for_text "$record_marker" 30
+  launch_dashboard_4_and_verify_baseline "$record_marker"
   run_driver press "Tasks" 10
   run_driver select-contains "Deleted" 10
   run_driver wait-active-text "$delete_task" 20
