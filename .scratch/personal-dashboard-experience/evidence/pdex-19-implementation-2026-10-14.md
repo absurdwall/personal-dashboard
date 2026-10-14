@@ -13,6 +13,7 @@
   - `f0a95909d249535d300ed735a17a603fcd0bcb6b` — persist priority and tags on the existing Task identity and verify save/readback.
   - `d04330c518be1d5dc34e5b689cb126a95bbcc40c` — compact Task detail/property controls, list property filtering/sorting, More/context actions, and focused behavior tests.
   - `689b383df3ca235fb0dcdcee3ae4d881b4aa963d` — extend the Today Task test double with the DOM API required by property-aware draft reading.
+  - `0520e16ee28118f3636ad6c85c7d3377bfdf3570` — document schema-2 priority/tag fields and the schema-1 default-and-upgrade boundary in `docs/tasks-v1.md`.
 - No source was copied from or merged with the rejected post-`918e7e0` implementation branch.
 
 ## Verification
