@@ -8478,7 +8478,7 @@ body {
 
 .calendar-selected-detail { position: static; }
 .calendar-selected-detail .task-editor-dialog > .task-editor-details[data-task-surface="calendar"] {
-  width: min(420px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: 0.85rem;
+  width: min(34rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: 0.85rem;
   overflow: auto; border: 1px solid var(--parity-border); border-radius: 12px;
   background: var(--parity-surface); box-shadow: 0 18px 50px rgb(35 39 36 / 20%);
 }
@@ -10123,11 +10123,6 @@ button.habit-cell:focus-visible {
 .collaboration-layout .collaboration-pane-heading { flex-wrap: wrap; }
 .collaboration-layout .collaboration-composer-footer { flex-wrap: wrap; }
 .collaboration-layout .collaboration-message { overflow-wrap: anywhere; }
-.today-hour-tick small {
-  display: block;
-  margin-bottom: 3px;
-  font-size: 8px;
-}
 .today-continuous-axis { --today-axis-gutter: 5rem; }
 .today-time-axis-actions { flex-wrap: wrap; }
 
@@ -10614,12 +10609,28 @@ button.habit-cell:focus-visible {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 
-.task-editor-compact .task-form-grid textarea {
+.calendar-selected-detail .task-editor-details[data-task-surface="calendar"].task-editor-compact .task-form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.task-editor-compact .task-form-grid textarea[data-task-content] {
   min-height: 8rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
   resize: vertical;
+}
+
+.task-editor-compact .task-add-child {
+  align-self: flex-start;
+  min-height: 1.7rem;
+  margin: 0;
+  padding: 0.15rem 0.1rem;
+  font-size: 0.6rem;
 }
 
 .task-editor-compact .task-property-disclosure {
@@ -11418,10 +11429,7 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   min-height: 0;
   overflow: hidden;
 }
-#workspace-destination-collaboration .collaboration-chat-pane:has(.collaboration-help[open]) {
-  overflow: auto;
-  scrollbar-width: thin;
-}
+#workspace-destination-collaboration .collaboration-chat-pane:has(.collaboration-help[open]) { overflow: hidden; }
 #workspace-destination-collaboration .collaboration-message-list {
   flex: 1 1 0;
   min-height: 4rem;
@@ -11430,16 +11438,19 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   overscroll-behavior: contain;
 }
 #workspace-destination-collaboration .collaboration-composer {
+  position: relative;
+  z-index: 8;
   flex: 0 0 auto;
+  background: var(--parity-surface);
 }
 #workspace-destination-collaboration .collaboration-context-pane {
   position: absolute;
   z-index: 5;
   top: 3.5rem;
   right: 0.5rem;
-  bottom: 10rem;
+  bottom: 0.5rem;
   display: flex;
-  width: min(30rem, calc(100% - 1rem));
+  width: min(36rem, calc(100% - 1rem));
   height: auto;
   min-height: 0;
   flex-direction: column;
@@ -11456,9 +11467,24 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   z-index: 1;
   top: 0;
   flex: 0 0 auto;
-  margin-bottom: 0.45rem;
-  padding-top: 0.65rem;
+  margin-bottom: 0.25rem;
+  padding-top: 0.35rem;
   background: var(--parity-surface);
+}
+#workspace-destination-collaboration .collaboration-context-pane > .collaboration-pane-heading .section-label {
+  margin-bottom: 0.2rem;
+}
+#workspace-destination-collaboration .collaboration-context-pane > label {
+  margin-top: 0.25rem;
+}
+#workspace-destination-collaboration .collaboration-context-pane > input {
+  min-height: 1.8rem;
+  margin-top: 0.1rem;
+  padding-block: 0.3rem;
+}
+#workspace-destination-collaboration .collaboration-context-pane > .collaboration-vault-label {
+  margin: 0.25rem 0;
+  padding: 0.3rem 0.45rem;
 }
 #workspace-destination-collaboration .collaboration-context-close {
   flex: 0 0 30px;
@@ -11473,6 +11499,10 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   max-height: none;
   overflow: visible;
 }
+#workspace-destination-collaboration .collaboration-task-operations-card:has(#collaboration-task-operations:empty),
+#workspace-destination-collaboration .collaboration-task-operations-card:has(#collaboration-task-operations > .collaboration-empty-conversation) {
+  display: none;
+}
 #workspace-destination-collaboration .collaboration-status-bar > p {
   max-height: 2.15rem;
   overflow: auto;
@@ -11480,10 +11510,25 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   scrollbar-width: thin;
 }
 #workspace-destination-collaboration #collaboration-task-tool-notice {
-  max-height: 2.5rem;
+  max-height: min(4rem, 12vh);
   flex: 0 0 auto;
   overflow: auto;
   scrollbar-width: thin;
+}
+#workspace-destination-collaboration .collaboration-capability-disclosure {
+  min-height: 0;
+  max-height: min(3rem, 8vh);
+  flex: 0 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+#workspace-destination-collaboration .collaboration-capability-disclosure[open] > summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-block: 0.12rem;
+  background: var(--parity-surface);
 }
 #workspace-destination-collaboration .collaboration-run-status {
   max-height: 2.2rem;
@@ -11506,6 +11551,85 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   scrollbar-width: thin;
 }
 #collaboration-voice-preview:empty { display: none; }
+
+#workspace-destination-collaboration .collaboration-context-toggle {
+  width: auto;
+  min-width: 0;
+  gap: 0.3rem;
+  padding-inline: 0.45rem;
+  font-size: 0.62rem;
+}
+#workspace-destination-collaboration .collaboration-context-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+#workspace-destination-collaboration .collaboration-composer textarea {
+  height: clamp(4rem, 9vh, 5.5rem);
+  min-height: 4rem;
+  max-height: min(5.5rem, 14vh);
+  padding: 0.35rem 0.45rem;
+  resize: vertical;
+}
+#workspace-destination-collaboration .collaboration-chat-pane:has(#collaboration-chat-date:not(:empty)) #collaboration-composer-date {
+  display: none;
+}
+#workspace-destination-collaboration .collaboration-composer > label {
+  margin: 0;
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+#workspace-destination-collaboration .collaboration-composer-input .collaboration-voice-controls {
+  padding: 0.2rem 0.3rem;
+}
+#workspace-destination-collaboration #collaboration-voice-preview {
+  max-height: min(4rem, 10vh);
+  margin: 0.1rem 0 0;
+  padding: 0.2rem 0.4rem;
+}
+#workspace-destination-collaboration .collaboration-composer > .collaboration-help[open] {
+  max-height: min(4.5rem, 12vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+@media (min-width: 761px) {
+  #workspace-destination-collaboration .collaboration-composer-input {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, auto);
+    align-items: stretch;
+  }
+  #workspace-destination-collaboration .collaboration-composer-input textarea {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  #workspace-destination-collaboration .collaboration-composer-input .collaboration-voice-controls {
+    grid-column: 2;
+    grid-row: 1;
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    grid-template-rows: 1.25rem 2.25rem;
+    align-content: end;
+    align-items: end;
+    justify-content: end;
+    gap: 0.15rem;
+    border-left: 1px solid var(--parity-border);
+  }
+  #workspace-destination-collaboration .collaboration-composer-input .collaboration-voice-status {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    max-height: 1.25rem;
+    margin: 0;
+    padding: 0.05rem 0.2rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.55rem;
+    line-height: 1.2;
+  }
+  #workspace-destination-collaboration #collaboration-voice-start { grid-column: 1; grid-row: 2; }
+  #workspace-destination-collaboration #collaboration-send-message { grid-column: 2; grid-row: 2; }
+}
 
 @media (max-height: 600px), (max-height: 740px) and (max-width: 720px) {
   #workspace-destination-collaboration.collaboration-destination {

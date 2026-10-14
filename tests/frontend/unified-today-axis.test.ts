@@ -117,18 +117,35 @@ test("existing quiet-hour entries are initially visible and a deliberate fold ad
   assert.equal(result.restored, 2);
 });
 
-test("Morning reads original baseline wording as a text document with an explicit source", { skip: process.platform !== "darwin" }, () => {
+test("Morning shows the same current arrangement as Daytime without a baseline source panel", { skip: process.platform !== "darwin" }, () => {
   const result = render(`
     const morning=document.getElementById('today-phase-morning'); morning.hidden=false; document.getElementById('today-phase-daytime').hidden=true;
     const list=document.getElementById('today-baseline-timeline');
     list.replaceChildren(todayTimelineItem({period:'午后',title:'约 14:00 买菜',detail:'保留宽泛安排与原始证据。'}));
-    return JSON.stringify({text:list.textContent,display:getComputedStyle(list.firstElementChild).display,axes:morning.querySelectorAll('.today-continuous-axis').length,source:morning.querySelector('.section-label').textContent,label:list.getAttribute('aria-label')});
+    return JSON.stringify({text:list.textContent,display:getComputedStyle(list.firstElementChild).display,axes:morning.querySelectorAll('.today-continuous-axis').length,source:morning.querySelector('.section-label').textContent,heading:morning.querySelector('h3').textContent,label:list.getAttribute('aria-label'),baselineStatus:document.getElementById('today-baseline-status')});
   `);
   assert.equal(result.text, '午后约 14:00 买菜保留宽泛安排与原始证据。');
   assert.equal(result.display, 'block');
   assert.equal(result.axes, 0);
-  assert.match(result.source, /Daily Record/);
+  assert.match(result.source, /当天当前计划/);
+  assert.equal(result.heading, '当前安排');
+  assert.equal(result.baselineStatus, null);
   assert.doesNotMatch(result.label, /时间线/);
+  assert.match(main, /todayTimeline\.replaceChildren\(\.\.\.view\.timeline\.map\(todayTimelineItem\)\)/);
+  assert.match(main, /const evidence = view\.evidence/);
+});
+
+test("next-day live time stays concise and hour ticks do not repeat the date", { skip: process.platform !== "darwin" }, () => {
+  const result = render(`
+    currentTodayView={...currentTodayView,date:'2026-10-01',isToday:true,currentTime:'01:03',tasks:{lists:[],tasks:[]},timeAxis:{currentArrangement:[entry('01:00 next-day plan',1500)],confirmedFacts:[],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
+    renderTodayTimeAxis(currentTodayView);
+    const nextTick=todayHourTicks.querySelector('.today-hour-tick[data-minute="1500"]');
+    return JSON.stringify({time:todayCurrentTime.textContent,dateTime:todayCurrentTime.dateTime,tickText:nextTick?.textContent,tickHasDate:Boolean(nextTick?.querySelector('small'))});
+  `);
+  assert.equal(result.time, 'Next day 01:03');
+  assert.equal(result.dateTime, '2026-10-02T01:03');
+  assert.equal(result.tickText, '01:00');
+  assert.equal(result.tickHasDate, false);
 });
 
 test("Locate now targets the inner timeline viewport while preserving the surrounding page", { skip: process.platform !== "darwin" }, () => {

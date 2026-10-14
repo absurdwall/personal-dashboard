@@ -1537,7 +1537,6 @@ const todayDate = document.querySelector<HTMLElement>("#today-date");
 const todayVault = document.querySelector<HTMLElement>("#today-vault");
 const todayStatus = document.querySelector<HTMLElement>("#today-status");
 const todayReady = document.querySelector<HTMLElement>("#today-ready");
-const todayBaselineStatus = document.querySelector<HTMLElement>("#today-baseline-status");
 const todayTimeline = document.querySelector<HTMLOListElement>("#today-baseline-timeline");
 const todayBlockCount = document.querySelector<HTMLElement>("#today-block-count");
 const todayPlanEmpty = document.querySelector<HTMLElement>("#today-plan-empty");
@@ -6730,7 +6729,9 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
       "--today-now-position",
       `${minutePosition(currentMinute) * 100}%`,
     );
-    todayCurrentTime.textContent = currentMinute >= 1440 ? `${nextAxisDate(view.date)} ${currentTime}` : currentTime;
+    todayCurrentTime.textContent = currentMinute >= 1440
+      ? `${t("today.planNextDay")} ${currentTime}`
+      : currentTime;
     todayCurrentTime.dateTime = `${currentMinute >= 1440 ? nextAxisDate(view.date) : view.date}T${currentTime}`;
     todayCurrentTime.hidden = false;
   } else if (todayCurrentTime) {
@@ -6786,11 +6787,6 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
       tick.dataset.minute = String(minute);
       tick.style.top = `${minutePosition(minute) * 100}%`;
       tick.textContent = formatAxisMinute(minute);
-      if (minute >= 1440) {
-        const dateLabel = document.createElement("small");
-        dateLabel.textContent = nextAxisDate(view.date);
-        tick.prepend(dateLabel);
-      }
       tick.setAttribute("aria-hidden", "true");
       return tick;
     }),
@@ -7268,21 +7264,14 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
     todayHandoff.hidden = readable;
   }
   if (todayTimeline) {
-    todayTimeline.replaceChildren(...view.baseline.timeline.map(todayTimelineItem));
+    todayTimeline.replaceChildren(...view.timeline.map(todayTimelineItem));
   }
   if (todayBlockCount) {
-    setCopy(todayBlockCount, "count.timeBlocks", { count: view.baseline.timeline.length });
-  }
-  if (todayBaselineStatus) {
-    setAppMessage(todayBaselineStatus, view.baseline.message);
-    todayBaselineStatus.dataset.availability = view.baseline.availability;
+    setCopy(todayBlockCount, "count.timeBlocks", { count: view.timeline.length });
   }
   if (todayPlanEmpty) {
-    todayPlanEmpty.hidden = view.baseline.timeline.length > 0;
-    setCopy(
-      todayPlanEmpty,
-      view.baseline.availability === "missing" ? "today.noBaselineStart" : "today.emptyBaseline",
-    );
+    todayPlanEmpty.hidden = view.timeline.length > 0;
+    setCopy(todayPlanEmpty, view.state === "missing" ? "today.noBaselineStart" : "today.emptyBaseline");
   }
   renderTodayTimeAxis(view);
   if (todayDaytimeForm) {
@@ -7472,7 +7461,7 @@ function renderTodayEvidence(): void {
   if (!view) {
     return;
   }
-  const evidence = view.baseline.evidence;
+  const evidence = view.evidence;
   const evidenceItemCount = evidence.reduce(
     (total, group) => total + group.items.length,
     0,
@@ -8759,9 +8748,8 @@ function openCalendarTaskEditor(taskId: string): void {
   if (!dialog) return;
   dialog.hidden = false;
   calendarTaskEditorDialogRoot?.toggleAttribute("hidden", false);
-  window.requestAnimationFrame(() =>
-    dialog.querySelector<HTMLInputElement>("[data-task-name]")?.focus(),
-  );
+  (dialog.querySelector<HTMLTextAreaElement>("[data-task-content]") ??
+    dialog.querySelector<HTMLInputElement>("[data-task-name]"))?.focus({ preventScroll: true });
 }
 
 function renderCalendarTasks(view: TodayView): void {
@@ -11612,7 +11600,7 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
     editor.hidden = !open;
   }
   if (open) {
-    const content = surface === "tasks"
+    const content = surface === "tasks" || surface === "calendar"
       ? editor.querySelector<HTMLTextAreaElement>("[data-task-content]")
       : null;
     (content ?? editor.querySelector<HTMLInputElement>("[data-task-name]"))?.focus();
@@ -11630,7 +11618,7 @@ function taskEditor(
   surface: TaskSurface = "tasks",
   expanded = false,
   parentVisible = false,
-  compact = surface === "tasks",
+  compact = surface === "tasks" || surface === "calendar",
 ): HTMLElement {
   const binding = view?.targetBinding;
   const draft = binding
@@ -11822,6 +11810,7 @@ function taskEditor(
   name.dataset.taskName = "";
   name.setAttribute("aria-label", `${t("tasks.name")} · ${task.name}`);
   let parentDetails: HTMLDetailsElement | null = null;
+  let addChildAction: HTMLButtonElement | null = null;
   if (usesModal || compact) {
     nameLabel.append(name);
   } else {
@@ -11838,8 +11827,7 @@ function taskEditor(
   content.disabled = !editable;
   content.value = draft?.content ?? task.content ?? "";
   content.dataset.taskContent = "";
-  contentCaption.append(content);
-  contentLabel.append(contentCaption);
+  contentLabel.append(contentCaption, content);
 
   const dateLabel = document.createElement("label");
   const dateCaption = document.createElement("span");
@@ -12096,15 +12084,18 @@ function taskEditor(
       }
       parentDetails.append(children);
     }
-    const addChild = document.createElement("button");
-    addChild.type = "button";
-    addChild.className = "text-button task-add-child";
-    addChild.dataset.taskAddChild = task.id;
-    addChild.disabled = !editable;
-    setCopy(addChild, "tasks.addSubtask");
-    addChild.addEventListener("click", () => openTaskCreateForParent(task));
-    parentDetails.append(addChild);
-    grid.append(contentLabel, listDetails, scheduleDetails);
+    if (surface === "tasks") {
+      addChildAction = document.createElement("button");
+      addChildAction.type = "button";
+      addChildAction.className = "text-button task-add-child";
+      addChildAction.dataset.taskAddChild = task.id;
+      addChildAction.disabled = !editable;
+      setCopy(addChildAction, "tasks.addSubtask");
+      addChildAction.addEventListener("click", () => openTaskCreateForParent(task));
+    }
+    grid.append(contentLabel);
+    if (addChildAction) grid.append(addChildAction);
+    grid.append(listDetails, scheduleDetails);
     if (surface === "tasks") grid.append(propertiesDetails, parentDetails);
     if (!usesModal) editorForm.prepend(nameLabel);
   } else {

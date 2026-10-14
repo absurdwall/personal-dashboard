@@ -4885,7 +4885,24 @@ where
         let revision = document_revision(document.as_bytes());
 
         match parse_daily_record(&document, &date) {
-            Ok((baseline, timeline, evidence, mut daytime, mut evening)) => {
+            Ok((baseline, current_timeline, current_evidence, mut daytime, mut evening)) => {
+                // Older Daily Records may have a saved morning baseline but no
+                // canonical current-arrangement section yet. In that case the
+                // original plan is the one current arrangement to display. A
+                // present-but-empty current section remains empty; do not
+                // resurrect entries the user removed.
+                let has_current_arrangement =
+                    section_body(&document, "今天的大致安排").is_some();
+                let timeline = if has_current_arrangement {
+                    current_timeline
+                } else {
+                    baseline.timeline.clone()
+                };
+                let evidence = if has_current_arrangement {
+                    current_evidence
+                } else {
+                    baseline.evidence.clone()
+                };
                 let short_records = parse_short_records(&document, &date)?;
                 daytime.short_records = short_records.clone();
                 evening.has_later_record_revision = short_records.iter().any(|record| {
@@ -4893,17 +4910,9 @@ where
                 });
                 evening.record_supplements = short_records;
                 let message = if timeline.is_empty() {
-                    "这份 Daily Record 有效，但当前安排尚未写入。"
+                    "这份 Daily Record 有效，但当天当前计划尚无安排。"
                 } else {
-                    match baseline.availability {
-                        BaselineAvailability::Missing => {
-                            "已读取当前安排；这份 Daily Record 未独立保存早间基准。"
-                        }
-                        BaselineAvailability::Empty => {
-                            "已读取当前安排；早间基准章节存在但内容为空。"
-                        }
-                        BaselineAvailability::Saved => "已读取独立早间基准和当前安排。",
-                    }
+                    "已读取当天当前计划。"
                 };
                 let mut time_axis = project_time_axis(&timeline, &daytime, &date, &self.clock);
                 bind_plan_time_sources(&document, &mut time_axis);

@@ -10332,18 +10332,7 @@ fn daily_record_pane(view: &TodayView) -> ContextPaneView {
             "Record availability: {}",
             serialized_state(&view.daily_record_availability)
         ),
-        format!("Morning baseline: {}", view.baseline.message),
     ];
-    items.extend(
-        view.baseline.timeline
-            .iter()
-            .map(|block| match block.detail.as_deref() {
-                Some(detail) if !detail.is_empty() => {
-                    format!("Morning · {} · {} · {detail}", block.period, block.title)
-                }
-                _ => format!("Morning · {} · {}", block.period, block.title),
-            }),
-    );
     items.extend(view.time_axis.current_arrangement.iter().map(|entry| {
         format!(
             "Current arrangement · {} · {}",

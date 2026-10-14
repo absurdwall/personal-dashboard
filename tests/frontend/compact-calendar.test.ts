@@ -22,6 +22,17 @@ window.calendarHarness={
   },
   language(interfaceLanguage){renderInterfaceLanguage({interfaceLanguage});},
   selected:()=>({date:selectedCalendarDate,view:currentCalendarSummaryView}),
+};
+window.taskSurfaceHarness={
+  render(task,view){
+    currentInterfaceLanguage='en';currentTasksView=view;appShell.dataset.workspaceDestination='tasks';
+    workspaceDestinationPanels.forEach(panel=>panel.hidden=panel.dataset.workspacePanel!=='tasks');
+    const destination=document.querySelector('#workspace-destination-tasks');workspaceInformation.prepend(destination);
+    taskEditorDialogRoot.replaceChildren();taskEditorDialogRoot.hidden=true;tasksList.replaceChildren();
+    const row=taskEditor(task,true,view,'tasks',false,false,true);tasksList.append(row);
+    const opened=toggleTaskEditorDetails(row.querySelector('.task-title-button'));
+    return {row,opened,dialog:taskEditorDialogRoot.querySelector('[data-task-editor-dialog]')};
+  },
 };`;
 writeFileSync(join(output,'main.js'),main);
 const modules=Object.fromEntries(readdirSync(output).filter(n=>n.endsWith('.js')).map(n=>['./'+n,readFileSync(join(output,n),'utf8')]));
@@ -37,6 +48,8 @@ function webKit(script:string,width=1280,height=720):any {
       const sourceFixture=${readFileSync(new URL('./fixtures/compact-calendar-view.json',import.meta.url),'utf8')};
       let selectedView=null,commands=[];
       window.__TAURI__={core:{invoke:async(command,args)=>{commands.push({command,args});if(command==='read_daily_view' || command==='today_view')return selectedView;throw Error('Unexpected native command '+command);}}};
+      const addWindowListener=window.addEventListener.bind(window);
+      window.addEventListener=(type,listener,options)=>{if(type!=='focus')addWindowListener(type,listener,options);};
       require('./main.js');
       function fixture(weeks){
         const first=weeks===5?'2026-08-30':'2026-04-26',month=weeks===5?9:5;
@@ -227,9 +240,13 @@ test('Calendar task previews open a compact editor without selecting another dat
     const beforeScroll=document.querySelector('.workspace-information').scrollTop;
     document.querySelector('[data-calendar-task-summary="preview-0"]').click();await new Promise(r=>setTimeout(r,20));
     const editDialog=document.querySelector('#calendar-task-editor-dialog-root [data-task-editor-dialog="preview-0"]');
+    const content=editDialog.querySelector('[data-task-content]'),contentLabel=content.closest('label'),caption=contentLabel.querySelector('span');
     const afterPreview={selected:calendarHarness.selected().date,gridSelected:document.querySelector('.calendar-day[data-calendar-date="2026-09-09"]').dataset.selected!==undefined,
       open:!document.querySelector('#calendar-task-editor-dialog-root').hidden&&!editDialog.hidden,
-      name:editDialog.querySelector('[data-task-name]').value,scroll:document.querySelector('.workspace-information').scrollTop};
+      name:editDialog.querySelector('[data-task-name]').value,scroll:document.querySelector('.workspace-information').scrollTop,
+      focusedContent:document.activeElement===content,contentHeight:content.getBoundingClientRect().height,captionBottom:caption.getBoundingClientRect().bottom,
+      contentTop:content.getBoundingClientRect().top,contentIsCaptionSibling:contentLabel.children[0]===caption&&contentLabel.children[1]===content,
+      contentOutline:getComputedStyle(content).outlineWidth,editorCompact:editDialog.querySelector('[data-task-editor]').classList.contains('task-editor-compact')};
     document.querySelector('#calendar-task-editor-dialog-root [data-task-editor-close]').click();
     const add=document.querySelector('#calendar-add-task');add.click();
     const createDialog=document.querySelector('#calendar-task-create-dialog'),name=document.querySelector('#calendar-task-create-name'),date=document.querySelector('#calendar-task-create-date');
@@ -244,11 +261,38 @@ test('Calendar task previews open a compact editor without selecting another dat
   assert.equal(result.afterPreview.open,true);
   assert.equal(result.afterPreview.name,'合成任务 0 完整长标题');
   assert.equal(result.afterPreview.scroll,result.beforeScroll);
+  assert.equal(result.afterPreview.focusedContent,true,JSON.stringify(result.afterPreview));
+  assert.ok(result.afterPreview.contentHeight>=128,JSON.stringify(result.afterPreview));
+  assert.ok(result.afterPreview.contentTop-result.afterPreview.captionBottom>=5,JSON.stringify(result.afterPreview));
+  assert.equal(result.afterPreview.contentIsCaptionSibling,true);
+  assert.notEqual(result.afterPreview.contentOutline,'0px');
+  assert.notEqual(result.afterPreview.contentOutline,'none');
+  assert.equal(result.afterPreview.editorCompact,true);
   assert.deepEqual(result.creation,{open:true,selected:'2026-09-09',date:'2026-09-09',focused:true,dateEditable:true});
   assert.equal(result.editedDate,'2026-09-12');assert.equal(result.selectedAfterDateEdit,'2026-09-09');
   assert.equal(result.closed,true);
   assert.equal(result.commands.filter((item:any)=>item.command==='read_daily_view').length,0);
   assert.equal(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)).length,0);
+});
+
+test('Tasks opens directly on spaced Content and leaves Add subtask visible beside the collapsed relationship disclosure',{skip:process.platform!=='darwin'},()=>{
+  const result=webKit(`
+    const task={id:'synthetic-parent',name:'Synthetic parent task',content:'Synthetic editable context stays in its own content field.',date:'2026-10-14',time:'09:30',executionEnd:null,priority:'medium',tagIds:[],parentTaskId:null,listId:'inbox',source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-01T12:00:00Z',modifiedAt:'2026-10-01T12:00:00Z',changes:[]};
+    const view={state:'ready',message:'',schemaVersion:1,revision:'synthetic-revision',targetBinding:'synthetic-vault',vaultName:'Synthetic Vault',vaultPath:'/tmp/Synthetic Vault',currentDate:'2026-10-14',lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false}],folders:[],tags:[],tasks:[task]};
+    const mounted=taskSurfaceHarness.render(task,view),content=mounted.dialog.querySelector('[data-task-content]'),caption=content.closest('label').querySelector('span'),parent=mounted.dialog.querySelector('[data-task-parent-disclosure]'),add=mounted.dialog.querySelector('.task-form-grid > [data-task-add-child]');
+    const bounds=rect(add),hit=document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2);
+    return JSON.stringify({opened:mounted.opened,focusedContent:document.activeElement===content,content:rect(content),caption:rect(caption),contentIsCaptionSibling:content.closest('label').children[0]===caption&&content.closest('label').children[1]===content,outline:getComputedStyle(content).outlineWidth,add:rect(add),addVisible:!add.hidden&&bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.height>0,addPointerHit:Boolean(hit&&add.contains(hit)),addInsideParentDisclosure:parent.contains(add),parentDisclosureOpen:parent.open,modal:rect(mounted.dialog)});
+  `,969,723);
+  assert.equal(result.opened,true);
+  assert.equal(result.focusedContent,true);
+  assert.ok(result.content.height>=128,JSON.stringify(result));
+  assert.ok(result.content.top-result.caption.bottom>=5,JSON.stringify(result));
+  assert.equal(result.contentIsCaptionSibling,true);
+  assert.ok(parseFloat(result.outline)>0,JSON.stringify(result));
+  assert.equal(result.addVisible,true,JSON.stringify(result));
+  assert.equal(result.addPointerHit,true,JSON.stringify(result));
+  assert.equal(result.addInsideParentDisclosure,false);
+  assert.equal(result.parentDisclosureOpen,false);
 });
 
 test('Calendar holiday controls persist region preferences without writing task or Daily Record data',{skip:process.platform!=='darwin'},()=>{

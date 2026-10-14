@@ -150,7 +150,7 @@ impl CollaborationContextSource for FixtureContext {
             daily_record: ContextPaneView {
                 state: "ready".into(),
                 message: "Current Daily Record loaded".into(),
-                items: vec!["Morning baseline: synthetic walk".into()],
+                items: vec!["Current arrangement · synthetic walk".into()],
             },
             tasks: ContextPaneView {
                 state: "ready".into(),
@@ -622,7 +622,7 @@ fn user_and_assistant_messages_survive_reopening_the_application_service() {
     assert_eq!(prompt.context.tasks.items, ["Task: synthetic appointment"]);
     assert_eq!(
         prompt.context.daily_record.items,
-        ["Morning baseline: synthetic walk"]
+        ["Current arrangement · synthetic walk"]
     );
     assert_eq!(prompt.context.habits.items, ["Habit: synthetic stretch"]);
 
@@ -1864,16 +1864,12 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
 
     assert_eq!(context.daily_record.state, "ready");
     assert!(context.daily_record.items.iter().any(|item| {
-        item.starts_with("Morning · 08:00–10:00 ·")
-            && item.contains("Canonical synthetic baseline")
-    }), "Morning context must describe the immutable baseline: {:?}", context.daily_record.items);
-    assert!(context.daily_record.items.iter().any(|item| {
         item.starts_with("Current arrangement · 18:00–20:30 ·")
             && item.contains("Canonical synthetic plan")
     }));
-    assert!(!context.daily_record.items.iter().any(|item| {
-        item.starts_with("Morning ·") && item.contains("Canonical synthetic plan")
-    }));
+    assert!(context.daily_record.items.iter().all(|item| {
+        !item.contains("Canonical synthetic baseline") && !item.starts_with("Morning ·")
+    }), "the current context shows one current arrangement, not a second baseline plan: {:?}", context.daily_record.items);
     assert!(context
         .daily_record
         .items

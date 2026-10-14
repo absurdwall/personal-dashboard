@@ -538,6 +538,94 @@ date: 2026-08-10
 }
 
 #[test]
+fn baseline_only_record_projects_the_baseline_as_the_single_current_plan_without_edit_bindings() {
+    let vault = TempDirectory::new("today-baseline-only-current-projection");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** Synthetic retained plan.
+
+### 初始计划依据
+
+#### Tasks
+
+- Synthetic source detail
+
+## 白天更新
+
+## 晚间复盘
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("baseline-only record should remain readable");
+
+    assert_eq!(view.state, TodayState::Ready);
+    assert_eq!(view.baseline.timeline[0].title, "Synthetic retained plan.");
+    assert_eq!(view.timeline[0].title, "Synthetic retained plan.");
+    assert_eq!(view.evidence[0].label, "Tasks");
+    assert_eq!(view.evidence[0].items, vec!["Synthetic source detail"]);
+    assert_eq!(view.time_axis.current_arrangement.len(), 1);
+    assert_eq!(view.time_axis.current_arrangement[0].plan_id, None);
+    assert!(!view.time_axis.current_arrangement[0].time_editable);
+}
+
+#[test]
+fn explicitly_empty_current_arrangement_does_not_resurrect_removed_baseline_items() {
+    let vault = TempDirectory::new("today-empty-current-preserves-cancellation");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** Synthetic cancelled plan.
+
+### 初始计划依据
+
+#### Tasks
+
+- Synthetic old basis
+
+## 今天的大致安排
+
+## 计划依据
+
+## 白天更新
+
+## 晚间复盘
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("an explicitly empty current plan should stay readable");
+
+    assert_eq!(view.baseline.timeline[0].title, "Synthetic cancelled plan.");
+    assert_eq!(view.baseline.evidence[0].items, vec!["Synthetic old basis"]);
+    assert!(view.timeline.is_empty());
+    assert!(view.evidence.is_empty());
+    assert!(view.time_axis.current_arrangement.is_empty());
+    assert!(view.time_axis.unlocated_current_arrangement.is_empty());
+}
+
+#[test]
 fn blank_baseline_is_distinct_from_missing_and_saved_baselines() {
     let vault = TempDirectory::new("today-blank-baseline");
     write_record(
@@ -1963,7 +2051,7 @@ source: morning-planning
     assert!(view.evening.comparison.is_empty());
     assert!(view.evening.summary.is_empty());
     assert!(view.evening.questions.is_empty());
-    assert!(view.message.contains("尚未写入"));
+    assert!(view.message.contains("当前计划尚无安排"));
 }
 
 #[test]

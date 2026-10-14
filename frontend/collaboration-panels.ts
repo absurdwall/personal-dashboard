@@ -109,8 +109,8 @@ export function initializeCollaborationPanels(): void {
     const composerBounds = composer.getBoundingClientRect();
     const headingBounds = chatHeading.getBoundingClientRect();
     const border = chat.clientTop;
-    panels.context.style.top = `${Math.max(0, headingBounds.bottom - chatBounds.top - border + 8)}px`;
-    panels.context.style.bottom = `${Math.max(0, chatBounds.bottom - border - composerBounds.top + 8)}px`;
+    panels.context.style.top = `${Math.max(0, headingBounds.bottom - chatBounds.top - border + 4)}px`;
+    panels.context.style.paddingBottom = `${Math.max(16, composerBounds.height + 16)}px`;
     if (geometry.narrow) {
       const primaryBounds = primary.getBoundingClientRect();
       const top = Math.max(0, headingBounds.bottom - primaryBounds.top - primary.clientTop + 8);

@@ -97,6 +97,16 @@ test("Tasks retain a compact level cue after the indentation cap", () => {
   assert.match(css, /\.task-nesting-depth/);
 });
 
+test("Tasks opens Content directly and keeps Add subtask outside the collapsed relationship disclosure", () => {
+  assert.match(main, /contentLabel\.append\(contentCaption, content\)/);
+  assert.match(main, /if \(surface === "tasks"\) \{\s*addChildAction = document\.createElement\("button"\)/);
+  assert.match(main, /grid\.append\(contentLabel\);\s*if \(addChildAction\) grid\.append\(addChildAction\);\s*grid\.append\(listDetails, scheduleDetails\);\s*if \(surface === "tasks"\) grid\.append\(propertiesDetails, parentDetails\)/);
+  assert.match(main, /const content = surface === "tasks" \|\| surface === "calendar"[\s\S]*?\(content \?\? editor\.querySelector<HTMLInputElement>\("\[data-task-name\]"\)\)\?\.focus\(\)/);
+  assert.match(css, /\.task-form-grid label\s*\{[^}]*gap:\s*0\.35rem/);
+  assert.match(css, /\.task-editor-compact \.task-form-grid textarea\[data-task-content\]\s*\{[^}]*min-height:\s*8rem/);
+  assert.match(css, /\.task-editor-compact \.task-add-child\s*\{[^}]*min-height:\s*1\.7rem/);
+});
+
 test("task writes serialize refresh reconciliation and retain retry identity", () => {
   const refresh = main.slice(
     main.indexOf("async function refreshTasks"),
