@@ -101,3 +101,18 @@ no integration merge, install, remote operation or main change was recorded.
   combination acceptance ticket.
 - No remote Git operation, protected-main change, app installation, or normal
   user-data write was performed.
+
+## PDEX-21 claim — 2026-10-14
+
+- User authorized a fresh implementation of Today timeline and arrangement
+  interactions. The ticket branch is `codex/pdex-21-restart`, based at
+  `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`, in isolated worktree
+  `/private/tmp/pdex-restart-20261014.noindex/pdex-21`.
+- Integration subsequently advanced to `071202fb61781436b834bcbdeaac2bce88cbd69c`
+  with PDEX-22. The latest integration must be merged into the PDEX-21 branch
+  and verified before returning it to the integration owner; PDEX-21 is not
+  integrated yet.
+- Scope is limited to the ticket's Today axis, zoom/fit, lived-day boundary
+  access, nearby Task editing, card overlap/pointer behavior, broad-plan
+  precision and Current arrangement persistence. Existing design tokens and
+  all unspecified Dashboard areas remain the baseline.
