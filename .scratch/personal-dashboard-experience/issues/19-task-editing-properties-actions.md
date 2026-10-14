@@ -23,6 +23,7 @@
 - Ticket branch: `codex/pdex-19-restart`; worktree `/tmp/pdex-restart-20261014.noindex/pdex-19`; start commit `8275615a3f3cad2a783d74561472c78c4bbeb493`.
 - Implementation commits: `f0a95909d249535d300ed735a17a603fcd0bcb6b` (persist priority/tags); `d04330c518be1d5dc34e5b689cb126a95bbcc40c` (Task detail/property UI and focused browser/unit coverage); `689b383df3ca235fb0dcdcee3ae4d881b4aa963d` (Today Task test-double compatibility for the property-aware draft reader); `f6a47765e91bde430de651b0c8510a8d286ffa3e` (Cancel restores saved priority/tags; regression coverage).
 - [Implementation/test evidence](../evidence/pdex-19-implementation-2026-10-14.md) records exact commands, results, full-suite failures and their scope. PDEX-19 code implementation is complete; lifecycle remains in-progress until its own acceptance is satisfied. Packaged App acceptance is assigned to PDEX-26.
+- Local non-fast-forward integration commit on `codex/dashboard-experience-refinement-restart-20261014`: `dd472702dc6ff4762e84c6877b4d052d1b5229e4`. The full ticket branch and all source commits remain reachable.
 - The earlier rejected implementation remains on its previous branch with full history and is not this ticket's source baseline.
 
 ## Acceptance criteria

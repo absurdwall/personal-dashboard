@@ -79,3 +79,21 @@ passes 19/19 and `npm run build` passes; the full frontend suite was not rerun.
 PDEX-19 remains `in-progress` because packaged application acceptance is
 separate and belongs to PDEX-26. No branch merge, install, remote operation or
 main change is recorded here.
+
+## Local integration checkpoint — 2026-10-14
+
+- PDEX-19 was integrated with a non-fast-forward merge on
+  `codex/dashboard-experience-refinement-restart-20261014`:
+  `dd472702dc6ff4762e84c6877b4d052d1b5229e4`. The complete ticket branch
+  `codex/pdex-19-restart` and its implementation, regression, schema, review,
+  and evidence commits remain reachable.
+- Final independent Spec review found no remaining PDEX-19 issues. The focused
+  Task-detail browser suite is 19/19 and `npm run build` passes; the full
+  frontend suite was not rerun after the last Cancel repair. See the linked
+  evidence file for the earlier full-suite result and qualified baseline checks.
+- PDEX-23 and PDEX-24 remain on their separate local ticket branches pending
+  final review and integration. PDEX-20/21/22 depend on PDEX-19 and have not
+  started. PDEX-25 depends on PDEX-24; PDEX-26 remains the packaged combination
+  acceptance ticket.
+- No remote Git operation, protected-main change, app installation, or normal
+  user-data write was performed.
