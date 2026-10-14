@@ -882,6 +882,7 @@ const interfaceCopies = {
   "tasks.directSubtasks": { zh: "直属子任务 · {count}", en: "Direct subtasks · {count}" },
   "tasks.noSubtasks": { zh: "暂无直属子任务。", en: "No direct subtasks." },
   "tasks.addSubtask": { zh: "添加子任务", en: "Add subtask" },
+  "tasks.openInTasks": { zh: "在 Tasks 中打开", en: "Open in Tasks" },
   "tasks.changeParent": { zh: "父子关系", en: "Parent relationship" },
   "tasks.nestingLevel": { zh: "嵌套层级 {level}", en: "Nested level {level}" },
   "tasks.parentChangedHistory": { zh: "父任务：{previous} → {next}", en: "Parent task: {previous} → {next}" },
@@ -2210,6 +2211,10 @@ const chineseErrorPrefixes: readonly Readonly<[string, string]>[] = [
 ];
 
 const chineseApplicationErrors: Readonly<Record<string, string>> = {
+  "The saved Habit lifecycle does not match this operation. Refresh Habits to verify.": "Habit 生命周期保存结果与当前操作不匹配；请刷新后核对。",
+  "Updated Habit definitions were not read back from the same selected Vault. The form is retained. Check the Vault and retry refresh.": "没有读回同一所选 Vault 的更新 Habit 定义；表单操作仍保留。请检查 Vault 后重试刷新。",
+  "The saved Habit does not match the selected Vault. Refresh Habits to verify.": "Habit 保存结果与当前所选 Vault 不匹配；请刷新 Habits 后核对。",
+
   "The collaboration session creation result did not match its request.":
     "协作会话创建结果与请求不匹配。",
   "The collaboration session creation identity is invalid.":

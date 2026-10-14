@@ -192,3 +192,74 @@ older than the snapshot schema's rolling 12-week window. PDEX-22 still lacks
 verified official China 2027 holiday data. PDEX-26 packaged acceptance remains
 open; no ticket was closed, and no remote Git operation or normal App install
 was made.
+
+
+## First visual acceptance and bounded repairs — 2026-10-14
+
+The user requested a first-pass review of the second implementation, obvious
+repairs, then a real App preview for aesthetic feedback. This is not the full
+PDEX-26 release gate or user acceptance. Reviewed branch
+`codex/dashboard-experience-refinement-reimplementation`, exact reported tip
+`fba6f5b3017fead89861ab42dfb36b08825cbd4e`, fixed point
+`918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
+Captured comparison: `git diff 918e7e0...HEAD`; both independent review axes
+used the pinned fba6f5b tip. The local tracker exception was followed.
+
+### Standards
+
+- P2: Habit definition status/error paths bypassed retained translation metadata;
+  repaired with the existing fixed-copy/error setters and paired diagnostics.
+- P3: Task schema documentation claimed version 3 while source writes version 4;
+  corrected compatibility and parent/folder contract paragraphs.
+- P3 heuristic: possible duplicated folder/tag mutation orchestration. Deferred;
+  it does not justify a broad refactor in this first visual pass.
+
+### Spec
+
+- P2: Today popup kept the old large property form, duplicated title and Name
+  focus. Reused Content-first compact editor, retained ordinary Today inline
+  details, updated draft summaries, and aligned Save/Cancel.
+- P2: Explicit parent/child navigation could lose its target to priority/tag
+  filters. Only filters excluding the requested object are reset.
+- P2: Calendar More exposed inert parent/child controls. Replaced them with an
+  explicit Open in Tasks action on the same Task identity.
+- P2, observed in packaged App: overview cards collapsed into unreadable strips.
+  parseFloat on an unresolved CSS clamp returned NaN; geometry now derives the
+  resolved plot height. Cards retain complete two-row labels and source/status.
+- P2, observed in packaged App: Calendar detail displayed an empty backdrop
+  because its form retained the inline editor hidden flag. Modal forms are now
+  visible; ordinary collapsed Today inline editors retain their behavior.
+
+### Verification and handoff boundary
+
+- Production TypeScript build, macOS release App build/sign, and diff whitespace
+  check passed. No dependency, service, main merge, push, or normal installation.
+- Related localization, Task presentation and Habit checks: 46/46 passed.
+  Adding the axis suite gave 56/57: the remaining source-markup expectation for
+  the unlocated shortcut aria-controls also failed in the original full run.
+- The broad frontend run during this review produced 457/510 passed, 53 failed.
+  It is not a clean regression gate. Failures include source-extraction fixture
+  ReferenceErrors and retained assertions; they remain recorded for later work.
+  A clean 918e7e0 snapshot independently reproduced the two slash/help failures
+  (45/47 across command completion and draft-refresh suites). Do not classify
+  every remaining failure as inherited or waived.
+- Real final candidate launched under a separate bundle id and profile in
+  `/tmp/pdex-review-20261014.noindex`, using only a synthetic Vault and fixed
+  September 8 fixture clock. User Vault/profile and installed App were preserved.
+- Native pointer/keyboard checks covered default 960x720 and an OS-zoomed larger
+  window: Tasks compact rows, Content focus and same-row Save/Cancel; Habit
+  default summary/today list; Calendar month and selected date context; Today
+  readable overview and compact nearby popup. These were qualitative first-pass
+  checks, not every requested PDEX-26 width or exact same-data baseline capture.
+- A Task content edit was saved through real Tauri IPC; canonical disk readback
+  retained id, date, interval, priority and tags. Calendar displayed the same
+  value; a quit/relaunch retained it in Today and its Task popup.
+- Final native checks verified visible Calendar form, More → Open in Tasks,
+  and High-priority parent → Low-priority child resetting the excluding filter.
+- PDEX-26 and PDEX-SPEC-02 remain open. Full upgrade/conflict/drag/voice/IME and
+  runtime coverage, remaining automated failures, China 2027 holiday coverage,
+  exact-window baseline comparison and final human aesthetic feedback remain.
+
+Review total: Standards 3 findings (worst: untranslated retained Habit errors);
+Spec 5 findings (worst: blank Calendar Task editor); two Standards fixes and all
+five bounded Spec fixes implemented. This record does not assert release acceptance.

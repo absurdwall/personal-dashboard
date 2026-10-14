@@ -6430,9 +6430,9 @@ function renderTodayTimeAxisEntries(
   const [visibleStart, visibleEnd] = axisBounds();
   const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
     entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
-  const hourHeight = Number.parseFloat(
-    getComputedStyle(todayContinuousAxis!).getPropertyValue("--today-axis-hour-height"),
-  );
+  const plot = todayTimedEvents.closest<HTMLElement>(".today-axis-plot");
+  const plotHeight = plot ? Number.parseFloat(getComputedStyle(plot).height) : NaN;
+  const hourHeight = plotHeight / ((visibleEnd - visibleStart) / 60);
   const minimumLabelMinutes = Number.isFinite(hourHeight) && hourHeight > 0
     ? Math.max(TODAY_AXIS_LABEL_MINIMUM_MINUTES, Math.ceil(32 / hourHeight * 60))
     : TODAY_AXIS_LABEL_MINIMUM_MINUTES;
@@ -6675,7 +6675,7 @@ function openTodayAxisTaskPopup(taskId: string, marker: HTMLElement, preserveSta
     state: view.tasks.state,
     isPresentationCurrent: todayPresentationFresh,
   });
-  const row = taskEditor(stored, writable, view.tasks, "today", true);
+  const row = taskEditor(stored, writable, view.tasks, "today", true, false, true);
   const form = row.querySelector<HTMLFormElement>("form[data-task-editor]");
   if (!form) return;
   if (!preserveStatus && todayAxisTaskPopupStatus) {
@@ -6684,9 +6684,11 @@ function openTodayAxisTaskPopup(taskId: string, marker: HTMLElement, preserveSta
   }
   form.classList.remove("task-editor-inline");
   form.classList.add("today-axis-task-popup-form");
-  form.querySelector<HTMLButtonElement>("button[data-task-editor-close]")?.remove();
-  todayAxisTaskPopupHeading.removeAttribute("data-i18n");
-  todayAxisTaskPopupHeading.textContent = stored.name;
+  const cancel = form.querySelector<HTMLButtonElement>("button[data-task-editor-close]");
+  if (cancel) {
+    cancel.addEventListener("click", () => closeTodayAxisTaskPopup(true));
+  }
+  setCopy(todayAxisTaskPopupHeading, "today.axisTaskPopupHeading");
   todayAxisTaskPopup.setAttribute("aria-label", t("tasks.editLabel", { task: stored.name }));
   todayAxisTaskPopup.dataset.taskId = taskId;
   todayAxisTaskPopup.dataset.restoreFocus = "true";
@@ -6695,7 +6697,7 @@ function openTodayAxisTaskPopup(taskId: string, marker: HTMLElement, preserveSta
   if (!todayAxisTaskPopup.open) todayAxisTaskPopup.show();
   window.requestAnimationFrame(() => {
     positionTodayAxisTaskPopup();
-    form.querySelector<HTMLInputElement>("[data-task-name]")?.focus({ preventScroll: true });
+    form.querySelector<HTMLTextAreaElement>("[data-task-content]")?.focus({ preventScroll: true });
   });
 }
 
@@ -9717,7 +9719,7 @@ async function setHabitActiveFromDetail(active: boolean): Promise<void> {
     });
     if (saved.operationId !== operationId || saved.habitKey !== key || saved.active !== active ||
         saved.snapshot.catalogTargetBinding !== snapshot.catalogTargetBinding) {
-      throw new Error("Habit 生命周期保存结果与当前操作不匹配；请刷新后核对。");
+      throw new Error("The saved Habit lifecycle does not match this operation. Refresh Habits to verify.");
     }
     habitLifecycleOperationIds.delete(signature);
     currentHabitSnapshot = saved.snapshot;
@@ -10364,7 +10366,7 @@ function openHabitDefinitionEditor(habitKey: string | null): void {
   writeHabitDefinitionForm(draft.values);
   if (habitDefinitionStatus) {
     if (draft.error) {
-      setRawText(habitDefinitionStatus, t("habits.definitionSaveFailed", { error: applicationMessage(draft.error) }));
+      setCopyError(habitDefinitionStatus, "habits.definitionSaveFailed", draft.error);
     } else {
       setRawText(habitDefinitionStatus, "");
     }
@@ -10407,14 +10409,14 @@ async function refreshHabitDefinitionAfterConflict(): Promise<boolean> {
   const retainedValues = readHabitDefinitionForm() ?? draft.values;
   habitDefinitionSaveInFlight = true;
   setHabitDefinitionFormLocked(true);
-  if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionRefreshing"));
+  if (habitDefinitionStatus) setCopy(habitDefinitionStatus, "habits.definitionRefreshing");
   try {
     await refreshHabits();
     const latest = currentHabitSnapshot;
     if (
       !latest || latest.catalogTargetBinding !== binding || latest.catalogError || latest.readError
     ) {
-      throw new Error("没有读回同一所选 Vault 的更新 Habit 定义；表单操作仍保留。请检查 Vault 后重试刷新。");
+      throw new Error("Updated Habit definitions were not read back from the same selected Vault. The form is retained. Check the Vault and retry refresh.");
     }
     draft.values = retainedValues;
     draft.pendingInput = null;
@@ -10424,13 +10426,13 @@ async function refreshHabitDefinitionAfterConflict(): Promise<boolean> {
     if (habitDefinitionRefresh) habitDefinitionRefresh.hidden = true;
     if (habitDefinitionSubmit) setCopy(habitDefinitionSubmit, "habits.save");
     writeHabitDefinitionForm(retainedValues);
-    if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionConflictRefreshed"));
+    if (habitDefinitionStatus) setCopy(habitDefinitionStatus, "habits.definitionConflictRefreshed");
     return true;
   } catch (error) {
     draft.error = String(error);
     habitDefinitionDrafts.set(draftKey, draft);
     if (habitDefinitionStatus) {
-      setRawText(habitDefinitionStatus, t("habits.definitionSaveFailed", { error: applicationMessage(String(error)) }));
+      setCopyError(habitDefinitionStatus, "habits.definitionSaveFailed", error);
     }
     return false;
   } finally {
@@ -10454,7 +10456,7 @@ async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<boolean>
     if (!habitDefinitionForm?.reportValidity()) return true;
     const goal = habitGoalFromValues(values);
     if (goal === undefined || (goal === null && !values.habitKey) || !values.name.trim() || (!values.habitKey && !values.startDate)) {
-      if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionFormInvalid"));
+      if (habitDefinitionStatus) setCopy(habitDefinitionStatus, "habits.definitionFormInvalid");
       return true;
     }
     draft.values = values;
@@ -10476,14 +10478,14 @@ async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<boolean>
   habitDefinitionSaveInFlight = true;
   setHabitDefinitionFormLocked(true);
   if (habitDefinitionSubmit) setCopy(habitDefinitionSubmit, "habits.definitionSaving");
-  if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionSaving"));
+  if (habitDefinitionStatus) setCopy(habitDefinitionStatus, "habits.definitionSaving");
   try {
     const saved = await window.__TAURI__.core.invoke<HabitDefinitionSaveResult>(
       "save_habit_definition",
       { input: draft.pendingInput },
     );
     if (saved.snapshot.catalogTargetBinding !== binding) {
-      throw new Error("Habit 保存结果与当前所选 Vault 不匹配；请刷新 Habits 后核对。");
+      throw new Error("The saved Habit does not match the selected Vault. Refresh Habits to verify.");
     }
     habitDefinitionDrafts.delete(draftKey);
     if (activeHabitDefinitionDraftKey === draftKey && activeHabitDefinitionBinding === binding) {
@@ -10502,7 +10504,7 @@ async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<boolean>
     draft.needsRefresh = isHabitDefinitionRevisionConflict(error);
     habitDefinitionDrafts.set(draftKey, draft);
     if (activeHabitDefinitionDraftKey === draftKey && habitDefinitionStatus) {
-      setRawText(habitDefinitionStatus, t("habits.definitionSaveFailed", { error: applicationMessage(String(error)) }));
+      setCopyError(habitDefinitionStatus, "habits.definitionSaveFailed", error);
     }
     if (activeHabitDefinitionDraftKey === draftKey) {
       if (habitDefinitionRefresh) habitDefinitionRefresh.hidden = !draft.needsRefresh;
@@ -11526,7 +11528,8 @@ function taskEditorDialogRootForSurface(surface: TaskSurface): HTMLElement | nul
 
 function openTaskInTasks(taskId: string): void {
   taskFocusRequestId = taskId;
-  if (currentTasksView) renderTasks(currentTasksView);
+  if (currentWorkspaceDestination !== "tasks") showWorkspaceDestination("tasks");
+  else if (currentTasksView) renderTasks(currentTasksView);
 }
 
 function openTaskCreateForParent(parent: TaskView): void {
@@ -11627,6 +11630,7 @@ function taskEditor(
   surface: TaskSurface = "tasks",
   expanded = false,
   parentVisible = false,
+  compact = surface === "tasks",
 ): HTMLElement {
   const binding = view?.targetBinding;
   const draft = binding
@@ -11800,14 +11804,15 @@ function taskEditor(
     surface === "tasks" ? "task-editor-details" : "task-editor-details task-editor-inline";
   editorForm.dataset.taskEditor = task.id;
   editorForm.dataset.taskSurface = surface;
-  editorForm.hidden = surface !== "tasks" && !expanded;
+  editorForm.classList.toggle("task-editor-compact", compact);
+  editorForm.hidden = !usesModal && !expanded;
   editorForm.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
   const grid = document.createElement("div");
   grid.className = "task-form-grid";
   const nameLabel = document.createElement("label");
-  nameLabel.className = usesModal ? "task-title-field" : "task-form-wide";
+  nameLabel.className = usesModal || compact ? "task-title-field" : "task-form-wide";
   const nameCaption = document.createElement("span");
-  if (!usesModal) setCopy(nameCaption, "tasks.name");
+  if (!usesModal && !compact) setCopy(nameCaption, "tasks.name");
   const name = document.createElement("input");
   name.type = "text";
   name.maxLength = 160;
@@ -11817,7 +11822,7 @@ function taskEditor(
   name.dataset.taskName = "";
   name.setAttribute("aria-label", `${t("tasks.name")} · ${task.name}`);
   let parentDetails: HTMLDetailsElement | null = null;
-  if (usesModal) {
+  if (usesModal || compact) {
     nameLabel.append(name);
   } else {
     nameCaption.append(name);
@@ -11829,7 +11834,7 @@ function taskEditor(
   const contentCaption = document.createElement("span");
   setCopy(contentCaption, "tasks.content");
   const content = document.createElement("textarea");
-  content.rows = editingTasks ? 5 : 2;
+  content.rows = compact ? 5 : 2;
   content.disabled = !editable;
   content.value = draft?.content ?? task.content ?? "";
   content.dataset.taskContent = "";
@@ -11902,7 +11907,7 @@ function taskEditor(
     endTime.value = "";
     stashTaskSurfaceDraft(surface, editorForm);
   });
-  if (editingTasks) {
+  if (compact) {
     const listDetails = document.createElement("details");
     listDetails.className = "task-property-disclosure task-list-disclosure";
     listDetails.dataset.taskListDisclosure = "";
@@ -12099,7 +12104,9 @@ function taskEditor(
     setCopy(addChild, "tasks.addSubtask");
     addChild.addEventListener("click", () => openTaskCreateForParent(task));
     parentDetails.append(addChild);
-    grid.append(contentLabel, listDetails, scheduleDetails, propertiesDetails, parentDetails);
+    grid.append(contentLabel, listDetails, scheduleDetails);
+    if (surface === "tasks") grid.append(propertiesDetails, parentDetails);
+    if (!usesModal) editorForm.prepend(nameLabel);
   } else {
     grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd);
   }
@@ -12118,7 +12125,7 @@ function taskEditor(
   close.dataset.taskEditorClose = "";
   close.disabled = !writable;
   setCopy(close, "tasks.cancel");
-  if (usesModal) {
+  if (usesModal || compact) {
     const actions = document.createElement("div");
     actions.className = "task-editor-footer-actions";
     actions.append(close, save);
@@ -12191,7 +12198,7 @@ function taskEditor(
   editorForm.append(footer);
   const history = taskChangeHistory(task, view);
   if (history) editorForm.append(history);
-  if (!usesModal) editorForm.append(close);
+  if (!usesModal && !compact) editorForm.append(close);
   const dialog = usesModal ? document.createElement("div") : null;
   if (dialog) {
     dialog.className = "task-editor-dialog";
@@ -12237,7 +12244,18 @@ function taskEditor(
     addSubtask.dataset.taskAddChild = task.id;
     addSubtask.disabled = !editable;
     setCopy(addSubtask, "tasks.addSubtask");
-    menuPanel.append(openSchedule, moveList, openParent, addSubtask);
+    menuPanel.append(openSchedule, moveList);
+    if (surface === "tasks") {
+      menuPanel.append(openParent, addSubtask);
+    } else {
+      const openInTasks = document.createElement("button");
+      openInTasks.type = "button";
+      openInTasks.className = "task-more-menu-item";
+      openInTasks.dataset.taskOpenInTasks = task.id;
+      setCopy(openInTasks, "tasks.openInTasks");
+      openInTasks.addEventListener("click", () => openTaskInTasks(task.id));
+      menuPanel.append(openInTasks);
+    }
     if (!deleted && task.state !== "abandoned") {
       const stateAction = document.createElement("button");
       stateAction.type = "button";
@@ -12531,6 +12549,8 @@ function renderTasks(view: TasksView): void {
   if (taskFocusRequestId) {
     const focused = view.tasks.find(task => task.id === taskFocusRequestId);
     if (focused) {
+      if (taskPriorityFilter !== "all" && taskPriorityFilter !== (focused.priority ?? "none")) taskPriorityFilter = "all";
+      if (taskTagFilter && !(focused.tagIds ?? []).includes(taskTagFilter)) taskTagFilter = null;
       taskStateScope = focused.deletedAt ? "deleted" : focused.state;
       const focusedList = taskListForId(view, focused.listId);
       taskScope = focusedList?.archived ? "archived"
@@ -13893,6 +13913,10 @@ function renderTaskSurface(surface: TaskSurface, view: TasksView): void {
 }
 
 function stashTaskSurfaceDraft(_surface: TaskSurface, form: HTMLFormElement): void {
+  if (form.classList.contains("task-editor-compact")) {
+    const view = _surface === "today" ? currentTodayView?.tasks : _surface === "calendar" ? currentCalendarSummaryView?.tasks : currentTasksView;
+    updateTaskEditorSummaries(form, view ?? null);
+  }
   stashTaskEditDraft(form);
 }
 
@@ -15708,7 +15732,10 @@ const todayTaskPanel = document.querySelector<HTMLElement>(".day-task-panel");
 todayTaskPanel?.addEventListener("input", (event) => {
   const target = event.target as HTMLElement;
   const form = target.closest<HTMLFormElement>("form[data-task-editor]");
-  if (form) stashTaskEditDraft(form);
+  if (form) {
+    if (form.classList.contains("task-editor-compact")) updateTaskEditorSummaries(form, currentTodayView?.tasks ?? null);
+    stashTaskEditDraft(form);
+  }
 });
 
 todayTaskPanel?.addEventListener("change", (event) => {
@@ -15735,6 +15762,7 @@ todayTaskPanel?.addEventListener("change", (event) => {
       form.querySelector<HTMLInputElement>("[data-task-time]"),
     );
   }
+  if (form.classList.contains("task-editor-compact")) updateTaskEditorSummaries(form, currentTodayView?.tasks ?? null);
   stashTaskEditDraft(form);
 });
 
