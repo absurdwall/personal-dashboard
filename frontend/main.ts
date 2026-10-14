@@ -106,6 +106,12 @@ import {
 } from "./habit-completion.js";
 import { reconcileHabitCompletionWrite } from "./habit-completion-command.js";
 import {
+  deriveHabitHistoryStats,
+  type HabitHistoryContext,
+  type HabitHistoryFact,
+  type HabitHistoryStats,
+} from "./habit-history-stats.js";
+import {
   localizedHabitName,
   type HabitLocalizedNames,
 } from "./habit-presentation.js";
@@ -539,6 +545,75 @@ type HabitSnapshotView = Readonly<{
     partialWeeksExcluded: number;
   }>;
   habits: readonly HabitView[];
+}>;
+
+type HabitHistoryHabitContext = HabitHistoryContext & Readonly<{
+  name: string;
+  localizedNames: HabitLocalizedNames;
+  isLocalDefinition: boolean;
+  active: boolean;
+}>;
+
+type HabitHistoryCompletionRecord = Readonly<{
+  habitKey: string;
+  livedDate: string;
+  state: "completed" | "withdrawn";
+  recordedCompletedAt: string | null;
+  modifiedAt: string;
+  changes: readonly Readonly<{ id: string; kind: "completed" | "withdrawn"; changedAt: string }>[];
+}>;
+
+type HabitHistoryReadView = Readonly<{
+  domain: "habits";
+  fromDate: string;
+  toDate: string;
+  currentLivedDate: string | null;
+  requestedDates: readonly string[];
+  canonical: Readonly<{
+    state: "unconfigured" | "missing" | "ready" | "error";
+    revision: string | null;
+    targetBinding: string | null;
+    records: readonly HabitHistoryCompletionRecord[];
+    earliestLivedDateByHabit: Readonly<Record<string, string>>;
+    errorKind?: "damaged" | "unavailable";
+    message?: string;
+  }>;
+  projection: Readonly<{
+    state: HabitSnapshotState;
+    message: string;
+    generatedAt: string | null;
+    rangeLabel: string | null;
+    displayRangeLabel: string | null;
+    producerLabel: string | null;
+    habits: readonly Readonly<{ key: string; history: readonly HabitCellView[] }>[];
+  }>;
+  projectionRevision: string | null;
+  catalogState: "unconfigured" | "missing" | "ready" | "error";
+  catalogRevision: string | null;
+  definitionTargetBinding: string | null;
+  habitContexts: readonly HabitHistoryHabitContext[];
+  coverage: string;
+}>;
+
+type HabitDetailRecord = Readonly<{
+  date: string;
+  state: "completed" | "withdrawn" | "notDone" | "thresholdMet" | "actualTime" | "record";
+  sources: readonly string[];
+  text: string | null;
+}>;
+
+type HabitDetailHistoryState = Readonly<{
+  habitKey: string;
+  context: HabitHistoryHabitContext;
+  stats: HabitHistoryStats;
+  facts: readonly HabitHistoryFact[];
+  records: readonly HabitDetailRecord[];
+  rangeFrom: string;
+  rangeTo: string;
+  projectionFreshness: HabitSnapshotState;
+  projectionMessage: string;
+  canonicalMessage: string | null;
+  readError: string | null;
 }>;
 
 type HabitCorrectionHabitView = Readonly<{
@@ -1365,8 +1440,30 @@ const habitsSummaryNote = document.querySelector<HTMLElement>("#habits-summary-n
 const habitsGeneratedAt = document.querySelector<HTMLElement>("#habits-generated-at");
 const habitsProducer = document.querySelector<HTMLElement>("#habits-producer");
 const habitsTodayDate = document.querySelector<HTMLElement>("#habits-today-date");
+const habitsTodayHeading = document.querySelector<HTMLElement>("#habits-today-heading");
 const habitsDailyList = document.querySelector<HTMLElement>("#habits-daily-list");
 const habitsWeeklyList = document.querySelector<HTMLElement>("#habits-weekly-list");
+const habitsTodayDefault = document.querySelector<HTMLElement>("#habits-today-default");
+const habitsInactive = document.querySelector<HTMLDetailsElement>("#habits-inactive");
+const habitsInactiveCount = document.querySelector<HTMLElement>("#habits-inactive-count");
+const habitsInactiveList = document.querySelector<HTMLElement>("#habits-inactive-list");
+const habitDetailView = document.querySelector<HTMLElement>("#habit-detail-view");
+const habitDetailBack = document.querySelector<HTMLButtonElement>("#habit-detail-back");
+const habitDetailHeading = document.querySelector<HTMLElement>("#habit-detail-heading");
+const habitDetailMeta = document.querySelector<HTMLElement>("#habit-detail-meta");
+const habitDetailEdit = document.querySelector<HTMLButtonElement>("#habit-detail-edit");
+const habitDetailLifecycle = document.querySelector<HTMLButtonElement>("#habit-detail-lifecycle");
+const habitDetailStatus = document.querySelector<HTMLElement>("#habit-detail-status");
+const habitDetailCheckin = document.querySelector<HTMLElement>("#habit-detail-checkin");
+const habitDetailCheckinControl = document.querySelector<HTMLElement>("#habit-detail-checkin-control");
+const habitDetailMonth = document.querySelector<HTMLElement>("#habit-detail-month");
+const habitDetailAllTime = document.querySelector<HTMLElement>("#habit-detail-all-time");
+const habitDetailCurrentStreak = document.querySelector<HTMLElement>("#habit-detail-current-streak");
+const habitDetailHighestStreak = document.querySelector<HTMLElement>("#habit-detail-highest-streak");
+const habitDetailCoverage = document.querySelector<HTMLElement>("#habit-detail-coverage");
+const habitDetailRecordCount = document.querySelector<HTMLElement>("#habit-detail-record-count");
+const habitDetailRecordList = document.querySelector<HTMLElement>("#habit-detail-record-list");
+const habitDetailOlder = document.querySelector<HTMLButtonElement>("#habit-detail-older");
 const refreshHabitsButton = document.querySelector<HTMLButtonElement>("#refresh-habits");
 const addHabitButton = document.querySelector<HTMLButtonElement>("#add-habit");
 const habitDefinitionForm = document.querySelector<HTMLFormElement>("#habit-definition-form");
@@ -1374,6 +1471,8 @@ const habitDefinitionHeading = document.querySelector<HTMLElement>("#habit-defin
 const habitDefinitionStatus = document.querySelector<HTMLElement>("#habit-definition-status");
 const habitDefinitionSubmit = document.querySelector<HTMLButtonElement>("#habit-definition-submit");
 const habitDefinitionOperationIds = new Map<string, string>();
+const habitLifecycleOperationIds = new Map<string, string>();
+let habitLifecycleOperationCount = 0;
 const todayDate = document.querySelector<HTMLElement>("#today-date");
 const todayVault = document.querySelector<HTMLElement>("#today-vault");
 const todayStatus = document.querySelector<HTMLElement>("#today-status");
@@ -1650,10 +1749,16 @@ const calendarSelectionRequests = new LatestRequest();
 const habitSnapshotRequests = new LatestRequest();
 const habitDateRequests = new LatestRequest();
 const habitCompletionRequests = new LatestRequest();
+const habitHistoryRequests = new LatestRequest();
 let currentHabitSnapshot: HabitSnapshotView | null = null;
 type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
 type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>;
 let selectedHabitCell: HabitCellSelection | null = null;
+let selectedHabitDetailKey: string | null = null;
+let currentHabitDetail: HabitDetailHistoryState | null = null;
+let habitDetailVisibleRecordCount = 28;
+let habitLifecycleStatus: "saving" | "saved" | null = null;
+let habitLifecycleError: string | null = null;
 let currentHabitDateView: TodayView | null = null;
 let habitDateOperationCount = 0;
 let habitCompletionOperationCount = 0;
@@ -1774,6 +1879,7 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
   updateTodayUnlocatedPresentation();
   renderWorkspaceNavigationLanguage();
   renderWorkspaceFeatureArea(currentWorkspaceDestination);
+  renderHabitDetailPanel();
   renderWorkspaceRailContext(currentWorkspaceDestination);
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   renderCollaborationWorkspace();
@@ -1811,6 +1917,7 @@ function resetVaultScopedWorkspaceState(): void {
   habitSnapshotRequests.invalidate();
   habitDateRequests.invalidate();
   habitCompletionRequests.invalidate();
+  habitHistoryRequests.invalidate();
   collaborationWorkspaceRequest += 1;
   cancelCollaborationVoiceCaptureForSelectionChange();
   for (const timer of collaborationDraftSaveTimers.values()) window.clearTimeout(timer);
@@ -1855,7 +1962,14 @@ function resetVaultScopedWorkspaceState(): void {
   taskRefreshQueued = false;
   currentHabitSnapshot = null;
   selectedHabitCell = null;
+  selectedHabitDetailKey = null;
+  currentHabitDetail = null;
+  habitDetailVisibleRecordCount = 28;
+  habitLifecycleStatus = null;
+  habitLifecycleError = null;
   currentHabitDateView = null;
+  habitLifecycleOperationIds.clear();
+  habitLifecycleOperationCount = 0;
   habitsDestination?.querySelector(".habit-canonical-detail")?.remove();
   habitNoteStatus = null;
   habitCompletionStatus = null;
@@ -9049,12 +9163,16 @@ function habitRow(habit: HabitView): HTMLElement {
   identity.className = "habit-snapshot-identity";
   const identityLine = document.createElement("div");
   identityLine.className = "habit-identity-line";
-  const name = document.createElement("strong");
+  const name = document.createElement("button");
+  name.type = "button";
+  name.className = "habit-open-detail";
+  name.dataset.habitOpen = habit.key;
   const emoji = document.createElement("span");
   emoji.className = "habit-identity-emoji";
   const metadata = document.createElement("p");
   const sources = document.createElement("small");
   name.textContent = displayHabitName(habit);
+  name.setAttribute("aria-label", t("habits.openDetailFor", { habit: displayHabitName(habit) }));
   emoji.textContent = habit.emoji ?? "";
   const labels = [
     localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage),
@@ -9608,6 +9726,7 @@ async function setLocalHabitCompletion(
             state: "ready",
           };
           renderHabitSnapshot(view);
+          if (selectedHabitDetailKey === habitKey) void loadHabitDetail(habitKey);
         },
         refresh: async () => {
           habitCompletionStatus = null;
@@ -9790,6 +9909,9 @@ async function saveHabitDefinition(form: HTMLFormElement): Promise<boolean> {
     delete habitDefinitionForm!.dataset.prefilledName;
     setHabitDefinitionGoalFields();
     renderHabitSnapshot(view);
+    if (selectedHabitDetailKey && view.habits.some((habit) => habit.key === selectedHabitDetailKey)) {
+      void loadHabitDetail(selectedHabitDetailKey);
+    }
     return true;
   } catch (error) {
     setCopyError(status, "habits.definitionSaveFailed", error);
@@ -9801,7 +9923,370 @@ async function saveHabitDefinition(form: HTMLFormElement): Promise<boolean> {
   }
 }
 
+function parseHabitSnapshotRange(value: string | null): Readonly<{ from: string; to: string }> | null {
+  const match = value?.match(/(\d{4}-\d{2}-\d{2})\s+—\s+(\d{4}-\d{2}-\d{2})/);
+  return match ? { from: match[1], to: match[2] } : null;
+}
+
+function habitHistoryDates(from: string, to: string): string[] {
+  const dates: string[] = [];
+  for (let date = from; date <= to && dates.length < 366; date = shiftDate(date, 1)) dates.push(date);
+  return dates;
+}
+
+function habitHistorySnapshotStateLabel(state: HabitSnapshotState): string {
+  const keys: Record<HabitSnapshotState, InterfaceCopyKey> = {
+    unconfigured: "habits.snapshotUnconfigured",
+    missing: "habits.snapshotMissing",
+    ready: "habits.snapshotReady",
+    stale: "habits.snapshotStale",
+    retained: "habits.snapshotRetained",
+    error: "habits.snapshotError",
+  };
+  return t(keys[state]);
+}
+
+function habitHistoryMetricLabel(metric: HabitHistoryStats["month"]): string {
+  if (metric.precision === "unknown" || metric.value === null) return t("habits.metricUnknown");
+  const key: InterfaceCopyKey = metric.precision === "at-least"
+    ? metric.unit === "weeks" ? "habits.metricAtLeastWeeks" : "habits.metricAtLeastDays"
+    : metric.unit === "weeks" ? "habits.metricConfirmedWeeks" : "habits.metricConfirmedDays";
+  return t(key, { count: metric.value });
+}
+
+function habitDetailRecordStateLabel(state: HabitDetailRecord["state"]): string {
+  const keys: Record<HabitDetailRecord["state"], InterfaceCopyKey> = {
+    completed: "habits.completed",
+    withdrawn: "habits.completionWithdrawn",
+    notDone: "habits.notDone",
+    thresholdMet: "habits.thresholdMet",
+    actualTime: "habits.actualTime",
+    record: "habits.recordOnly",
+  };
+  return t(keys[state]);
+}
+
+function renderHabitDetailPanel(): void {
+  const selectedKey = selectedHabitDetailKey;
+  const visible = Boolean(selectedKey);
+  if (habitsTodayHeading) setCopy(habitsTodayHeading, visible ? "habits.detailTitle" : "habits.knownUnknown");
+  if (habitsTodayDefault) habitsTodayDefault.hidden = visible;
+  if (habitDetailView) habitDetailView.hidden = !visible;
+  if (!visible) return;
+
+  const habit = currentHabitSnapshot?.habits.find((candidate) => candidate.key === selectedKey);
+  const detail = currentHabitDetail?.habitKey === selectedKey ? currentHabitDetail : null;
+  const name = habit ? displayHabitName(habit) : detail?.context.name ?? selectedKey ?? "";
+  if (habitDetailHeading) habitDetailHeading.textContent = `${habit?.emoji ? `${habit.emoji} ` : ""}${name}`;
+  if (habitDetailMeta) {
+    const labels = habit ? [localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage)] : [];
+    if (habit?.group) labels.push(t("habits.goalGroup", { group: habit.group }));
+    if (habit?.startDate) labels.push(t("habits.startSince", { date: habit.startDate }));
+    if (habit?.pendingGoalLabel) labels.push(t("habits.pendingGoal", {
+      goal: localizeHabitGoalLabel(habit.pendingGoalLabel, currentInterfaceLanguage),
+    }));
+    habitDetailMeta.textContent = labels.join(" · ");
+  }
+  if (habitDetailEdit) habitDetailEdit.disabled = !habit;
+  if (habitDetailLifecycle) {
+    setCopy(habitDetailLifecycle, habit?.active ? "habits.deactivate" : "habits.restore");
+    habitDetailLifecycle.disabled = !habit || !currentHabitSnapshot?.definitionTargetBinding || habitLifecycleOperationCount > 0;
+  }
+  habitsInactiveList?.querySelectorAll<HTMLButtonElement>("button[data-habit-lifecycle]").forEach((button) => {
+    button.disabled = !currentHabitSnapshot?.definitionTargetBinding || habitLifecycleOperationCount > 0;
+  });
+  if (habitDetailCheckin) habitDetailCheckin.hidden = !habit?.active || !habit.canRecordCompletion;
+  if (habitDetailCheckinControl) {
+    habitDetailCheckinControl.replaceChildren(...(habit?.active && habit.canRecordCompletion
+      ? [habitCompletionControl(habit)]
+      : []));
+  }
+
+  const metrics = detail?.stats;
+  if (habitDetailMonth) habitDetailMonth.textContent = metrics ? habitHistoryMetricLabel(metrics.month) : t("habits.metricUnknown");
+  if (habitDetailAllTime) habitDetailAllTime.textContent = metrics ? habitHistoryMetricLabel(metrics.allTime) : t("habits.metricUnknown");
+  if (habitDetailCurrentStreak) habitDetailCurrentStreak.textContent = metrics ? habitHistoryMetricLabel(metrics.currentStreak) : t("habits.metricUnknown");
+  if (habitDetailHighestStreak) habitDetailHighestStreak.textContent = metrics ? habitHistoryMetricLabel(metrics.highestStreak) : t("habits.metricUnknown");
+
+  if (habitDetailCoverage) {
+    if (!detail) {
+      habitDetailCoverage.textContent = "";
+    } else {
+      const range = parseHabitSnapshotRange(currentHabitSnapshot?.rangeLabel ?? null);
+      setCopy(habitDetailCoverage, "habits.detailCoverage", {
+        from: detail.rangeFrom,
+        to: detail.rangeTo,
+        snapshot: range ? `${range.from} — ${range.to}` : t("habits.noProjectionWindow"),
+        freshness: habitHistorySnapshotStateLabel(detail.projectionFreshness),
+      });
+    }
+  }
+
+  if (habitDetailStatus && detail) {
+    if (habitLifecycleError) {
+      setRawText(habitDetailStatus, t("habits.lifecycleSaveFailed", { error: habitLifecycleError }));
+      habitDetailStatus.dataset.state = "error";
+    } else if (habitLifecycleStatus === "saving") {
+      setCopy(habitDetailStatus, "habits.lifecycleSaving");
+      habitDetailStatus.dataset.state = "loading";
+    } else if (habitLifecycleStatus === "saved") {
+      setCopy(habitDetailStatus, "habits.lifecycleSaved");
+      habitDetailStatus.dataset.state = "ready";
+    } else if (detail.readError) {
+      setRawText(habitDetailStatus, t("habits.historyLoadFailed", { error: detail.readError }));
+      habitDetailStatus.dataset.state = "error";
+    } else if (detail.canonicalMessage) {
+      setRawText(habitDetailStatus, detail.canonicalMessage);
+      habitDetailStatus.dataset.state = "ready";
+    } else {
+      setCopy(habitDetailStatus, "habits.historyLoaded");
+      habitDetailStatus.dataset.state = "ready";
+    }
+  }
+
+  const records = detail?.records ?? [];
+  const shown = records.slice(0, habitDetailVisibleRecordCount);
+  if (habitDetailRecordCount) setCopy(habitDetailRecordCount, "habits.recordCount", { count: records.length });
+  if (habitDetailRecordList) {
+    habitDetailRecordList.replaceChildren(...shown.map((record) => {
+      const row = document.createElement("article");
+      row.className = "habit-detail-record";
+      const heading = document.createElement("div");
+      const date = document.createElement("time");
+      date.dateTime = record.date;
+      date.textContent = record.date;
+      const state = document.createElement("strong");
+      state.textContent = habitDetailRecordStateLabel(record.state);
+      heading.append(date, state);
+      row.append(heading);
+      if (record.sources.length > 0) {
+        const sources = document.createElement("small");
+        sources.textContent = record.sources.join(currentInterfaceLanguage === "zh" ? "、" : ", ");
+        row.append(sources);
+      }
+      if (record.text) {
+        const text = document.createElement("p");
+        text.textContent = record.text;
+        row.append(text);
+      }
+      return row;
+    }));
+  }
+  if (habitDetailOlder) {
+    habitDetailOlder.hidden = shown.length >= records.length;
+    habitDetailOlder.disabled = !detail;
+  }
+}
+
+async function loadHabitDetail(habitKey: string): Promise<void> {
+  const snapshot = currentHabitSnapshot;
+  const fallbackDate = snapshot?.currentLivedDate ?? snapshot?.habits[0]?.today.date;
+  if (!snapshot?.habits.some((habit) => habit.key === habitKey) || !fallbackDate) return;
+  const request = habitHistoryRequests.begin();
+  if (selectedHabitDetailKey !== habitKey) {
+    habitLifecycleStatus = null;
+    habitLifecycleError = null;
+  }
+  selectedHabitDetailKey = habitKey;
+  currentHabitDetail = null;
+  habitDetailVisibleRecordCount = 28;
+  if (habitDetailStatus) {
+    setCopy(habitDetailStatus, "habits.historyLoading");
+    habitDetailStatus.dataset.state = "loading";
+  }
+  renderHabitDetailPanel();
+
+  try {
+    const overview = await window.__TAURI__.core.invoke<HabitHistoryReadView>(
+      "read_habit_completion_history",
+      { dates: [fallbackDate] },
+    );
+    if (!habitHistoryRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    const context = overview.habitContexts.find((candidate) => candidate.key === habitKey);
+    if (!context) throw new Error(t("habits.historyContextUnavailable"));
+    const currentDate = overview.currentLivedDate ?? fallbackDate;
+    const earliestCanonical = overview.canonical.earliestLivedDateByHabit[habitKey] ?? null;
+    const projectionRange = parseHabitSnapshotRange(overview.projection.rangeLabel);
+    const rangeFrom = [context.startDate, earliestCanonical, projectionRange?.from, currentDate]
+      .filter((date): date is string => Boolean(date))
+      .sort()[0] ?? currentDate;
+
+    const pages: HabitHistoryReadView[] = [];
+    for (let from = rangeFrom; from <= currentDate;) {
+      const dates = habitHistoryDates(from, currentDate);
+      if (dates.length === 0) break;
+      const loaded = await window.__TAURI__.core.invoke<HabitHistoryReadView>(
+        "read_habit_completion_history",
+        { dates },
+      );
+      if (!habitHistoryRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+      if (
+        loaded.catalogRevision !== overview.catalogRevision ||
+        loaded.canonical.revision !== overview.canonical.revision ||
+        loaded.projectionRevision !== overview.projectionRevision ||
+        loaded.definitionTargetBinding !== overview.definitionTargetBinding
+      ) throw new Error(t("habits.historyChangedDuringRead"));
+      pages.push(loaded);
+      const pageEnd = dates[dates.length - 1];
+      if (pageEnd === currentDate) break;
+      from = shiftDate(pageEnd, 1);
+    }
+
+    const canonicalRecords = new Map<string, HabitHistoryCompletionRecord>();
+    const projectedCells = new Map<string, HabitCellView>();
+    for (const page of pages) {
+      for (const record of page.canonical.records) {
+        if (record.habitKey === habitKey) canonicalRecords.set(record.livedDate, record);
+      }
+      for (const projected of page.projection.habits) {
+        if (projected.key !== habitKey) continue;
+        for (const cell of projected.history) projectedCells.set(cell.date, cell);
+      }
+    }
+
+    const facts: HabitHistoryFact[] = [];
+    const records: HabitDetailRecord[] = [];
+    for (let date = rangeFrom; date <= currentDate; date = shiftDate(date, 1)) {
+      const canonical = canonicalRecords.get(date);
+      const cell = projectedCells.get(date);
+      const projected = cell ? {
+        coverage: cell.coverage,
+        status: cell.status,
+        countsAsCompletion: cell.countsAsCompletion,
+        actualTimeLabel: cell.actualTimeLabel,
+        details: cell.details.map((item) => ({
+          kind: item.kind,
+          status: item.kind === "observation" ? item.status : undefined,
+          observedAt: item.kind === "observation" ? item.observedAt : undefined,
+          actualTime: item.kind === "actualTime" ? {
+            localTime: item.localTime,
+            dayRelation: item.dayRelation,
+          } : undefined,
+          sourceLabel: "sourceLabel" in item ? item.sourceLabel : undefined,
+        })),
+      } : undefined;
+      facts.push({
+        date,
+        canonicalState: overview.canonical.state === "ready" ? "ready"
+          : overview.canonical.state === "error" ? "error" : "missing",
+        localState: canonical?.state ?? "none",
+        completedAt: canonical?.recordedCompletedAt ?? null,
+        localChangedAt: canonical?.modifiedAt ?? null,
+        projected,
+      });
+
+      if (canonical || (cell && cell.hasRecord)) {
+        const state: HabitDetailRecord["state"] = canonical
+          ? canonical.state
+          : cell?.status === "notDone" ? "notDone"
+            : cell?.status === "thresholdOnly" ? "thresholdMet"
+              : cell?.status === "actualTime" ? "actualTime"
+                : cell?.status === "completed" ? "completed" : "record";
+        const sources = [...new Set([
+          ...(canonical ? [t("habits.completionLocal")] : []),
+          ...(cell?.completionSourceLabels ?? []),
+          ...(cell?.details.flatMap((item) => "sourceLabel" in item ? [item.sourceLabel] : []) ?? []),
+        ])];
+        const note = cell?.details
+          .filter((item) => item.kind === "localRecord")
+          .map((item) => item.kind === "localRecord" ? item.text : "")
+          .filter(Boolean)
+          .join(" · ");
+        records.push({ date, state, sources, text: note || cell?.actualTimeLabel || null });
+      }
+    }
+
+    const next: HabitDetailHistoryState = {
+      habitKey,
+      context,
+      stats: deriveHabitHistoryStats({
+        context,
+        facts,
+        rangeFrom,
+        rangeTo: currentDate,
+        currentDate,
+        projectionFreshness: overview.projection.state,
+      }),
+      facts,
+      records: records.sort((left, right) => right.date.localeCompare(left.date)),
+      rangeFrom,
+      rangeTo: currentDate,
+      projectionFreshness: overview.projection.state,
+      projectionMessage: overview.projection.message,
+      canonicalMessage: overview.canonical.state === "ready" ? null : overview.canonical.message ?? null,
+      readError: overview.canonical.state === "error" ? overview.canonical.message ?? t("habits.canonicalHistoryUnavailable") : null,
+    };
+    if (!habitHistoryRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    currentHabitDetail = next;
+    renderHabitDetailPanel();
+  } catch (error) {
+    if (!habitHistoryRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    renderHabitDetailPanel();
+    if (habitDetailStatus) {
+      setRawText(habitDetailStatus, t("habits.historyLoadFailed", { error: String(error) }));
+      habitDetailStatus.dataset.state = "error";
+    }
+  }
+}
+
+async function setHabitLifecycle(habitKey: string, active: boolean): Promise<void> {
+  const snapshot = currentHabitSnapshot;
+  const habit = snapshot?.habits.find((candidate) => candidate.key === habitKey);
+  const targetBinding = snapshot?.definitionTargetBinding;
+  if (!snapshot || !habit || !targetBinding || habitLifecycleOperationCount > 0) return;
+  const signature = `${targetBinding}:${habitKey}:${active}`;
+  let changeId = habitLifecycleOperationIds.get(signature);
+  if (!changeId) {
+    changeId = localOperationId("habit-lifecycle");
+    habitLifecycleOperationIds.set(signature, changeId);
+  }
+  const wasSelected = selectedHabitDetailKey === habitKey;
+  habitLifecycleOperationCount += 1;
+  habitLifecycleStatus = wasSelected ? "saving" : null;
+  habitLifecycleError = null;
+  if (habitDetailStatus && wasSelected) {
+    setCopy(habitDetailStatus, "habits.lifecycleSaving");
+    habitDetailStatus.dataset.state = "loading";
+  }
+  renderHabitDetailPanel();
+  try {
+    const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("set_habit_lifecycle", {
+      input: {
+        habitKey,
+        active,
+        changeId,
+        targetBinding,
+        expectedRevision: snapshot.definitionRevision,
+        expectedSnapshotRevision: snapshot.snapshotRevision,
+      },
+    });
+    habitLifecycleOperationIds.delete(signature);
+    renderHabitSnapshot(view);
+    if (selectedHabitDetailKey === habitKey) {
+      await loadHabitDetail(habitKey);
+      if (habitDetailStatus && currentHabitDetail?.habitKey === habitKey) {
+        habitLifecycleStatus = "saved";
+        renderHabitDetailPanel();
+      }
+    }
+  } catch (error) {
+    if (wasSelected) {
+      habitLifecycleStatus = null;
+      habitLifecycleError = String(error);
+      renderHabitDetailPanel();
+    }
+  } finally {
+    habitLifecycleOperationCount = Math.max(0, habitLifecycleOperationCount - 1);
+    renderHabitDetailPanel();
+  }
+}
+
 function renderHabitSnapshot(view: HabitSnapshotView): void {
+  const expandedHabitKeys = new Set(
+    Array.from(habitsDestination?.querySelectorAll<HTMLElement>(".habit-snapshot-row.is-expanded") ?? [])
+      .map((row) => row.dataset.habitKey)
+      .filter((key): key is string => Boolean(key)),
+  );
   currentHabitSnapshot = view;
   renderWorkspaceRailContext("habits");
   renderWorkspaceContextStatus(currentWorkspaceDestination);
@@ -9832,6 +10317,8 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
         : {},
     );
   }
+  const activeHabits = view.habits.filter((habit) => habit.active);
+  const inactiveHabits = view.habits.filter((habit) => !habit.active);
   const hasSnapshot = view.habits.length > 0;
   if (habitsReady) habitsReady.hidden = !hasSnapshot;
   if (habitsEmpty) habitsEmpty.hidden = hasSnapshot;
@@ -9847,6 +10334,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
     } else {
       setAppMessage(habitsEmptyCopy, view.message);
     }
+    renderHabitDetailPanel();
     renderSelectedHabitCell();
     return;
   }
@@ -9867,7 +10355,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   if (habitsTodayDate) habitsTodayDate.textContent = view.habits[0]?.today.date ?? "—";
   if (habitsSummaryRows) {
     habitsSummaryRows.replaceChildren(
-      ...view.habits
+      ...activeHabits
         .filter((habit) => habit.goalKind === "weekly-count")
         .map((habit) => {
           const row = document.createElement("div");
@@ -9885,18 +10373,61 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   }
   if (habitsDailyList) {
     habitsDailyList.replaceChildren(
-      ...view.habits
+      ...activeHabits
         .filter((habit) => habit.goalKind !== "weekly-count")
         .map(habitRow),
     );
   }
   if (habitsWeeklyList) {
     habitsWeeklyList.replaceChildren(
-      ...view.habits
+      ...activeHabits
         .filter((habit) => habit.goalKind === "weekly-count")
         .map(habitRow),
     );
   }
+  for (const key of expandedHabitKeys) {
+    const row = Array.from(habitsDestination?.querySelectorAll<HTMLElement>(".habit-snapshot-row") ?? [])
+      .find((candidate) => candidate.dataset.habitKey === key);
+    const history = row?.querySelector<HTMLElement>(".habit-history");
+    const recent = row?.querySelector<HTMLElement>(".habit-recent");
+    const expand = row?.querySelector<HTMLButtonElement>("button[data-habit-expand]");
+    const habit = activeHabits.find((candidate) => candidate.key === key);
+    if (!history || !expand || !habit) continue;
+    history.hidden = false;
+    if (recent) recent.hidden = true;
+    row?.classList.add("is-expanded");
+    expand.setAttribute("aria-expanded", "true");
+    setHabitHistoryDisclosureCopy(expand, habit, true);
+  }
+  if (habitsInactive) {
+    const wasOpen = habitsInactive.open;
+    habitsInactive.hidden = inactiveHabits.length === 0;
+    habitsInactive.open = wasOpen;
+  }
+  if (habitsInactiveCount) setCopy(habitsInactiveCount, "habits.inactiveCount", { count: inactiveHabits.length });
+  if (habitsInactiveList) {
+    habitsInactiveList.replaceChildren(...inactiveHabits.map((habit) => {
+      const row = document.createElement("article");
+      row.className = "habit-inactive-row";
+      const name = document.createElement("button");
+      name.type = "button";
+      name.className = "habit-open-detail";
+      name.dataset.habitOpen = habit.key;
+      name.textContent = `${habit.emoji ? `${habit.emoji} ` : ""}${displayHabitName(habit)}`;
+      name.setAttribute("aria-label", t("habits.openDetailFor", { habit: displayHabitName(habit) }));
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "habit-edit-button";
+      restore.dataset.habitLifecycle = habit.key;
+      restore.dataset.habitLifecycleActive = "true";
+      setCopy(restore, "habits.restore");
+      restore.setAttribute("aria-label", t("habits.restoreHabit", { habit: displayHabitName(habit) }));
+      restore.disabled = !view.definitionTargetBinding || habitLifecycleOperationCount > 0;
+      row.append(name, restore);
+      return row;
+    }));
+  }
+  renderHabitDetailPanel();
   renderSelectedHabitCell();
 }
 
@@ -14555,6 +15086,50 @@ habitsDestination?.addEventListener("change", (event) => {
 });
 
 habitsDestination?.addEventListener("click", (event) => {
+  const backToToday = (event.target as HTMLElement).closest<HTMLButtonElement>("#habit-detail-back");
+  if (backToToday) {
+    habitHistoryRequests.invalidate();
+    selectedHabitDetailKey = null;
+    currentHabitDetail = null;
+    habitLifecycleStatus = null;
+    habitLifecycleError = null;
+    renderHabitDetailPanel();
+    return;
+  }
+
+  const openHabit = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-open]");
+  if (openHabit?.dataset.habitOpen) {
+    void loadHabitDetail(openHabit.dataset.habitOpen);
+    return;
+  }
+
+  if ((event.target as HTMLElement).closest<HTMLButtonElement>("#habit-detail-older")) {
+    habitDetailVisibleRecordCount += 28;
+    renderHabitDetailPanel();
+    return;
+  }
+
+  if ((event.target as HTMLElement).closest<HTMLButtonElement>("#habit-detail-edit")) {
+    const habit = currentHabitSnapshot?.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
+    if (habit) openHabitDefinitionForm(habit);
+    return;
+  }
+
+  const lifecycleAction = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-lifecycle]");
+  const detailLifecycleAction = (event.target as HTMLElement).closest<HTMLButtonElement>("#habit-detail-lifecycle");
+  if (detailLifecycleAction && selectedHabitDetailKey) {
+    const habit = currentHabitSnapshot?.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
+    if (habit) void setHabitLifecycle(habit.key, !habit.active);
+    return;
+  }
+  if (lifecycleAction?.dataset.habitLifecycle) {
+    void setHabitLifecycle(
+      lifecycleAction.dataset.habitLifecycle,
+      lifecycleAction.dataset.habitLifecycleActive === "true",
+    );
+    return;
+  }
+
   const editHabit = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "button[data-habit-edit]",
   );

@@ -10,7 +10,8 @@ pub const HABIT_NAMES_RELATIVE_PATH: &str = "life/.personal-dashboard/habit-name
 pub const HABIT_DEFINITIONS_RELATIVE_PATH: &str = "life/.personal-dashboard/habits/v1/catalog.json";
 const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const HABIT_NAMES_SCHEMA_VERSION: u32 = 1;
-const HABIT_DEFINITIONS_SCHEMA_VERSION: u32 = 1;
+const HABIT_DEFINITIONS_V1_SCHEMA_VERSION: u32 = 1;
+const HABIT_DEFINITIONS_V2_SCHEMA_VERSION: u32 = 2;
 const HISTORY_WEEKS: i64 = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,6 +106,8 @@ pub struct LocalHabitDefinition {
     pub base_goal: Option<LocalHabitGoal>,
     pub source_goal_history: Vec<LocalHabitGoalHistory>,
     pub goal_revisions: Vec<LocalHabitGoalRevision>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lifecycle_changes: Vec<LocalHabitLifecycleChange>,
 }
 
 impl LocalHabitDefinition {
@@ -139,6 +142,41 @@ impl LocalHabitDefinition {
                     .then_with(|| left.changed_at.cmp(&right.changed_at))
             })
     }
+
+    pub fn active_on(&self, date: &str, source_default: bool) -> bool {
+        self.lifecycle_changes
+            .iter()
+            .filter(|change| change.effective_on.as_str() <= date)
+            .max_by(|left, right| {
+                left.effective_on
+                    .cmp(&right.effective_on)
+                    .then_with(|| left.changed_at.cmp(&right.changed_at))
+            })
+            .map(|change| change.kind.active())
+            .unwrap_or(source_default)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalHabitLifecycleKind {
+    Deactivated,
+    Restored,
+}
+
+impl LocalHabitLifecycleKind {
+    pub fn active(self) -> bool {
+        matches!(self, Self::Restored)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalHabitLifecycleChange {
+    pub id: String,
+    pub kind: LocalHabitLifecycleKind,
+    pub effective_on: String,
+    pub changed_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,7 +197,7 @@ pub struct LocalHabitDefinitionsDocument {
 impl Default for LocalHabitDefinitionsDocument {
     fn default() -> Self {
         Self {
-            schema_version: HABIT_DEFINITIONS_SCHEMA_VERSION,
+            schema_version: HABIT_DEFINITIONS_V1_SCHEMA_VERSION,
             habits: Vec::new(),
             operations: Vec::new(),
         }
@@ -241,17 +279,48 @@ impl HabitNamesConfiguration {
     fn names_for(&self, key: &str) -> HabitLocalizedNames {
         self.names.get(key).cloned().unwrap_or_default()
     }
+
+    pub(crate) fn names_for_history(&self, key: &str) -> HabitLocalizedNames {
+        self.names_for(key)
+    }
 }
 
 pub fn parse_local_habit_definitions(
     bytes: &[u8],
     current_timestamp: &str,
 ) -> Result<LocalHabitDefinitionsDocument, String> {
-    let document: LocalHabitDefinitionsDocument = serde_json::from_slice(bytes)
+    let value: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|error| format!("本地 Habit catalog 不是有效的 schema v1 JSON：{error}"))?;
-    if document.schema_version != HABIT_DEFINITIONS_SCHEMA_VERSION {
+    let schema_version = value
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default();
+    if schema_version == u64::from(HABIT_DEFINITIONS_V1_SCHEMA_VERSION)
+        && value
+            .get("habits")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|habits| {
+                habits.iter().any(|habit| {
+                    habit
+                        .as_object()
+                        .is_some_and(|fields| fields.contains_key("lifecycleChanges"))
+                })
+            })
+    {
+        return Err(
+            "本地 Habit catalog schemaVersion 1 不包含生命周期字段；请保留原文件并重新读取。".into(),
+        );
+    }
+    let document: LocalHabitDefinitionsDocument = serde_json::from_value(value)
+        .map_err(|error| format!("本地 Habit catalog 不是有效的 schema v1/v2 JSON：{error}"))?;
+    if ![
+        HABIT_DEFINITIONS_V1_SCHEMA_VERSION,
+        HABIT_DEFINITIONS_V2_SCHEMA_VERSION,
+    ]
+    .contains(&document.schema_version)
+    {
         return Err(format!(
-            "本地 Habit catalog schemaVersion {} 不受支持；当前只读取版本 1。",
+            "本地 Habit catalog schemaVersion {} 不受支持；当前只读取版本 1 和 2。",
             document.schema_version
         ));
     }
@@ -326,6 +395,23 @@ pub fn parse_local_habit_definitions(
                 .ok_or_else(|| format!("Habit {} 的目标修订时间缺少 UTC offset。", habit.key))?;
             if changed_at > now {
                 return Err(format!("Habit {} 的目标修订时间晚于当前时间。", habit.key));
+            }
+        }
+        for change in &habit.lifecycle_changes {
+            validate_local_id(&change.id, "Habit lifecycle revision id")?;
+            if !revision_ids.insert(change.id.as_str()) {
+                return Err(format!(
+                    "本地 Habit catalog 有重复目标或生命周期修订 id：{}。",
+                    change.id
+                ));
+            }
+            if CalendarDate::parse(&change.effective_on).is_none() {
+                return Err(format!("Habit {} 有无效的生命周期生效日期。", habit.key));
+            }
+            let changed_at = timestamp_epoch_seconds(&change.changed_at)
+                .ok_or_else(|| format!("Habit {} 的生命周期时间缺少 UTC offset。", habit.key))?;
+            if changed_at > now {
+                return Err(format!("Habit {} 的生命周期时间晚于当前时间。", habit.key));
             }
         }
     }
@@ -1297,6 +1383,7 @@ fn apply_local_habit_definition(
     habit.is_local_definition = true;
     habit.local_name_override = definition.name_override;
     habit.created_locally = definition.created_locally;
+    habit.active = definition.active_on(current_lived_date, habit.active);
     habit.emoji = definition.emoji.clone();
     habit.group = definition.group.clone();
     habit.start_date = definition.start_date.clone();

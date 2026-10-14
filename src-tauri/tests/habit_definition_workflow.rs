@@ -1,7 +1,7 @@
 use personal_dashboard_lib::habits::{DayRelation, LocalHabitGoal};
 use personal_dashboard_lib::today::{
-    HabitCompletionMutationInput, HabitDefinitionMutationInput, TodayApplication, TodayClock,
-    TodayWorkspaceExchange, TodayWorkspacePersistence,
+    HabitCompletionMutationInput, HabitDefinitionMutationInput, HabitLifecycleMutationInput,
+    TodayApplication, TodayClock, TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -191,6 +191,182 @@ fn locally_created_habit_can_be_checked_and_read_after_a_new_application_instanc
             .0
             .join("life/.personal-dashboard/derived/habits-v1.json")
             .exists()
+    );
+}
+
+#[test]
+fn deactivate_and_restore_upgrades_catalog_and_preserves_goal_revisions_and_completions() {
+    let vault = TempVault::new();
+    let application = app(&vault, "2026-09-08");
+    let empty = application.habits().unwrap();
+    let created = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "create".into(),
+            key: "local-lifecycle-reading".into(),
+            name: "Read".into(),
+            name_changed: false,
+            emoji: Some("📖".into()),
+            group: Some("Quiet".into()),
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 3 }),
+            change_id: "create-lifecycle-reading".into(),
+            target_binding: empty.definition_target_binding.unwrap(),
+            expected_revision: empty.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    let monday = application
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-lifecycle-reading".into(),
+            lived_date: "2026-09-07".into(),
+            completed: true,
+            change_id: "complete-lifecycle-reading-monday".into(),
+            target_binding: created.completion_target_binding.clone().unwrap(),
+            expected_revision: created.completion_revision.clone(),
+        })
+        .unwrap();
+    let edited = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-lifecycle-reading".into(),
+            name: "Read".into(),
+            name_changed: false,
+            emoji: Some("📖".into()),
+            group: Some("Quiet".into()),
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 5 }),
+            change_id: "schedule-lifecycle-reading-goal".into(),
+            target_binding: monday.definition_target_binding.unwrap(),
+            expected_revision: monday.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    assert_eq!(
+        edited.habit("local-lifecycle-reading").unwrap().pending_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 5 })
+    );
+    let completions_path = vault
+        .0
+        .join("life/.personal-dashboard/habit-completions/v1/completions.json");
+    let completion_bytes = fs::read(&completions_path).unwrap();
+    let catalog_path = vault
+        .0
+        .join("life/.personal-dashboard/habits/v1/catalog.json");
+    let before: serde_json::Value =
+        serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+    assert_eq!(before["schemaVersion"], 1);
+
+    let inactive = application
+        .set_habit_lifecycle(HabitLifecycleMutationInput {
+            habit_key: "local-lifecycle-reading".into(),
+            active: false,
+            change_id: "deactivate-lifecycle-reading".into(),
+            target_binding: edited.definition_target_binding.clone().unwrap(),
+            expected_revision: edited.definition_revision.clone(),
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    let inactive_habit = inactive.habit("local-lifecycle-reading").unwrap();
+    assert!(!inactive_habit.active);
+    assert_eq!(
+        inactive_habit.pending_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 5 })
+    );
+    assert_eq!(fs::read(&completions_path).unwrap(), completion_bytes);
+    let upgraded: serde_json::Value =
+        serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+    assert_eq!(upgraded["schemaVersion"], 2);
+    assert_eq!(
+        upgraded["habits"][0]["goalRevisions"],
+        before["habits"][0]["goalRevisions"]
+    );
+    assert_eq!(
+        upgraded["habits"][0]["baseGoal"],
+        before["habits"][0]["baseGoal"]
+    );
+    assert_eq!(
+        upgraded["habits"][0]["lifecycleChanges"][0]["kind"],
+        "deactivated"
+    );
+
+    let edited_while_inactive = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-lifecycle-reading".into(),
+            name: "Read".into(),
+            name_changed: false,
+            emoji: Some("📖".into()),
+            group: Some("Quiet focus".into()),
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 5 }),
+            change_id: "edit-lifecycle-reading-after-v2".into(),
+            target_binding: inactive.definition_target_binding.clone().unwrap(),
+            expected_revision: inactive.definition_revision.clone(),
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    assert!(!edited_while_inactive
+        .habit("local-lifecycle-reading")
+        .unwrap()
+        .active);
+    assert_eq!(
+        edited_while_inactive
+            .habit("local-lifecycle-reading")
+            .unwrap()
+            .pending_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 5 })
+    );
+    let v2_after_definition_edit: serde_json::Value =
+        serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+    assert_eq!(v2_after_definition_edit["schemaVersion"], 2);
+    assert_eq!(
+        v2_after_definition_edit["habits"][0]["lifecycleChanges"],
+        upgraded["habits"][0]["lifecycleChanges"]
+    );
+
+    drop(application);
+    let reopened_during_next_cycle = app(&vault, "2026-09-15").habits().unwrap();
+    let habit = reopened_during_next_cycle
+        .habit("local-lifecycle-reading")
+        .unwrap();
+    assert!(!habit.active);
+    assert_eq!(
+        habit.current_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 5 })
+    );
+    assert!(habit
+        .history
+        .iter()
+        .any(|cell| cell.date == "2026-09-07" && cell.counts_as_completion));
+
+    let restored = app(&vault, "2026-09-15")
+        .set_habit_lifecycle(HabitLifecycleMutationInput {
+            habit_key: "local-lifecycle-reading".into(),
+            active: true,
+            change_id: "restore-lifecycle-reading".into(),
+            target_binding: reopened_during_next_cycle
+                .definition_target_binding
+                .clone()
+                .unwrap(),
+            expected_revision: reopened_during_next_cycle.definition_revision.clone(),
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    assert!(restored.habit("local-lifecycle-reading").unwrap().active);
+    assert_eq!(
+        restored.habit("local-lifecycle-reading").unwrap().key,
+        "local-lifecycle-reading"
+    );
+    assert_eq!(fs::read(&completions_path).unwrap(), completion_bytes);
+    let final_catalog: serde_json::Value =
+        serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+    assert_eq!(final_catalog["schemaVersion"], 2);
+    assert_eq!(final_catalog["habits"][0]["lifecycleChanges"].as_array().unwrap().len(), 2);
+    assert!(final_catalog["habits"][0]["goalRevisions"].as_array().unwrap().len()
+        >= before["habits"][0]["goalRevisions"].as_array().unwrap().len());
+    assert_eq!(
+        final_catalog["habits"][0]["group"],
+        "Quiet focus"
     );
 }
 
@@ -1381,4 +1557,80 @@ fn created_locally_definition_cannot_claim_a_source_habit_key() {
     );
     assert!(view.habits.is_empty());
     assert!(view.message.contains("exercise"), "{}", view.message);
+}
+
+#[test]
+fn schema_one_catalog_rejects_lifecycle_fields_instead_of_silently_migrating() {
+    let vault = TempVault::new();
+    let catalog_path = vault
+        .0
+        .join("life/.personal-dashboard/habits/v1/catalog.json");
+    fs::create_dir_all(catalog_path.parent().unwrap()).unwrap();
+    let original = br#"{"schemaVersion":1,"habits":[{"key":"local-read","name":"Read","createdLocally":true,"baseGoal":{"kind":"daily-count"},"sourceGoalHistory":[],"goalRevisions":[],"lifecycleChanges":[]}],"operations":[]}"#;
+    fs::write(&catalog_path, original).unwrap();
+
+    let view = app(&vault, "2026-09-08").habits().unwrap();
+    assert_eq!(
+        view.state,
+        personal_dashboard_lib::habits::HabitSnapshotState::Error
+    );
+    assert!(view.message.contains("schemaVersion 1"));
+    assert_eq!(fs::read(&catalog_path).unwrap(), original);
+}
+
+#[test]
+fn detailed_history_reads_canonical_dates_and_goal_context_without_expanding_snapshot_coverage() {
+    let vault = TempVault::new();
+    let application = app(&vault, "2026-09-08");
+    let empty = application.habits().unwrap();
+    let created = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "create".into(),
+            key: "local-history-reading".into(),
+            name: "Read history".into(),
+            name_changed: false,
+            emoji: None,
+            group: None,
+            start_date: Some("2026-02-01".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 2 }),
+            change_id: "create-history-reading".into(),
+            target_binding: empty.definition_target_binding.unwrap(),
+            expected_revision: empty.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    application
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-history-reading".into(),
+            lived_date: "2026-02-02".into(),
+            completed: true,
+            change_id: "history-reading-complete".into(),
+            target_binding: created.completion_target_binding.unwrap(),
+            expected_revision: created.completion_revision,
+        })
+        .unwrap();
+
+    let history = application
+        .read_habit_completion_history(&["2026-02-02".into()])
+        .unwrap();
+    assert_eq!(history.from_date, "2026-02-02");
+    assert_eq!(history.to_date, "2026-02-02");
+    assert_eq!(history.canonical["state"], "ready");
+    assert_eq!(history.canonical["records"][0]["habitKey"], "local-history-reading");
+    assert_eq!(history.canonical["records"][0]["state"], "completed");
+    assert_eq!(history.canonical["earliestLivedDateByHabit"]["local-history-reading"], "2026-02-02");
+    assert_eq!(history.projection.state, personal_dashboard_lib::habits::HabitSnapshotState::Missing);
+    assert!(history.projection.habits.is_empty());
+    assert_eq!(history.catalog_state, "ready");
+    let context = history
+        .habit_contexts
+        .iter()
+        .find(|context| context.key == "local-history-reading")
+        .unwrap();
+    assert!(context.created_locally);
+    assert_eq!(context.start_date.as_deref(), Some("2026-02-01"));
+    assert_eq!(context.current_goal, Some(LocalHabitGoal::WeeklyCount { days: 2 }));
+
+    let oversized: Vec<String> = vec!["2025-01-01".into(); 367];
+    assert!(application.read_habit_completion_history(&oversized).is_err());
 }

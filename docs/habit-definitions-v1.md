@@ -1,4 +1,4 @@
-# Local Habit definitions v1
+# Local Habit definitions
 
 Personal Dashboard stores its editable Habit catalog in the selected Vault at:
 
@@ -64,15 +64,25 @@ back and confirming that receipt. A retry with the same ID cannot acquire a
 new meaning. The current implementation applies no pruning cutoff to
 revisions, source history, or operation receipts.
 
-## Read and upgrade boundary
+## Lifecycle schema v2
 
-Schema version must be exactly `1`. The v1 document and nested records reject
-unknown fields; invalid data and unknown versions fail closed. A read or edit
-error does not replace the catalog with an empty document. There is no automatic
-conversion from an unknown version or field set. In particular, an older app
-that does not recognize the optional `nameOverride` field may reject a catalog
-written by a newer app, but will not silently discard it or write over it.
-Keep a Vault backup before manual migration or downgrade, and use a reader that
-understands the fields already present. A future schema change that cannot be
-read under v1 requires an explicit versioned migration; it must not be handled
-by dropping unknown data.
+The catalog stays at the same
+`life/.personal-dashboard/habits/v1/catalog.json` path. Schema v1 remains
+strict and has no lifecycle field. A v1 Habit is active until a local
+deactivate/restore action is explicitly saved. That first lifecycle write
+upgrades this same catalog to schemaVersion `2`, preserving every v1
+definition, goal revision, source history entry, and operation receipt.
+Schema v2 adds optional `lifecycleChanges` entries (`id`, `kind`,
+`effectiveOn`, and offset-bearing `changedAt`). `deactivated` and `restored`
+events are append-only, use the existing catalog operation receipt and atomic
+readback boundary, and do not remove completion records or goal revisions. The
+active state for a lived date is the latest event effective on or before that
+date. PDEX-24 edits read and preserve both catalog versions; edits to an
+unmigrated v1 catalog keep it at v1, while v2 edits retain lifecycle events.
+
+The reader strictly validates both versions and still rejects unknown fields.
+An older binary that only understands v1 rejects an upgraded v2 file without
+rewriting or dropping its lifecycle history; it must not be used to edit that
+catalog. There is no second lifecycle file and no silent v1-to-v2 conversion on
+read. Invalid data and unknown versions fail closed. A read or edit error does
+not replace the catalog with an empty document.
