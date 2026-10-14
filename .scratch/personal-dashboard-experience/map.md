@@ -68,7 +68,11 @@ blocking edges. Initial eligible ticket frontier: PDEX-19, PDEX-23 and PDEX-24;
 five later tickets are dependency-gated. There are no cycles or redundant
 transitive edges. Eligibility is not a claim or implementation authorization.
 
-Initial publication left all eight unassigned/not started. On 2026-10-14, the user authorized reimplementation from `918e7e0`; PDEX-19 and PDEX-23 are integrated, PDEX-24 is under review repair, PDEX-20 and PDEX-22 are claimed. [Approved proposal](refinement-ticket-breakdown-proposal-2026-10-11.md),
+Initial publication left all eight unassigned/not started. At an early
+2026-10-14 reimplementation checkpoint from `918e7e0`, PDEX-19 and PDEX-23
+were integrated, PDEX-24 was under review repair, and PDEX-20 and PDEX-22
+were claimed. Later integration and state corrections are recorded in the
+current ticket rows above and in the execution record. [Approved proposal](refinement-ticket-breakdown-proposal-2026-10-11.md),
 [ticket publication/commit receipt](refinement-ticket-publication-2026-10-11.md)
 and [new execution record](refinement-execution-2026-10-11.md) retain the complete
 scope, graph and branch/commit convention. The parent full spec and its index
@@ -77,13 +81,14 @@ and this map owns the current child-ticket state. Earlier accepted rounds remain
 closed. [Spec publication and handoff](refinement-publication-2026-10-11.md) retains
 the base/prototype lineage.
 
-### PDEX-24 integration sync — 2026-10-14
+### PDEX-24 pre-integration sync checkpoint — 2026-10-14
 
 PDEX-24 branch `codex/pdex-24-restart` retained both no-fast-forward integration
 merges (`1dee0c8` for `ebd4354`; `a366710` for `2a233c3`). Post-sync Rust,
-frontend, browser, build and diff checks pass. The branch is not merged back to
-integration; independent final review and PDEX-26 packaged acceptance remain
-open. [Exact lineage, commands and results](evidence/pdex-24-integration-sync-2026-10-14.md).
+frontend, browser, build and diff checks pass. At that checkpoint, the branch
+was not merged back to integration. It was later merged non-fast-forward as
+`59b9d65563ed47b6b930b1e3d8d698609a7a80e1`; PDEX-24 remains open for independent
+final review and PDEX-26 packaged acceptance. [Exact lineage, commands and results](evidence/pdex-24-integration-sync-2026-10-14.md).
 
 No unrequested App restyling is authorized. Only changes with an explicit
 requirement in PDEX-SPEC-02 may be implemented; the scope record identifies
