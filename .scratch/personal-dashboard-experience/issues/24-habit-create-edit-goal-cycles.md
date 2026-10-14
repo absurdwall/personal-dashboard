@@ -110,3 +110,16 @@ PDEX-SPEC-02 stories 68–72、75–79、83–85、87；共同承担 1–3、88�
 - 2026-10-14：在先前同步至 `2a233c3e4a21d9eaff06b62f1770c86e7671d082` 的 ticket branch 上，以 non-fast-forward merge `11a1752367e9698808a1b50da811eea446409f83` 同步最新 integration tip `13d3ac5feda6efe9f8dc764fff4207203a95888b`。合并后 PDEX-24 Rust workflows 23/23、cargo check、Habits/locale frontend 30/30、Habit browser 4/4、build 与 diff check 均通过；完整命令和父提交见[同步与验证记录](../evidence/pdex-24-integration-sync-2026-10-14.md)。
 - PDEX-24 branch 尚未合回 integration，未执行 remote、main、App 安装或 packaged acceptance；独立最终 Spec review 和 PDEX-26 acceptance 仍待完成。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
+
+## Current integration state correction — 2026-10-14
+
+Earlier execution notes saying the PDEX-24 follow-up was not yet merged, or
+that its ticket branch remained separate, describe pre-integration checkpoints
+and are superseded by the subsequent merged-tree verification above. The
+complete `codex/pdex-24-restart` branch at
+`25c973169aa13d51593ac88887ca5f9dcb29f51d` was non-fast-forward merged into
+`codex/dashboard-experience-refinement-restart-20261014` as
+`59b9d65563ed47b6b930b1e3d8d698609a7a80e1`. PDEX-24 remains open/in-progress;
+independent final review and PDEX-26 packaged acceptance are still pending.
+This integration did not install the App, write a personal Vault, push, or
+merge `main`.
