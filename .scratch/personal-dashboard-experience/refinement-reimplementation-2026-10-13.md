@@ -311,3 +311,25 @@ The implementation commit is on the integration branch above and retains
 build uses the production bundle identifier and full source commit revision,
 without profile, Vault, or fixed-clock overrides. It remains uninstalled and
 unlaunched for the separate reviewer.
+
+## Source-bound candidate package — 2026-10-14
+
+- Integration branch source commit: `f1136edffd1d0a7140489690c22a94fa673a3f74`
+  (direct parent `902fc032ab232e34feb218b766f8b123a1a8fc57`).
+- `npm run build` passed. The focused WebKit geometry test passed; the
+  broader axis suite limitation is documented above. `git diff --check` passed.
+- `npm run build:mac` passed with
+  `PERSONAL_DASHBOARD_BUILD_REVISION=f1136edffd1d0a7140489690c22a94fa673a3f74`
+  and isolated `CARGO_TARGET_DIR=/tmp/pdex-review-20261014.noindex/reimplementation-candidate`.
+  No profile, Vault, or clock override was supplied.
+- Candidate: `/tmp/pdex-review-20261014.noindex/reimplementation-candidate/release/bundle/macos/Personal Dashboard.app`.
+  Bundle identifier: `com.tortillaflat.personal-dashboard`;
+  executable: `Contents/MacOS/personal-dashboard`;
+  SHA-256: `8d46b9289d4df25c4c20fa9ce252bb7bfb385334aa9ba595601e9fc7d014dbac`.
+- The executable contains the full source revision above. `codesign --verify
+  --deep --strict` passed; the bundle has an ad-hoc signature. Tauri skipped
+  notarization because no notarization credentials were configured.
+- The candidate was not installed or launched. It is left at the path above
+  for the separately authorized reviewer. The installed App and user profile
+  remain untouched. PDEX-21 and PDEX-SPEC-02 remain open; this package build is
+  not installed-App acceptance or a ticket closeout.
