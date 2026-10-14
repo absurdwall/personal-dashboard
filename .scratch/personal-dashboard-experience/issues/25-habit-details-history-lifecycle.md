@@ -49,5 +49,6 @@ PDEX-SPEC-02 stories 73–74、80–82、86–87；共同承担 1–3、88–91 
 - 2026-10-11：经用户批准发布本地完整票体，未分配assignee、未claim、未开始实现。
 - 2026-10-14：授权在独立 `codex/pdex-25-restart` 分支实现本票，owner `/root/implement_pdex21`，claim base `206c98aa11371b8b8f044871baac3de0f9ecde87`，worktree `/private/tmp/pdex-restart-20261014.noindex/pdex-25`。该base已包含PDEX-24集成；parent spec及完整ticket均不修改。
 - 2026-10-14：实现提交 `768c101d5373bcf0efd7426ee1c6a430a84ff4cc`，保留 claim `76652cd9e2765b2926b19496006581ada1d42c3b` 与原始 base 历史；定向统计、Rust持久层、浏览器、WKWebView HTML/CSS检查和构建通过。四种viewport截图及数据边界、限制见[实现证据](../evidence/pdex-25-implementation-2026-10-14.md)。本票仍为in-progress/open，尚未做安装App验收或整合。
+- 2026-10-14：独立spec review后的纠正提交 `12ab7e1e784f7abefeae39ac37d467f2eccaf265` 将统计行为移入Rust application/domain边界；修正周 streak 的生命周期/周中启动断点、首次恢复前可证实来源完成、开始日期后移保留事实、日/周频率历史分段和 canonical read error 的未知语义，并在详情呈现历史目标段及按单位分开的历史最高连续。26项Rust workflow测试、cargo check、定向前端28项、浏览器2项、WKWebView 1项和构建通过。四尺寸截图与字段覆盖范围见[纠正证据](../evidence/pdex-25-implementation-2026-10-14.md#corrective-review-update)。本票仍为in-progress/open，不合入integration。
 - 完整验收前不关闭本票；不安装正常App、不写入真实Vault、不合入integration或main、不push。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
