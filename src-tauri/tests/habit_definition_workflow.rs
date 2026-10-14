@@ -108,7 +108,9 @@ impl TodayClock for EarlyClock {
 }
 
 fn snapshot_path(vault: &TempVault) -> PathBuf {
-    vault.0.join("life/.personal-dashboard/derived/habits-v1.json")
+    vault
+        .0
+        .join("life/.personal-dashboard/derived/habits-v1.json")
 }
 
 fn write_source_snapshot(vault: &TempVault, contents: &str) {
@@ -127,6 +129,7 @@ fn locally_created_habit_can_be_checked_and_read_after_a_new_application_instanc
             mode: "create".into(),
             key: "local-water".into(),
             name: "Drink water".into(),
+            name_changed: false,
             emoji: Some("💧".into()),
             group: Some("Health".into()),
             start_date: Some("2026-09-08".into()),
@@ -171,18 +174,24 @@ fn locally_created_habit_can_be_checked_and_read_after_a_new_application_instanc
     assert_eq!(habit.weekly_target, Some(3));
     assert_eq!(habit.completed_count, Some(1));
     assert!(habit.today.counts_as_completion);
-    assert!(vault
-        .0
-        .join("life/.personal-dashboard/habits/v1/catalog.json")
-        .is_file());
-    assert!(vault
-        .0
-        .join("life/.personal-dashboard/habit-completions/v1/completions.json")
-        .is_file());
-    assert!(!vault
-        .0
-        .join("life/.personal-dashboard/derived/habits-v1.json")
-        .exists());
+    assert!(
+        vault
+            .0
+            .join("life/.personal-dashboard/habits/v1/catalog.json")
+            .is_file()
+    );
+    assert!(
+        vault
+            .0
+            .join("life/.personal-dashboard/habit-completions/v1/completions.json")
+            .is_file()
+    );
+    assert!(
+        !vault
+            .0
+            .join("life/.personal-dashboard/derived/habits-v1.json")
+            .exists()
+    );
 }
 
 #[test]
@@ -195,6 +204,7 @@ fn daily_count_goal_revision_takes_effect_on_the_next_lived_day_and_survives_reo
             mode: "create".into(),
             key: "local-reading".into(),
             name: "Read".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-08".into()),
@@ -205,7 +215,10 @@ fn daily_count_goal_revision_takes_effect_on_the_next_lived_day_and_survives_reo
             expected_snapshot_revision: None,
         })
         .unwrap();
-    assert_eq!(created.habit("local-reading").unwrap().goal_kind, "daily-count");
+    assert_eq!(
+        created.habit("local-reading").unwrap().goal_kind,
+        "daily-count"
+    );
 
     let completed = application
         .set_local_habit_completion(HabitCompletionMutationInput {
@@ -226,6 +239,7 @@ fn daily_count_goal_revision_takes_effect_on_the_next_lived_day_and_survives_reo
             mode: "edit".into(),
             key: "local-reading".into(),
             name: "Read a little".into(),
+            name_changed: true,
             emoji: Some("📖".into()),
             group: Some("Quiet".into()),
             start_date: Some("2026-09-08".into()),
@@ -239,7 +253,11 @@ fn daily_count_goal_revision_takes_effect_on_the_next_lived_day_and_survives_reo
     let after_edit = revised.habit("local-reading").unwrap();
     assert_eq!(after_edit.key, stable_key);
     assert_eq!(after_edit.name, "Read a little");
-    assert_eq!(after_edit.weekly_target, Some(1), "daily goal remains in force today");
+    assert_eq!(
+        after_edit.weekly_target,
+        Some(1),
+        "daily goal remains in force today"
+    );
     assert_eq!(after_edit.pending_goal_label.as_deref(), Some("每周 5 天"));
     assert_eq!(after_edit.today.counts_as_completion, current_completion);
     assert_eq!(after_edit.start_date.as_deref(), Some("2026-09-08"));
@@ -258,9 +276,12 @@ fn daily_count_goal_revision_takes_effect_on_the_next_lived_day_and_survives_reo
     assert_eq!(reopened_next_day.summary.known_completions, 0);
     assert_eq!(reopened_next_day.summary.partial_weeks_excluded, 1);
     assert_eq!(next_day.name, "Read a little");
-    assert!(next_day.history.iter().any(|cell| {
-        cell.date == "2026-09-08" && cell.counts_as_completion
-    }));
+    assert!(
+        next_day
+            .history
+            .iter()
+            .any(|cell| { cell.date == "2026-09-08" && cell.counts_as_completion })
+    );
 
     let partial_app = app(&vault, "2026-09-09");
     partial_app
@@ -276,7 +297,10 @@ fn daily_count_goal_revision_takes_effect_on_the_next_lived_day_and_survives_reo
     let partial_week_readback = app(&vault, "2026-09-10").habits().unwrap();
     let partial_week_habit = partial_week_readback.habit("local-reading").unwrap();
     assert_eq!(partial_week_habit.completed_count, Some(1));
-    assert_eq!(partial_week_habit.weekly_period_start.as_deref(), Some("2026-09-09"));
+    assert_eq!(
+        partial_week_habit.weekly_period_start.as_deref(),
+        Some("2026-09-09")
+    );
     assert!(partial_week_habit.weekly_period_partial);
     assert_eq!(partial_week_readback.summary.known_completions, 0);
     assert_eq!(partial_week_readback.summary.target_completions, 0);
@@ -284,7 +308,10 @@ fn daily_count_goal_revision_takes_effect_on_the_next_lived_day_and_survives_reo
 
     let next_full_week = app(&vault, "2026-09-14").habits().unwrap();
     let full_week_habit = next_full_week.habit("local-reading").unwrap();
-    assert_eq!(full_week_habit.weekly_period_start.as_deref(), Some("2026-09-14"));
+    assert_eq!(
+        full_week_habit.weekly_period_start.as_deref(),
+        Some("2026-09-14")
+    );
     assert!(!full_week_habit.weekly_period_partial);
     assert_eq!(next_full_week.summary.target_completions, 5);
     assert_eq!(next_full_week.summary.partial_weeks_excluded, 0);
@@ -307,6 +334,7 @@ fn daily_to_weekly_revision_at_the_four_am_monday_boundary_starts_a_full_week() 
             mode: "create".into(),
             key: "local-boundary-reading".into(),
             name: "Read".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-13".into()),
@@ -332,6 +360,7 @@ fn daily_to_weekly_revision_at_the_four_am_monday_boundary_starts_a_full_week() 
             mode: "edit".into(),
             key: "local-boundary-reading".into(),
             name: "Read".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-13".into()),
@@ -342,8 +371,17 @@ fn daily_to_weekly_revision_at_the_four_am_monday_boundary_starts_a_full_week() 
             expected_snapshot_revision: None,
         })
         .unwrap();
-    assert_eq!(revised.habit("local-boundary-reading").unwrap().goal_kind, "daily-count");
-    assert_eq!(revised.habit("local-boundary-reading").unwrap().completed_count, Some(1));
+    assert_eq!(
+        revised.habit("local-boundary-reading").unwrap().goal_kind,
+        "daily-count"
+    );
+    assert_eq!(
+        revised
+            .habit("local-boundary-reading")
+            .unwrap()
+            .completed_count,
+        Some(1)
+    );
 
     let still_sunday = app_with_clock(
         &vault,
@@ -354,8 +392,17 @@ fn daily_to_weekly_revision_at_the_four_am_monday_boundary_starts_a_full_week() 
     )
     .habits()
     .unwrap();
-    assert_eq!(still_sunday.current_lived_date.as_deref(), Some("2026-09-13"));
-    assert_eq!(still_sunday.habit("local-boundary-reading").unwrap().goal_kind, "daily-count");
+    assert_eq!(
+        still_sunday.current_lived_date.as_deref(),
+        Some("2026-09-13")
+    );
+    assert_eq!(
+        still_sunday
+            .habit("local-boundary-reading")
+            .unwrap()
+            .goal_kind,
+        "daily-count"
+    );
 
     let monday = app_with_clock(
         &vault,
@@ -367,7 +414,10 @@ fn daily_to_weekly_revision_at_the_four_am_monday_boundary_starts_a_full_week() 
     .habits()
     .unwrap();
     let habit = monday.habit("local-boundary-reading").unwrap();
-    assert_eq!(habit.current_goal, Some(LocalHabitGoal::WeeklyCount { days: 3 }));
+    assert_eq!(
+        habit.current_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 3 })
+    );
     assert_eq!(habit.weekly_period_start.as_deref(), Some("2026-09-14"));
     assert!(!habit.weekly_period_partial);
     assert_eq!(habit.completed_count, Some(0));
@@ -386,6 +436,7 @@ fn weekly_start_date_excludes_earlier_completions_from_partial_week() {
             mode: "create".into(),
             key: "local-start-date-walk".into(),
             name: "Walk".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-07".into()),
@@ -411,6 +462,7 @@ fn weekly_start_date_excludes_earlier_completions_from_partial_week() {
             mode: "edit".into(),
             key: "local-start-date-walk".into(),
             name: "Walk".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-09".into()),
@@ -429,9 +481,12 @@ fn weekly_start_date_excludes_earlier_completions_from_partial_week() {
     assert!(habit.weekly_period_partial);
     assert_eq!(reopened.summary.target_completions, 0);
     assert_eq!(reopened.summary.partial_weeks_excluded, 1);
-    assert!(habit.history.iter().any(|cell| {
-        cell.date == "2026-09-07" && cell.counts_as_completion
-    }));
+    assert!(
+        habit
+            .history
+            .iter()
+            .any(|cell| { cell.date == "2026-09-07" && cell.counts_as_completion })
+    );
 }
 
 #[test]
@@ -444,6 +499,7 @@ fn weekly_target_revision_keeps_the_partial_week_start_from_frequency_transition
             mode: "create".into(),
             key: "local-revised-frequency".into(),
             name: "Read".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-07".into()),
@@ -469,6 +525,7 @@ fn weekly_target_revision_keeps_the_partial_week_start_from_frequency_transition
             mode: "edit".into(),
             key: "local-revised-frequency".into(),
             name: "Read".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-07".into()),
@@ -500,6 +557,7 @@ fn weekly_target_revision_keeps_the_partial_week_start_from_frequency_transition
             mode: "edit".into(),
             key: "local-revised-frequency".into(),
             name: "Read".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-07".into()),
@@ -511,7 +569,9 @@ fn weekly_target_revision_keeps_the_partial_week_start_from_frequency_transition
         })
         .unwrap();
 
-    let catalog_path = vault.0.join("life/.personal-dashboard/habits/v1/catalog.json");
+    let catalog_path = vault
+        .0
+        .join("life/.personal-dashboard/habits/v1/catalog.json");
     let mut catalog: serde_json::Value =
         serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
     let revisions = catalog["habits"][0]["goalRevisions"]
@@ -526,19 +586,28 @@ fn weekly_target_revision_keeps_the_partial_week_start_from_frequency_transition
 
     let friday = app(&vault, "2026-09-11").habits().unwrap();
     let habit = friday.habit("local-revised-frequency").unwrap();
-    assert_eq!(habit.current_goal, Some(LocalHabitGoal::WeeklyCount { days: 5 }));
+    assert_eq!(
+        habit.current_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 5 })
+    );
     assert_eq!(habit.weekly_period_start.as_deref(), Some("2026-09-08"));
     assert!(habit.weekly_period_partial);
     assert_eq!(habit.completed_count, Some(1));
     assert_eq!(friday.summary.known_completions, 0);
     assert_eq!(friday.summary.target_completions, 0);
     assert_eq!(friday.summary.partial_weeks_excluded, 1);
-    assert!(habit.history.iter().any(|cell| {
-        cell.date == "2026-09-07" && cell.counts_as_completion
-    }));
-    assert!(habit.history.iter().any(|cell| {
-        cell.date == "2026-09-08" && cell.counts_as_completion
-    }));
+    assert!(
+        habit
+            .history
+            .iter()
+            .any(|cell| { cell.date == "2026-09-07" && cell.counts_as_completion })
+    );
+    assert!(
+        habit
+            .history
+            .iter()
+            .any(|cell| { cell.date == "2026-09-08" && cell.counts_as_completion })
+    );
 }
 
 #[test]
@@ -551,6 +620,7 @@ fn daily_time_next_day_relation_survives_a_new_application_instance() {
             mode: "create".into(),
             key: "local-sleep-window".into(),
             name: "Be in bed".into(),
+            name_changed: false,
             emoji: Some("🌙".into()),
             group: Some("Rest".into()),
             start_date: Some("2026-09-08".into()),
@@ -593,6 +663,7 @@ fn weekly_goal_revision_keeps_this_week_and_records_its_historical_goal() {
             mode: "create".into(),
             key: "local-walk".into(),
             name: "Walk".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-09".into()),
@@ -618,6 +689,7 @@ fn weekly_goal_revision_keeps_this_week_and_records_its_historical_goal() {
             mode: "edit".into(),
             key: "local-walk".into(),
             name: "Walk".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-09".into()),
@@ -635,12 +707,18 @@ fn weekly_goal_revision_keeps_this_week_and_records_its_historical_goal() {
     let next_week = app(&vault, "2026-09-14").habits().unwrap();
     let next_week_habit = next_week.habit("local-walk").unwrap();
     assert_eq!(next_week_habit.weekly_target, Some(5));
-    assert!(next_week_habit.history.iter().any(|cell| {
-        cell.date == "2026-09-09" && cell.counts_as_completion
-    }));
-    assert!(next_week_habit.goal_history.iter().any(|goal| {
-        goal.week_of == "2026-09-07" && goal.goal_label == "每周 3 天"
-    }));
+    assert!(
+        next_week_habit
+            .history
+            .iter()
+            .any(|cell| { cell.date == "2026-09-09" && cell.counts_as_completion })
+    );
+    assert!(
+        next_week_habit
+            .goal_history
+            .iter()
+            .any(|goal| { goal.week_of == "2026-09-07" && goal.goal_label == "每周 3 天" })
+    );
 }
 
 #[test]
@@ -660,6 +738,7 @@ fn weekly_revision_at_0330_waits_for_the_next_lived_week_boundary() {
             mode: "create".into(),
             key: "local-sunday-walk".into(),
             name: "Sunday walk".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-13".into()),
@@ -675,6 +754,7 @@ fn weekly_revision_at_0330_waits_for_the_next_lived_week_boundary() {
             mode: "edit".into(),
             key: "local-sunday-walk".into(),
             name: "Sunday walk".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-13".into()),
@@ -685,7 +765,10 @@ fn weekly_revision_at_0330_waits_for_the_next_lived_week_boundary() {
             expected_snapshot_revision: None,
         })
         .unwrap();
-    assert_eq!(revised.habit("local-sunday-walk").unwrap().weekly_target, Some(3));
+    assert_eq!(
+        revised.habit("local-sunday-walk").unwrap().weekly_target,
+        Some(3)
+    );
     assert_eq!(
         revised
             .habit("local-sunday-walk")
@@ -707,9 +790,12 @@ fn weekly_revision_at_0330_waits_for_the_next_lived_week_boundary() {
     let habit = after_boundary.habit("local-sunday-walk").unwrap();
     assert_eq!(habit.weekly_target, Some(5));
     assert!(habit.pending_goal.is_none());
-    assert!(habit.goal_history.iter().any(|goal| {
-        goal.week_of == "2026-09-07" && goal.goal_label == "每周 3 天"
-    }));
+    assert!(
+        habit
+            .goal_history
+            .iter()
+            .any(|goal| { goal.week_of == "2026-09-07" && goal.goal_label == "每周 3 天" })
+    );
 }
 
 #[test]
@@ -722,6 +808,7 @@ fn changing_a_pending_weekly_goal_replaces_or_cancels_only_the_future_revision()
             mode: "create".into(),
             key: "local-stretch".into(),
             name: "Stretch".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-09".into()),
@@ -737,6 +824,7 @@ fn changing_a_pending_weekly_goal_replaces_or_cancels_only_the_future_revision()
             mode: "edit".into(),
             key: "local-stretch".into(),
             name: "Stretch".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-09".into()),
@@ -752,6 +840,7 @@ fn changing_a_pending_weekly_goal_replaces_or_cancels_only_the_future_revision()
             mode: "edit".into(),
             key: "local-stretch".into(),
             name: "Stretch".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-09".into()),
@@ -762,7 +851,10 @@ fn changing_a_pending_weekly_goal_replaces_or_cancels_only_the_future_revision()
             expected_snapshot_revision: None,
         })
         .unwrap();
-    assert_eq!(six_days.habit("local-stretch").unwrap().weekly_target, Some(3));
+    assert_eq!(
+        six_days.habit("local-stretch").unwrap().weekly_target,
+        Some(3)
+    );
     assert_eq!(
         six_days
             .habit("local-stretch")
@@ -777,6 +869,7 @@ fn changing_a_pending_weekly_goal_replaces_or_cancels_only_the_future_revision()
             mode: "edit".into(),
             key: "local-stretch".into(),
             name: "Stretch".into(),
+            name_changed: false,
             emoji: None,
             group: None,
             start_date: Some("2026-09-09".into()),
@@ -787,24 +880,32 @@ fn changing_a_pending_weekly_goal_replaces_or_cancels_only_the_future_revision()
             expected_snapshot_revision: None,
         })
         .unwrap();
-    assert_eq!(cancelled.habit("local-stretch").unwrap().weekly_target, Some(3));
-    assert!(cancelled
-        .habit("local-stretch")
-        .unwrap()
-        .pending_goal
-        .is_none());
+    assert_eq!(
+        cancelled.habit("local-stretch").unwrap().weekly_target,
+        Some(3)
+    );
+    assert!(
+        cancelled
+            .habit("local-stretch")
+            .unwrap()
+            .pending_goal
+            .is_none()
+    );
     let stored: serde_json::Value = serde_json::from_slice(
-        &fs::read(vault.0.join("life/.personal-dashboard/habits/v1/catalog.json")).unwrap(),
+        &fs::read(
+            vault
+                .0
+                .join("life/.personal-dashboard/habits/v1/catalog.json"),
+        )
+        .unwrap(),
     )
     .unwrap();
     let revisions = stored["habits"][0]["goalRevisions"].as_array().unwrap();
     assert!(revisions.iter().any(|revision| {
-        revision["disposition"] == "superseded"
-            && revision["goal"]["days"] == 5
+        revision["disposition"] == "superseded" && revision["goal"]["days"] == 5
     }));
     assert!(revisions.iter().any(|revision| {
-        revision["disposition"] == "cancelled"
-            && revision["goal"]["days"] == 6
+        revision["disposition"] == "cancelled" && revision["goal"]["days"] == 6
     }));
     assert_eq!(
         revisions
@@ -832,10 +933,85 @@ fn next_goal_after_reopen(vault: &TempVault) -> LocalHabitGoal {
 }
 
 #[test]
+fn source_habit_non_name_edit_keeps_canonical_name_and_localized_names_across_refresh() {
+    let vault = TempVault::new();
+    write_source_snapshot(&vault, include_str!("fixtures/habits-v1-complete.json"));
+    let names_path = vault
+        .0
+        .join("life/.personal-dashboard/habit-names/v1/names.json");
+    fs::create_dir_all(names_path.parent().unwrap()).unwrap();
+    fs::write(
+        &names_path,
+        r#"{"schemaVersion":1,"habits":{"exercise":{"zh":"锻炼","en":"Exercise"}}}"#,
+    )
+    .unwrap();
+    let original_snapshot = fs::read(snapshot_path(&vault)).unwrap();
+    let application = app(&vault, "2026-09-08");
+    let before = application.habits().unwrap();
+    let source = before.habit("exercise").unwrap();
+    assert_eq!(source.name, "Exercise");
+    let unchanged_goal = source.current_goal.clone();
+
+    let edited = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "exercise".into(),
+            name: "锻炼".into(),
+            name_changed: false,
+            emoji: None,
+            group: Some("Movement".into()),
+            start_date: None,
+            goal: unchanged_goal,
+            change_id: "edit-source-exercise-group-only".into(),
+            target_binding: before.definition_target_binding.unwrap(),
+            expected_revision: before.definition_revision,
+            expected_snapshot_revision: before.snapshot_revision,
+        })
+        .unwrap();
+
+    let habit = edited.habit("exercise").unwrap();
+    assert_eq!(habit.name, "Exercise");
+    assert!(!habit.local_name_override);
+    assert_eq!(habit.localized_names.zh.as_deref(), Some("锻炼"));
+    assert_eq!(habit.localized_names.en.as_deref(), Some("Exercise"));
+    assert_eq!(habit.group.as_deref(), Some("Movement"));
+    assert_eq!(fs::read(snapshot_path(&vault)).unwrap(), original_snapshot);
+    let catalog: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            vault
+                .0
+                .join("life/.personal-dashboard/habits/v1/catalog.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(catalog["habits"][0]["name"], "Exercise");
+    assert!(catalog["habits"][0].get("nameOverride").is_none());
+
+    let mut refreshed_snapshot: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    let refreshed_exercise = refreshed_snapshot["habits"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|habit| habit["key"] == "exercise")
+        .unwrap();
+    refreshed_exercise["name"] = "Source exercise refreshed".into();
+    write_source_snapshot(&vault, &serde_json::to_string(&refreshed_snapshot).unwrap());
+    let reopened = app(&vault, "2026-09-08").habits().unwrap();
+    let refreshed = reopened.habit("exercise").unwrap();
+    assert_eq!(refreshed.name, "Source exercise refreshed");
+    assert_eq!(refreshed.localized_names.zh.as_deref(), Some("锻炼"));
+    assert_eq!(refreshed.localized_names.en.as_deref(), Some("Exercise"));
+}
+
+#[test]
 fn source_habit_edit_and_snapshot_refresh_preserve_local_overlay_and_evidence_identity() {
     let vault = TempVault::new();
     write_source_snapshot(&vault, include_str!("fixtures/habits-v1-complete.json"));
-    let names_path = vault.0.join("life/.personal-dashboard/habit-names/v1/names.json");
+    let names_path = vault
+        .0
+        .join("life/.personal-dashboard/habit-names/v1/names.json");
     fs::create_dir_all(names_path.parent().unwrap()).unwrap();
     fs::write(
         &names_path,
@@ -856,6 +1032,7 @@ fn source_habit_edit_and_snapshot_refresh_preserve_local_overlay_and_evidence_id
         mode: "edit".into(),
         key: "exercise".into(),
         name: "Strength walk".into(),
+        name_changed: true,
         emoji: Some("🚶".into()),
         group: Some("Movement".into()),
         start_date: None,
@@ -865,26 +1042,49 @@ fn source_habit_edit_and_snapshot_refresh_preserve_local_overlay_and_evidence_id
         expected_revision: before.definition_revision.clone(),
         expected_snapshot_revision: before.snapshot_revision.clone(),
     };
-    let edited = application
-        .save_habit_definition(input.clone())
-        .unwrap();
+    let edited = application.save_habit_definition(input.clone()).unwrap();
     let local = edited.habit("exercise").unwrap();
     assert_eq!(local.key, source.key);
     assert_eq!(local.name, "Strength walk");
+    assert!(local.local_name_override);
+    let catalog: serde_json::Value = serde_json::from_slice(
+        &fs::read(
+            vault
+                .0
+                .join("life/.personal-dashboard/habits/v1/catalog.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(catalog["habits"][0]["name"], "Strength walk");
+    assert_eq!(catalog["habits"][0]["nameOverride"], true);
     assert_eq!(local.localized_names, source.localized_names);
-    assert_eq!(fs::read(snapshot_path(&vault)).unwrap(), source_snapshot_before);
+    assert_eq!(
+        fs::read(snapshot_path(&vault)).unwrap(),
+        source_snapshot_before
+    );
     assert_eq!(local.emoji.as_deref(), Some("🚶"));
     assert_eq!(local.group.as_deref(), Some("Movement"));
     assert_eq!(local.source_labels, original_source_labels);
     assert_eq!(local.today.status, original_status);
     assert_eq!(local.weekly_target, Some(3));
     assert_eq!(local.pending_goal_label.as_deref(), Some("每周 5 天"));
-    assert!(local.goal_history.iter().any(|goal| {
-        goal.week_of == "2026-08-31" && goal.goal_label == "每周 2 天"
-    }));
+    assert!(
+        local
+            .goal_history
+            .iter()
+            .any(|goal| { goal.week_of == "2026-08-31" && goal.goal_label == "每周 2 天" })
+    );
 
     let replayed = application.save_habit_definition(input).unwrap();
-    assert_eq!(replayed.habits.iter().filter(|habit| habit.key == "exercise").count(), 1);
+    assert_eq!(
+        replayed
+            .habits
+            .iter()
+            .filter(|habit| habit.key == "exercise")
+            .count(),
+        1
+    );
 
     let mut refreshed: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
@@ -908,15 +1108,18 @@ fn source_habit_edit_and_snapshot_refresh_preserve_local_overlay_and_evidence_id
     let habit = refreshed.habit("exercise").unwrap();
     assert_eq!(habit.key, "exercise");
     assert_eq!(habit.name, "Strength walk");
+    assert!(habit.local_name_override);
     assert_eq!(habit.localized_names.zh.as_deref(), Some("锻炼"));
     assert_eq!(habit.localized_names.en.as_deref(), Some("Exercise"));
     assert_eq!(habit.goal_label, "每周 3 天");
     assert_eq!(habit.pending_goal_label.as_deref(), Some("每周 5 天"));
     assert_eq!(habit.source_labels, original_source_labels);
     assert_ne!(habit.today.details, source.today.details);
-    assert!(habit
-        .today
-        .details
-        .iter()
-        .any(|detail| format!("{detail:?}").contains("Refreshed source evidence")));
+    assert!(
+        habit
+            .today
+            .details
+            .iter()
+            .any(|detail| format!("{detail:?}").contains("Refreshed source evidence"))
+    );
 }

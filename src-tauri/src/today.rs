@@ -1,12 +1,12 @@
 use crate::habits::{
-    load_habit_names, merge_local_habit_definitions, parse_local_habit_definitions,
+    FileHabitSnapshotStore, HABIT_DEFINITIONS_RELATIVE_PATH, HabitCorrectionView,
+    HabitLocalCompletionChangeView, HabitSnapshotStore, LEGACY_SNAPSHOT_RELATIVE_PATH,
+    LocalHabitCompletion, LocalHabitDefinition, LocalHabitDefinitionsDocument, LocalHabitGoal,
+    LocalHabitGoalRevision, LocalHabitOperationReceipt, LocalHabitRecord,
+    LocalHabitRevisionDisposition, SNAPSHOT_RELATIVE_PATH, load_habit_names,
+    merge_local_habit_definitions, parse_local_habit_definitions,
     project_habit_corrections_with_recording_limit, project_snapshot_with_names_at_local_date,
     project_uncatalogued_habit_corrections_with_recording_limit, snapshot_dates_at_local_date,
-    FileHabitSnapshotStore, HabitCorrectionView, HabitLocalCompletionChangeView,
-    HabitSnapshotStore, LocalHabitCompletion, LocalHabitDefinition, LocalHabitDefinitionsDocument,
-    LocalHabitGoal, LocalHabitGoalRevision, LocalHabitOperationReceipt, LocalHabitRecord,
-    LocalHabitRevisionDisposition, HABIT_DEFINITIONS_RELATIVE_PATH,
-    LEGACY_SNAPSHOT_RELATIVE_PATH, SNAPSHOT_RELATIVE_PATH,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -1668,6 +1668,8 @@ pub struct HabitDefinitionMutationInput {
     pub mode: String,
     pub key: String,
     pub name: String,
+    #[serde(default)]
+    pub name_changed: bool,
     pub emoji: Option<String>,
     pub group: Option<String>,
     pub start_date: Option<String>,
@@ -3312,10 +3314,12 @@ where
         {
             Ok(Some(bytes)) => match parse_local_habit_definitions(&bytes, &current_timestamp) {
                 Ok(document) => (Some(document), Some(document_revision(&bytes))),
-                Err(error) => return Ok(self.retained_or_error(
-                    &snapshot_path,
-                    format!("本地 Habit 设置无效：{error}"),
-                )?),
+                Err(error) => {
+                    return Ok(self.retained_or_error(
+                        &snapshot_path,
+                        format!("本地 Habit 设置无效：{error}"),
+                    )?);
+                }
             },
             Ok(None) => (Some(LocalHabitDefinitionsDocument::default()), None),
             Err(error) => return Ok(self.retained_or_error(&snapshot_path, error)?),
@@ -3580,6 +3584,7 @@ where
                 document.habits.push(LocalHabitDefinition {
                     key: input.key.clone(),
                     name: name.into(),
+                    name_override: false,
                     emoji: normalized_optional(input.emoji.as_deref()),
                     group: normalized_optional(input.group.as_deref()),
                     start_date: input.start_date.clone(),
@@ -3596,6 +3601,7 @@ where
                     document.habits.push(LocalHabitDefinition {
                         key: input.key.clone(),
                         name: source.name,
+                        name_override: false,
                         emoji: None,
                         group: None,
                         start_date: None,
@@ -3611,7 +3617,10 @@ where
                 } else {
                     return Err("Habit 不存在或已被移除；未写入任何内容。".into());
                 };
-                definition.name = name.into();
+                if input.name_changed {
+                    definition.name = name.into();
+                    definition.name_override = !definition.created_locally;
+                }
                 definition.emoji = normalized_optional(input.emoji.as_deref());
                 definition.group = normalized_optional(input.group.as_deref());
                 definition.start_date = input.start_date.clone();
@@ -5040,15 +5049,30 @@ fn habit_definition_fingerprint(
     input: &HabitDefinitionMutationInput,
     normalized_name: &str,
 ) -> Result<String, String> {
-    let canonical = serde_json::to_vec(&(
-        input.mode.as_str(),
-        input.key.as_str(),
-        normalized_name,
-        normalized_optional(input.emoji.as_deref()),
-        normalized_optional(input.group.as_deref()),
-        input.start_date.as_deref(),
-        input.goal.as_ref(),
-    ))
+    let emoji = normalized_optional(input.emoji.as_deref());
+    let group = normalized_optional(input.group.as_deref());
+    let canonical = if input.name_changed {
+        serde_json::to_vec(&(
+            input.mode.as_str(),
+            input.key.as_str(),
+            normalized_name,
+            true,
+            emoji,
+            group,
+            input.start_date.as_deref(),
+            input.goal.as_ref(),
+        ))
+    } else {
+        serde_json::to_vec(&(
+            input.mode.as_str(),
+            input.key.as_str(),
+            normalized_name,
+            emoji,
+            group,
+            input.start_date.as_deref(),
+            input.goal.as_ref(),
+        ))
+    }
     .map_err(|error| format!("Habit 操作无法生成稳定指纹：{error}"))?;
     Ok(document_revision(&canonical))
 }

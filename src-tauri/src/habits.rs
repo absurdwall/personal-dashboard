@@ -96,6 +96,8 @@ pub struct LocalHabitGoalRevision {
 pub struct LocalHabitDefinition {
     pub key: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub name_override: bool,
     pub emoji: Option<String>,
     pub group: Option<String>,
     pub start_date: Option<String>,
@@ -162,6 +164,10 @@ impl Default for LocalHabitDefinitionsDocument {
             operations: Vec::new(),
         }
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -549,6 +555,7 @@ pub struct HabitView {
     pub name: String,
     pub localized_names: HabitLocalizedNames,
     pub is_local_definition: bool,
+    pub local_name_override: bool,
     pub created_locally: bool,
     pub emoji: Option<String>,
     pub group: Option<String>,
@@ -1093,6 +1100,7 @@ pub fn project_snapshot_with_names_at_local_date(
             name: habit.name.clone(),
             localized_names: names_configuration.names_for(&habit.key),
             is_local_definition: false,
+            local_name_override: false,
             created_locally: false,
             emoji: None,
             group: None,
@@ -1188,8 +1196,8 @@ pub fn merge_local_habit_definitions(
     }
     CalendarDate::parse(current_local_date)
         .ok_or_else(|| "当前本地日期无效；未合并本地 Habit。".to_string())?;
-    let lived_date = CalendarDate::parse(current_lived_date)
-        .expect("current lived date was validated above");
+    let lived_date =
+        CalendarDate::parse(current_lived_date).expect("current lived date was validated above");
     if timestamp_epoch_seconds(current_timestamp).is_none() {
         return Err("当前本地时间缺少有效 UTC offset；未合并本地 Habit。".into());
     }
@@ -1199,7 +1207,7 @@ pub fn merge_local_habit_definitions(
         let Some(definition) = definitions.habits.iter().find(|item| item.key == habit.key) else {
             continue;
         };
-        apply_local_habit_definition(habit, definition, current_lived_date);
+        apply_local_habit_definition(habit, definition, current_lived_date, true);
     }
 
     let local_only: Vec<&LocalHabitDefinition> = definitions
@@ -1256,7 +1264,7 @@ pub fn merge_local_habit_definitions(
         )?;
         for habit in &mut projected.habits {
             if let Some(definition) = local_only.iter().find(|item| item.key == habit.key) {
-                apply_local_habit_definition(habit, definition, current_lived_date);
+                apply_local_habit_definition(habit, definition, current_lived_date, false);
                 habit.coverage_label = "没有可用的外部历史覆盖".into();
             }
         }
@@ -1271,9 +1279,13 @@ fn apply_local_habit_definition(
     habit: &mut HabitView,
     definition: &LocalHabitDefinition,
     current_lived_date: &str,
+    source_present: bool,
 ) {
-    habit.name = definition.name.clone();
+    if definition.name_override || !source_present {
+        habit.name = definition.name.clone();
+    }
     habit.is_local_definition = true;
+    habit.local_name_override = definition.name_override;
     habit.created_locally = definition.created_locally;
     habit.emoji = definition.emoji.clone();
     habit.group = definition.group.clone();
@@ -1361,13 +1373,13 @@ fn apply_local_habit_definition(
                 {
                     let week_of = previous_week.to_string();
                     let goal_label = previous_goal.label();
-                    history.entry(week_of.clone()).or_insert_with(|| {
-                        HabitGoalContextView {
+                    history
+                        .entry(week_of.clone())
+                        .or_insert_with(|| HabitGoalContextView {
                             week_of,
                             label: "本地目标修订前".into(),
                             goal_label,
-                        }
-                    });
+                        });
                 }
             }
             let week = effective_on.monday();
@@ -1483,9 +1495,7 @@ fn local_goal_snapshot_value(goal: &LocalHabitGoal) -> Option<serde_json::Value>
     }
 }
 
-fn historical_snapshot_goals(
-    definition: &LocalHabitDefinition,
-) -> Vec<serde_json::Value> {
+fn historical_snapshot_goals(definition: &LocalHabitDefinition) -> Vec<serde_json::Value> {
     definition
         .source_goal_history
         .iter()

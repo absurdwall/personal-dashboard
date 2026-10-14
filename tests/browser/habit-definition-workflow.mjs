@@ -41,6 +41,7 @@ function habitFrom(input,{currentGoal=input.goal,pendingGoal=null,completed=fals
   return {
     key:input.key,name:input.name,localizedNames:input.localizedNames??{},
     isLocalDefinition:input.isLocalDefinition??true,createdLocally:input.createdLocally??true,
+    localNameOverride:input.localNameOverride??false,
     emoji:input.emoji,group:input.group,startDate:input.startDate,currentGoal,pendingGoal,
     pendingGoalLabel:pendingGoal?goalLabel(pendingGoal):null,active:true,canRecordCompletion:currentGoal?.kind!=='daily-time',
     goalKind:currentGoal?.kind??'daily-count',goalLabel:goalLabel(currentGoal),weeklyTarget:weekly?currentGoal.days:null,
@@ -90,6 +91,7 @@ async function pageFixture(initial=pageView()) {
     const makeHabit=(input,{currentGoal=input.goal,pendingGoal=null,completed=false}={})=>({
       key:input.key,name:input.name,localizedNames:input.localizedNames??{},
       isLocalDefinition:input.isLocalDefinition??true,createdLocally:input.createdLocally??true,
+      localNameOverride:input.localNameOverride??false,
       emoji:input.emoji,group:input.group,startDate:input.startDate,currentGoal,pendingGoal,
       pendingGoalLabel:pendingGoal?labelForGoal(pendingGoal):null,active:true,canRecordCompletion:currentGoal?.kind!=='daily-time',
       goalKind:currentGoal?.kind??'daily-count',goalLabel:labelForGoal(currentGoal),
@@ -127,9 +129,14 @@ async function pageFixture(initial=pageView()) {
         const input=args.input;
         const existing=window.__view.habits.find(habit=>habit.key===input.key);
         const keepsGoal=existing&&JSON.stringify(input.goal)===JSON.stringify(existing.currentGoal);
+        const name=existing&&!input.nameChanged?existing.name:input.name;
+        const localNameOverride=existing
+          ? existing.localNameOverride||Boolean(input.nameChanged&&!existing.createdLocally)
+          : false;
         const habit=existing
-          ? {...makeHabit({...input,key:existing.key,localizedNames:existing.localizedNames,
+          ? {...makeHabit({...input,key:existing.key,name,localizedNames:existing.localizedNames,
               isLocalDefinition:true,createdLocally:existing.createdLocally,sourceLabels:existing.sourceLabels,
+              localNameOverride,
               weeklyPeriodStart:existing.weeklyPeriodStart,weeklyPeriodPartial:existing.weeklyPeriodPartial},
               {currentGoal:existing.currentGoal,pendingGoal:keepsGoal?null:input.goal,completed:existing.today.countsAsCompletion}),
               today:existing.today,recent:existing.recent,history:existing.history}
@@ -292,9 +299,10 @@ test('a local source-Habit name takes precedence over localizedNames and edit pr
     assert.match(await row.innerText(),/力量散步/);
     assert.deepEqual(await page.evaluate(()=>{
       const habit=window.__view.habits.find(item=>item.key==='exercise');
-      return {name:habit.name,localizedNames:habit.localizedNames,sourceLabels:habit.sourceLabels,today:habit.today};
+      return {name:habit.name,localizedNames:habit.localizedNames,localNameOverride:habit.localNameOverride,
+        sourceLabels:habit.sourceLabels,today:habit.today};
     }),{
-      name:'力量散步',localizedNames:{zh:'锻炼',en:'Exercise'},sourceLabels:['TickTick'],
+      name:'力量散步',localizedNames:{zh:'锻炼',en:'Exercise'},localNameOverride:true,sourceLabels:['TickTick'],
       today:{...localCell(false),status:'completed',hasExternalCompletion:true,
         details:[{sourceLabel:'TickTick',note:'source evidence preserved'}]},
     });
@@ -302,8 +310,44 @@ test('a local source-Habit name takes precedence over localizedNames and edit pr
     await page.waitForFunction(()=>window.__calls.some(call=>call.command==='set_interface_language'&&call.args.interfaceLanguage==='en'));
     await page.waitForFunction(()=>window.__interfaceLanguage==='en');
     assert.match(await row.innerText(),/力量散步/,'the local name remains visible in English');
+    await page.locator('#workspace-language').click();
+    await page.waitForFunction(()=>window.__calls.some(call=>call.command==='set_interface_language'&&call.args.interfaceLanguage==='zh'));
+    await page.waitForFunction(()=>window.__interfaceLanguage==='zh');
+    assert.match(await row.innerText(),/力量散步/,'the explicit local name takes precedence over the Chinese translation');
     await page.locator('button[data-habit-edit="exercise"]').click();
     assert.equal(await name.inputValue(),'力量散步','edit form prefills the persisted local name');
     assert.deepEqual(errors,[],'localized-name editing and language switching produce no browser errors');
+  }finally{await fixture.close();}
+});
+
+test('a source-Habit non-name edit preserves zh and en display names',async()=>{
+  const source=habitFrom({
+    key:'exercise',name:'Exercise',isLocalDefinition:false,createdLocally:false,
+    localizedNames:{zh:'锻炼',en:'Exercise'},sourceLabels:['TickTick'],
+    goal:{kind:'weekly-count',days:3},
+  });
+  const fixture=await pageFixture(pageView([source]));const {page,errors}=fixture;
+  try{
+    const row=page.locator('.habit-snapshot-row[data-habit-key="exercise"]');
+    await row.waitFor({state:'visible'});
+    assert.match(await row.innerText(),/锻炼/);
+    await page.locator('button[data-habit-edit="exercise"]').click();
+    assert.equal(await page.locator('#habit-definition-name').inputValue(),'锻炼');
+    await page.locator('#habit-definition-group').fill('Movement');
+    await page.locator('#habit-definition-submit').click();
+    await page.waitForFunction(()=>window.__calls.some(call=>call.command==='save_habit_definition'));
+    await page.waitForFunction(()=>window.__view.habits.find(item=>item.key==='exercise')?.group==='Movement');
+    assert.match(await row.innerText(),/锻炼/,'the unchanged zh-prefilled name remains translated');
+
+    await page.locator('#workspace-language').click();
+    await page.waitForFunction(()=>window.__calls.some(call=>call.command==='set_interface_language'&&call.args.interfaceLanguage==='en'));
+    await page.waitForFunction(()=>window.__interfaceLanguage==='en');
+    assert.match(await row.innerText(),/Exercise/,'the same non-name edit keeps the English name');
+
+    await page.locator('#workspace-language').click();
+    await page.waitForFunction(()=>window.__calls.some(call=>call.command==='set_interface_language'&&call.args.interfaceLanguage==='zh'));
+    await page.waitForFunction(()=>window.__interfaceLanguage==='zh');
+    assert.match(await row.innerText(),/锻炼/,'switching back restores the Chinese translation');
+    assert.deepEqual(errors,[],'language changes after a non-name edit produce no browser errors');
   }finally{await fixture.close();}
 });

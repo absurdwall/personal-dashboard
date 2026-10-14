@@ -455,6 +455,7 @@ type HabitView = Readonly<{
   name: string;
   localizedNames: HabitLocalizedNames;
   isLocalDefinition: boolean;
+  localNameOverride: boolean;
   createdLocally: boolean;
   emoji: string | null;
   group: string | null;
@@ -1648,9 +1649,13 @@ function displayHabitName(
     name: string;
     localizedNames?: HabitLocalizedNames | null;
     isLocalDefinition?: boolean;
+    localNameOverride?: boolean;
+    createdLocally?: boolean;
   }>,
 ): string {
-  if (habit.isLocalDefinition) return habit.name;
+  if (habit.isLocalDefinition && (habit.createdLocally || habit.localNameOverride)) {
+    return habit.name;
+  }
   return localizedHabitName(habit.name, habit.localizedNames, currentInterfaceLanguage);
 }
 
@@ -9353,6 +9358,7 @@ function openHabitDefinitionForm(habit?: HabitView): void {
   const group = habitDefinitionForm.querySelector<HTMLInputElement>("#habit-definition-group");
   if (!name || !startDate || !emoji || !group) return;
   name.value = habit ? displayHabitName(habit) : "";
+  habitDefinitionForm.dataset.prefilledName = name.value.trim();
   startDate.value = habit
     ? habit.startDate ?? ""
     : loaded?.currentLivedDate ?? "";
@@ -9390,6 +9396,7 @@ async function saveHabitDefinition(form: HTMLFormElement): Promise<boolean> {
   const mode = form.dataset.mode;
   const key = form.dataset.habitKey;
   const name = form.querySelector<HTMLInputElement>("#habit-definition-name")?.value.trim() ?? "";
+  const nameChanged = mode === "create" || name !== (form.dataset.prefilledName ?? "");
   const startDate = form.querySelector<HTMLInputElement>("#habit-definition-start-date")?.value || null;
   const emoji = form.querySelector<HTMLInputElement>("#habit-definition-emoji")?.value.trim() || null;
   const group = form.querySelector<HTMLInputElement>("#habit-definition-group")?.value.trim() || null;
@@ -9409,6 +9416,7 @@ async function saveHabitDefinition(form: HTMLFormElement): Promise<boolean> {
     mode,
     key,
     name,
+    nameChanged,
     emoji,
     group,
     startDate,
@@ -9436,6 +9444,7 @@ async function saveHabitDefinition(form: HTMLFormElement): Promise<boolean> {
     habitDefinitionForm!.reset();
     delete habitDefinitionForm!.dataset.mode;
     delete habitDefinitionForm!.dataset.habitKey;
+    delete habitDefinitionForm!.dataset.prefilledName;
     setHabitDefinitionGoalFields();
     renderHabitSnapshot(view);
     return true;
