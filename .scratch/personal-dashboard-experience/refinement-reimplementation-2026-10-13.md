@@ -333,3 +333,18 @@ unlaunched for the separate reviewer.
   for the separately authorized reviewer. The installed App and user profile
   remain untouched. PDEX-21 and PDEX-SPEC-02 remain open; this package build is
   not installed-App acceptance or a ticket closeout.
+
+## Reviewer-reported installed-App checkpoint — 2026-10-14
+
+**Source and qualification:** the following is the independent reviewer's
+reported result from the separate review task, recorded for handoff. This
+workspace did not independently inspect the private profile/Vault backups or
+re-run the installed-App readback. The reviewer is continuing the final
+readback and will leave the installed App for the user.
+
+- Independent Standards and Spec reviews of `902fc032ab232e34feb218b766f8b123a1a8fc57..f1136edffd1d0a7140489690c22a94fa673a3f74` reported zero actionable findings on each axis. The reviewer reran the targeted WebKit geometry test successfully. Their broader axis suite also remained 6/10 with the same four fixture limitations documented above.
+- Following the user's authorization, the reviewer reports atomically replacing `/Applications/Personal Dashboard.app` with the production candidate. The installed executable SHA-256 matched `8d46b9289d4df25c4c20fa9ce252bb7bfb385334aa9ba595601e9fc7d014dbac`; source stamp was `f1136edffd1d0a7140489690c22a94fa673a3f74`; production bundle identifier remained `com.tortillaflat.personal-dashboard`; strict code-signature verification passed.
+- Before replacement, the old App, full normal profile, and selected Vault's `life/`, `.personal-dashboard/`, Daily Records, and `.obsidian/` were privately backed up and readback-verified. Reviewer-reported hash checks found no changes across 5,891 profile files, 82 Dashboard files, 40 Daily Records, and 6 Vault settings files.
+- After launch, reviewer-reported checks found the normal `tortilla-flat` Vault, existing Morning baseline and Current arrangement, and existing Collaboration sessions visible. ChatGPT showed connected with GPT-6-Luna medium; Send and microphone controls were visible. No real test message was sent, and no real Task or Daily Record was edited. The temporary fixture profile and fixed clock were not present in the installed App.
+- Reviewer-reported Vault authority-scope changes: 0. Vault selection, theme, and language setting hashes were unchanged. The Collaboration store had a byte-format change only; a JSON semantic comparison reported all fields retained, including sessions, messages, drafts, and settings.
+- This is an installed-candidate checkpoint, not completion of PDEX-21, PDEX-26, or PDEX-SPEC-02. Four broad-suite fixture failures remain open, the reviewer still owes the final readback, and user review remains outstanding. Native ticket states and blocker declarations were not changed.
