@@ -269,3 +269,27 @@ no integration merge, install, remote operation or main change was recorded.
   `368571be59092657c55bcef66f12be997e8f0519`, with parents `a9f6b739` and
   `0fe5519`. This merge changed only the PDEX-25 ticket record; PDEX-25 remains
   open/in-progress and PDEX-26 still owns packaged acceptance.
+
+## PDEX-24 ticket-state correction integration — 2026-10-14
+
+- After full spec review found the PDEX-24 ticket still saying it had not been
+  merged, the branch was fast-forwarded to integration `02dde3f5`; its dated
+  correction was committed on `codex/pdex-24-restart` as
+  `01cf3192a99b231b924877c979a8db88cc40df15`. Earlier statements are now
+  explicitly identified as pre-merge checkpoints, superseded by `59b9d655`.
+- The correction-only branch was non-fast-forward merged into integration as
+  `17ded48d865c39a81a946f88418b7129f58513aa`, with parents `02dde3f5` and
+  `01cf3192`. PDEX-24 remains open/in-progress; independent review and PDEX-26
+  packaged acceptance remain pending.
+
+## PDEX-25 evidence-state clarification integration — 2026-10-14
+
+- Standards review found that the linked PDEX-25 implementation evidence still
+  described the worker branch as unmerged. Added a dated clarification to the
+  evidence and scoped the claim log's “separate” wording to its claim-time
+  checkpoint in commit `b254d0b7f47ad34c83514d816692e14775ae75c9` on
+  `codex/pdex-25-restart`.
+- This tracker/evidence-only branch update was non-fast-forward merged into
+  integration as `fff3c31fb8aab91dfdbd92a0043cde68d7760c30`, with parents
+  `17ded48d` and `b254d0b7`. PDEX-25 remains open/in-progress; PDEX-26 owns the
+  remaining packaged acceptance.
