@@ -24,7 +24,7 @@ function webKit(script: string): any {
       const composer = document.querySelector('#collaboration-composer');
       composer.addEventListener('submit', event => { event.preventDefault(); submitted++; });
       input.addEventListener('input', () => edited.push(input.value));
-      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => composer.requestSubmit());
+      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => composer.requestSubmit(), () => window.__testCommands ?? ['/retro']);
       const type = text => { input.value = text; input.focus(); input.setSelectionRange(text.length, text.length); input.dispatchEvent(new Event('input', { bubbles: true })); };
       const key = (key, options = {}) => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }));
       ${script}
@@ -66,6 +66,21 @@ test("slash filtering, arrow selection, Tab and pointer completion retain editab
   assert.equal(result.workflow, false);
 });
 
+test("multiple provided slash candidates wrap with arrows and complete arguments without executing", { skip: process.platform !== "darwin" }, () => {
+  const result = webKit(`
+    window.__testCommands=['/retro','/review'];
+    type('/r notes'); input.setSelectionRange(2,2); input.dispatchEvent(new MouseEvent('click'));
+    const initial=[...menu.querySelectorAll('[role="option"]')].map(node=>node.textContent);
+    key('ArrowUp'); const wrappedUp=input.getAttribute('aria-activedescendant');
+    key('Enter');
+    return JSON.stringify({initial,wrappedUp,draft:input.value,submitted});
+  `);
+  assert.deepEqual(result.initial, ["/retro Personal retro", "/review Personal retro"]);
+  assert.equal(result.wrappedUp, "collaboration-command-menu-1");
+  assert.equal(result.draft, "/review notes");
+  assert.equal(result.submitted, 0);
+});
+
 test("Escape closes discovery, ordinary slash text stays ordinary, and deliberate send still works", { skip: process.platform !== "darwin" }, () => {
   const result = webKit(`
     type('/'); key('Escape'); const closed = menu.hidden; key('Enter'); const afterEnter = submitted;
@@ -103,11 +118,11 @@ test("long help opens on demand while draft, dictation preview and real status s
     const help = document.querySelector('.collaboration-help'); const collapsed = !help.open; help.querySelector('summary').click();
     const inputHelp = document.querySelector('#collaboration-voice-privacy').closest('details');
     const preview = document.querySelector('#collaboration-voice-preview'); const status = document.querySelector('#collaboration-voice-status');
-    type('/r'); input.dispatchEvent(new FocusEvent('blur')); return JSON.stringify({collapsed, opened: help.open, inputHelpClosed: !inputHelp.open, previewFolded: !!preview.closest('details'), statusFolded: !!status.closest('details'), menuClosed: menu.hidden, draft: input.value, submitted});
+    type('/r'); input.dispatchEvent(new FocusEvent('blur')); return JSON.stringify({collapsed, opened: help.open, inputHelpOpen: inputHelp.open, previewFolded: !!preview.closest('details'), statusFolded: !!status.closest('details'), menuClosed: menu.hidden, draft: input.value, submitted});
   `);
   assert.equal(result.collapsed, true);
   assert.equal(result.opened, true);
-  assert.equal(result.inputHelpClosed, true);
+  assert.equal(result.inputHelpOpen, true);
   assert.equal(result.previewFolded, false);
   assert.equal(result.statusFolded, false);
   assert.equal(result.menuClosed, true);
