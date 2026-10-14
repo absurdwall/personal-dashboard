@@ -58,3 +58,23 @@ The installed local Management helper confirmed native claim operation
 packaged acceptance remains under PDEX-26. The exact worktree start commit and
 path are recorded in the shared [restart record](../refinement-reimplementation-2026-10-13.md)
 after worktree creation.
+
+## Reimplementation evidence — 2026-10-13
+
+- Working branch: `codex/pdex-20-refinement-reimplementation`; exact start
+  commit: `ad697e01cf5a51a619fb97bbad174ebb50161d91`.
+- Ticket implementation commit:
+  `38ff29bd961baed78ec11c75627069936bcc1ba2` (`feat: add task parents and list folders`).
+- Integrated `codex/dashboard-experience-refinement-reimplementation` at
+  `cac527d8f12c1fdb1ad8576022bc80edf75e59d1`; merge commit:
+  `40871c8105dae24af721139a73b2e34fb2020e26`.
+- Checks on the merged branch: TypeScript compile; 26 focused frontend
+  presentation tests; all 34 `task_workflow` Rust tests; offline `cargo check`;
+  focused `rustfmt --check` for the changed Rust files; and `git diff --check`.
+  The business workflow test writes through `FileTaskStore`, opens a new
+  application instance, and verifies parent and folder readback and identity.
+- Acceptance remains open: no browser DOM/pointer run was possible because
+  this environment has no installed Playwright module or Chrome CLI; no
+  dependencies were installed. Packaged-app verification remains assigned to
+  PDEX-26. A whole-crate `cargo fmt --check` reports formatting differences in
+  untouched files; the focused check for the changed Rust files passes.

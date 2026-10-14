@@ -8,6 +8,9 @@ import {
   normalizeTaskSchedule,
   taskListMutationConfirmed,
   taskListScopeForId,
+  taskFolderScopeForId,
+  taskFolderIdFromScope,
+  taskParentCandidates,
   taskEditOperationKey,
   taskListDisplayName,
   taskListCount,
@@ -363,6 +366,44 @@ test("task list scopes keep archived work out of active views and expose it for 
   assert.equal(taskVisibleInScope(archived, taskListScopeForId("planning"), "completed"), false);
 });
 
+test("folder scopes aggregate only their assigned active lists and leave fixed scopes intact", () => {
+  const folderScope = taskFolderScopeForId("planning-folder");
+  const folderIdsByList = new Map([ ["work", "planning-folder"], ["home", "planning-folder"] ]);
+  const archivedLists = new Set(["home"]);
+  const tasks = [
+    {listId: "work", state: "pending" as const, deletedAt: null, date: null, overdue: false},
+    {listId: "home", state: "pending" as const, deletedAt: null, date: null, overdue: false},
+    {listId: "other", state: "pending" as const, deletedAt: null, date: null, overdue: false},
+  ];
+
+  assert.equal(taskFolderIdFromScope(folderScope), "planning-folder");
+  assert.deepEqual(
+    tasks.filter((task) => taskVisibleInScope({
+      ...task,
+      listArchived: archivedLists.has(task.listId),
+      listFolderId: folderIdsByList.get(task.listId),
+    }, folderScope, "pending")).map((task) => task.listId),
+    ["work"],
+  );
+  assert.equal(taskVisibleInScope(tasks[0], "all", "pending"), true);
+  assert.equal(taskVisibleInScope(tasks[0], "inbox", "pending"), false);
+  assert.equal(taskScopeCount(tasks, folderScope, "pending", null, archivedLists, folderIdsByList), 1);
+});
+
+test("parent candidates hide the Task and its full descendant chain", () => {
+  const tasks = [
+    {id: "root", parentTaskId: null, deletedAt: null},
+    {id: "child", parentTaskId: "root", deletedAt: null},
+    {id: "grandchild", parentTaskId: "child", deletedAt: null},
+    {id: "sibling", parentTaskId: "root", deletedAt: null},
+    {id: "other", parentTaskId: null, deletedAt: null},
+    {id: "deleted", parentTaskId: null, deletedAt: "2026-10-12T10:00-04:00"},
+  ];
+
+  assert.deepEqual(taskParentCandidates(tasks, "child").map((task) => task.id), ["root", "sibling", "other"]);
+  assert.deepEqual(taskParentCandidates(tasks).map((task) => task.id), ["root", "child", "grandchild", "sibling", "other"]);
+});
+
 test("scope counts follow the active state filter without changing membership semantics", () => {
   const tasks = [
     { listId: "inbox", date: "2026-09-17", state: "pending" as const, deletedAt: null, overdue: false },
@@ -689,4 +730,36 @@ test("Task property patches distinguish omitted values from explicitly cleared v
     }),
   });
   assert.equal(mismatched.confirmed, false, "different saved properties are not reported as successful");
+});
+
+test("parent changes use distinct retry identities and require relation readback", async () => {
+  const requests = new LatestRequest();
+  const identities = new TaskOperationIdentityStore();
+  const base = taskUpdateEdit("Parented child");
+  const linked = { ...base, parentTaskId: "parent-a" };
+  const unlinked = { ...base, parentTaskId: null };
+  assert.notEqual(taskEditOperationKey(base), taskEditOperationKey(linked));
+  assert.notEqual(taskEditOperationKey(linked), taskEditOperationKey(unlinked));
+
+  const saved = await performTaskUpdateRequest(linked, {
+    expectedRevision: "r1", requests, identities, createChangeId: () => "link-parent",
+    isCurrent: () => true,
+    invoke: async (input) => ({
+      state: "ready",
+      targetBinding: "vault-a",
+      tasks: [{ ...input, id: input.taskId, parentTaskId: "parent-a" }],
+    }),
+  });
+  assert.equal(saved.confirmed, true);
+
+  const mismatch = await performTaskUpdateRequest(unlinked, {
+    expectedRevision: "r2", requests, identities, createChangeId: () => "unlink-parent",
+    isCurrent: () => true,
+    invoke: async (input) => ({
+      state: "ready",
+      targetBinding: "vault-a",
+      tasks: [{ ...input, id: input.taskId, parentTaskId: "parent-a" }],
+    }),
+  });
+  assert.equal(mismatch.confirmed, false, "an unchanged parent relation is not a confirmed unlink");
 });

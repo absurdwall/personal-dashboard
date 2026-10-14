@@ -86,6 +86,9 @@ import {
   taskListCount,
   taskListMutationConfirmed,
   taskListScopeForId,
+  taskFolderScopeForId,
+  taskFolderIdFromScope,
+  taskParentCandidates,
   taskScopeCount,
   taskDisplaySections,
   taskHistoryGroups,
@@ -287,6 +290,8 @@ type TaskChangeView = Readonly<{
   newTime: string | null;
   previousExecutionEnd?: Readonly<{date: string; time: string}> | null;
   newExecutionEnd?: Readonly<{date: string; time: string}> | null;
+  previousParentTaskId?: string | null;
+  newParentTaskId?: string | null;
   previousListId: string | null;
   newListId: string | null;
   previousState: "pending" | "completed" | "abandoned" | null;
@@ -310,6 +315,7 @@ type TaskChangeView = Readonly<{
         time: string | null;
         listId: string | null;
         executionEnd?: Readonly<{ date: string; time: string }> | null;
+        parentTaskId?: string | null;
       }>
     | Readonly<{ kind: "setState"; state: "pending" | "completed" | "abandoned" }>
     | Readonly<{
@@ -331,6 +337,7 @@ type TaskView = Readonly<{
   executionEnd: Readonly<{ date: string; time: string }> | null;
   priority?: TaskPriority | null;
   tagIds?: readonly string[];
+  parentTaskId?: string | null;
   id: string;
   name: string;
   content: string | null;
@@ -362,7 +369,9 @@ type TasksView = Readonly<{
     name: string;
     isSystem: boolean;
     archived: boolean;
+    folderId?: string | null;
   }>[];
+  folders?: readonly Readonly<{ id: string; name: string }>[];
   tags?: readonly Readonly<{ id: string; name: string }>[];
   tasks: readonly TaskView[];
 }>;
@@ -1324,6 +1333,10 @@ const tasksEmpty = document.querySelector<HTMLElement>("#tasks-empty");
 const taskQuickForm = document.querySelector<HTMLFormElement>("#task-quick-form");
 const taskQuickName = document.querySelector<HTMLInputElement>("#task-quick-name");
 const taskQuickList = document.querySelector<HTMLSelectElement>("#task-quick-list");
+const taskQuickFolderTarget = document.querySelector<HTMLLabelElement>("#task-quick-folder-target");
+const taskQuickFolderList = document.querySelector<HTMLSelectElement>("#task-quick-folder-list");
+const taskQuickFolderEmpty = document.querySelector<HTMLElement>("#task-quick-folder-empty");
+const taskQuickParent = document.querySelector<HTMLSelectElement>("#task-quick-parent");
 const taskQuickPriority = document.querySelector<HTMLSelectElement>("#task-quick-priority");
 const taskQuickTagChoices = document.querySelector<HTMLElement>("#task-quick-tag-choices");
 const taskQuickSubmit = document.querySelector<HTMLButtonElement>("#task-quick-submit");
@@ -1343,6 +1356,7 @@ const taskCreateContent = document.querySelector<HTMLTextAreaElement>("#task-cre
 const taskCreatePriority = document.querySelector<HTMLSelectElement>("#task-create-priority");
 const taskCreateTagChoices = document.querySelector<HTMLElement>("#task-create-tag-choices");
 const taskCreateList = document.querySelector<HTMLSelectElement>("#task-create-list");
+const taskCreateParent = document.querySelector<HTMLSelectElement>("#task-create-parent");
 const taskCreateListLabel = document.querySelector<HTMLElement>("#task-create-list-label");
 const taskCreateDate = document.querySelector<HTMLInputElement>("#task-create-date");
 const taskCreateTime = document.querySelector<HTMLInputElement>("#task-create-time");
@@ -1356,6 +1370,8 @@ const taskNewListButton = document.querySelector<HTMLButtonElement>("#task-new-l
 const taskListScopes = document.querySelector<HTMLElement>("#tasks-list-scopes");
 const taskListCreateForm = document.querySelector<HTMLFormElement>("#task-list-create-form");
 const taskListCreateName = document.querySelector<HTMLInputElement>("#task-list-create-name");
+const taskFolderCreateForm = document.querySelector<HTMLFormElement>("#task-folder-create-form");
+const taskFolderCreateName = document.querySelector<HTMLInputElement>("#task-folder-create-name");
 const taskListsManagement = document.querySelector<HTMLElement>("#tasks-lists-management");
 const taskListsManagementPanel = document.querySelector<HTMLElement>(
   "#tasks-list-management-panel",
@@ -1614,6 +1630,9 @@ const taskTagRenameDrafts = new Map<string, string>();
 let taskCreateOpen = false;
 const composingTaskCreateForms = new WeakSet<HTMLFormElement>();
 let taskListManagementOpen = false;
+const expandedTaskFolderIds = new Set<string>();
+const taskFolderRenameDrafts = new Map<string, string>();
+const taskFolderCreateDrafts = new Map<string, string>();
 let taskOperationCount = 0;
 let taskRefreshQueued = false;
 const taskRequests = new LatestRequest();
@@ -1631,11 +1650,13 @@ type TaskDraft = Readonly<{
   completionTime: string;
   priority?: TaskPriority | null;
   tagIds?: readonly string[];
+  parentTaskId?: string | null;
 }>;
 type TaskCreateInput = Readonly<{
   targetBinding: string; expectedRevision: string | null; taskId: string; name: string;
   content: string | null; date: string | null; time: string | null; listId: string;
   executionEnd: Readonly<{date: string; time: string}> | null;
+  parentTaskId?: string | null;
   priority?: TaskPriority | null;
   tagIds?: readonly string[];
 }>;
@@ -1649,7 +1670,7 @@ const taskCreateAttempts = new Map<string, TaskCreateAttempt>();
 const taskEndedCreateAttempts = new Map<string, TaskCreateAttempt[]>();
 const taskQuickDrafts = new Map<string, string>();
 const taskQuickScheduleDrafts = new Map<string, {date: string; time: string}>();
-const taskQuickPropertyDrafts = new Map<string, {listId: string; priority: TaskPriority | null; tagIds: readonly string[]}>();
+const taskQuickPropertyDrafts = new Map<string, {listId: string; priority: TaskPriority | null; tagIds: readonly string[]; parentTaskId: string | null}>();
 const compactScheduleTransactions = new Map<string, {invalidate: () => void; validateContext: () => void}>();
 let currentTaskLivedDate: string | null = null;
 const taskQuickDate = document.querySelector<HTMLInputElement>("#task-quick-date");
@@ -1888,6 +1909,7 @@ function resetVaultScopedWorkspaceState(): void {
   taskStateScope = "all";
   taskCreateOpen = false;
   taskListManagementOpen = false;
+  expandedTaskFolderIds.clear();
   taskRefreshQueued = false;
   currentHabitSnapshot = null;
   selectedHabitCell = null;
@@ -1918,14 +1940,18 @@ function resetVaultScopedWorkspaceState(): void {
   taskEditDrafts.clear();
   taskListCreateDrafts.clear();
   taskListRenameDrafts.clear();
+  taskFolderRenameDrafts.clear();
+  taskFolderCreateDrafts.clear();
   taskOperationIds.clear();
   habitCompletionOperationIds.clear();
   taskCreateForm?.reset();
   todayTaskCreateForm?.reset();
   calendarTaskCreateForm?.reset();
   taskListCreateForm?.reset();
+  taskFolderCreateForm?.reset();
   taskCreateForm?.toggleAttribute("hidden", true);
   taskListCreateForm?.toggleAttribute("hidden", true);
+  taskFolderCreateForm?.toggleAttribute("hidden", true);
   taskListsManagementPanel?.toggleAttribute("hidden", true);
   taskListScopes?.replaceChildren();
   taskListsManagement?.replaceChildren();
@@ -9990,7 +10016,13 @@ function readTaskDraft(form: HTMLFormElement): TaskDraft {
   const content = form.querySelector<HTMLTextAreaElement>("[data-task-content]")?.value ?? "";
   const date = form.querySelector<HTMLInputElement>("[data-task-date]")?.value ?? "";
   const time = form.querySelector<HTMLInputElement>("[data-task-time]")?.value ?? "";
-  const listId = form.querySelector<HTMLSelectElement>("[data-task-list]")?.value || null;
+  const folderTarget = form.querySelector<HTMLLabelElement>("#task-quick-folder-target");
+  const listControl = folderTarget && !folderTarget.hidden
+    ? folderTarget.querySelector<HTMLSelectElement>("[data-task-list]")
+    : form.querySelector<HTMLSelectElement>("#task-quick-list") ??
+      form.querySelector<HTMLSelectElement>("[data-task-list]");
+  const listId = listControl?.value || null;
+  const parentControl = form.querySelector<HTMLSelectElement>("[data-task-parent]");
   const completionDate =
     form.querySelector<HTMLInputElement>("[data-task-completion-date]")?.value ?? "";
   const completionTime =
@@ -10008,6 +10040,7 @@ function readTaskDraft(form: HTMLFormElement): TaskDraft {
     name, content, date, time, endDate, endTime, listId, completionDate, completionTime,
     priority: priorityControl ? (priorityValue ? priorityValue as TaskPriority : null) : undefined,
     tagIds,
+    parentTaskId: parentControl ? (parentControl.value || null) : undefined,
   };
 }
 
@@ -10022,7 +10055,8 @@ function isBlankTaskDraft(draft: TaskDraft): boolean {
     !draft.completionDate &&
     !draft.completionTime &&
     !draft.priority &&
-    !(draft.tagIds?.length)
+    !(draft.tagIds?.length) &&
+    !draft.parentTaskId
   );
 }
 
@@ -10142,7 +10176,7 @@ function taskChangeSourceText(source: TaskChangeView["source"]): string {
   );
 }
 
-function taskChangeDescription(change: TaskChangeView): string {
+function taskChangeDescription(change: TaskChangeView, view?: TasksView | null): string {
   if (change.kind === "rescheduled") {
     return t("tasks.rescheduled", {
       changedAt: change.changedAt,
@@ -10225,13 +10259,25 @@ function taskChangeDescription(change: TaskChangeView): string {
     "list-moved": "tasks.edited",
     edited: "tasks.edited",
   };
-  return t(labels[change.kind], {
+  const base = t(labels[change.kind], {
     changedAt: change.changedAt,
     changeSource: taskChangeSourceText(change.source),
   });
+  const parentChanged =
+    (change.previousParentTaskId !== undefined || change.newParentTaskId !== undefined) &&
+    change.previousParentTaskId !== change.newParentTaskId;
+  if (!parentChanged) return base;
+  const parentName = (id: string | null | undefined): string => {
+    if (!id) return t("tasks.noParent");
+    return view?.tasks.find((candidate) => candidate.id === id)?.name ?? id;
+  };
+  return `${base} · ${t("tasks.parentChangedHistory", {
+    previous: parentName(change.previousParentTaskId),
+    next: parentName(change.newParentTaskId),
+  })}`;
 }
 
-function taskChangeHistory(task: TaskView): HTMLElement | null {
+function taskChangeHistory(task: TaskView, view?: TasksView | null): HTMLElement | null {
   if (task.changes.length === 0) return null;
   const history = document.createElement("details");
   history.className = "task-change-history";
@@ -10241,7 +10287,7 @@ function taskChangeHistory(task: TaskView): HTMLElement | null {
   changes.replaceChildren(
     ...task.changes.map((change) => {
       const item = document.createElement("li");
-      item.textContent = taskChangeDescription(change);
+      item.textContent = taskChangeDescription(change, view);
       return item;
     }),
   );
@@ -10259,12 +10305,25 @@ function activeTaskLists(view: TasksView): readonly TaskListView[] {
   return view.lists.filter((list) => !list.archived);
 }
 
+function taskFolderIdsByList(view: TasksView): ReadonlyMap<string, string> {
+  return new Map(
+    view.lists
+      .filter((list) => Boolean(list.folderId))
+      .map((list) => [list.id, list.folderId!] as const),
+  );
+}
+
+function taskFolderForId(view: TasksView, folderId: string) {
+  return (view.folders ?? []).find((folder) => folder.id === folderId);
+}
+
 function renderTaskListScopeButtons(view: TasksView): void {
   if (!taskListScopes) return;
-  const buttons: HTMLButtonElement[] = [];
+  const navigation: HTMLElement[] = [];
   const archivedListIds = new Set(
     view.lists.filter((list) => list.archived).map((list) => list.id),
   );
+  const foldersByList = taskFolderIdsByList(view);
   const addButton = (scope: TaskListScope, copyKey: InterfaceCopyKey): void => {
     const button = document.createElement("button");
     button.type = "button";
@@ -10275,19 +10334,16 @@ function renderTaskListScopeButtons(view: TasksView): void {
     setCopy(label, copyKey);
     const count = document.createElement("strong");
     count.textContent = String(
-      taskScopeCount(view.tasks, scope, "pending", currentTaskLivedDate ?? view.currentDate, archivedListIds),
+      taskScopeCount(view.tasks, scope, "pending", currentTaskLivedDate ?? view.currentDate, archivedListIds, foldersByList),
     );
     button.append(label, count);
     if (scope === "all") {
       button.dataset.i18nAriaLabel = "tasks.scopeAllList";
       button.setAttribute("aria-label", t("tasks.scopeAllList"));
     }
-    buttons.push(button);
+    navigation.push(button);
   };
-  addButton("all", "tasks.scopeAll");
-  addButton("today", "tasks.scopeToday");
-  addButton("inbox", "tasks.scopeInbox");
-  for (const list of view.lists.filter((candidate) => !candidate.isSystem && !candidate.archived)) {
+  const addListButton = (list: TaskListView, container: HTMLElement): void => {
     const button = document.createElement("button");
     button.type = "button";
     button.role = "tab";
@@ -10296,21 +10352,90 @@ function renderTaskListScopeButtons(view: TasksView): void {
     const label = document.createElement("span");
     label.textContent = list.name;
     const count = document.createElement("strong");
-    count.textContent = String(
-      taskScopeCount(
-        view.tasks,
-        taskListScopeForId(list.id),
-        "pending",
-        currentTaskLivedDate ?? view.currentDate,
-        archivedListIds,
-      ),
-    );
+    count.textContent = String(taskScopeCount(
+      view.tasks,
+      taskListScopeForId(list.id),
+      "pending",
+      currentTaskLivedDate ?? view.currentDate,
+      archivedListIds,
+      foldersByList,
+    ));
     button.append(label, count);
     button.title = list.name;
-    buttons.push(button);
+    container.append(button);
+  };
+  addButton("all", "tasks.scopeAll");
+  addButton("today", "tasks.scopeToday");
+  addButton("inbox", "tasks.scopeInbox");
+  const activeCustomLists = view.lists.filter((list) => !list.isSystem && !list.archived);
+  for (const folder of view.folders ?? []) {
+    const group = document.createElement("div");
+    group.className = "task-folder-navigation";
+    group.dataset.taskFolderNavigation = folder.id;
+    const header = document.createElement("div");
+    header.className = "task-folder-navigation-heading";
+    const expanded = expandedTaskFolderIds.has(folder.id);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "task-folder-toggle";
+    toggle.dataset.taskFolderToggle = folder.id;
+    toggle.textContent = expanded ? "⌄" : "›";
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.setAttribute("aria-label", t(expanded ? "tasks.collapseFolder" : "tasks.expandFolder", {folder: folder.name}));
+    toggle.title = t(expanded ? "tasks.collapseFolder" : "tasks.expandFolder", {folder: folder.name});
+    const folderButton = document.createElement("button");
+    folderButton.type = "button";
+    folderButton.role = "tab";
+    folderButton.className = "task-list-button task-folder-scope-button";
+    folderButton.dataset.taskScope = taskFolderScopeForId(folder.id);
+    folderButton.title = folder.name;
+    const label = document.createElement("span");
+    label.textContent = folder.name;
+    const count = document.createElement("strong");
+    count.textContent = String(taskScopeCount(
+      view.tasks,
+      taskFolderScopeForId(folder.id),
+      "pending",
+      currentTaskLivedDate ?? view.currentDate,
+      archivedListIds,
+      foldersByList,
+    ));
+    folderButton.append(label, count);
+    header.append(toggle, folderButton);
+    const children = document.createElement("div");
+    children.className = "task-folder-navigation-children";
+    children.hidden = !expanded;
+    for (const list of activeCustomLists.filter((candidate) => candidate.folderId === folder.id)) {
+      addListButton(list, children);
+    }
+    group.append(header, children);
+    navigation.push(group);
   }
-  addButton("archived", "tasks.scopeArchived");
-  taskListScopes.replaceChildren(...buttons);
+  for (const list of activeCustomLists.filter((candidate) => !candidate.folderId)) {
+    const holder = document.createElement("div");
+    holder.className = "task-list-navigation-item";
+    addListButton(list, holder);
+    navigation.push(holder);
+  }
+  const archived = document.createElement("button");
+  archived.type = "button";
+  archived.role = "tab";
+  archived.className = "task-list-button";
+  archived.dataset.taskScope = "archived";
+  const archivedLabel = document.createElement("span");
+  setCopy(archivedLabel, "tasks.scopeArchived");
+  const archivedCount = document.createElement("strong");
+  archivedCount.textContent = String(taskScopeCount(
+    view.tasks,
+    "archived",
+    "pending",
+    currentTaskLivedDate ?? view.currentDate,
+    archivedListIds,
+    foldersByList,
+  ));
+  archived.append(archivedLabel, archivedCount);
+  navigation.push(archived);
+  taskListScopes.replaceChildren(...navigation);
 }
 
 function renderTaskListSelect(
@@ -10318,12 +10443,15 @@ function renderTaskListSelect(
   view: TasksView,
   selectedListId: string | null,
   includeArchivedCurrent = false,
+  allowedListIds?: ReadonlySet<string>,
 ): void {
   if (!select) return;
-  const options = activeTaskLists(view).slice();
+  const options = activeTaskLists(view)
+    .filter((list) => !allowedListIds || allowedListIds.has(list.id))
+    .slice();
   if (includeArchivedCurrent && selectedListId) {
     const current = taskListForId(view, selectedListId);
-    if (current?.archived) options.push(current);
+    if (current?.archived && (!allowedListIds || allowedListIds.has(current.id))) options.push(current);
   }
   select.replaceChildren(
     ...options.map((list) => {
@@ -10337,10 +10465,44 @@ function renderTaskListSelect(
       return option;
     }),
   );
-  const fallback = options.find((list) => list.id === "inbox")?.id ?? options[0]?.id ?? "";
+  const fallback = allowedListIds
+    ? options[0]?.id ?? ""
+    : options.find((list) => list.id === "inbox")?.id ?? options[0]?.id ?? "";
   select.value = options.some((list) => list.id === selectedListId)
     ? selectedListId ?? ""
     : fallback;
+}
+
+function renderTaskParentSelect(
+  select: HTMLSelectElement | null,
+  view: TasksView,
+  selectedParentId: string | null,
+  disabled: boolean,
+  taskId: string | null = null,
+): void {
+  if (!select) return;
+  const candidates = [...taskParentCandidates(view.tasks, taskId)];
+  const selected = selectedParentId
+    ? view.tasks.find((task) => task.id === selectedParentId)
+    : undefined;
+  if (selected && selected.deletedAt !== null && !candidates.some((task) => task.id === selected.id)) {
+    candidates.unshift(selected);
+  }
+  const none = document.createElement("option");
+  none.value = "";
+  setCopy(none, "tasks.noParent");
+  select.replaceChildren(none, ...candidates.map((task) => {
+    const option = document.createElement("option");
+    option.value = task.id;
+    const list = taskListForId(view, task.listId);
+    const base = `${task.name} · ${list ? taskListDisplayName(list, t("tasks.inbox")) : task.listId}`;
+    option.textContent = task.deletedAt !== null
+      ? t("tasks.parentDeletedName", {name: base})
+      : base;
+    return option;
+  }));
+  select.value = selectedParentId ?? "";
+  select.disabled = disabled;
 }
 
 function renderTaskTagChoices(
@@ -10478,9 +10640,27 @@ function updateTaskEditorSummaries(form: HTMLFormElement, view: TasksView | null
   const tagNames = (view?.tags ?? []).filter((tag) => selectedIds.includes(tag.id)).map((tag) => tag.name);
   const propertiesSummary = form.querySelector<HTMLElement>("[data-task-properties-summary]");
   if (propertiesSummary) propertiesSummary.textContent = [t(priorityKey), ...tagNames].join(" · ");
+  const parentId = form.querySelector<HTMLSelectElement>("[data-task-parent]")?.value || null;
+  const parent = parentId && view ? view.tasks.find((task) => task.id === parentId) : undefined;
+  const parentSummary = form.querySelector<HTMLElement>("[data-task-parent-summary]");
+  if (parentSummary) {
+    parentSummary.textContent = parent
+      ? parent.deletedAt !== null
+        ? t("tasks.parentDeletedName", {name: parent.name})
+        : parent.name
+      : t("tasks.noParent");
+  }
+  form.querySelector<HTMLElement>(".task-parent-deleted-hint")?.toggleAttribute(
+    "hidden",
+    !parent || parent.deletedAt === null,
+  );
 }
 
-function taskCreateListDefault(view: TasksView): string {
+function taskCreateListDefault(view: TasksView): string | null {
+  const folderId = taskFolderIdFromScope(taskScope);
+  if (folderId) {
+    return activeTaskLists(view).find((list) => list.folderId === folderId)?.id ?? null;
+  }
   const scopedListId = taskListIdFromScope(taskScope);
   const scopedList = scopedListId ? taskListForId(view, scopedListId) : undefined;
   return scopedList && !scopedList.archived ? scopedList.id : "inbox";
@@ -10490,9 +10670,73 @@ function taskListRenameDraftKey(binding: string, listId: string): string {
   return `${binding}:${listId}`;
 }
 
+function renderTaskFolderSelect(
+  select: HTMLSelectElement,
+  view: TasksView,
+  folderId: string | null | undefined,
+  disabled: boolean,
+): void {
+  const top = document.createElement("option");
+  top.value = "";
+  setCopy(top, "tasks.noFolder");
+  const folders = (view.folders ?? []).map((folder) => {
+    const option = document.createElement("option");
+    option.value = folder.id;
+    option.textContent = folder.name;
+    return option;
+  });
+  select.replaceChildren(top, ...folders);
+  select.value = folderId ?? "";
+  select.disabled = disabled;
+}
+
 function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
   if (!taskListsManagement) return;
-  const rows = view.lists.map((list) => {
+  const folderRows = (view.folders ?? []).map((folder) => {
+    const row = document.createElement("article");
+    row.className = "task-folder-row";
+    const heading = document.createElement("div");
+    heading.className = "task-list-row-heading";
+    const title = document.createElement("strong");
+    title.textContent = folder.name;
+    const listCount = view.lists.filter((list) => list.folderId === folder.id).length;
+    const count = document.createElement("small");
+    count.className = "task-meta";
+    setCopy(count, "tasks.folderListCount", {count: listCount});
+    heading.append(title, count);
+    const form = document.createElement("form");
+    form.className = "task-folder-row-form";
+    form.dataset.taskFolderEditor = folder.id;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 80;
+    input.required = true;
+    input.value = taskFolderRenameDrafts.get(folder.id) ?? folder.name;
+    input.dataset.taskFolderName = folder.id;
+    input.setAttribute("aria-label", t("tasks.renameFolderLabel", {folder: folder.name}));
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.className = "text-button";
+    save.disabled = !canOperate;
+    setCopy(save, "tasks.saveFolder");
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "text-button";
+    remove.dataset.taskFolderDelete = folder.id;
+    remove.disabled = !canOperate;
+    setCopy(remove, "tasks.deleteFolder");
+    form.append(input, save, remove);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void pendingWrites.track(renameTaskFolder(folder.id, input));
+    });
+    remove.addEventListener("click", () => {
+      void pendingWrites.track(deleteTaskFolder(folder.id));
+    });
+    row.append(heading, form);
+    return row;
+  });
+  const listRows = view.lists.map((list) => {
     const row = document.createElement("article");
     row.className = "task-list-row";
     row.classList.toggle("is-archived", list.archived);
@@ -10542,11 +10786,22 @@ function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
       archive.dataset.taskListArchive = list.id;
       setCopy(archive, "tasks.archiveList");
     }
-    form.append(input, save, archive);
+    const folderLabel = document.createElement("label");
+    folderLabel.className = "task-list-folder-assignment";
+    const folderCaption = document.createElement("span");
+    setCopy(folderCaption, "tasks.folder");
+    const folderSelect = document.createElement("select");
+    folderSelect.dataset.taskListFolder = list.id;
+    renderTaskFolderSelect(folderSelect, view, list.folderId, !canOperate);
+    folderSelect.addEventListener("change", () => {
+      void pendingWrites.track(setTaskListFolder(list.id, folderSelect.value || null));
+    });
+    folderLabel.append(folderCaption, folderSelect);
+    form.append(input, save, folderLabel, archive);
     row.append(form);
     return row;
   });
-  taskListsManagement.replaceChildren(...rows);
+  taskListsManagement.replaceChildren(...folderRows, ...listRows);
 }
 
 function renderTaskPropertyFilters(view: TasksView): void {
@@ -10577,6 +10832,40 @@ function clearTaskEditorDialogs(surface: TaskSurface): void {
   taskEditorDialogRoot?.querySelectorAll<HTMLElement>(
     `[data-task-editor-dialog][data-task-editor-surface="${surface}"]`,
   ).forEach((dialog) => dialog.remove());
+}
+
+function openTaskInTasks(taskId: string): void {
+  taskFocusRequestId = taskId;
+  if (currentTasksView) renderTasks(currentTasksView);
+}
+
+function openTaskCreateForParent(parent: TaskView): void {
+  const view = currentTasksView;
+  const binding = view?.targetBinding;
+  if (!view || !binding || taskOperationCount > 0) return;
+  const current = taskCreateDrafts.get(binding);
+  const draft: TaskDraft = current
+    ? { ...current, listId: current.listId ?? parent.listId, parentTaskId: parent.id }
+    : {
+        name: "",
+        content: "",
+        date: "",
+        time: "",
+        endDate: "",
+        endTime: "",
+        listId: parent.listId,
+        completionDate: "",
+        completionTime: "",
+        parentTaskId: parent.id,
+        priority: null,
+        tagIds: [],
+      };
+  taskCreateDrafts.set(binding, draft);
+  taskCreateOpen = true;
+  if (taskCreateStatus) setRawText(taskCreateStatus, "");
+  renderTasks(view);
+  if (!taskCreateDialog?.open) taskCreateDialog?.showModal();
+  taskCreateName?.focus();
 }
 
 function toggleTaskEditorDetails(target: HTMLElement): boolean {
@@ -10639,11 +10928,15 @@ function taskEditor(
   view: TasksView | null = currentTasksView,
   surface: TaskSurface = "tasks",
   expanded = false,
+  parentVisible = false,
 ): HTMLElement {
   const binding = view?.targetBinding;
   const draft = binding
     ? taskEditDrafts.get(taskDraftKey(binding, task.id))
     : undefined;
+  const selectedParentId = draft?.parentTaskId !== undefined
+    ? draft.parentTaskId
+    : task.parentTaskId ?? null;
   const editingTasks = surface === "tasks";
   const deleted = task.deletedAt !== null;
   const editable = writable && !deleted;
@@ -10773,6 +11066,13 @@ function taskEditor(
   meta.className = "task-row-meta";
   meta.append(source, document.createTextNode(" · "), document.createTextNode(listName));
   meta.append(document.createTextNode(" · "), document.createTextNode(taskScheduleText(task.date, task.time, task.executionEnd)));
+  if (editingTasks && task.parentTaskId && !parentVisible) {
+    const parent = view?.tasks.find((candidate) => candidate.id === task.parentTaskId);
+    const parentName = parent?.deletedAt
+      ? t("tasks.parentDeletedName", {name: parent.name})
+      : parent?.name ?? task.parentTaskId;
+    meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.childOf", {task: parentName})));
+  }
   if (task.timePassed) {
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.timePassed")));
   } else if (task.overdue) {
@@ -10811,6 +11111,7 @@ function taskEditor(
   name.value = draft?.name ?? task.name;
   name.dataset.taskName = "";
   name.setAttribute("aria-label", `${t("tasks.name")} · ${task.name}`);
+  let parentDetails: HTMLDetailsElement | null = null;
   if (editingTasks) {
     nameLabel.append(name);
   } else {
@@ -11006,7 +11307,94 @@ function taskEditor(
     tagChoices.dataset.taskTagCollection = "";
     renderTaskTagChoices(tagChoices, view ?? { tags: [] }, currentTagIds, !editable, true);
     propertiesDetails.append(propertiesSummary, priorityLabel, tagChoices);
-    grid.append(contentLabel, listDetails, scheduleDetails, propertiesDetails);
+    parentDetails = document.createElement("details");
+    parentDetails.className = "task-property-disclosure task-parent-disclosure";
+    parentDetails.dataset.taskParentDisclosure = "";
+    const parentSummary = document.createElement("summary");
+    const parentSummaryLabel = document.createElement("span");
+    setCopy(parentSummaryLabel, "tasks.parentTask");
+    const parentSummaryValue = document.createElement("small");
+    parentSummaryValue.dataset.taskParentSummary = "";
+    const selectedParent = view?.tasks.find((candidate) => candidate.id === selectedParentId);
+    parentSummaryValue.textContent = selectedParent
+      ? selectedParent.deletedAt !== null
+        ? t("tasks.parentDeletedName", {name: selectedParent.name})
+        : selectedParent.name
+      : t("tasks.noParent");
+    parentSummary.append(parentSummaryLabel, parentSummaryValue);
+    const parentLabel = document.createElement("label");
+    const parentCaption = document.createElement("span");
+    setCopy(parentCaption, "tasks.parentTask");
+    const parentSelect = document.createElement("select");
+    parentSelect.dataset.taskParent = "";
+    if (view) renderTaskParentSelect(parentSelect, view, selectedParentId, !editable, task.id);
+    else {
+      const noParent = document.createElement("option");
+      noParent.value = "";
+      setCopy(noParent, "tasks.noParent");
+      parentSelect.append(noParent);
+      parentSelect.disabled = true;
+    }
+    parentLabel.append(parentCaption, parentSelect);
+    parentDetails.append(parentSummary, parentLabel);
+    const deletedParentHint = document.createElement("small");
+    deletedParentHint.className = "task-meta task-parent-deleted-hint";
+    deletedParentHint.hidden = !selectedParent || selectedParent.deletedAt === null;
+    setCopy(deletedParentHint, "tasks.parentDeletedHint");
+    parentDetails.append(deletedParentHint);
+    if (selectedParent) {
+      const openParent = document.createElement("button");
+      openParent.type = "button";
+      openParent.className = "text-button task-parent-link";
+      openParent.dataset.taskOpenParent = selectedParent.id;
+      openParent.textContent = selectedParent.name;
+      openParent.setAttribute("aria-label", t("tasks.parentOpenLabel", {task: selectedParent.name}));
+      openParent.addEventListener("click", () => openTaskInTasks(selectedParent.id));
+      parentDetails.append(openParent);
+    }
+    const directChildren = (view?.tasks ?? []).filter((candidate) => candidate.parentTaskId === task.id);
+    const childrenHeading = document.createElement("h4");
+    setCopy(childrenHeading, "tasks.directSubtasks", {count: directChildren.length});
+    parentDetails.append(childrenHeading);
+    if (directChildren.length === 0) {
+      const noChildren = document.createElement("p");
+      noChildren.className = "task-meta";
+      setCopy(noChildren, "tasks.noSubtasks");
+      parentDetails.append(noChildren);
+    } else {
+      const children = document.createElement("ul");
+      children.className = "task-direct-children";
+      for (const child of directChildren) {
+        const item = document.createElement("li");
+        const openChild = document.createElement("button");
+        openChild.type = "button";
+        openChild.className = "task-child-link";
+        openChild.dataset.taskChildOpen = child.id;
+        openChild.textContent = child.name;
+        openChild.addEventListener("click", () => openTaskInTasks(child.id));
+        const childState = document.createElement("small");
+        childState.className = "task-meta";
+        setCopy(childState, child.deletedAt ? "tasks.stateDeleted" : taskStateCopyKey(child.state));
+        const childList = view ? taskListForId(view, child.listId) : undefined;
+        const childListName = document.createElement("small");
+        childListName.className = "task-meta";
+        childListName.textContent = childList
+          ? taskListDisplayName(childList, t("tasks.inbox"))
+          : child.listId;
+        item.append(openChild, childState, childListName);
+        children.append(item);
+      }
+      parentDetails.append(children);
+    }
+    const addChild = document.createElement("button");
+    addChild.type = "button";
+    addChild.className = "text-button task-add-child";
+    addChild.dataset.taskAddChild = task.id;
+    addChild.disabled = !editable;
+    setCopy(addChild, "tasks.addSubtask");
+    addChild.addEventListener("click", () => openTaskCreateForParent(task));
+    parentDetails.append(addChild);
+    grid.append(contentLabel, listDetails, scheduleDetails, propertiesDetails, parentDetails);
   } else {
     grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd);
   }
@@ -11096,7 +11484,7 @@ function taskEditor(
     editorForm.append(completionDetails);
   }
   editorForm.append(footer);
-  const history = taskChangeHistory(task);
+  const history = taskChangeHistory(task, view);
   if (history) editorForm.append(history);
   if (!editingTasks) editorForm.append(close);
   const dialog = surface === "tasks" ? document.createElement("div") : null;
@@ -11129,7 +11517,19 @@ function taskEditor(
     moveList.dataset.taskOpenList = "";
     moveList.disabled = !editable;
     setCopy(moveList, "tasks.list");
-    menuPanel.append(openSchedule, moveList);
+    const openParent = document.createElement("button");
+    openParent.type = "button";
+    openParent.className = "task-more-menu-item";
+    openParent.disabled = !editable;
+    openParent.dataset.taskOpenParentRelationship = "";
+    setCopy(openParent, "tasks.changeParent");
+    const addSubtask = document.createElement("button");
+    addSubtask.type = "button";
+    addSubtask.className = "task-more-menu-item";
+    addSubtask.dataset.taskAddChild = task.id;
+    addSubtask.disabled = !editable;
+    setCopy(addSubtask, "tasks.addSubtask");
+    menuPanel.append(openSchedule, moveList, openParent, addSubtask);
     if (!deleted && task.state !== "abandoned") {
       const stateAction = document.createElement("button");
       stateAction.type = "button";
@@ -11168,6 +11568,13 @@ function taskEditor(
       const disclosure = editorForm.querySelector<HTMLDetailsElement>("[data-task-list-disclosure]");
       if (disclosure) disclosure.open = true;
       editorForm.querySelector<HTMLSelectElement>("[data-task-list]")?.focus();
+    });
+    menu.querySelector<HTMLButtonElement>("[data-task-open-parent-relationship]")?.addEventListener("click", () => {
+      if (parentDetails) parentDetails.open = true;
+      editorForm.querySelector<HTMLSelectElement>("[data-task-parent]")?.focus();
+    });
+    menu.querySelector<HTMLButtonElement>("[data-task-add-child]")?.addEventListener("click", () => {
+      openTaskCreateForParent(task);
     });
     menu.dataset.taskId = task.id;
     dialog.append(editorForm);
@@ -11357,6 +11764,35 @@ function taskHistorySection(
   return section;
 }
 
+function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boolean): HTMLElement[] {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const children = new Map<string, TaskView[]>();
+  for (const task of tasks) {
+    const parentId = task.parentTaskId ?? null;
+    if (!parentId || !byId.has(parentId)) continue;
+    const siblings = children.get(parentId) ?? [];
+    siblings.push(task);
+    children.set(parentId, siblings);
+  }
+  const rows: HTMLElement[] = [];
+  const visited = new Set<string>();
+  const append = (task: TaskView, depth: number): void => {
+    if (visited.has(task.id)) return;
+    visited.add(task.id);
+    const parentVisible = Boolean(task.parentTaskId && byId.has(task.parentTaskId));
+    const row = taskEditor(task, writable, view, "tasks", false, parentVisible);
+    row.dataset.taskDepth = String(Math.min(depth, 4));
+    row.style.setProperty("--task-indent", `${Math.min(depth, 4) * 12}px`);
+    rows.push(row);
+    for (const child of children.get(task.id) ?? []) append(child, depth + 1);
+  };
+  for (const task of tasks) {
+    if (!task.parentTaskId || !byId.has(task.parentTaskId)) append(task, 0);
+  }
+  for (const task of tasks) append(task, 0);
+  return rows;
+}
+
 function renderTasks(view: TasksView): void {
   if (selectedTaskDetailBinding !== view.targetBinding) selectedTaskDetailId = null;
   currentTasksView = view;
@@ -11372,14 +11808,13 @@ function renderTasks(view: TasksView): void {
         : focusedList ? taskListScopeForId(focused.listId) : "all";
     }
   }
+  const folderScopeId = taskFolderIdFromScope(taskScope);
   const scopedListId = taskListIdFromScope(taskScope);
   const scopedList = scopedListId ? taskListForId(view, scopedListId) : undefined;
+  const scopedFolder = folderScopeId ? taskFolderForId(view, folderScopeId) : undefined;
   if (
-    taskScope !== "all" &&
-    taskScope !== "today" &&
-    taskScope !== "inbox" &&
-    taskScope !== "archived" &&
-    !scopedList
+    (taskScope.startsWith("list:") && !scopedList) ||
+    (taskScope.startsWith("folder:") && !scopedFolder)
   ) {
     taskScope = "all";
   } else if (scopedList?.archived) {
@@ -11390,13 +11825,36 @@ function renderTasks(view: TasksView): void {
   const quickProperties = view.targetBinding
     ? taskQuickPropertyDrafts.get(view.targetBinding)
     : undefined;
+  const folderLists = folderScopeId
+    ? activeTaskLists(view).filter((list) => list.folderId === folderScopeId)
+    : [];
+  const folderListIds = folderScopeId
+    ? new Set(folderLists.map((list) => list.id))
+    : undefined;
+  const quickListSelection = quickProperties?.listId ?? taskCreateListDefault(view);
   renderTaskListSelect(
     taskQuickList,
     view,
-    quickProperties?.listId ?? taskCreateListDefault(view),
+    quickListSelection,
+    false,
+    folderListIds,
   );
+  renderTaskListSelect(taskQuickFolderList, view, quickListSelection, false, folderListIds);
+  if (taskQuickFolderList && taskQuickList && taskQuickFolderList.value) {
+    taskQuickList.value = taskQuickFolderList.value;
+  }
+  if (taskQuickFolderTarget) taskQuickFolderTarget.hidden = !folderScopeId;
+  if (taskQuickFolderEmpty) {
+    taskQuickFolderEmpty.hidden = !folderScopeId || folderLists.length > 0;
+  }
   if (taskQuickPriority) taskQuickPriority.value = quickProperties?.priority ?? "";
   renderTaskTagChoices(taskQuickTagChoices, view, quickProperties?.tagIds ?? [], taskOperationCount > 0);
+  renderTaskParentSelect(
+    taskQuickParent,
+    view,
+    quickProperties?.parentTaskId ?? null,
+    taskOperationCount > 0,
+  );
   if (taskQuickForm) {
     const quickDraft = view.targetBinding ? taskQuickDrafts.get(view.targetBinding) ?? "" : "";
     if (taskQuickName && taskQuickName.value !== quickDraft) taskQuickName.value = quickDraft;
@@ -11414,7 +11872,11 @@ function renderTasks(view: TasksView): void {
       )
     : view.tasks.filter((task) =>
         taskVisibleInScope(
-          { ...task, listArchived: archivedListIds.has(task.listId) },
+          {
+            ...task,
+            listArchived: archivedListIds.has(task.listId),
+            listFolderId: taskFolderIdsByList(view).get(task.listId) ?? null,
+          },
           taskScope,
           taskStateScope,
         ),
@@ -11484,6 +11946,12 @@ function renderTasks(view: TasksView): void {
       taskListCreateName.value = taskListCreateDrafts.get(view.targetBinding) ?? "";
     }
   }
+  if (taskFolderCreateForm) {
+    taskFolderCreateForm.hidden = !canOperate || !taskListManagementOpen;
+    if (view.targetBinding && taskFolderCreateName) {
+      taskFolderCreateName.value = taskFolderCreateDrafts.get(view.targetBinding) ?? "";
+    }
+  }
   if (taskCreateForm) {
     taskCreateForm.hidden = !writable || taskScope === "archived" || !taskCreateOpen;
     const draft = view.targetBinding
@@ -11493,7 +11961,10 @@ function renderTasks(view: TasksView): void {
       taskCreateList,
       view,
       draft?.listId ?? taskCreateListDefault(view),
+      false,
+      folderListIds,
     );
+    renderTaskParentSelect(taskCreateParent, view, draft?.parentTaskId ?? null, taskOperationCount > 0);
     const selectedCreateList = taskListForId(view, taskCreateList?.value ?? "inbox");
     if (selectedCreateList && taskCreateListLabel) {
       const displayName = taskListDisplayName(selectedCreateList, t("tasks.inbox"));
@@ -11522,19 +11993,69 @@ function renderTasks(view: TasksView): void {
   }
   taskCreateSubmit?.toggleAttribute(
     "disabled",
-    !writable || taskScope === "archived",
+    !writable || taskScope === "archived" || Boolean(folderScopeId && folderLists.length === 0),
   );
   updateTaskCreationControls(view, taskOperationCount > 0);
   clearTaskEditorDialogs("tasks");
   const historyFilter = taskStateScope === "completed" || taskStateScope === "abandoned";
-  const history = taskHistorySection(
-    historyFilter ? visibleTasks : historyTasks, view, "tasks", !historyFilter,
-    new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
-  );
-  tasksList?.replaceChildren(
-    ...(historyFilter ? [] : visibleTasks.map((task) => taskEditor(task, canOperate, view, "tasks"))),
-    ...(history ? [history] : []),
-  );
+  const taskRows: HTMLElement[] = [];
+  if (folderScopeId) {
+    for (const list of folderLists) {
+      const group = document.createElement("section");
+      group.className = "task-list-folder-group";
+      group.dataset.taskListGroup = list.id;
+      const heading = document.createElement("div");
+      heading.className = "task-list-folder-group-heading";
+      const name = document.createElement("h4");
+      name.textContent = list.name;
+      const count = document.createElement("small");
+      setCopy(count, "tasks.listCount", {
+        count: taskListCount([...visibleTasks, ...historyTasks], list.id, taskStateScope),
+      });
+      heading.append(name, count);
+      group.append(heading);
+      const listVisibleTasks = visibleTasks.filter((task) => task.listId === list.id);
+      const listHistoryTasks = historyTasks.filter((task) => task.listId === list.id);
+      if (historyFilter) {
+        const ended = taskHistorySection(
+          listVisibleTasks,
+          view,
+          "tasks",
+          false,
+          new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
+        );
+        if (ended) group.append(ended);
+      } else {
+        group.append(...taskTreeRows(listVisibleTasks, view, canOperate));
+        const ended = taskHistorySection(
+          listHistoryTasks,
+          view,
+          "tasks",
+          true,
+          new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
+        );
+        if (ended) group.append(ended);
+      }
+      if (listVisibleTasks.length === 0 && listHistoryTasks.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "task-meta task-list-folder-empty";
+        setCopy(empty, "tasks.emptyListInFolder");
+        group.append(empty);
+      }
+      taskRows.push(group);
+    }
+  } else {
+    if (!historyFilter) taskRows.push(...taskTreeRows(visibleTasks, view, canOperate));
+    const history = taskHistorySection(
+      historyFilter ? visibleTasks : historyTasks,
+      view,
+      "tasks",
+      !historyFilter,
+      new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
+    );
+    if (history) taskRows.push(history);
+  }
+  tasksList?.replaceChildren(...taskRows);
   const selectedPanel = taskEditorDialogRoot?.querySelector<HTMLElement>(
     `[data-task-editor-dialog="${CSS.escape(selectedTaskDetailId ?? "")}"]`,
   );
@@ -11576,7 +12097,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-clear-timed-schedule], [data-task-completion-date], [data-task-completion-time], [data-task-priority], input[data-task-tag-choice], input[data-task-tag-new], input[data-task-tag-rename], button[data-task-tag-create], button[data-task-tag-rename-begin], button[data-task-tag-rename-save], button[data-task-tag-rename-cancel], button[data-task-tag-delete], button[data-task-open-schedule], button[data-task-open-list], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-list], [data-task-parent], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-clear-timed-schedule], [data-task-completion-date], [data-task-completion-time], [data-task-priority], input[data-task-tag-choice], input[data-task-tag-new], input[data-task-tag-rename], button[data-task-tag-create], button[data-task-tag-rename-begin], button[data-task-tag-rename-save], button[data-task-tag-rename-cancel], button[data-task-tag-delete], button[data-task-open-schedule], button[data-task-open-list], button[data-task-open-parent-relationship], button[data-task-add-child], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
@@ -11664,11 +12185,14 @@ function updateTaskOperationState(delta: number): void {
   taskListCreateForm?.querySelectorAll("input, button").forEach((element) => {
     (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
   });
+  taskFolderCreateForm?.querySelectorAll("input, button").forEach((element) => {
+    (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
+  });
   taskListScopes?.querySelectorAll<HTMLButtonElement>("[data-task-scope]").forEach((button) =>
     button.toggleAttribute("disabled", busy),
   );
   taskListsManagement?.querySelectorAll("input, button").forEach((element) => {
-    (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
+    (element as HTMLInputElement | HTMLSelectElement | HTMLButtonElement).disabled = busy || !canOperate;
   });
   updateTaskMutationControls(tasksList, canOperate, busy);
   updateTaskMutationControls(taskEditorDialogRoot, canOperate, busy);
@@ -11751,6 +12275,8 @@ function updateTaskCreationControls(view: TasksView, busy: boolean): void {
   const attempt = binding ? taskCreateAttempts.get(binding) : undefined;
   const writable = Boolean(binding) && !["error", "unconfigured"].includes(view.state) &&
     taskStateScope !== "deleted" && taskScope !== "archived";
+  const folderId = taskFolderIdFromScope(taskScope);
+  const hasFolderTarget = !folderId || activeTaskLists(view).some((list) => list.folderId === folderId);
   taskQuickForm?.toggleAttribute("hidden", !writable);
   if (taskQuickName) {
     taskQuickName.disabled = busy || !writable || Boolean(attempt);
@@ -11764,8 +12290,8 @@ function updateTaskCreationControls(view: TasksView, busy: boolean): void {
   });
   normalizeTaskDateTimeFields(taskQuickDate, taskQuickTime, busy || !writable || Boolean(attempt));
   updateCompactScheduleLabel("task-quick", taskQuickDate, taskQuickTime);
-  taskQuickSubmit?.toggleAttribute("disabled", busy || !writable || Boolean(attempt));
-  taskNewButton?.toggleAttribute("disabled", busy || !writable || attempt?.origin === "quick");
+  taskQuickSubmit?.toggleAttribute("disabled", busy || !writable || !hasFolderTarget || Boolean(attempt));
+  taskNewButton?.toggleAttribute("disabled", busy || !writable || !hasFolderTarget || attempt?.origin === "quick");
   taskQuickRecovery?.toggleAttribute("hidden", attempt?.origin !== "quick");
   taskQuickRecheck?.toggleAttribute("disabled", busy || !binding);
   taskQuickRetry?.toggleAttribute("disabled", busy || !writable || attempt?.phase !== "retry-ready");
@@ -11774,7 +12300,7 @@ function updateTaskCreationControls(view: TasksView, busy: boolean): void {
     field.disabled = busy || !writable || Boolean(attempt);
   });
   if (!busy && !attempt) normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime, !writable);
-  taskCreateSubmit?.toggleAttribute("disabled", busy || !writable || Boolean(attempt));
+  taskCreateSubmit?.toggleAttribute("disabled", busy || !writable || !hasFolderTarget || Boolean(attempt));
   taskCreateCancel?.toggleAttribute("disabled", busy);
   taskCreateRecheck?.toggleAttribute("hidden", attempt?.origin !== "modal");
   taskCreateRetry?.toggleAttribute("hidden", attempt?.origin !== "modal");
@@ -11871,7 +12397,9 @@ function taskCreateAttemptMatches(task: TaskView, attempt: TaskCreateAttempt): b
     (task.executionEnd?.time ?? null) === (input.executionEnd?.time ?? null) &&
     (input.priority === undefined || (task.priority ?? null) === input.priority) &&
     (input.tagIds === undefined ||
-      JSON.stringify(task.tagIds ?? []) === JSON.stringify(input.tagIds));
+      JSON.stringify(task.tagIds ?? []) === JSON.stringify(input.tagIds)) &&
+    (input.parentTaskId === undefined ||
+      (task.parentTaskId ?? null) === input.parentTaskId);
 }
 
 function finishTaskCreation(binding: string, attempt: TaskCreateAttempt, view: TasksView): void {
@@ -11941,6 +12469,12 @@ async function createTask(quick = false, retry = false): Promise<boolean> {
   } else {
     if (retry) return false;
     const draft = quick ? readTaskDraft(taskQuickForm!) : readTaskDraft(taskCreateForm!);
+    const folderId = taskFolderIdFromScope(taskScope);
+    if (folderId && !activeTaskLists(loaded).some((list) => list.folderId === folderId)) {
+      setCopy(status, "tasks.folderNeedsList");
+      if (status) status.dataset.state = "error";
+      return false;
+    }
     if (!draft.name.trim()) {
       setCopy(status, "tasks.enterName");
       if (status) status.dataset.state = "error";
@@ -11956,6 +12490,7 @@ async function createTask(quick = false, retry = false): Promise<boolean> {
     const input: TaskCreateInput = {targetBinding: binding, expectedRevision: loaded.revision, taskId: localOperationId("manual-task"),
       name: draft.name.trim(), content: draft.content.trim() || null, date: normalized.date, time: normalized.time,
       listId: draft.listId || "inbox", executionEnd: draft.endDate && draft.endTime ? {date: draft.endDate, time: draft.endTime} : null,
+      ...(draft.parentTaskId ? {parentTaskId: draft.parentTaskId} : {}),
       ...(draft.priority ? {priority: draft.priority} : {}),
       ...(draft.tagIds?.length ? {tagIds: draft.tagIds} : {}),
     };
@@ -11981,7 +12516,7 @@ async function submitTaskCreation(attempt: TaskCreateAttempt, loaded: TasksView,
   const request = (today ? todayTaskRequests : taskRequests).begin();
   updateTaskOperationState(1);
   try {
-    const hasTaskProperties = Boolean(attempt.input.priority || attempt.input.tagIds?.length);
+    const hasTaskProperties = Boolean(attempt.input.priority || attempt.input.tagIds?.length || attempt.input.parentTaskId);
     const command = today || !hasTaskProperties ? "create_task" : "create_task_with_properties";
     const view = await window.__TAURI__.core.invoke<TasksView>(command, {input: attempt.input});
     const responseIsCurrent = taskSurfaceIsCurrent(surface, request, binding, view.targetBinding, date, loaded.revision);
@@ -12199,6 +12734,152 @@ async function saveTaskListMutation(
 }
 
 type TaskTagMutationCommand = "create_task_tag" | "rename_task_tag" | "delete_task_tag";
+
+type TaskFolderMutationCommand =
+  | "create_task_folder"
+  | "rename_task_folder"
+  | "delete_task_folder"
+  | "set_task_list_folder";
+
+async function saveTaskFolderMutation(
+  command: TaskFolderMutationCommand,
+  loaded: TasksView,
+  input: Record<string, unknown>,
+  operationKey: string,
+  confirms: (view: TasksView) => boolean,
+  preserveDraft?: () => void,
+  clearDraft?: () => void,
+): Promise<boolean> {
+  const binding = loaded.targetBinding;
+  if (!binding || loaded.state === "error" || loaded.state === "unconfigured" || taskOperationCount > 0) {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  const request = taskRequests.begin();
+  updateTaskOperationState(1);
+  try {
+    const view = await window.__TAURI__.core.invoke<TasksView>(command, {input});
+    const responseIsCurrent = taskSurfaceIsCurrent(
+      "tasks",
+      request,
+      binding,
+      view.targetBinding,
+      null,
+      loaded.revision,
+    );
+    const confirmed = responseIsCurrent && ["ready", "empty"].includes(view.state) && confirms(view);
+    if (confirmed) {
+      taskOperationIds.delete(operationKey);
+      clearDraft?.();
+      renderTasks(view);
+      setCopy(tasksStatus, "tasks.folderSaved");
+      if (tasksStatus) tasksStatus.dataset.state = "ready";
+    } else if (responseIsCurrent) {
+      preserveDraft?.();
+      renderTasks(view);
+      setCopyError(
+        tasksStatus,
+        "tasks.notSaved",
+        view.state === "error" ? view.message : t("tasks.confirmationFailed"),
+      );
+      if (tasksStatus) tasksStatus.dataset.state = "error";
+    }
+    return confirmed;
+  } catch (error) {
+    if (taskRequests.isCurrent(request) && currentWorkspaceDestination === "tasks" && currentTasksView?.targetBinding === binding) {
+      preserveDraft?.();
+      renderTasks(loaded);
+      setCopyError(tasksStatus, "tasks.notSaved", error);
+      if (tasksStatus) tasksStatus.dataset.state = "error";
+    }
+    return false;
+  } finally {
+    updateTaskOperationState(-1);
+  }
+}
+
+async function createTaskFolder(): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  const name = taskFolderCreateName?.value.trim() ?? "";
+  if (!loaded || !binding || !name) {
+    setCopy(tasksStatus, "tasks.enterFolderName");
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    taskFolderCreateName?.focus();
+    return false;
+  }
+  const operationKey = JSON.stringify([binding, "folder-create", name.toLocaleLowerCase()]);
+  const folderId = stableTaskOperationId(operationKey, "task-folder");
+  taskFolderCreateDrafts.set(binding, name);
+  return saveTaskFolderMutation(
+    "create_task_folder",
+    loaded,
+    {targetBinding: binding, expectedRevision: loaded.revision, folderId, name},
+    operationKey,
+    (view) => (view.folders ?? []).some((folder) => folder.id === folderId && folder.name === name),
+    () => taskFolderCreateDrafts.set(binding, name),
+    () => {
+      taskFolderCreateDrafts.delete(binding);
+      taskFolderCreateForm?.reset();
+    },
+  );
+}
+
+async function renameTaskFolder(folderId: string, input: HTMLInputElement): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  const name = input.value.trim();
+  if (!loaded || !binding || !name) {
+    setCopy(tasksStatus, "tasks.enterFolderName");
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    input.focus();
+    return false;
+  }
+  const operationKey = JSON.stringify([binding, "folder-rename", folderId, name]);
+  taskFolderRenameDrafts.set(folderId, name);
+  return saveTaskFolderMutation(
+    "rename_task_folder",
+    loaded,
+    {targetBinding: binding, expectedRevision: loaded.revision, folderId, name},
+    operationKey,
+    (view) => (view.folders ?? []).some((folder) => folder.id === folderId && folder.name === name),
+    () => taskFolderRenameDrafts.set(folderId, name),
+    () => taskFolderRenameDrafts.delete(folderId),
+  );
+}
+
+async function deleteTaskFolder(folderId: string): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  if (!loaded || !binding) return false;
+  const folder = taskFolderForId(loaded, folderId);
+  if (!folder || !window.confirm(t("tasks.deleteFolderConfirm", {folder: folder.name}))) return false;
+  const operationKey = JSON.stringify([binding, "folder-delete", folderId]);
+  const changeId = stableTaskOperationId(operationKey, "delete-task-folder");
+  return saveTaskFolderMutation(
+    "delete_task_folder",
+    loaded,
+    {targetBinding: binding, expectedRevision: loaded.revision, folderId, changeId},
+    operationKey,
+    (view) => !(view.folders ?? []).some((candidate) => candidate.id === folderId) &&
+      view.lists.filter((list) => list.folderId === folderId).length === 0,
+  );
+}
+
+async function setTaskListFolder(listId: string, folderId: string | null): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  if (!loaded || !binding) return false;
+  const operationKey = JSON.stringify([binding, "list-folder", listId, folderId]);
+  return saveTaskFolderMutation(
+    "set_task_list_folder",
+    loaded,
+    {targetBinding: binding, expectedRevision: loaded.revision, listId, folderId},
+    operationKey,
+    (view) => view.lists.some((list) => list.id === listId && (list.folderId ?? null) === folderId),
+  );
+}
 
 async function saveTaskTagMutation(
   command: TaskTagMutationCommand,
@@ -12578,6 +13259,7 @@ async function updateTask(
       ? {
           priority: draft.priority ?? null,
           tagIds: draft.tagIds ?? [],
+          parentTaskId: draft.parentTaskId ?? null,
         }
       : {}),
   };
@@ -13726,8 +14408,9 @@ function stashQuickTaskProperties(): void {
   if (!binding) return;
   const selectedPriority = taskQuickPriority?.value ?? "";
   taskQuickPropertyDrafts.set(binding, {
-    listId: taskQuickList?.value || taskCreateListDefault(currentTasksView!),
+    listId: taskQuickFolderList?.value || taskQuickList?.value || taskCreateListDefault(currentTasksView!) || "",
     priority: selectedPriority ? selectedPriority as TaskPriority : null,
+    parentTaskId: taskQuickParent?.value || null,
     tagIds: taskQuickTagChoices
       ? Array.from(taskQuickTagChoices.querySelectorAll<HTMLInputElement>("input[data-task-tag-choice]:checked"))
           .map((input) => input.value)
@@ -13740,6 +14423,16 @@ taskQuickForm?.addEventListener("input", (event) => {
 });
 taskQuickForm?.addEventListener("change", (event) => {
   if ((event.target as HTMLElement).closest(".task-quick-properties")) stashQuickTaskProperties();
+});
+taskQuickFolderList?.addEventListener("change", () => {
+  if (taskQuickList) taskQuickList.value = taskQuickFolderList?.value ?? "";
+  stashQuickTaskProperties();
+});
+taskQuickList?.addEventListener("change", () => {
+  if (taskQuickFolderList && !taskQuickFolderTarget?.hidden) {
+    taskQuickFolderList.value = taskQuickList.value;
+  }
+  stashQuickTaskProperties();
 });
 bindCompactSchedule("task-quick", taskQuickDate, taskQuickTime, () => currentTaskLivedDate, stashQuickSchedule);
 bindCompactSchedule("today-task-create", todayTaskCreateDate, todayTaskCreateTime, () => currentTodayView?.date ?? null, stashTodayTaskCreateDraft);
@@ -13801,9 +14494,22 @@ taskListCreateForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   void pendingWrites.track(createTaskList());
 });
+taskFolderCreateForm?.addEventListener("input", () => {
+  const binding = currentTasksView?.targetBinding;
+  if (binding && taskFolderCreateName) taskFolderCreateDrafts.set(binding, taskFolderCreateName.value);
+});
+taskFolderCreateForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void pendingWrites.track(createTaskFolder());
+});
 
 tasksDestination?.addEventListener("input", (event) => {
   const target = event.target as HTMLElement;
+  const folderName = target.closest<HTMLInputElement>("input[data-task-folder-name]");
+  if (folderName?.dataset.taskFolderName) {
+    taskFolderRenameDrafts.set(folderName.dataset.taskFolderName, folderName.value);
+    return;
+  }
   const tagRename = target.closest<HTMLInputElement>("input[data-task-tag-rename]");
   if (tagRename?.dataset.taskTagRename) {
     taskTagRenameDrafts.set(tagRename.dataset.taskTagRename, tagRename.value);
@@ -13853,6 +14559,14 @@ tasksDestination?.addEventListener("change", (event) => {
 
 tasksDestination?.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
+  const folderToggle = target.closest<HTMLButtonElement>("button[data-task-folder-toggle]");
+  if (folderToggle?.dataset.taskFolderToggle) {
+    const folderId = folderToggle.dataset.taskFolderToggle;
+    if (expandedTaskFolderIds.has(folderId)) expandedTaskFolderIds.delete(folderId);
+    else expandedTaskFolderIds.add(folderId);
+    if (currentTasksView) renderTasks(currentTasksView);
+    return;
+  }
   if (toggleTaskEditorDetails(target)) return;
   const createTag = target.closest<HTMLButtonElement>("button[data-task-tag-create]");
   if (createTag) {
@@ -13902,7 +14616,9 @@ tasksDestination?.addEventListener("click", (event) => {
       scope === "today" ||
       scope === "inbox" ||
       scope === "archived" ||
-      (scope.startsWith("list:") && Boolean(taskListIdFromScope(scope as TaskListScope))))
+      (scope.startsWith("list:") && Boolean(taskListIdFromScope(scope as TaskListScope))) ||
+      (scope.startsWith("folder:") && Boolean(taskFolderIdFromScope(scope as TaskListScope)) &&
+        Boolean(currentTasksView && taskFolderForId(currentTasksView, taskFolderIdFromScope(scope as TaskListScope)!))))
   ) {
     taskScope = scope as TaskListScope;
     if (currentTasksView) renderTasks(currentTasksView);
