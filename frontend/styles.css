@@ -8506,6 +8506,7 @@ body {
 }
 .calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-form-wide { grid-column: 1 / -1; }
 .calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-editor-footer-actions { display: flex; justify-content: flex-end; gap: 0.45rem; }
+.calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-editor-footer .task-editor-close { margin: 0; }
 .calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-editor-titlebar { display: flex; align-items: flex-start; gap: 0.5rem; }
 .calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-title-field { flex: 1 1 auto; min-width: 0; }
 .calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-more-menu { flex: 0 0 auto; }

@@ -308,7 +308,7 @@ test('Calendar keeps list and schedule fields directly expanded and clear action
     const afterClearEnd={schedule:scheduleValues(timed),
       clearEndHidden:timed.querySelector('[data-task-clear-end]').hidden,clearScheduleVisible:!timed.querySelector('[data-task-clear-timed-schedule]').hidden,
       directFieldsVisible:directFieldsVisible(timed)};
-    const buttons=[...timed.querySelectorAll('.task-editor-footer-actions > button')].map(button=>button.getBoundingClientRect().height);
+    const buttons=[...timed.querySelectorAll('.task-editor-footer > button, .task-editor-footer-actions > button')].map(button=>{const bounds=button.getBoundingClientRect();return {top:bounds.top,bottom:bounds.bottom,height:bounds.height};});
     timed.querySelector('[data-task-editor-close]').click();
     const afterTimedCancel=view.tasks.tasks.find(task=>task.id==='preview-0');
 
@@ -333,7 +333,7 @@ test('Calendar keeps list and schedule fields directly expanded and clear action
   assert.deepEqual(result.afterClearEnd,{schedule:{'[data-task-date]':'2026-09-12','[data-task-time]':'08:15','[data-task-end-date]':'','[data-task-end-time]':''},clearEndHidden:true,clearScheduleVisible:true,directFieldsVisible:true});
   assert.deepEqual(result.beforeClearSchedule,{schedule:{'[data-task-date]':'2026-09-14','[data-task-time]':'10:30','[data-task-end-date]':'2026-09-14','[data-task-end-time]':'11:45'},directFieldsVisible:true,clearEndVisible:true,clearScheduleVisible:true,duplicateSummaries:0,date:'2026-09-14'});
   assert.deepEqual(result.afterClearSchedule,{schedule:{'[data-task-date]':'2026-09-14','[data-task-time]':'','[data-task-end-date]':'','[data-task-end-time]':''},clearEndHidden:true,clearScheduleHidden:true,directFieldsVisible:true});
-  assert.equal(result.buttons.length,2);assert.ok(result.buttons.every((height:number)=>height===result.buttons[0]&&height>=30),JSON.stringify(result.buttons));
+  assert.equal(result.buttons.length,2);assert.ok(result.buttons.every((button:any)=>button.height===result.buttons[0].height&&button.height>=30),JSON.stringify(result.buttons));assert.ok(result.buttons.every((button:any)=>Math.abs(button.top-result.buttons[0].top)<1&&Math.abs(button.bottom-result.buttons[0].bottom)<1),JSON.stringify(result.buttons));
   assert.deepEqual(result.afterTimedCancel,result.before['preview-0']);
   assert.deepEqual(result.afterUntimedCancel,result.before['preview-1']);
   assert.deepEqual(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)),[]);
