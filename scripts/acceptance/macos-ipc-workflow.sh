@@ -5521,15 +5521,15 @@ EOF
   run_driver wait-active-text "2026年9月" 20
   run_driver assert-active-text "$shared_task"
   run_driver assert-active-text "已完成"
-  run_driver assert-active-text "默认日期为选中日期，清单为收集箱"
+  run_driver assert-active-text "在选中日期新建任务"
   run_driver assert-active-text "+2"
   run_driver press-contains "+2" 10
   run_driver wait-active-text "$archived_task" 20
   run_driver assert-active-text "$shared_task"
   run_driver capture-window "$capture_directory/product-zh-calendar-wide.png" 10
 
-  run_driver scroll-text-visible "默认日期为选中日期，清单为收集箱" 10
-  run_driver scroll-text-visible "新建任务名称" 10
+  run_driver press "在选中日期新建任务" 10
+  run_driver assert-active-text "日期（可选）"
   run_driver type-text "新建任务名称|$calendar_new_task" 10
   run_driver press "加入收集箱" 10
   run_driver wait-active-text "任务已保存到所选 Vault" 20
