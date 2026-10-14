@@ -371,8 +371,6 @@
                     </details>
                     <p id="collaboration-voice-preview" class="collaboration-voice-preview" aria-live="polite"></p>
                   </form>
-                </section>
-                </div>
                 <div id="collaboration-context-resizer" class="collaboration-panel-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="collaboration-work-panel" aria-label="Resize current work" data-i18n-aria-label="collaboration.resizeContext"></div>
                 <aside class="collaboration-context-pane" id="collaboration-work-panel" aria-labelledby="collaboration-context-heading" hidden>
                   <header class="collaboration-pane-heading">
@@ -380,6 +378,9 @@
                       <p class="section-label" data-i18n="collaboration.currentWorkLabel">CURRENT WORK</p>
                       <h3 id="collaboration-context-heading" data-i18n="collaboration.contextHeading">Current context</h3>
                     </div>
+                    <button id="collaboration-close-context" type="button" class="sidebar-toggle collaboration-sidebar-toggle" data-i18n-aria-label="collaboration.closeContext" data-i18n-title="collaboration.closeContext" aria-label="Collapse current work" title="Collapse current work">
+                      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 5 5 5-5 5"/></svg>
+                    </button>
                   </header>
                   <label for="collaboration-target-date" data-i18n="collaboration.targetDate">Target record date</label>
                   <input id="collaboration-target-date" type="date" aria-label="Target record date" data-i18n-aria-label="collaboration.targetDate" />
@@ -443,6 +444,8 @@
                     </section>
                   </details>
                 </aside>
+                </section>
+                </div>
               </div>
             </section>
             <section

@@ -39,6 +39,7 @@ const interfaceCopies = {
   "collaboration.toggleContext": { zh: "当前工作", en: "Current work" },
   "collaboration.toggleHistorySidebar": { zh: "切换会话侧栏", en: "Toggle sessions sidebar" },
   "collaboration.toggleContextSidebar": { zh: "切换当前工作侧栏", en: "Toggle current work sidebar" },
+  "collaboration.closeContext": { zh: "收起当前工作面板", en: "Collapse current work panel" },
   "collaboration.resizeHistory": { zh: "调整会话历史宽度（方向键调整，Home 最窄，End 最宽）", en: "Resize session history (arrow keys adjust, Home minimum, End maximum)" },
   "collaboration.resizeContext": { zh: "调整当前工作宽度（方向键调整，Home 最窄，End 最宽）", en: "Resize current work (arrow keys adjust, Home minimum, End maximum)" },
   "toolbar.label": { zh: "工作区工具栏", en: "Workspace toolbar" },
