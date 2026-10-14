@@ -258,7 +258,9 @@ use platform::{
 use tasks::{
     FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
     TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
-    TaskListRestoreInput, TaskRestoreInput, TaskStateInput, TaskUpdateInput, TasksView,
+    TaskListRestoreInput, TaskRestoreInput, TaskStateInput, TaskTagCreateInput,
+    TaskTagDeleteInput, TaskTagRenameInput, TaskUpdateInput, TaskUpdateWithPropertiesInput,
+    TasksView,
 };
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
@@ -749,6 +751,30 @@ fn create_task(
 }
 
 #[tauri::command]
+fn create_task_tag(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskTagCreateInput,
+) -> Result<TasksView, String> {
+    application.create_tag(input)
+}
+
+#[tauri::command]
+fn rename_task_tag(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskTagRenameInput,
+) -> Result<TasksView, String> {
+    application.rename_tag(input)
+}
+
+#[tauri::command]
+fn delete_task_tag(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskTagDeleteInput,
+) -> Result<TasksView, String> {
+    application.delete_tag(input)
+}
+
+#[tauri::command]
 fn create_task_list(
     application: State<'_, DesktopTaskApplication>,
     input: TaskListCreateInput,
@@ -786,6 +812,14 @@ fn update_task(
     input: TaskUpdateInput,
 ) -> Result<TasksView, String> {
     application.update(input)
+}
+
+#[tauri::command]
+fn update_task_with_properties(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskUpdateWithPropertiesInput,
+) -> Result<TasksView, String> {
+    application.update_with_properties(input)
 }
 
 #[tauri::command]
@@ -1089,11 +1123,15 @@ pub fn run() {
             habit_snapshot,
             tasks_view,
             create_task,
+            create_task_tag,
+            rename_task_tag,
+            delete_task_tag,
             create_task_list,
             rename_task_list,
             archive_task_list,
             restore_task_list,
             update_task,
+            update_task_with_properties,
             set_task_state,
             delete_task,
             restore_task,
@@ -1166,11 +1204,15 @@ pub fn run() {
         habit_snapshot,
         tasks_view,
         create_task,
+        create_task_tag,
+        rename_task_tag,
+        delete_task_tag,
         create_task_list,
         rename_task_list,
         archive_task_list,
         restore_task_list,
         update_task,
+        update_task_with_properties,
         set_task_state,
         delete_task,
         restore_task,
