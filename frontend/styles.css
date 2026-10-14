@@ -10362,7 +10362,7 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   line-height: inherit;
 }
 #collaboration-command-menu button[aria-selected="true"] {
-  color: var(--parity-accent-strong);
+  color: var(--parity-ink);
   background: var(--parity-accent-soft);
 }
 
