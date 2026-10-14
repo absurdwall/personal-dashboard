@@ -10,7 +10,7 @@
 **ID:** PDEX-23
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** claimed for reimplementation; source changes not yet started
+**Implementation:** scoped source implementation committed; integration and packaged acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -51,9 +51,93 @@ PDEX-SPEC-02 stories 51–60；共同承担 1–3、88–91 的保存与保留�
 ## Reimplementation claim — 2026-10-13
 
 Owner: Codex implementer `/root/pdex23_reimplementation`. Working branch
-`codex/pdex-23-refinement-reimplementation`; authorized source baseline
-`918e7e0d9c4b2c524c429bfd309482e328bc4c91`. The claim is recorded on the fresh
-integration branch; the implementer worktree starts from its current tip and
-will retain that full history. Earlier rejected source remains on the preserved
-previous integration branch. Local Git only; no installation, main merge, or
-remote operation.
+`codex/pdex-23-refinement-reimplementation`; original PDEX-SPEC-02 source
+lineage `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. The implementation worktree
+was verified at integration tip `b7dcd71b50b42de4a706d460d635f99bf059770d`
+before editing, and does not use the rejected prior implementation. Local Git
+only; no installation, main merge, or remote operation.
+
+## Reimplementation evidence — 2026-10-13
+
+**State:** PDEX-23 source implementation is in progress. The branch has one
+coherent implementation commit; final integration and PDEX-26 packaged
+acceptance remain outstanding. The acceptance checklist above is intentionally
+not marked complete.
+
+**Git record**
+
+- Branch: `codex/pdex-23-refinement-reimplementation`
+- Exact starting integration commit: `b7dcd71b50b42de4a706d460d635f99bf059770d`
+- Implementation commit: `81c0c5dc25975564e403e71f3366442b341ed101`
+- Integration merge and evidence commits: to be appended after integration.
+
+**Implementation boundary**
+
+- The Current Work context is reparented into the chat surface. It is an
+  independently scrolling overlay, sized from the chat heading to the
+  composer, with a close control that returns focus to its disclosure button.
+  Session history remains independently controlled; its keyboard resize,
+  stored width, migration, restart behavior and focus return are retained.
+- The layout checks run production HTML, styles and panel initialization in
+  macOS WKWebView with synthetic messages, sessions, context, statuses, draft
+  and recording preview only. The 8rem textarea minimum remains unchanged.
+  Context is bounded by the actual composer position; at 680×560 the owning
+  Collaboration content scrolls so the full-size input, stop and send controls
+  stay reachable.
+- Slash candidate supply is injectable at the controller seam for tests; the
+  production default remains only `/retro`. The DOM test exercises three legal
+  test candidates, up/down cycling, wraparound and composition ownership. No
+  candidate is executed or sent by completion.
+- CSS changes are limited to these Collaboration-owned selectors and rules:
+  `#workspace-destination-collaboration.collaboration-destination`,
+  `#workspace-destination-collaboration .collaboration-layout`,
+  `.collaboration-primary-layout` and its narrow session/chat children,
+  `.collaboration-chat-pane`, `.collaboration-message-list`,
+  `.collaboration-composer`, `.collaboration-context-pane` and its heading,
+  close control and context panes, `.collaboration-status-bar > p`,
+  `#collaboration-task-tool-notice`, `.collaboration-run-status`, and
+  `#collaboration-voice-preview` / `:empty`. Responsive rules apply only to
+  the Collaboration destination and voice preview. No shared shell/header,
+  global typography, theme, or Calendar selector is changed.
+- At 640×756 and 680×560 CSS-pixel viewports, Collaboration reclaims exactly
+  48px of its own bottom page padding (computed `0px` versus Today’s `48px`).
+  At other heights the local bottom padding is `16px`; no shared page-frame
+  spacing changes. On short windows (height ≤600px, or height ≤740px and width
+  ≤720px), the Collaboration-owned page becomes scrollable with a 42rem work
+  area so controls are not compressed below their existing sizes.
+- DOM checks compare the shared page frame/header values and title typography
+  directly. The existing Collaboration description line-height remains
+  `0.576px` above Today as measured at baseline; it was not normalized.
+
+**Visual evidence** — synthetic fixtures rendered by production WKWebView at
+the stated CSS viewport. Images include the full app/page edges; PNG dimensions
+are 2× the viewport dimensions.
+
+- [640×756, five-session history expanded](../evidence/pdex-23-collaboration-640x756.png) — 1280×1512 pixels.
+- [680×560, long context and draft with synthetic active dictation](../evidence/pdex-23-collaboration-680x560.png) — 1360×1120 pixels. Context has independent scroll; stop and send remain visible, and the page scroll route retains the 8rem editor.
+
+**Checks observed**
+
+| Command | Result |
+| --- | --- |
+| `node --test tests/frontend/collaboration-layout.test.ts` | Pass, 14/14. Includes 640×756 history and 680×560 long context/draft/recording-preview cases; verifies real DOM geometry, scroll ownership, focus and pointer reachability. |
+| `node --test tests/frontend/collaboration-panels.test.ts` | Pass, 6/6. Includes saved preference migration/reinitialization, context width independence, history resize and focus behavior. |
+| `node --test tests/frontend/collaboration-command-completion.test.ts` | 8/10 pass. The two failing tests below also fail on the clean base. |
+| `npm run build` | Could not complete: `prepare-frontend.mjs` ran, then `tsc` was unavailable (`sh: tsc: command not found`, exit 127). No dependency was installed. |
+| `git diff --check` | Pass. |
+
+**Inherited command-test baseline proof**
+
+On a detached, clean worktree at `b7dcd71b50b42de4a706d460d635f99bf059770d`,
+the exact command `node --test
+tests/frontend/collaboration-command-completion.test.ts` exited 1 with 7/9
+passing and these same two failures:
+
+1. `long help opens on demand while draft, dictation preview and real status surfaces remain exposed` — assertion `false !== true`.
+2. `selected slash candidate retains readable foreground on its soft background` — selected candidate `rgb(35, 39, 36)` on `rgba(0, 0, 0, 0)`, contrast `1.39`.
+
+The reimplementation run adds one passing multi-candidate test (8/10) and
+retains the same two failures and observations. These are recorded as inherited
+baseline failures, not as fixes delivered by PDEX-23. No real model calls,
+real dictation-service capture, installed app, or packaged save/readback was
+performed; those acceptance checks remain with PDEX-26.
