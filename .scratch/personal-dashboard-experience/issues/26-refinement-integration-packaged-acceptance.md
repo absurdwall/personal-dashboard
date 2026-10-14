@@ -10,7 +10,7 @@
 **ID:** PDEX-26
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** open
-**Implementation:** in progress on the local candidate branch
+**Implementation:** in progress on `codex/pdex-26-restart`; candidate built, packaged runtime acceptance incomplete
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -54,5 +54,30 @@ PDEX-SPEC-02 stories 1–3、88–91，以及全部功能票的组合验收。
 - Owner `/root`; branch `codex/pdex-26-restart`; worktree
   `/private/tmp/pdex-restart-20261014.noindex/pdex-26`; exact base
   `fe14333c8e1269c4c5b14faf89f2d802dd351487`, the non-fast-forward integration
-  of the reviewed PDEX-25 branch. Candidate build and runtime acceptance are
-  tracked separately; the installed application is preserved.
+  of the reviewed PDEX-25 branch; claim commit
+  `147750868d2030f1a604d3d1e0ee7e6278fbad5c`. Candidate build and runtime
+  acceptance are tracked separately; the installed application is preserved.
+
+## Candidate build — 2026-10-14
+
+- Built from branch `codex/pdex-26-restart` at claim commit
+  `147750868d2030f1a604d3d1e0ee7e6278fbad5c`. This commit changes only the
+  local claim/tracker; product source is the reviewed integration merge
+  `fe14333c8e1269c4c5b14faf89f2d802dd351487`.
+- Command: `PATH=/Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/node_modules/.bin:$PATH npm run build:mac`.
+  Build completed successfully. Candidate bundle:
+  `/private/tmp/pdex-restart-20261014.noindex/candidate/pdex-spec-02-2026-10-14/Personal Dashboard.app`.
+- Static package checks: `codesign --verify --deep --strict` passed; bundle ID
+  `com.tortillaflat.personal-dashboard`; version `4.0.7`; architecture `arm64`;
+  app bundle size 17 MB; executable SHA-256
+  `fe9dbbc6933a7778ab90712f6b90623efa172387397c37e54efed9a893d0a30c`.
+  This is a local ad-hoc signed build; notarization was not performed.
+- The installed `/Applications/Personal Dashboard.app` executable SHA-256 was
+  `8e43beff6cffa2dde5a664eb4ba0182181d81e7746d8eb3c96846f43c87a0ba2` before
+  and after packaging. It was not modified. The candidate was not started.
+  `Open Candidate.command` is syntax-checked and sets an isolated app-data
+  directory; its profile is empty and no synthetic Vault is configured.
+- PDEX-26 remains open: no candidate IPC/save/readback/restart, migration,
+  pointer, cross-feature, real IME/microphone, or human acceptance was run.
+  Detailed identity and boundary are in
+  [candidate build evidence](../evidence/pdex-26-candidate-build-2026-10-14.md).
