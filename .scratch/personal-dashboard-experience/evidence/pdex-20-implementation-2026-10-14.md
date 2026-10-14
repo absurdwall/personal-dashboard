@@ -1,6 +1,6 @@
 # PDEX-20 implementation and verification — 2026-10-14
 
-**Status:** code implementation committed; current integration history is merged into this ticket branch, while lifecycle remains `in-progress` pending review/integration and packaged acceptance under PDEX-26.
+**Status:** code implementation committed and locally integrated; lifecycle remains `in-progress` pending independent review and packaged acceptance under PDEX-26.
 
 ## Git lineage
 
@@ -13,7 +13,7 @@
   - `d7ecfda0c1b4590405dbb29da52a8bd7fc9abe0c` — schema 3 parent/list-folder persistence, validation, migration and workflow tests; update `docs/tasks-v1.md`.
   - `c0b7aa969196208acc6f73d37d15c8ee09c06c4b` — compact nested Task and folder navigation/detail UI, quick-add context and focused browser/unit coverage.
   - `f1f9c5c7ee6067c67bbe12efb6fbc0d070402ec0` — update the lifecycle history document's current schema note.
-- No source was copied from or merged with the rejected post-`918e7e0` implementation. The ticket branch has not been merged back into the integration branch. No remote Git operation, push, installation or normal Vault write was performed.
+- No source was copied from or merged with the rejected post-`918e7e0` implementation. The branch's later local merge into integration is recorded under Merged-tree verification. No remote Git operation, push, installation or normal Vault write was performed.
 
 ## Integration history on the ticket branch
 
@@ -52,9 +52,24 @@ Commands run against the tree including merge `89ab2ca6ae319e9feefcb76fd72da1625
 - `cargo test --manifest-path src-tauri/Cargo.toml --test calendar_holiday_preferences_workflow` — 2/2 passed; `cargo test --manifest-path src-tauri/Cargo.toml calendar_holiday -- --nocapture` — 1/1 app-local save/read test passed.
 - `rustfmt --check --edition 2021 src-tauri/src/tasks.rs src-tauri/tests/task_workflow.rs` and `git diff --check` — passed.
 
+## Merged-tree verification — 2026-10-14
+
+The complete ticket branch `codex/pdex-20-restart` was merged without conflicts
+into `codex/dashboard-experience-refinement-restart-20261014` as
+`2c0fe5e21bc1fbe7b5f7667e35dd589ab7ccdd16` using `git merge --no-ff`.
+
+- `npm run build` — passed.
+- `node --test tests/frontend/interface-language.test.ts tests/frontend/task-presentation.test.ts` — **37/37 passed**.
+- `PDEX_SCREENSHOT_DIR=/tmp/pdex20-visual PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.npm/_npx/6bcb61ec6d5aea22/node_modules/playwright/index.mjs node --test tests/browser/task-list-details.mjs` — **23/23 passed**.
+- `cargo test --manifest-path src-tauri/Cargo.toml --test task_workflow` — **36/36 passed**.
+- Calendar frontend regression command from the preceding section — **16/16 passed**.
+- `cargo test --manifest-path src-tauri/Cargo.toml --test calendar_holiday_preferences_workflow` — **2/2 passed**.
+- `cargo test --manifest-path src-tauri/Cargo.toml calendar_holiday -- --nocapture` — **1/1 passed** for app-local save/read.
+- `git diff --check` — passed after the merge.
+
 ## Remaining acceptance boundary
 
 - No packaged macOS App, real WebKit/Tauri IPC, installed-app restart, or native save/readback acceptance was performed. PDEX-26 owns that combination gate.
 - Browser behavior tests replace Tauri IPC with a fixture; actual persistence/readback and atomicity are covered by Rust workflow tests against temporary Vault files. Folder rename/move/archive management is verified at the Rust workflow boundary, while browser coverage directly exercises folder create/delete and the aggregate/add-target path.
 - The complete frontend suite was not run; verification is the focused production-page Tasks suite, its presentation unit tests, the frontend build, and the Rust task workflow suite.
-- All PDEX-20 acceptance boxes remain unchecked pending cross-ticket and packaged acceptance. The ticket branch is not yet merged back into the integration branch and is unpushed.
+- All PDEX-20 acceptance boxes remain unchecked pending independent review, cross-ticket and packaged acceptance. The ticket branch remains unpushed.

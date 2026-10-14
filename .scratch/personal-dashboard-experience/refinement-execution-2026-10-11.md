@@ -144,13 +144,19 @@ no integration merge, install, remote operation or main change was recorded.
 - It then merged latest integration tip
   `2a233c3e4a21d9eaff06b62f1770c86e7671d082` non-fast-forward as
   `89ab2ca6ae319e9feefcb76fd72da1625d3ba4be`. The integration follow-ups
-  `13c9bc2c45fdbd67f340d982a660a39d2e3120d9` and `2a233c3...` remain reachable;
-  the ticket branch has not been merged back into integration.
-- After the latest merge: build passed; interface-language 14/14, Tasks
-  presentation 23/23, Tasks browser 23/23, Today-create browser 5/5, Calendar
-  focused frontend 16/16, Rust task workflow 36/36, holiday preferences 2/2,
-  app-local holiday readback 1/1, rustfmt and `git diff --check` passed. Exact
-  commands and the pre-test harness fixture update are in the
+  `13c9bc2c45fdbd67f340d982a660a39d2e3120d9` and `2a233c3...` remain reachable.
+- The complete ticket branch was subsequently integrated into
+  `codex/dashboard-experience-refinement-restart-20261014` without conflicts by
+  non-fast-forward merge `2c0fe5e21bc1fbe7b5f7667e35dd589ab7ccdd16`.
+  Both PDEX-20 implementation commits and the intermediate integration merges
+  remain reachable in the merge history.
+- Merged-tree verification: `npm run build` passed; selected interface-language
+  and Task presentation frontend tests passed 37/37; PDEX-20 Playwright
+  `task-list-details.mjs` passed 23/23; Calendar-focused frontend tests passed
+  16/16; Rust `task_workflow` passed 36/36; Calendar preferences passed 2/2;
+  app-local holiday save/read passed 1/1; `git diff --check` passed. Exact
+  commands and the browser cache path are in the
   [PDEX-20 implementation record](evidence/pdex-20-implementation-2026-10-14.md).
-- No remote Git operation, main change, app installation, integration-branch
-  merge of PDEX-20, or packaged App acceptance was performed.
+- No remote Git operation, main change, app installation, or packaged App
+  acceptance was performed. Independent review and PDEX-26 acceptance remain
+  open.
