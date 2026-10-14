@@ -450,14 +450,37 @@ type HabitCellView = Readonly<{
   }>[];
 }>;
 
+type HabitGoalTarget =
+  | Readonly<{ kind: "daily-completion" }>
+  | Readonly<{ kind: "weekly-count"; standard: number }>
+  | Readonly<{
+      kind: "daily-time";
+      standard: string;
+      dayRelation: "same-day" | "next-day" | "unresolved";
+    }>;
+
+type HabitDefinitionView = Readonly<{
+  origin: "local" | "sourced";
+  emoji: string | null;
+  group: string | null;
+  startDate: string | null;
+  currentGoal: HabitGoalTarget | null;
+  currentGoalEffectiveFrom: string | null;
+  pendingGoal: HabitGoalTarget | null;
+  pendingGoalEffectiveFrom: string | null;
+  partialGoalCycle: boolean;
+}>;
+
 type HabitView = Readonly<{
   key: string;
   name: string;
   localizedNames: HabitLocalizedNames;
   active: boolean;
   canRecordCompletion: boolean;
-  goalKind: "weekly-count" | "daily-time";
+  goalKind: "daily-completion" | "weekly-count" | "daily-time";
   goalLabel: string;
+  goalTarget: HabitGoalTarget | null;
+  definition: HabitDefinitionView | null;
   weeklyTarget: number | null;
   completedCount: number | null;
   sourceLabels: readonly string[];
@@ -475,6 +498,7 @@ type HabitView = Readonly<{
 type HabitSnapshotView = Readonly<{
   state: HabitSnapshotState;
   message: string;
+  livedDate: string | null;
   readError?: string;
   generatedAt: string | null;
   displayRangeLabel: string | null;
@@ -482,6 +506,10 @@ type HabitSnapshotView = Readonly<{
   producerLabel: string | null;
   completionRevision: string | null;
   completionTargetBinding: string | null;
+  catalogRevision: string | null;
+  catalogTargetBinding: string | null;
+  catalogError: string | null;
+  completionError: string | null;
   namesConfigurationState: HabitNamesConfigurationState;
   summary: Readonly<{
     knownCompletions: number;
@@ -490,6 +518,27 @@ type HabitSnapshotView = Readonly<{
     excludedNoGoal: number;
   }>;
   habits: readonly HabitView[];
+}>;
+
+type HabitDefinitionMutationInput = Readonly<{
+  operationId: string;
+  targetBinding: string;
+  expectedRevision: string | null;
+  habitKey: string | null;
+  language: InterfaceLanguage;
+  name: string;
+  emoji: string | null;
+  group: string | null;
+  startDate: string | null;
+  goal: HabitGoalTarget | null;
+}>;
+
+type HabitDefinitionSaveResult = Readonly<{
+  outcome: "created" | "updated";
+  operationId: string;
+  habitKey: string;
+  revision: string;
+  snapshot: HabitSnapshotView;
 }>;
 
 type HabitCorrectionHabitView = Readonly<{
@@ -1318,6 +1367,28 @@ const habitsTodayDate = document.querySelector<HTMLElement>("#habits-today-date"
 const habitsDailyList = document.querySelector<HTMLElement>("#habits-daily-list");
 const habitsWeeklyList = document.querySelector<HTMLElement>("#habits-weekly-list");
 const refreshHabitsButton = document.querySelector<HTMLButtonElement>("#refresh-habits");
+const newHabitButton = document.querySelector<HTMLButtonElement>("#new-habit");
+const habitDefinitionDialog = document.querySelector<HTMLDialogElement>("#habit-definition-dialog");
+const habitDefinitionForm = document.querySelector<HTMLFormElement>("#habit-definition-form");
+const habitDefinitionHeading = document.querySelector<HTMLElement>("#habit-definition-heading");
+const habitDefinitionMode = document.querySelector<HTMLElement>("#habit-definition-mode");
+const habitDefinitionName = document.querySelector<HTMLInputElement>("#habit-definition-name");
+const habitDefinitionGoalKind = document.querySelector<HTMLSelectElement>("#habit-definition-goal-kind");
+const habitDefinitionKeepSourceOption = document.querySelector<HTMLOptionElement>("#habit-definition-keep-source-option");
+const habitDefinitionGoalNote = document.querySelector<HTMLElement>("#habit-definition-goal-note");
+const habitDefinitionWeeklyField = document.querySelector<HTMLElement>("#habit-weekly-target-field");
+const habitDefinitionWeeklyTarget = document.querySelector<HTMLInputElement>("#habit-definition-weekly-target");
+const habitDefinitionTimeField = document.querySelector<HTMLElement>("#habit-time-target-field");
+const habitDefinitionTimeTarget = document.querySelector<HTMLInputElement>("#habit-definition-time-target");
+const habitDefinitionRelationField = document.querySelector<HTMLElement>("#habit-day-relation-field");
+const habitDefinitionDayRelation = document.querySelector<HTMLSelectElement>("#habit-definition-day-relation");
+const habitDefinitionStartDate = document.querySelector<HTMLInputElement>("#habit-definition-start-date");
+const habitDefinitionEmoji = document.querySelector<HTMLInputElement>("#habit-definition-emoji");
+const habitDefinitionGroup = document.querySelector<HTMLInputElement>("#habit-definition-group");
+const habitDefinitionStatus = document.querySelector<HTMLElement>("#habit-definition-status");
+const habitDefinitionSubmit = document.querySelector<HTMLButtonElement>("#habit-definition-submit");
+const habitDefinitionCancel = document.querySelector<HTMLButtonElement>("#habit-definition-cancel");
+const habitDefinitionRefresh = document.querySelector<HTMLButtonElement>("#habit-definition-refresh");
 const todayDate = document.querySelector<HTMLElement>("#today-date");
 const todayVault = document.querySelector<HTMLElement>("#today-vault");
 const todayStatus = document.querySelector<HTMLElement>("#today-status");
@@ -1584,6 +1655,27 @@ let currentHabitDateView: TodayView | null = null;
 let habitDateOperationCount = 0;
 let habitCompletionOperationCount = 0;
 const habitCompletionOperationIds = new Map<string, string>();
+type HabitDefinitionFormValues = Readonly<{
+  habitKey: string | null;
+  name: string;
+  goalKind: HabitGoalTarget["kind"] | "keep-source";
+  weeklyTarget: string;
+  timeTarget: string;
+  dayRelation: "same-day" | "next-day" | "unresolved";
+  startDate: string;
+  emoji: string;
+  group: string;
+}>;
+type HabitDefinitionDraft = {
+  values: HabitDefinitionFormValues;
+  pendingInput: HabitDefinitionMutationInput | null;
+  error: string | null;
+  needsRefresh: boolean;
+};
+const habitDefinitionDrafts = new Map<string, HabitDefinitionDraft>();
+let activeHabitDefinitionBinding: string | null = null;
+let activeHabitDefinitionDraftKey: string | null = null;
+let habitDefinitionSaveInFlight = false;
 const pendingWrites = new PendingWriteBarrier();
 const appearanceMutations = new SerializedLatestMutation<AppearancePreferences>({
   accentColor: "forest",
@@ -1768,6 +1860,9 @@ function resetVaultScopedWorkspaceState(): void {
   currentHabitSnapshot = null;
   selectedHabitCell = null;
   currentHabitDateView = null;
+  activeHabitDefinitionBinding = null;
+  activeHabitDefinitionDraftKey = null;
+  habitDefinitionDialog?.close();
   habitsDestination?.querySelector(".habit-canonical-detail")?.remove();
   habitNoteStatus = null;
   habitCompletionStatus = null;
@@ -8554,6 +8649,26 @@ function habitProgressLabel(habit: HabitView): string {
   return `${habit.completedCount} / ${habit.weeklyTarget}`;
 }
 
+function habitGoalTargetLabel(goal: HabitGoalTarget): string {
+  switch (goal.kind) {
+    case "daily-completion":
+      return t("habits.goalDaily");
+    case "weekly-count":
+      return t("habits.goalWeeklyValue", { count: goal.standard });
+    case "daily-time":
+      return t("habits.goalDailyTimeValue", {
+        time: goal.standard,
+        relation: t(
+          goal.dayRelation === "same-day"
+            ? "habits.sameDay"
+            : goal.dayRelation === "next-day"
+              ? "habits.nextDay"
+              : "habits.unresolved",
+        ),
+      });
+  }
+}
+
 function habitCellButton(
   habit: HabitView,
   cell: HabitCellView,
@@ -8613,7 +8728,9 @@ function habitCompletionControl(habit: HabitView): HTMLElement {
   input.disabled =
     habitCompletionOperationCount > 0 ||
     !currentHabitSnapshot?.completionTargetBinding ||
-    !["ready", "stale"].includes(currentHabitSnapshot.state);
+    Boolean(currentHabitSnapshot?.catalogError || currentHabitSnapshot?.completionError) ||
+    (!["ready", "stale"].includes(currentHabitSnapshot?.state ?? "unconfigured") &&
+      !currentHabitSnapshot?.catalogRevision);
   input.dataset.habitCompletionKey = habit.key;
   input.dataset.habitCompletionDate = habit.today.date;
   input.setAttribute("aria-label", t("habits.recordCompletion", { habit: displayHabitName(habit) }));
@@ -8644,19 +8761,37 @@ function habitRow(habit: HabitView): HTMLElement {
   const article = document.createElement("article");
   article.className = "habit-snapshot-row";
   article.dataset.habitKey = habit.key;
+  article.title = t("habits.editHint");
   const identity = document.createElement("div");
   identity.className = "habit-snapshot-identity";
+  const identityHeading = document.createElement("div");
+  identityHeading.className = "habit-identity-heading";
+  const emoji = document.createElement("span");
+  emoji.className = "habit-emoji";
   const name = document.createElement("strong");
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "habit-edit-trigger";
+  edit.dataset.habitEdit = habit.key;
+  setCopy(edit, "habits.edit");
+  edit.setAttribute("aria-label", `${t("habits.edit")} ${displayHabitName(habit)}`);
   const metadata = document.createElement("p");
   const sources = document.createElement("small");
   name.textContent = displayHabitName(habit);
-  metadata.textContent = `${localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage)} · ${
+  emoji.textContent = habit.definition?.emoji ?? "";
+  emoji.hidden = !emoji.textContent;
+  const pendingGoal = habit.definition?.pendingGoal;
+  const pendingDate = habit.definition?.pendingGoalEffectiveFrom;
+  metadata.textContent = `${habit.definition?.group ? `${habit.definition.group} · ` : ""}${localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage)} · ${
     localizeHabitCoverageLabel(habit.coverageLabel, currentInterfaceLanguage)
-  }`;
+  }${pendingGoal && pendingDate ? ` · ${t("habits.pendingGoal", {
+    goal: habitGoalTargetLabel(pendingGoal), date: pendingDate,
+  })}` : ""}`;
   setCopy(sources, "habits.sources", {
     sources: habit.sourceLabels.join(currentInterfaceLanguage === "zh" ? "、" : ", ") || t("habits.notDeclared"),
   });
-  identity.append(name, metadata, sources);
+  identityHeading.append(emoji, name, edit);
+  identity.append(identityHeading, metadata, sources);
 
   const value = document.createElement("div");
   value.className = "habit-snapshot-value";
@@ -9214,8 +9349,327 @@ async function setLocalHabitCompletion(
   }
 }
 
+function habitDefinitionDraftKey(binding: string, habitKey: string | null): string {
+  return `${binding}:${habitKey ?? "new"}`;
+}
+
+function habitGoalValues(goal: HabitGoalTarget | null): Pick<
+  HabitDefinitionFormValues,
+  "goalKind" | "weeklyTarget" | "timeTarget" | "dayRelation"
+> {
+  if (goal?.kind === "weekly-count") {
+    return {
+      goalKind: "weekly-count",
+      weeklyTarget: String(goal.standard),
+      timeTarget: "",
+      dayRelation: "same-day",
+    };
+  }
+  if (goal?.kind === "daily-time") {
+    return {
+      goalKind: "daily-time",
+      weeklyTarget: "3",
+      timeTarget: goal.standard,
+      dayRelation: goal.dayRelation,
+    };
+  }
+  return {
+    goalKind: "daily-completion",
+    weeklyTarget: "3",
+    timeTarget: "",
+    dayRelation: "same-day",
+  };
+}
+
+function valuesFromHabitDefinitionInput(
+  input: HabitDefinitionMutationInput,
+): HabitDefinitionFormValues {
+  return {
+    habitKey: input.habitKey,
+    name: input.name,
+    ...habitGoalValues(input.goal),
+    ...(input.goal === null && input.habitKey ? { goalKind: "keep-source" as const } : {}),
+    startDate: input.startDate ?? "",
+    emoji: input.emoji ?? "",
+    group: input.group ?? "",
+  };
+}
+
+function writeHabitDefinitionForm(values: HabitDefinitionFormValues): void {
+  if (habitDefinitionName) habitDefinitionName.value = values.name;
+  if (habitDefinitionGoalKind) habitDefinitionGoalKind.value = values.goalKind;
+  if (habitDefinitionWeeklyTarget) habitDefinitionWeeklyTarget.value = values.weeklyTarget;
+  if (habitDefinitionTimeTarget) habitDefinitionTimeTarget.value = values.timeTarget;
+  if (habitDefinitionDayRelation) habitDefinitionDayRelation.value = values.dayRelation;
+  if (habitDefinitionStartDate) habitDefinitionStartDate.value = values.startDate;
+  if (habitDefinitionEmoji) habitDefinitionEmoji.value = values.emoji;
+  if (habitDefinitionGroup) habitDefinitionGroup.value = values.group;
+  syncHabitDefinitionGoalFields();
+}
+
+function readHabitDefinitionForm(): HabitDefinitionFormValues | null {
+  if (
+    !habitDefinitionName || !habitDefinitionGoalKind || !habitDefinitionWeeklyTarget ||
+    !habitDefinitionTimeTarget || !habitDefinitionDayRelation || !habitDefinitionStartDate ||
+    !habitDefinitionEmoji || !habitDefinitionGroup
+  ) return null;
+  return {
+    habitKey: activeHabitDefinitionDraftKey
+      ? habitDefinitionDrafts.get(activeHabitDefinitionDraftKey)?.values.habitKey ?? null
+      : null,
+    name: habitDefinitionName.value,
+    goalKind: habitDefinitionGoalKind.value as HabitGoalTarget["kind"],
+    weeklyTarget: habitDefinitionWeeklyTarget.value,
+    timeTarget: habitDefinitionTimeTarget.value,
+    dayRelation: habitDefinitionDayRelation.value as HabitDefinitionFormValues["dayRelation"],
+    startDate: habitDefinitionStartDate.value,
+    emoji: habitDefinitionEmoji.value,
+    group: habitDefinitionGroup.value,
+  };
+}
+
+function syncHabitDefinitionGoalFields(): void {
+  const goalKind = habitDefinitionGoalKind?.value;
+  const keepSource = goalKind === "keep-source";
+  if (habitDefinitionWeeklyField) habitDefinitionWeeklyField.hidden = goalKind !== "weekly-count";
+  if (habitDefinitionTimeField) habitDefinitionTimeField.hidden = goalKind !== "daily-time";
+  if (habitDefinitionRelationField) habitDefinitionRelationField.hidden = goalKind !== "daily-time";
+  if (habitDefinitionGoalNote) habitDefinitionGoalNote.hidden = !keepSource;
+  if (habitDefinitionWeeklyTarget) habitDefinitionWeeklyTarget.required = goalKind === "weekly-count";
+  if (habitDefinitionTimeTarget) habitDefinitionTimeTarget.required = goalKind === "daily-time";
+}
+
+function setHabitDefinitionFormLocked(locked: boolean): void {
+  [
+    habitDefinitionName,
+    habitDefinitionGoalKind,
+    habitDefinitionWeeklyTarget,
+    habitDefinitionTimeTarget,
+    habitDefinitionDayRelation,
+    habitDefinitionStartDate,
+    habitDefinitionEmoji,
+    habitDefinitionGroup,
+  ].forEach((field) => { if (field) field.disabled = locked; });
+  const draft = activeHabitDefinitionDraftKey
+    ? habitDefinitionDrafts.get(activeHabitDefinitionDraftKey)
+    : null;
+  if (habitDefinitionSubmit) habitDefinitionSubmit.disabled = habitDefinitionSaveInFlight || Boolean(draft?.needsRefresh);
+  if (habitDefinitionCancel) habitDefinitionCancel.disabled = habitDefinitionSaveInFlight;
+  if (habitDefinitionRefresh) habitDefinitionRefresh.disabled = habitDefinitionSaveInFlight;
+}
+
+function stashHabitDefinitionForm(): void {
+  if (!activeHabitDefinitionDraftKey) return;
+  const draft = habitDefinitionDrafts.get(activeHabitDefinitionDraftKey);
+  const values = readHabitDefinitionForm();
+  if (!draft || draft.pendingInput || !values) return;
+  draft.values = values;
+  habitDefinitionDrafts.set(activeHabitDefinitionDraftKey, draft);
+}
+
+function openHabitDefinitionEditor(habitKey: string | null): void {
+  const snapshot = currentHabitSnapshot;
+  const binding = snapshot?.catalogTargetBinding;
+  if (!snapshot || !binding || snapshot.catalogError) {
+    if (habitsStatus) {
+      setRawText(habitsStatus, t("habits.definitionUnavailable"));
+      habitsStatus.dataset.state = "error";
+    }
+    return;
+  }
+  const habit = habitKey ? snapshot.habits.find((item) => item.key === habitKey) : null;
+  if (habitKey && !habit) return;
+  const draftKey = habitDefinitionDraftKey(binding, habitKey);
+  activeHabitDefinitionBinding = binding;
+  activeHabitDefinitionDraftKey = draftKey;
+  let draft = habitDefinitionDrafts.get(draftKey);
+  if (!draft) {
+    const definition = habit?.definition;
+    const goal = definition?.pendingGoal ?? habit?.goalTarget ?? null;
+    draft = {
+      values: {
+        habitKey,
+        name: habit ? displayHabitName(habit) : "",
+        ...habitGoalValues(goal),
+        ...(definition?.origin === "sourced" && !goal ? { goalKind: "keep-source" as const } : {}),
+        startDate: definition?.startDate ?? (habit ? "" : snapshot.livedDate ?? ""),
+        emoji: definition?.emoji ?? "",
+        group: definition?.group ?? "",
+      },
+      pendingInput: null,
+      error: null,
+      needsRefresh: false,
+    };
+    habitDefinitionDrafts.set(draftKey, draft);
+  }
+  if (draft.pendingInput) draft.values = valuesFromHabitDefinitionInput(draft.pendingInput);
+  if (habitDefinitionHeading) setCopy(habitDefinitionHeading, habit ? "habits.editHeading" : "habits.addHeading");
+  if (habitDefinitionMode) habitDefinitionMode.textContent = habit ? displayHabitName(habit) : "";
+  if (habitDefinitionStartDate) habitDefinitionStartDate.required = !habit;
+  if (habitDefinitionKeepSourceOption) {
+    habitDefinitionKeepSourceOption.hidden = !(habit?.definition?.origin === "sourced" && !habit.goalTarget && !habit.definition.pendingGoal);
+  }
+  writeHabitDefinitionForm(draft.values);
+  if (habitDefinitionStatus) {
+    if (draft.error) {
+      setRawText(habitDefinitionStatus, t("habits.definitionSaveFailed", { error: applicationMessage(draft.error) }));
+    } else {
+      setRawText(habitDefinitionStatus, "");
+    }
+  }
+  if (habitDefinitionSubmit) {
+    setCopy(habitDefinitionSubmit, draft.pendingInput ? "habits.retrySave" : "habits.save");
+  }
+  if (habitDefinitionRefresh) habitDefinitionRefresh.hidden = !draft.needsRefresh;
+  setHabitDefinitionFormLocked(Boolean(draft.pendingInput));
+  if (!habitDefinitionDialog?.open) habitDefinitionDialog?.showModal();
+  habitDefinitionName?.focus();
+}
+
+function habitGoalFromValues(values: HabitDefinitionFormValues): HabitGoalTarget | null | undefined {
+  if (values.goalKind === "keep-source") return null;
+  if (values.goalKind === "daily-completion") return { kind: "daily-completion" };
+  if (values.goalKind === "weekly-count") {
+    const standard = Number(values.weeklyTarget);
+    if (!Number.isInteger(standard) || standard < 1 || standard > 7) return null;
+    return { kind: "weekly-count", standard };
+  }
+  if (values.goalKind === "daily-time" && /^\d{2}:\d{2}$/.test(values.timeTarget)) {
+    return { kind: "daily-time", standard: values.timeTarget, dayRelation: values.dayRelation };
+  }
+  return undefined;
+}
+
+function isHabitDefinitionRevisionConflict(error: unknown): boolean {
+  const message = String(error);
+  return message.includes("Habit 定义已在其他位置改变") ||
+    message.includes("Habit definition changed elsewhere");
+}
+
+async function refreshHabitDefinitionAfterConflict(): Promise<void> {
+  const draftKey = activeHabitDefinitionDraftKey;
+  const binding = activeHabitDefinitionBinding;
+  const draft = draftKey ? habitDefinitionDrafts.get(draftKey) : null;
+  const oldInput = draft?.pendingInput;
+  if (!draftKey || !binding || !draft?.needsRefresh || !oldInput || habitDefinitionSaveInFlight) return;
+  const retainedValues = readHabitDefinitionForm() ?? draft.values;
+  habitDefinitionSaveInFlight = true;
+  setHabitDefinitionFormLocked(true);
+  if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionRefreshing"));
+  try {
+    await refreshHabits();
+    const latest = currentHabitSnapshot;
+    if (
+      !latest || latest.catalogTargetBinding !== binding || latest.catalogError || latest.readError
+    ) {
+      throw new Error("没有读回同一所选 Vault 的更新 Habit 定义；表单操作仍保留。请检查 Vault 后重试刷新。");
+    }
+    draft.values = retainedValues;
+    draft.pendingInput = null;
+    draft.error = null;
+    draft.needsRefresh = false;
+    habitDefinitionDrafts.set(draftKey, draft);
+    if (habitDefinitionRefresh) habitDefinitionRefresh.hidden = true;
+    if (habitDefinitionSubmit) setCopy(habitDefinitionSubmit, "habits.save");
+    writeHabitDefinitionForm(retainedValues);
+    if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionConflictRefreshed"));
+  } catch (error) {
+    draft.error = String(error);
+    habitDefinitionDrafts.set(draftKey, draft);
+    if (habitDefinitionStatus) {
+      setRawText(habitDefinitionStatus, t("habits.definitionSaveFailed", { error: applicationMessage(String(error)) }));
+    }
+  } finally {
+    habitDefinitionSaveInFlight = false;
+    if (activeHabitDefinitionDraftKey === draftKey && activeHabitDefinitionBinding === binding) {
+      setHabitDefinitionFormLocked(Boolean(draft.pendingInput));
+    }
+  }
+}
+
+async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<void> {
+  event.preventDefault();
+  if (habitDefinitionSaveInFlight || !activeHabitDefinitionDraftKey || !activeHabitDefinitionBinding) return;
+  const draftKey = activeHabitDefinitionDraftKey;
+  const binding = activeHabitDefinitionBinding;
+  const snapshot = currentHabitSnapshot;
+  const draft = habitDefinitionDrafts.get(draftKey);
+  const values = readHabitDefinitionForm();
+  if (!snapshot || !draft || !values) return;
+  if (!draft.pendingInput) {
+    if (!habitDefinitionForm?.reportValidity()) return;
+    const goal = habitGoalFromValues(values);
+    if (goal === undefined || (goal === null && !values.habitKey) || !values.name.trim() || (!values.habitKey && !values.startDate)) {
+      if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionFormInvalid"));
+      return;
+    }
+    draft.values = values;
+    draft.pendingInput = {
+      operationId: localOperationId("habit-definition"),
+      targetBinding: binding,
+      expectedRevision: snapshot.catalogRevision,
+      habitKey: values.habitKey,
+      language: currentInterfaceLanguage,
+      name: values.name.trim(),
+      emoji: values.emoji.trim() || null,
+      group: values.group.trim() || null,
+      startDate: values.startDate || null,
+      goal,
+    };
+    draft.error = null;
+  }
+  habitDefinitionDrafts.set(draftKey, draft);
+  habitDefinitionSaveInFlight = true;
+  setHabitDefinitionFormLocked(true);
+  if (habitDefinitionSubmit) setCopy(habitDefinitionSubmit, "habits.definitionSaving");
+  if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionSaving"));
+  try {
+    const saved = await window.__TAURI__.core.invoke<HabitDefinitionSaveResult>(
+      "save_habit_definition",
+      { input: draft.pendingInput },
+    );
+    if (saved.snapshot.catalogTargetBinding !== binding) {
+      throw new Error("Habit 保存结果与当前所选 Vault 不匹配；请刷新 Habits 后核对。");
+    }
+    habitDefinitionDrafts.delete(draftKey);
+    if (activeHabitDefinitionDraftKey === draftKey && activeHabitDefinitionBinding === binding) {
+      renderHabitSnapshot(saved.snapshot);
+      if (habitsStatus) {
+        setCopy(habitsStatus, saved.outcome === "created" ? "habits.definitionCreated" : "habits.definitionUpdated");
+        habitsStatus.dataset.state = "ready";
+      }
+      habitDefinitionDialog?.close();
+    } else {
+      void refreshHabits();
+    }
+  } catch (error) {
+    draft.error = String(error);
+    draft.needsRefresh = isHabitDefinitionRevisionConflict(error);
+    habitDefinitionDrafts.set(draftKey, draft);
+    if (activeHabitDefinitionDraftKey === draftKey && habitDefinitionStatus) {
+      setRawText(habitDefinitionStatus, t("habits.definitionSaveFailed", { error: applicationMessage(String(error)) }));
+    }
+    if (activeHabitDefinitionDraftKey === draftKey) {
+      if (habitDefinitionRefresh) habitDefinitionRefresh.hidden = !draft.needsRefresh;
+      if (habitDefinitionSubmit) setCopy(habitDefinitionSubmit, "habits.retrySave");
+      setHabitDefinitionFormLocked(true);
+    }
+  } finally {
+    habitDefinitionSaveInFlight = false;
+    if (activeHabitDefinitionDraftKey === draftKey) {
+      setHabitDefinitionFormLocked(Boolean(draft.pendingInput));
+    }
+  }
+}
+
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   currentHabitSnapshot = view;
+  if (newHabitButton) {
+    newHabitButton.disabled = !view.catalogTargetBinding || Boolean(view.catalogError);
+    newHabitButton.title = view.catalogError
+      ? applicationMessage(view.catalogError)
+      : t("habits.add");
+  }
   renderWorkspaceRailContext("habits");
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   if (habitsStatus) {
@@ -9237,9 +9691,14 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
     habitsStatus.dataset.state = habitCompletionStatus?.state ?? view.state;
   }
   if (habitsRange) {
+    const rangeKey = view.displayRangeLabel && view.rangeLabel
+      ? "habits.range"
+      : view.catalogRevision && view.state === "missing"
+        ? "habits.localOnlyRange"
+        : "habits.waitingSnapshot";
     setCopy(
       habitsRange,
-      view.displayRangeLabel && view.rangeLabel ? "habits.range" : "habits.waitingSnapshot",
+      rangeKey,
       view.displayRangeLabel && view.rangeLabel
         ? { display: view.displayRangeLabel, range: view.rangeLabel }
         : {},
@@ -9326,12 +9785,17 @@ async function refreshHabits(): Promise<void> {
       state: "error",
       message: String(error),
       readError: String(error),
+      livedDate: null,
       generatedAt: null,
       displayRangeLabel: null,
       rangeLabel: null,
       producerLabel: null,
       completionRevision: null,
       completionTargetBinding: null,
+      catalogRevision: null,
+      catalogTargetBinding: null,
+      catalogError: null,
+      completionError: null,
       namesConfigurationState: "missing",
       summary: {
         knownCompletions: 0,
@@ -12356,6 +12820,22 @@ refreshHabitsButton?.addEventListener("click", () => {
   void refreshHabits();
 });
 
+newHabitButton?.addEventListener("click", () => openHabitDefinitionEditor(null));
+habitDefinitionGoalKind?.addEventListener("change", () => {
+  syncHabitDefinitionGoalFields();
+  stashHabitDefinitionForm();
+});
+habitDefinitionForm?.addEventListener("input", stashHabitDefinitionForm);
+habitDefinitionForm?.addEventListener("change", stashHabitDefinitionForm);
+habitDefinitionForm?.addEventListener("submit", (event) => {
+  void pendingWrites.track(saveHabitDefinitionFromForm(event));
+});
+habitDefinitionCancel?.addEventListener("click", () => habitDefinitionDialog?.close());
+habitDefinitionRefresh?.addEventListener("click", () => {
+  void pendingWrites.track(refreshHabitDefinitionAfterConflict());
+});
+habitDefinitionDialog?.addEventListener("cancel", () => stashHabitDefinitionForm());
+
 taskFilter?.addEventListener("change", () => {
   const state = taskFilter.value;
   if (
@@ -12710,6 +13190,13 @@ habitsDestination?.addEventListener("change", (event) => {
 });
 
 habitsDestination?.addEventListener("click", (event) => {
+  const editHabit = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-habit-edit]",
+  );
+  if (editHabit?.dataset.habitEdit) {
+    openHabitDefinitionEditor(editHabit.dataset.habitEdit);
+    return;
+  }
   const historicalCorrection = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "button[data-habit-correction-date]",
   );
@@ -12799,6 +13286,21 @@ habitsDestination?.addEventListener("click", (event) => {
   const date = button.dataset.habitDate;
   if (!key || !date) return;
   void loadSelectedHabitDate(key, date);
+});
+
+habitsDestination?.addEventListener("contextmenu", (event) => {
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".habit-snapshot-row");
+  if (!row?.dataset.habitKey) return;
+  event.preventDefault();
+  openHabitDefinitionEditor(row.dataset.habitKey);
+});
+
+habitsDestination?.addEventListener("keydown", (event) => {
+  if (event.key !== "F10" || !event.shiftKey) return;
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".habit-snapshot-row");
+  if (!row?.dataset.habitKey) return;
+  event.preventDefault();
+  openHabitDefinitionEditor(row.dataset.habitKey);
 });
 
 habitsDestination?.addEventListener("input", (event) => {
