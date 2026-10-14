@@ -5440,7 +5440,7 @@ EOF
   run_driver wait-active-text "$shared_task" 30
   run_driver assert-active-text "$future_task"
   run_driver press "新建任务" 10
-  run_driver assert-text "加入收集箱"
+  run_driver wait-text "加入收集箱" 10
   run_driver type-text "新建任务名称|$new_task" 10
   run_driver press "加入收集箱" 10
   run_driver wait-active-text "任务已保存到所选 Vault" 20
