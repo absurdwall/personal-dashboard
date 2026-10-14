@@ -1,0 +1,143 @@
+{
+  "recordedAtUtc": "2026-10-14T00:17:40.851234+00:00",
+  "clientDate": "2026-10-13",
+  "authorization": "User requested replacement of the local App and local worktree/commit closeout.",
+  "installation": {
+    "version": "4.0.8",
+    "sourceCommit": "2c974c6de424b5eb28cb07a1740dcae9a078cb2c",
+    "binarySha256": "81e8fd2e2cef6084bf43283a2f0b5b11223cb1b50ef01d1b637ad32caa0e118b",
+    "previousVersion": "4.0.7",
+    "previousBinarySha256": "4865fc2c4aad16ee82dd30a23a5bc82720b0f8250264e564c7403d996eb33682",
+    "installationPath": "/Applications/Personal Dashboard.app",
+    "codesign": "verified",
+    "installedAtUtc": "2026-10-14T00:12:11.403110+00:00"
+  },
+  "reviewClosureCommit": "5d249ee5814da5b72fa53a9b7ab2c6cf0309ccde",
+  "backup": {
+    "privateArchiveDirectory": "/Users/tingranwang/.codex/app-archives.noindex/personal-dashboard/2026-10-13-4.0.8-2c974c6-ibqdcage",
+    "previousAppRetained": true,
+    "profileBeforeArchive": true,
+    "vaultDashboardBeforeArchive": true,
+    "personalDataCommitted": false
+  },
+  "verification": {
+    "arm64": true,
+    "installedBinaryMatchesBuild": true,
+    "normalProfileReused": true,
+    "normalVaultBindingRetained": true,
+    "protectedFilesChecked": 124,
+    "changedProtectedFiles": 0,
+    "launchAndReadOnlyTodayCalendarHabits": "passed",
+    "registeredDashboardBundleCount": 1,
+    "soleRegisteredInstallation": "/Applications/Personal Dashboard.app"
+  },
+  "cleanup": {
+    "additionalGitWorktrees": 0,
+    "prototypeTip": "e6bdb514c6733a98949012e1d42a9cda3b0e3eec",
+    "prototypeCleanBeforeRemoval": true,
+    "prototypeGitBundleVerified": true,
+    "prototypeBundlePrivatePath": "/Users/tingranwang/.codex/tmp/personal-dashboard-4.0.8-20261013-k1ep5lpj.noindex/prototype-lineage.bundle",
+    "obsoleteBundlesUnregistered": 17,
+    "allBranchHistoryRetained": true,
+    "branches": [
+      {
+        "name": "codex/dashboard-experience-integration",
+        "commit": "8a0dba083c4cbcb2707e97661a0a23ff82c4f920",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/dashboard-experience-refinement",
+        "commit": "e6bdb514c6733a98949012e1d42a9cda3b0e3eec",
+        "reachableFromIntegration": false,
+        "retained": true
+      },
+      {
+        "name": "codex/dashboard-experience-refinement-integration",
+        "commit": "2c974c6de424b5eb28cb07a1740dcae9a078cb2c",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/dashboard-experience-refinement-review-fixes",
+        "commit": "485c9c8e97cd1ec5aaf08c390ad0c346283f2678",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/dashboard-experience-refinement-spec",
+        "commit": "918e7e0d9c4b2c524c429bfd309482e328bc4c91",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/pdex-19-refinement",
+        "commit": "162067f1169bfc6bfcf2a537eacc850f8ced275a",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/pdex-20-refinement",
+        "commit": "51ba75ff3d0640cc7fa2036b6aaffa777caddcf8",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/pdex-21-refinement",
+        "commit": "6b6814dd7f1702ca276db7f17f6f09cc3abcc1a1",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/pdex-22-refinement",
+        "commit": "380d160a6cb6d80e5afd5294e318f53edb10636d",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/pdex-23-refinement",
+        "commit": "2aa96b4d3ea1ce6f7847a44a978ba8d53eee254b",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/pdex-24-refinement",
+        "commit": "d5632592765a189dc69f02b607b9a05b6b5e2131",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/pdex-25-refinement",
+        "commit": "f645827632044c9df1dab64cce8d4c0905eef417",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "codex/pdex-26-refinement",
+        "commit": "8c03b9c2dad735c3273d881d45e4e04ab13da43b",
+        "reachableFromIntegration": true,
+        "retained": true
+      },
+      {
+        "name": "main",
+        "commit": "a4594a151126465cc3d76038364dd696461778ec",
+        "reachableFromIntegration": true,
+        "retained": true
+      }
+    ]
+  },
+  "acceptance": {
+    "codeReview": "Standards 0; Spec 0",
+    "independentTargetedChecks": "59/59 passed before version-only release increment",
+    "packageVersionCheck": "1/1 passed",
+    "installedStartupReadback": "passed",
+    "fullNativePDEX26CombinedAcceptance": "pending"
+  },
+  "git": {
+    "branch": "codex/dashboard-experience-refinement-integration",
+    "remotePushPerformed": false,
+    "mainMergePerformed": false,
+    "readyPushCommand": "git push origin 'refs/heads/codex/*:refs/heads/codex/*'",
+    "protectedMainRequiresPullRequest": true
+  }
+}

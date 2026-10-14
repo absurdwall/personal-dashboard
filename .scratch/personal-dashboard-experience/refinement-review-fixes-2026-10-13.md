@@ -65,3 +65,18 @@ The independent reviewer ran `npm run build` successfully in the canonical integ
 | Total targeted checks | **59/59 passed** | logs above |
 
 The three Calendar WebKit relationship/retry/readback scenarios also passed independent checks in the preceding review round. These results close the reported implementation/review findings. Formal native/PDEX-26 combined acceptance and the parent acceptance gate remain pending; this does not assert full-suite success, native acceptance or installation. The earlier full-frontend baseline and all qualified implementation evidence remain unchanged. Product code, ticket acceptance states, user focus/lifecycle and unrelated summary recovery are unchanged by this append-only record.
+
+
+## User-authorized local installation — 2026-10-13
+
+The user explicitly requested replacing the local App and closing out local worktrees/commits after independent review. Installed **4.0.8** from source `2c974c6de424b5eb28cb07a1740dcae9a078cb2c` at `/Applications/Personal Dashboard.app`; the version-only release increment follows review closure `5d249ee`. Package identity is unchanged. arm64, strict code-signature verification, embedded source identity and installed/build binary hash equality passed. The installed App launched with its normal profile and selected Vault; Today, Calendar and Habits loaded through the actual native App. All 124 protected existing data/preferences files retained their byte hashes across replacement and these read-only views. Private previous-App/profile/business-data backups remain outside version control.
+
+All additional Git worktrees are removed. The remaining prototype checkout was clean, contained no unique untracked/ignored files, and was backed up as a verified complete Git bundle before removal. Its independent branch/history remains retained; every other local branch tip is reachable from the integration branch. Old archive/test bundle paths were unregistered, and Launch Services now contains only the normal 4.0.8 installation for the Dashboard namespace. No source branches or unique history were deleted.
+
+[Installation and cleanup receipt](evidence/local-release-4.0.8-2026-10-13.json) records metadata and private backup locations, without personal data or credentials. Local release records are committed separately from product source. No remote push or main merge occurred. A later single non-forced push can publish all retained feature refs:
+
+```sh
+git push origin 'refs/heads/codex/*:refs/heads/codex/*'
+```
+
+Protected `main` still requires a GitHub PR. Git push transfers Git history; it does not migrate local Markdown tickets to GitHub Issues. This installation/startup check does not close the pending PDEX-26 full native combined acceptance gate or imply a full-suite rerun.

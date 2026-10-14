@@ -363,3 +363,8 @@ The independent accepting workflow confirms earlier fixes and returns only the a
 ## Final review repair implementation handoff — 2026-10-13
 
 Both second-return findings are implemented at product merge `4ec21fc4457841e87ebd4ab986db17c3f02b6588`. [Final repair record](refinement-review-fixes-2026-10-13.md) retains exact source/branch history, green targeted root/worker results, original failing full-suite baseline qualification, and clean owned-worker cleanup. PDEX-19/25 return to implementation-complete/acceptance-pending. Final independent recheck, native acceptance, PDEX-26 and parent closure remain delegated/open. The installed helper reads the existing experience source; no Project summary/lifecycle/focus or external operation is inferred.
+
+
+### 2026-10-13 — authorized local installation
+
+After independent review closure, the user authorized replacing the local App. 4.0.8 is installed at the normal path, native startup/read-only sources verified, data retained, all extra worktrees removed with branch/history preserved. [Release and cleanup evidence](evidence/local-release-4.0.8-2026-10-13.json). Remote push/main PR and PDEX-26 full native combined acceptance remain separate.
