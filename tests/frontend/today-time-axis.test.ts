@@ -16,6 +16,7 @@ import {
   minutePosition,
   onManualScroll,
   stripLeadingAxisTimeLabel,
+  todayAxisHourHeightPx,
   TODAY_AXIS_LABEL_MINIMUM_MINUTES,
   TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES,
 } from '../../frontend/today-time-axis.ts';
@@ -66,6 +67,15 @@ test('maps points, ranges, and overlaps without changing time anchors', () => {
     axisGeometry({ startMinute: 600, endMinute: 660 }).top,
     axisGeometry({ startMinute: 600, endMinute: 720 }).top,
   );
+});
+
+test('fits the daytime overview to the available axis viewport while detail zoom keeps the established scale', () => {
+  assert.ok(Math.abs(todayAxisHourHeightPx(18 * 60, 560, 170, 'overview') - 390 / 18) < 0.001);
+  assert.ok(Math.abs(todayAxisHourHeightPx(18 * 60, 480, 170, 'overview') - 310 / 18) < 0.001);
+  assert.equal(todayAxisHourHeightPx(18 * 60, 320, 170, 'overview'), 16,
+    'small windows keep the overview legible and can use the detail scroll surface');
+  assert.equal(todayAxisHourHeightPx(18 * 60, 320, 170, 'detail'), 80);
+  assert.throws(() => todayAxisHourHeightPx(0, 480, 170, 'overview'), RangeError);
 });
 
 test('keeps the now label clear of the nearest hourly tick at exact and adjacent minutes', () => {
@@ -222,7 +232,7 @@ test('time axis markup uses one full-width lane for arrangement and fact cards',
   assert.equal(unlocatedRegion.parent, unlocatedAside, 'untimed entries stay beside the Today timeline');
   assert.equal(arrangementUnlocated?.parent?.parent, unlocatedRegion);
   assert.equal(factsUnlocated?.parent?.parent, unlocatedRegion);
-  assert.ok(unlocatedShortcut.attrs.includes('aria-controls="today-unlocated-time-region"'));
+  assert.ok(unlocatedShortcut.attrs.includes('aria-controls="today-side-region"'));
   assert.ok(unlocatedShortcut.attrs.includes('aria-expanded="false"'));
   assert.equal(lane.parent, axis);
   assert.equal(markers.parent?.parent?.parent, lane);

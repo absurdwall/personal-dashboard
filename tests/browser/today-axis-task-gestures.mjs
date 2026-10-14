@@ -19,13 +19,13 @@ const view = {state:'missing',date:'2026-10-10',isToday:true,currentTime:'09:00'
   dayTasks:{state:'empty',message:'',planError:null,revision:null,targetBinding:null,tasks:[]},habitCorrections:{state:'missing',message:'',date:'2026-10-10',canRecord:false,completionRevision:null,completionTargetBinding:null,namesConfigurationState:'missing',habits:[]},
   timeAxis:{currentArrangement:[],confirmedFacts:[],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
 
-async function pageFixture() {
+async function pageFixture(viewport={width:1280,height:1100}) {
   const server=createServer(async(req,res)=>{try {const url=new URL(req.url,'http://localhost');const file=resolve(root,'dist',url.pathname==='/'?'index.html':url.pathname.slice(1));
     if(!file.startsWith(resolve(root,'dist')+'/'))throw Error('invalid path');
     res.setHeader('content-type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(await readFile(file));}catch {res.statusCode=404;res.end('not found');}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const browser=await chromium.launch({channel:'chrome',headless:true});
-  const page=await browser.newPage({viewport:{width:1280,height:1100}});
+  const page=await browser.newPage({viewport});
   const errors=[];page.on('pageerror',error=>errors.push(String(error)));
   await page.addInitScript(({view})=>{
     window.__fixture=view;window.__calls=[];window.__failNext=null;
@@ -61,6 +61,48 @@ async function pageFixture() {
   }
   return {page,browser,server,close:async()=>{await browser.close();await new Promise(r=>server.close(r));}};
 }
+
+test('Today axis retains its overview at ticket sizes and opens a readable scrollable detail scale',async()=>{
+  const fixture=await pageFixture();const {page}=fixture;
+  try {
+    const screenshots=process.env.PDEX21_SCREENSHOT_DIR;
+    if(screenshots)await mkdir(screenshots,{recursive:true});
+    for(const [width,height] of [[1280,800],[1280,720],[830,758],[680,560]]){
+      await page.setViewportSize({width,height});
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      await page.locator('#today-axis-scroll-surface').scrollIntoViewIfNeeded();
+      if(screenshots)await page.screenshot({path:resolve(screenshots,`today-axis-${width}x${height}.png`)});
+      const overview=await page.evaluate(()=>{
+        const surface=document.querySelector('#today-axis-scroll-surface');
+        const plot=document.querySelector('#today-axis-plot');
+        const zoom=document.querySelector('#today-axis-zoom-toggle').getBoundingClientRect();
+        return {scrollHeight:surface.scrollHeight,clientHeight:surface.clientHeight,scrollWidth:surface.scrollWidth,clientWidth:surface.clientWidth,
+          plotHeight:plot.getBoundingClientRect().height,density:document.querySelector('#today-continuous-axis').dataset.overviewDensity,
+          marker:{display:getComputedStyle(document.querySelector('.today-axis-marker-link')).display,
+            statusDisplay:getComputedStyle(document.querySelector('.today-axis-marker.is-task .today-axis-marker-source-status > span:nth-child(2)')).display,
+            height:document.querySelector('.today-axis-marker.is-task .today-axis-marker-link').getBoundingClientRect().height},
+          expanded:[document.querySelector('#today-expand-early').getAttribute('aria-expanded'),document.querySelector('#today-expand-late').getAttribute('aria-expanded')],zoom:{width:zoom.width,height:zoom.height},scale:getComputedStyle(document.querySelector('#today-continuous-axis')).getPropertyValue('--today-axis-hour-height')};
+      });
+      assert.deepEqual(overview.expanded,['false','false']);
+      assert.equal(overview.zoom.width,36);assert.equal(overview.zoom.height,36);
+      if(overview.density==='compact'){
+        assert.equal(overview.marker.display,'flex',`${width}x${height} uses a single-row marker layout: ${JSON.stringify(overview)}`);
+        assert.notEqual(overview.marker.statusDisplay,'none',`${width}x${height} retains Task state in overview markers: ${JSON.stringify(overview)}`);
+      }
+      if(width===1280)assert.ok(overview.scrollHeight<=overview.clientHeight+2,`${width}x${height} daytime overview fits the available axis height: ${JSON.stringify(overview)}`);
+      if(width===680){
+        await page.locator('#today-axis-zoom-toggle').click();
+        const detail=await page.evaluate(()=>({scrollHeight:document.querySelector('#today-axis-scroll-surface').scrollHeight,clientHeight:document.querySelector('#today-axis-scroll-surface').clientHeight,scale:getComputedStyle(document.querySelector('#today-continuous-axis')).getPropertyValue('--today-axis-hour-height')}));
+        assert.ok(Number.parseFloat(detail.scale)>=80,JSON.stringify(detail));
+        assert.ok(detail.scrollHeight>detail.clientHeight,`short screen can scroll the detail scale: ${JSON.stringify(detail)}`);
+        const point=page.locator('.today-axis-marker[data-task-id="point"] .today-axis-marker-link');
+        await point.scrollIntoViewIfNeeded();
+        assert.ok((await point.boundingBox()).height>=60,'detail zoom expands a point Task into a readable click target');
+        if(screenshots)await page.screenshot({path:resolve(screenshots,`today-axis-${width}x${height}-detail.png`)});
+      }
+    }
+  } finally {await fixture.close();}
+});
 async function pointAt(page,minute,ensureVisible=true) {
   const surface=page.locator('#today-axis-scroll-surface');await surface.scrollIntoViewIfNeeded();
   return page.evaluate(({minute,ensureVisible})=>{
@@ -160,12 +202,47 @@ test('failed selection save retains editable endpoints and reuses its stable Tas
   } finally {await fixture.close();}
 });
 
-test('an ordinary Task card click still opens its existing details',async()=>{
+test('an axis Task opens the nearby reused editor and save preserves scroll after readback',async()=>{
   const fixture=await pageFixture();const {page}=fixture;
   try {
-    await page.locator('.today-axis-marker[data-task-id="point"] .today-axis-marker-link').click();
-    assert.equal(await page.locator('#today-timed-details details[open]').count(),1);
+    await page.locator('#today-axis-zoom-toggle').click();
+    const surface=page.locator('#today-axis-scroll-surface');
+    const marker=page.locator('.today-axis-marker[data-task-id="point"] .today-axis-marker-link');
+    await marker.scrollIntoViewIfNeeded();
+    const before=await surface.evaluate(node=>node.scrollTop);
+    await marker.click();
+    const editor=page.locator('dialog[data-axis-task-editor="point"]');
+    await editor.waitFor({state:'visible'});
+    assert.equal(await page.locator('#today-timed-details details[open]').count(),0,'Tasks are not repeated in the lower axis details');
+    assert.ok(await editor.evaluate(node=>{const r=node.getBoundingClientRect(),m=document.querySelector('.today-axis-marker[data-task-id="point"] .today-axis-marker-link').getBoundingClientRect();return r.left<m.right+8&&r.right>m.left-8&&r.top<innerHeight&&r.bottom>0;}),'editor stays near its Task marker and in the window');
+    assert.equal(await surface.evaluate(node=>node.scrollTop),before,'opening the editor retains the axis scroll position');
+    await editor.locator('[data-task-name]').fill('Synthetic point edited');
+    await editor.locator('button[type=submit]').click();
+    await editor.waitFor({state:'hidden'});
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').name==='Synthetic point edited');
+    assert.equal(await surface.evaluate(node=>node.scrollTop),before,'confirmed save and marker rerender retain the axis scroll position');
+    const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point'));
+    assert.equal(saved.name,'Synthetic point edited');
+    assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='update_task').length),1);
+  } finally {await fixture.close();}
+});
+
+test('closing an axis Task editor discards no saved data and returns focus without scrolling',async()=>{
+  const fixture=await pageFixture();const {page}=fixture;
+  try {
+    await page.locator('#today-axis-zoom-toggle').click();
+    const surface=page.locator('#today-axis-scroll-surface');
+    const marker=page.locator('.today-axis-marker[data-task-id="point"] .today-axis-marker-link');
+    await marker.scrollIntoViewIfNeeded();
+    const before=await surface.evaluate(node=>node.scrollTop);
+    await marker.click();
+    const editor=page.locator('dialog[data-axis-task-editor="point"]');await editor.waitFor({state:'visible'});
+    await editor.locator('[data-task-name]').fill('Unsubmitted draft');
+    await page.keyboard.press('Escape');await editor.waitFor({state:'hidden'});
+    assert.equal(await surface.evaluate(node=>node.scrollTop),before);
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').name),'Synthetic point');
     assert.equal(await page.evaluate(()=>window.__calls.some(x=>['update_task','create_task'].includes(x.command))),false);
+    assert.equal(await marker.evaluate(node=>document.activeElement===node),true,'focus returns to the marker without moving the viewport');
   } finally {await fixture.close();}
 });
 
@@ -188,8 +265,9 @@ test('an overnight pointer selection retains both natural dates and fifteen-minu
 });
 
 test('held pointer scrolls the inner axis and Escape removes its preview without a write',async()=>{
-  const fixture=await pageFixture();const {page}=fixture;
+  const fixture=await pageFixture({width:680,height:560});const {page}=fixture;
   try {
+    await page.locator('#today-axis-zoom-toggle').click();
     const start=await pointAt(page,660);const surface=page.locator('#today-axis-scroll-surface');
     const rect=await surface.boundingBox();assert.ok(rect);
     const before=await surface.evaluate(node=>node.scrollTop);

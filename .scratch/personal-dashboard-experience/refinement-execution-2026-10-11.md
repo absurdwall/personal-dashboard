@@ -178,3 +178,23 @@ no integration merge, install, remote operation or main change was recorded.
   [PDEX-24 integration evidence](evidence/pdex-24-integration-sync-2026-10-14.md).
 - No remote, `main`, installed App, or normal Vault was touched. PDEX-24 remains
   `in-progress` pending independent review and PDEX-26 packaged acceptance.
+
+## PDEX-21 local ticket execution and integration sync — 2026-10-14
+
+- Owner `/root/implement_pdex21`; branch `codex/pdex-21-restart`; isolated
+  worktree `/private/tmp/pdex-restart-20261014.noindex/pdex-21`; authorized
+  base `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6` and claim record
+  `eaec4605883f16158be4945fa8f20874027bc39`.
+- Ticket-scoped product and test changes are in `2562f4337850216c9c6a0836612b3e84f5684f25`; the explicit
+  680×560 held-pointer scroll regression setup is in `4f764147070e320691cece16982deca8d1837ec9`.
+- Latest integration tip `c34ca821cfceb7cdf6262129209cb1f2c3702922` was merged non-fast-forward as `fbdf8d2c1835244ea9454624c9997710f5876c30`.
+  The conflict resolution retained the full incoming PDEX-20, PDEX-22, and
+  PDEX-24 records and history. The P21 branch is not merged back into integration.
+- Verification on the merged tree: `npm run build`; Today Task browser 10/10;
+  plan gesture browser 8/8; Today/WebKit/localization frontend group 24/24;
+  Rust `today_shared_tasks_workflow` 7/7; `git diff --check`. The screenshot
+  matrix, prototype comparison, exact pointer scroll result, and qualifications
+  are recorded in [PDEX-21 implementation evidence](evidence/pdex-21-implementation-2026-10-14.md).
+- PDEX-21 remains `in-progress`; no package installation, packaged-App test,
+  normal Vault write, remote operation or `main` operation occurred. PDEX-26
+  still owns installed-App acceptance.

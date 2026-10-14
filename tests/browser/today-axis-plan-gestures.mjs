@@ -9,7 +9,7 @@ import {pathToFileURL} from 'node:url';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE_PATH?pathToFileURL(process.env.PLAYWRIGHT_MODULE_PATH).href:'playwright');
 const root=resolve(import.meta.dirname,'../..');
 const views=JSON.parse(await readFile(new URL('./fixtures/plan-drag-views.json',import.meta.url),'utf8'));
-async function pageFixture(initial=views.loaded,responses=[]) {
+async function pageFixture(initial=views.loaded,responses=[],viewport={width:1280,height:900}) {
   const server=createServer(async(req,res)=>{try{
     const file=resolve(root,'dist',new URL(req.url,'http://localhost').pathname.slice(1)||'index.html');
     if(!file.startsWith(resolve(root,'dist')+'/'))throw Error('invalid path');
@@ -17,7 +17,7 @@ async function pageFixture(initial=views.loaded,responses=[]) {
   }catch{res.statusCode=404;res.end();}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const browser=await chromium.launch({channel:'chrome',headless:true});
-  const page=await browser.newPage({viewport:{width:1280,height:900}});
+  const page=await browser.newPage({viewport});
   const errors=[];page.on('pageerror',error=>errors.push(String(error)));
   await page.addInitScript(({initial,responses})=>{
     window.__fixture=initial;window.__responses=responses;window.__calls=[];window.__failNext=false;window.__readbackFailure=false;
@@ -78,8 +78,13 @@ async function dragTo(page,text,desiredStart,{long=false}={}) {
 }
 
 test('production plan drag previews morning-to-evening movement, edge-scrolls and preserves original non-quarter duration',async()=>{
-  const fixture=await pageFixture(views.loaded,[views.moved]);const {page}=fixture;
+  const fixture=await pageFixture(views.loaded,[views.moved],{width:1280,height:800});const {page}=fixture;
   try{
+    // The responsive overview now fits the main daytime window in this viewport.
+    // Exercise the same edge-scroll behavior at the explicit detail scale instead.
+    await page.locator('#today-axis-scroll-surface').scrollIntoViewIfNeeded();
+    await page.locator('#today-axis-zoom-toggle').click();
+    await page.locator('#today-axis-scroll-surface').scrollIntoViewIfNeeded();
     const interaction=await dragTo(page,'Synthetic drag range',1080,{long:true});
     await page.waitForFunction(()=>window.__calls.some(x=>x.command==='edit_plan_time'),null,{timeout:1500});
     const input=await page.evaluate(()=>window.__calls.find(x=>x.command==='edit_plan_time').args.input);

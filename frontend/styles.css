@@ -6728,6 +6728,7 @@ body {
   border-radius: 6px;
   background: #e7f0eb;
   color: #214e43;
+  font-family: inherit;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -6736,6 +6737,11 @@ body {
   text-decoration: none;
   white-space: normal;
   pointer-events: auto;
+}
+
+button.today-axis-marker-link {
+  appearance: none;
+  cursor: pointer;
 }
 
 .today-axis-marker.is-arrangement .today-axis-marker-link {
@@ -6859,6 +6865,55 @@ body {
 
 .today-axis-marker-source-status > span {
   overflow-wrap: anywhere;
+}
+
+#today-continuous-axis[data-overview-density="compact"] .today-axis-marker-link {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+#today-continuous-axis[data-overview-density="compact"] .today-axis-marker-time {
+  flex: 0 0 auto;
+  font-size: 8px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+#today-continuous-axis[data-overview-density="compact"] .today-axis-marker-title {
+  display: block;
+  flex: 1 1 auto;
+  -webkit-line-clamp: unset;
+  min-width: 0;
+  font-size: 9px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#today-continuous-axis[data-overview-density="compact"] .today-axis-marker-source-status {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  font-size: 7px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+#today-continuous-axis[data-overview-density="compact"] .today-axis-marker.is-task .today-axis-marker-source-status > span:first-child {
+  display: none;
+}
+
+#today-continuous-axis[data-overview-density="compact"] .today-axis-marker:not(.is-task) .today-axis-marker-source-status {
+  display: none;
+}
+
+#today-continuous-axis[data-overview-density="compact"] .today-axis-marker-source-status > span {
+  overflow-wrap: normal;
 }
 
 .today-axis-marker-link:hover,
@@ -10115,6 +10170,41 @@ button.habit-cell:focus-visible {
   border:2px solid var(--accent-color, #668ca8); background:color-mix(in srgb, #668ca8 18%, transparent); min-height:2px; }
 .today-axis-gesture-preview.is-point { height:2px!important; }
 .today-axis-task-dialog { width:min(560px, calc(100vw - 48px)); max-height:calc(100vh - 48px); overflow:auto; }
+.today-axis-task-editor[open] {
+  position: fixed;
+  inset: auto;
+  z-index: 1000;
+  width: min(380px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--parity-border);
+  border-radius: 10px;
+  background: var(--parity-surface, #fff);
+  color: var(--parity-ink);
+  box-shadow: 0 12px 36px rgb(35 39 36 / 20%);
+}
+.today-axis-task-editor > h3 { margin: 0 0 10px; font-size: 0.84rem; overflow-wrap: anywhere; }
+.today-axis-task-editor .task-editor { padding: 0; border: 0; background: transparent; }
+.today-axis-task-editor .task-editor-details {
+  width: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.today-axis-task-editor .task-form-grid { gap: 0.55rem; }
+.today-axis-task-editor .task-form-grid input,
+.today-axis-task-editor .task-form-grid textarea,
+.today-axis-task-editor .task-form-grid select { padding: 0.48rem 0.55rem; }
+.today-axis-task-editor .task-editor-inline { margin-top: 0; }
+.today-axis-zoom-toggle[aria-pressed="true"] .today-axis-zoom-plus-vertical { display: none; }
 
 /* Morning is the saved baseline document, rather than a second clock axis. */
 #today-phase-morning .today-timeline-item { display: block; }
@@ -10285,6 +10375,7 @@ button.habit-cell:focus-visible {
 }
 
 .today-axis-marker[data-plan-id] .today-axis-marker-link { cursor: grab; touch-action: none; }
+.today-axis-marker[data-plan-id] .today-axis-marker-link.is-broad-plan { cursor: grab; }
 .today-axis-plot.is-pointer-editing .today-axis-marker[data-plan-id] .today-axis-marker-link { cursor: grabbing; }
 .today-axis-plan-end {
   position: absolute;

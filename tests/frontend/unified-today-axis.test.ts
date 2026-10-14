@@ -18,7 +18,7 @@ function render(check: string, width = 830, height = 758): any {
   if (!probe) { probe = join(output, "webkit"); execFileSync("swiftc", [join(root, "tests/frontend/helpers/rendered-today-layout.swift"), "-o", probe], { timeout: 60000 }); }
   writeFileSync(join(output, "index.html"), readFileSync(join(root, "frontend/index.html"), "utf8").replace(/<script[^]*?<\/script>/g, ""));
   copyFileSync(join(root, "frontend/styles.css"), join(output, "styles.css"));
-  const bindings = ["todayContinuousAxis:today-continuous-axis", "todayHourTicks:today-hour-ticks", "todayTimedEvents:today-timed-events", "todayTimedDurations:today-timed-duration", "todayTimedDetails:today-timed-details", "todayTimedEmpty:today-timed-empty", "todayCurrentArrangementUnlocated:today-current-arrangement-unlocated", "todayConfirmedFactsUnlocated:today-confirmed-facts-unlocated", "todayCurrentTime:today-current-time", "todayLocateNowButton:today-locate-now", "todayUnlocatedTimeRegion:today-unlocated-time-region", "todayUnlocatedTimeShortcut:today-unlocated-time-shortcut", "todaySideRegion:today-side-region", "todayAxisScrollSurface:today-axis-scroll-surface"].map(binding => { const [name,id] = binding.split(":"); return `const ${name} = document.getElementById('${id}');`; }).join("\n");
+  const bindings = ["todayContinuousAxis:today-continuous-axis", "todayHourTicks:today-hour-ticks", "todayTimedEvents:today-timed-events", "todayTimedDurations:today-timed-duration", "todayTimedDetails:today-timed-details", "todayTimedEmpty:today-timed-empty", "todayCurrentArrangementUnlocated:today-current-arrangement-unlocated", "todayConfirmedFactsUnlocated:today-confirmed-facts-unlocated", "todayCurrentTime:today-current-time", "todayLocateNowButton:today-locate-now", "todayAxisZoomToggle:today-axis-zoom-toggle", "todayUnlocatedTimeRegion:today-unlocated-time-region", "todayUnlocatedTimeShortcut:today-unlocated-time-shortcut", "todaySideRegion:today-side-region", "todayAxisScrollSurface:today-axis-scroll-surface"].map(binding => { const [name,id] = binding.split(":"); return `const ${name} = document.getElementById('${id}');`; }).join("\n");
   const pure = ["today-time-axis", "task-presentation", "interface-language"].map(name => readFileSync(join(output, `${name}.js`), "utf8").replaceAll("export ", "")).join("\n");
   const script = `(() => {
     document.getElementById('workspace-destination-today').hidden = false;
@@ -52,12 +52,14 @@ test("plans, point Tasks and facts share a scale with separate clickable collisi
     const result = render(`
       const markers=[...todayTimedEvents.querySelectorAll('li')];
       const cluster=markers.filter(m=>m.dataset.stackId===markers[0].dataset.stackId);
-      const solitary=markers.find(m=>m.querySelector('a').dataset.axisItemText==='14:00 Plan alone');
+      const solitary=markers.find(m=>m.querySelector('.today-axis-marker-link').dataset.axisItemText==='14:00 Plan alone');
       const clicks=cluster.map(m=>{
-        const a=m.querySelector('a'),target=document.querySelector(a.getAttribute('href'));
+        const a=m.querySelector('.today-axis-marker-link');
+        if(m.classList.contains('is-task'))return {editable:Boolean(m.dataset.planId),detail:false,editor:false,control:a.tagName};
+        const target=a.getAttribute('href')?document.querySelector(a.getAttribute('href')):null;
         a.click();
         const editor=document.querySelector('dialog.plan-time-editor[open]');
-        const outcome={editable:Boolean(m.dataset.planId),detail:target.open,editor:Boolean(editor)};
+        const outcome={lane:m.classList.contains('is-fact')?'fact':'arrangement',editable:Boolean(m.dataset.planId),detail:Boolean(target?.open),editor:Boolean(editor),control:a.tagName};
         editor?.close();
         return outcome;
       });
@@ -70,10 +72,11 @@ test("plans, point Tasks and facts share a scale with separate clickable collisi
     ordered.slice(1).forEach((r: any,i: number) => assert.ok(r.left >= ordered[i].right - 0.5, `viewport ${width}: collision targets cannot cover one another: ${JSON.stringify(result)}`));
     assert.ok(result.solo.width >= result.plot.width - 12, "unconflicted card uses the row");
     assert.equal(result.clicks.length,3);
-    for(const click of result.clicks) {
+    for(const click of result.clicks.filter((item:any)=>item.control!=='BUTTON')) {
       assert.equal(click.editor,click.editable);
-      assert.equal(click.detail,!click.editable);
+      assert.equal(click.detail,click.lane==='fact' && !click.editable);
     }
+    assert.equal(result.clicks.find((item:any)=>item.control==='BUTTON')?.detail,false);
     assert.ok(result.sources.some((s:string)=>s.includes('arrangement')));
     assert.ok(result.sources.some((s:string)=>s.includes('fact')));
     assert.ok(result.sources.some((s:string)=>s.includes('Task')));
@@ -82,11 +85,12 @@ test("plans, point Tasks and facts share a scale with separate clickable collisi
 
 test("the Daytime axis scrolls independently and quiet-hour expansion preserves its reading position", { skip: process.platform !== "darwin" }, () => {
   const result = render(`
+    todayAxisZoomToggle.click();
     const surface=todayAxisScrollSurface;
     const outerBefore=workspaceInformation.scrollTop;
     const height=surface.clientHeight, total=surface.scrollHeight;
     surface.scrollTop=380;
-    const middle=()=>[...todayTimedEvents.querySelectorAll('a')].find(a=>a.dataset.axisItemText==='14:00 Plan alone');
+    const middle=()=>[...todayTimedEvents.querySelectorAll('.today-axis-marker-link')].find(a=>a.dataset.axisItemText==='14:00 Plan alone');
     const before=middle().getBoundingClientRect().top;
     document.getElementById('today-expand-early').click();
     const after=middle().getBoundingClientRect().top;
@@ -98,22 +102,70 @@ test("the Daytime axis scrolls independently and quiet-hour expansion preserves 
   assert.ok(Math.abs(result.before-result.after)<1.1, `current reading anchor remains in place: ${JSON.stringify(result)}`);
 });
 
-test("existing quiet-hour entries are initially visible and a deliberate fold advertises their count and next-day date", { skip: process.platform !== "darwin" }, () => {
+test("quiet-hour entries are counted at the ends and expand only when the user asks", { skip: process.platform !== "darwin" }, () => {
   const result = render(`
     currentTodayView={...currentTodayView,date:'2026-10-02',tasks:{lists:[],tasks:[]},timeAxis:{currentArrangement:[entry('04:30 early plan',270),entry('01:30 late plan',1530)],confirmedFacts:[],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
     renderTodayTimeAxis(currentTodayView);
     const initial=[...todayTimedEvents.querySelectorAll('.today-axis-marker-time')].map(n=>n.textContent);
     const early=document.getElementById('today-expand-early'),late=document.getElementById('today-expand-late');
+    const collapsed={early:early.textContent,late:late.textContent,expanded:[early.getAttribute('aria-expanded'),late.getAttribute('aria-expanded')]};
+    early.click();const earlyVisible=[...todayTimedEvents.querySelectorAll('.today-axis-marker-time')].map(n=>n.textContent);
+    late.click();const full=[...todayTimedEvents.querySelectorAll('.today-axis-marker-time')].map(n=>n.textContent);
     early.click();late.click();
-    const folded={early:early.textContent,late:late.textContent,details:todayTimedDetails.querySelectorAll('details').length};
-    early.click();late.click();
-    return JSON.stringify({initial,folded,restored:todayTimedEvents.querySelectorAll('li').length});
+    return JSON.stringify({initial,collapsed,earlyVisible,full,collapsedAgain:todayTimedEvents.querySelectorAll('li').length});
   `);
-  assert.deepEqual(result.initial, ['04:30','01:30 · 2026-10-03']);
-  assert.match(result.folded.early, /1 item/);
-  assert.match(result.folded.late, /1 item/);
-  assert.equal(result.folded.details, 2);
-  assert.equal(result.restored, 2);
+  assert.deepEqual(result.initial, []);
+  assert.match(result.collapsed.early, /1 item/);
+  assert.match(result.collapsed.late, /1 item/);
+  assert.deepEqual(result.collapsed.expanded,['false','false']);
+  assert.deepEqual(result.earlyVisible,['04:30']);
+  assert.deepEqual(result.full,['04:30','01:30 Next day']);
+  assert.equal(result.collapsedAgain,0);
+});
+
+test("a broad plan keeps its source period until a drag and exposes only the existing move target", { skip: process.platform !== "darwin" }, () => {
+  const result=render(`
+    const broad={...entry('午后安排',840),planId:'broad-plan',planPrecision:'broad',period:'午后',timeEditable:true};
+    currentTodayView={...currentTodayView,isToday:false,currentTime:null,tasks:{lists:[],tasks:[]},timeAxis:{currentArrangement:[broad],confirmedFacts:[],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
+    renderTodayTimeAxis(currentTodayView);
+    const marker=document.querySelector('.today-axis-marker'),label=marker.querySelector('.today-axis-marker-link');
+    const before={text:label.dataset.axisItemTime,aria:label.getAttribute('aria-label'),precision:broad.planPrecision};
+    label.click();
+    return JSON.stringify({before,after:label.dataset.axisItemTime,planId:marker.dataset.planId,editor:Boolean(document.querySelector('dialog.plan-time-editor[open]')),precision:broad.planPrecision});
+  `);
+  assert.equal(result.before.text,'午后');
+  assert.match(result.before.aria,/午后/);
+  assert.doesNotMatch(result.before.aria,/14:00|840/);
+  assert.equal(result.after,'午后');
+  assert.equal(result.planId,'broad-plan','the existing pointer-move seam can resolve the broad plan identity');
+  assert.equal(result.editor,false,'viewing a broad plan does not turn its default anchor into an explicit edit');
+});
+
+test("the default 06:00–24:00 overview fits the visible Today axis and exposes a display-only zoom control", { skip: process.platform !== "darwin" }, () => {
+  for(const [width,height] of [[1280,800],[1280,720]]) {
+    const result=render(`
+      const surface=todayAxisScrollSurface,plot=document.querySelector('#today-axis-plot');
+      const zoom=document.querySelector('#today-axis-zoom-toggle');
+      const beforeTimes=[...document.querySelectorAll('.today-axis-marker-time')].map(n=>n.textContent);
+      const beforeScale=getComputedStyle(todayContinuousAxis).getPropertyValue('--today-axis-hour-height');
+      const initialScrollHeight=surface.scrollHeight;
+      zoom?.click();
+      const detailScale=getComputedStyle(todayContinuousAxis).getPropertyValue('--today-axis-hour-height');
+      const detailPressed=zoom?.getAttribute('aria-pressed');
+      const afterZoomTimes=[...document.querySelectorAll('.today-axis-marker-time')].map(n=>n.textContent);
+      zoom?.click();
+      const overviewScale=getComputedStyle(todayContinuousAxis).getPropertyValue('--today-axis-hour-height');
+      return JSON.stringify({width:innerWidth,height:innerHeight,initialScrollHeight,scrollHeight:surface.scrollHeight,clientHeight:surface.clientHeight,
+        surface:rect(surface),plot:rect(plot),expanded:[document.querySelector('#today-expand-early').getAttribute('aria-expanded'),document.querySelector('#today-expand-late').getAttribute('aria-expanded')],
+        zoom:Boolean(zoom),label:zoom?.getAttribute('aria-label'),scale:beforeScale,detailScale,detailPressed,overviewScale,beforeTimes,afterZoomTimes});
+    `,width,height);
+    assert.equal(result.width,width);assert.equal(result.height,height);
+    assert.deepEqual(result.expanded,['false','false']);assert.equal(result.zoom,true);
+    assert.ok(result.plot.bottom<=result.surface.bottom+1,`06:00–24:00 remains in the visible axis viewport; supporting fact details may scroll below it: ${JSON.stringify(result)}`);
+    assert.notEqual(result.detailScale,result.scale,'zoom changes only the display scale');
+    assert.equal(result.detailPressed,'true');assert.equal(result.overviewScale,result.scale);
+    assert.deepEqual(result.afterZoomTimes,result.beforeTimes,'zoom does not change saved time labels');
+  }
 });
 
 test("Morning reads original baseline wording as a text document with an explicit source", { skip: process.platform !== "darwin" }, () => {
@@ -166,13 +218,16 @@ test("after-midnight cards keep their date, title and source readable within the
   const result=render(`
     currentTodayView={...currentTodayView,date:'2026-10-02',isToday:false,currentTime:null,tasks:{lists:[],tasks:[]},timeAxis:{currentArrangement:[entry('01:30 Long planned activity',1530)],confirmedFacts:[entry('01:30 Recorded activity',1530)],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
     renderTodayTimeAxis(currentTodayView);
-    return JSON.stringify([...todayTimedEvents.querySelectorAll('li')].map(m=>({card:rect(m.querySelector('a')),title:rect(m.querySelector('.today-axis-marker-title')),time:rect(m.querySelector('.today-axis-marker-time')),source:rect(m.querySelector('.today-axis-marker-source-status')),label:m.querySelector('.today-axis-marker-time').textContent})));
+    document.getElementById('today-expand-late').click();
+    return JSON.stringify([...todayTimedEvents.querySelectorAll('li')].map(m=>({card:rect(m.querySelector('.today-axis-marker-link')),title:rect(m.querySelector('.today-axis-marker-title')),time:rect(m.querySelector('.today-axis-marker-time')),source:rect(m.querySelector('.today-axis-marker-source-status')),label:m.querySelector('.today-axis-marker-time').textContent,fullLabel:m.querySelector('.today-axis-marker-link').dataset.axisItemTime,sourceText:m.querySelector('.today-axis-marker-source-status').textContent})));
   `);
   assert.equal(result.length,2);
   for(const r of result){
-    assert.match(r.label,/2026-10-03/);
-    assert.ok(r.title.width>=80 && r.title.height>=10,`title remains readable: ${JSON.stringify(r)}`);
-    assert.ok(r.time.right<=r.card.right+1 && r.source.bottom<=r.card.bottom+1,`date and provenance fit the target: ${JSON.stringify(r)}`);
+    assert.match(r.fullLabel,/2026-10-03/);
+    assert.match(r.label,/Next day/);
+    assert.ok(r.title.width>=40 && r.title.height>=8,`compact title retains a visible truncated label: ${JSON.stringify(r)}`);
+    assert.ok(r.time.right<=r.card.right+1 && r.title.right<=r.card.right+1,`date and title fit the target: ${JSON.stringify(r)}`);
+    assert.ok(r.sourceText.length>0,`source metadata remains available on the marker: ${JSON.stringify(r)}`);
   }
 });
 
