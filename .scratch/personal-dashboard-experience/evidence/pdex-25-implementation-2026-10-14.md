@@ -75,3 +75,16 @@ Packaged acceptance remains partial/open. Rust checks use synthetic temporary Va
 - Canonical local completion records are the only all-history local facts. The main source projection is the saved, bounded 12-week window. For source-owned evidence outside that projection, no older source fact is inferred. Missing coverage, missing canonical store, stale/error projection or conflicting evidence yields unknown or an at-least result rather than fabricated zero/failure/confirmed maximum.
 - The bounded read API returns stable Habit identity, current/start/base goals, source goal history, local goal revisions, lifecycle events, earliest local lived-date boundary, canonical local completion changes, and in-range projection provenance. It is read-only; lifecycle mutation uses the existing local business/persistence path.
 - Browser interaction tests use synthetic IPC. Rust persistence tests use synthetic temporary Vaults and new-instance readback. WKWebView verification covers production HTML/CSS only. No installed-App workflow or real Vault write/readback was performed, and no packaged-app acceptance is claimed; PDEX-25 remains in-progress/open for integration review and PDEX-26 acceptance.
+
+## Current integration state correction — 2026-10-14
+
+The “separate from integration,” “not merged,” and “no merge” statements above
+record worker-branch checkpoints before integration and are superseded by the
+later merge. The complete PDEX-25 branch at
+`69fe84fc6681bd8fbd1b08e55526a1859a42abce` was non-fast-forward integrated as
+`fe14333c8e1269c4c5b14faf89f2d802dd351487`; its implementation, review fixes,
+and evidence remain reachable. The ticket-status clarification commit
+`0fe551921464b1229b8610be195e347997bc9bdf` was subsequently merged as
+`368571be59092657c55bcef66f12be997e8f0519`. PDEX-25 remains open/in-progress
+under PDEX-26 packaged acceptance; this clarification does not claim an
+installed-App workflow, real Vault write, or packaged acceptance.

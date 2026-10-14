@@ -53,3 +53,15 @@ PDEX-SPEC-02 stories 73–74、80–82、86–87；共同承担 1–3、88–91 
 - 2026-10-14：same-day lifecycle streak边界修正提交 `7b7a3f1`（parent `70d68f5`）将成功周期与前/后连续边界分开；同日停用前的成功保留在旧连续段，同日恢复后的成功作为新段首日，同日停用后的打卡仍不计达标。周目标在停用前已经达标时保留达标周期，但连续不跨生命周期边界。新增4项application-path回归；Habit workflow 30项、cargo check、定向前端28项、浏览器2项、构建和diff/格式检查通过，详情见[同日边界证据](../evidence/pdex-25-implementation-2026-10-14.md#same-day-lifecycle-streak-boundary-fix)。本票仍为in-progress/open，不合入integration。
 - 完整验收前不关闭本票；不安装正常App、不写入真实Vault、不合入integration或main、不push。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
+
+## Integration state correction — 2026-10-14
+
+The preceding execution entries stating “不合入integration” preserve the
+state at those review checkpoints and are superseded by the later integration.
+The complete `codex/pdex-25-restart` branch at
+`69fe84fc6681bd8fbd1b08e55526a1859a42abce` was non-fast-forward merged into
+`codex/dashboard-experience-refinement-restart-20261014` as
+`fe14333c8e1269c4c5b14faf89f2d802dd351487`. Its claim, implementation,
+correction, lifecycle-boundary, review and evidence commits remain reachable.
+PDEX-25 remains open/in-progress under PDEX-26 packaged acceptance; this merge
+did not close the ticket or the parent specification.
