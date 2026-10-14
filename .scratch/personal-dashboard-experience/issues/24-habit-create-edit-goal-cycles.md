@@ -105,5 +105,41 @@ Observed verification:
 
 The PDEX-24 implementation commits above preserve the PDEX-24-only scope.
 Selected-Habit detail and lifecycle remain PDEX-25; packaged acceptance remains
-PDEX-26. The latest integration-branch merge and its post-merge checks are
-recorded below after integration.
+PDEX-26.
+
+## Post-commit ancestry and verification — 2026-10-14
+
+- `codex/dashboard-experience-refinement-reimplementation` was observed at
+  `b7dcd71b50b42de4a706d460d635f99bf059770d`. `git merge-base HEAD
+  codex/dashboard-experience-refinement-reimplementation` returned the same
+  hash. The integration ref therefore had no commits newer than this feature
+  branch's base; no synthetic/redundant merge commit was created. The parent
+  integration workflow will take this branch next.
+- `cargo test --manifest-path src-tauri/Cargo.toml`: exit 0; 102 unit tests and
+  432 integration tests passed, 6 environment-gated tests ignored, doc tests
+  passed (0 defined). This post-commit run includes all eight
+  `habit_definition_workflow` cases, including
+  `a_new_local_habit_is_recordable_and_survives_a_fresh_application_without_a_snapshot`
+  and
+  `editing_a_sourced_habit_without_a_recognized_goal_preserves_its_source_goal`.
+  The create/readback case saves a definition and first local completion to a
+  synthetic selected Vault, creates a fresh application service, and verifies
+  the definition and completion are read back without an external snapshot.
+- `node --test tests/frontend/habit-definition-ui.test.ts
+  tests/frontend/habit-localized-names.test.ts`: 7 passed, 0 failed.
+- `node --experimental-strip-types --check frontend/main.ts` and
+  `node --experimental-strip-types --check frontend/interface-language.ts`:
+  both passed.
+- `git diff --check`: passed with no whitespace errors; the worktree was clean
+  before this evidence update.
+- Local Chrome synthetic IPC smoke remains the UI evidence described above;
+  the fixture identifiers were `synthetic-habit-target` and
+  `synthetic-completions`. It verified the current lived-date default, shared
+  compact form, weekly 1–7 control, and draft retention/same-Vault refresh
+  after a stale revision. It performed no Vault or external Habit writes.
+- `npm run build` remains unavailable because local `tsc` is missing; no
+  dependency was installed. The broad `npm run test:frontend` attempt remains
+  nonzero because child checks cannot spawn the absent `node_modules/.bin/tsc`
+  and reports additional checks outside this ticket. Neither is presented as
+  a passing packaged or complete frontend acceptance run. PDEX-26 owns
+  packaged save/readback acceptance.
