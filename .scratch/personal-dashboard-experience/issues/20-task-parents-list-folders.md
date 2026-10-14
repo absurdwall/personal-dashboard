@@ -85,8 +85,7 @@ after worktree creation.
   changed the Tasks tree to retain the actual depth and show a small localized
   level marker only after compact indentation reaches its cap. The existing
   list density and controls remain unchanged.
-- Added a focused check for the over-cap depth cue; it passed. The full
-  `task-surface.test.ts` file still has an unrelated existing assertion that
-  expects a `const dialog = surface === "tasks"` source string absent from the
-  current implementation (10 passed, 1 failed). Browser and packaged
-  acceptance remain open under PDEX-26.
+- Added a focused check for the over-cap depth cue and corrected stale
+  source/style assertions to match the current Tasks/Calendar modal selector
+  and compact mobile row layout. All 12 checks in `task-surface.test.ts` pass.
+  Browser and packaged acceptance remain open under PDEX-26.

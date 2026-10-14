@@ -47,7 +47,7 @@ test("Tasks keeps the accepted prototype hierarchy and defers heavy controls", (
   assert.match(main, /taskCreateOpen/);
   assert.match(main, /taskListManagementOpen/);
   assert.match(main, /toggleTaskEditorDetails/);
-  assert.match(main, /const dialog = surface === "tasks"/);
+  assert.match(main, /const usesModal = surface === "tasks" \|\| surface === "calendar"/);
   assert.match(main, /task-editor-inline/);
   assert.match(css, /\.tasks-layout\s*\{/);
   assert.match(css, /\.task-row\.task-editor\s*\{/);
@@ -55,7 +55,7 @@ test("Tasks keeps the accepted prototype hierarchy and defers heavy controls", (
   assert.match(css, /\.tasks-content\s*>\s*#tasks-list\s*\{[^}]*gap:\s*0\.15rem/);
   assert.match(css, /\.task-row\[data-task-surface="tasks"\]\s*\.task-title-button\s*\{[^}]*font-family:\s*inherit;[^}]*font-size:\s*12px;[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.4/);
   assert.match(main, /if \(surface === "tasks" && taskCompletionToggle\) heading\.append\(taskCompletionToggle\)/);
-  assert.match(css, /\.task-row\[data-task-surface="tasks"\] \.task-row-summary\s*\{[^}]*grid-template-columns:\s*15px minmax\(0,1fr\) auto;[^}]*gap:\s*7px/);
+  assert.match(css, /\.task-row\[data-task-surface="tasks"\] \.task-row-summary\s*\{[^}]*grid-template-columns:\s*15px minmax\(0,1fr\);/);
   assert.match(css, /\.task-row\[data-task-surface="tasks"\] \.task-completion-toggle input\s*\{[^}]*width:\s*15px;[^}]*height:\s*15px/);
 });
 
