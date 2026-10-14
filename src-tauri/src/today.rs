@@ -1887,6 +1887,8 @@ pub struct TimeAxisEntryView {
     pub time_editable: bool,
     pub period: Option<String>,
     pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub source_date: String,
     pub start_minute: Option<u16>,
     pub end_minute: Option<u16>,
@@ -6834,6 +6836,7 @@ fn project_time_axis<C: TodayClock>(
         for entry in axis.current_arrangement[located_start..].iter_mut()
             .chain(axis.unlocated_current_arrangement[unlocated_start..].iter_mut()) {
             entry.plan_precision = Some(precision);
+            entry.title = Some(block.title.clone());
         }
     }
     for fact in daytime
@@ -6904,6 +6907,7 @@ fn project_axis_item<C: TodayClock>(
                 time_editable: false,
                 period,
                 text: text.to_owned(),
+                title: None,
                 source_date: source_date.to_owned(),
                 start_minute: Some(projected as u16),
                 end_minute: None,
@@ -6973,6 +6977,7 @@ fn project_axis_item<C: TodayClock>(
                 time_editable: false,
                 period,
                 text: text.to_owned(),
+                title: None,
                 source_date: source_date.to_owned(),
                 start_minute: Some(start),
                 end_minute: Some(end),
@@ -6994,6 +6999,7 @@ fn unlocated_axis_entry(
         time_editable: false,
         period,
         text: text.to_owned(),
+        title: None,
         source_date: source_date.to_owned(),
         start_minute: None,
         end_minute: None,
@@ -8018,7 +8024,10 @@ fn clean_inline_markdown(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{save_file_if_unchanged, StorageDocumentKind};
+    use super::{
+        bind_plan_time_sources, project_time_axis, save_file_if_unchanged, DaytimeUpdateView,
+        DaytimeView, MorningBlockView, StorageDocumentKind, TodayClock,
+    };
     use std::cell::RefCell;
     use std::fs;
     use std::io::{Seek, SeekFrom, Write};
@@ -8027,6 +8036,22 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    struct FixedClock;
+
+    impl TodayClock for FixedClock {
+        fn current_date(&self) -> String {
+            "2026-10-14".into()
+        }
+
+        fn current_time_label(&self) -> String {
+            "12:00".into()
+        }
+
+        fn current_timestamp_label(&self) -> String {
+            "2026-10-14T12:00:00".into()
+        }
+    }
 
     struct TempDirectory(PathBuf);
 
@@ -8057,6 +8082,93 @@ mod tests {
         fs::create_dir_all(path.parent().expect("record should have a parent"))
             .expect("record directory should be created");
         path
+    }
+
+    #[test]
+    fn time_axis_titles_preserve_full_text_and_bind_same_title_plans_by_full_source() {
+        let timeline = vec![
+            MorningBlockView {
+                period: "09:15".into(),
+                title: "同名安排".into(),
+                detail: Some("完整来源 A".into()),
+            },
+            MorningBlockView {
+                period: "10:15".into(),
+                title: "同名安排".into(),
+                detail: Some("完整来源 B".into()),
+            },
+        ];
+        let document = "---\ntype: daily-record\ndate: 2026-10-14\n---\n# Daily Record\n## 今天的大致安排\n- **09:15** 同名安排；完整来源 A\n- **10:15** 同名安排；完整来源 B\n";
+        let mut axis = project_time_axis(
+            &timeline,
+            &DaytimeView::default(),
+            "2026-10-14",
+            &FixedClock,
+        );
+        bind_plan_time_sources(document, &mut axis);
+
+        assert_eq!(axis.current_arrangement.len(), 2);
+        assert_eq!(
+            axis.current_arrangement[0].title.as_deref(),
+            Some("同名安排")
+        );
+        assert_eq!(
+            axis.current_arrangement[1].title.as_deref(),
+            Some("同名安排")
+        );
+        assert_eq!(axis.current_arrangement[0].text, "同名安排 完整来源 A");
+        assert_eq!(axis.current_arrangement[1].text, "同名安排 完整来源 B");
+        assert!(axis.current_arrangement[0].plan_id.is_some());
+        assert!(axis.current_arrangement[1].plan_id.is_some());
+        assert_ne!(axis.current_arrangement[0].plan_id, axis.current_arrangement[1].plan_id);
+    }
+
+    #[test]
+    fn time_axis_titles_cover_unlocated_and_next_day_entries_without_guessing_fact_titles() {
+        let timeline = vec![
+            MorningBlockView {
+                period: "2026-10-14 23:30–2026-10-15 01:30".into(),
+                title: "跨日安排".into(),
+                detail: Some("保留完整说明".into()),
+            },
+            MorningBlockView {
+                period: "稍后".into(),
+                title: "未定位安排".into(),
+                detail: Some("保留未定位说明".into()),
+            },
+        ];
+        let daytime = DaytimeView {
+            updates: vec![DaytimeUpdateView {
+                title: "事实更新".into(),
+                context: Vec::new(),
+                neutral: Vec::new(),
+                observed_facts: vec!["2026-10-14 10:00 已确认事实；完整事实说明".into()],
+                original_intent: Vec::new(),
+                change_reasons: Vec::new(),
+                revised_direction: Vec::new(),
+            }],
+            short_records: Vec::new(),
+        };
+        let axis = project_time_axis(&timeline, &daytime, "2026-10-14", &FixedClock);
+
+        assert_eq!(axis.current_arrangement.len(), 1);
+        assert_eq!(
+            axis.current_arrangement[0].title.as_deref(),
+            Some("跨日安排")
+        );
+        assert_eq!(axis.current_arrangement[0].text, "跨日安排 保留完整说明");
+        assert_eq!(axis.unlocated_current_arrangement.len(), 1);
+        assert_eq!(
+            axis.unlocated_current_arrangement[0].title.as_deref(),
+            Some("未定位安排")
+        );
+        assert_eq!(
+            axis.unlocated_current_arrangement[0].text,
+            "未定位安排 保留未定位说明"
+        );
+        assert_eq!(axis.confirmed_facts.len(), 1);
+        assert_eq!(axis.confirmed_facts[0].title, None);
+        assert_eq!(axis.confirmed_facts[0].text, "2026-10-14 10:00 已确认事实；完整事实说明");
     }
 
     #[test]

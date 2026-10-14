@@ -6842,6 +6842,7 @@ body {
 .today-axis-marker.is-stacked .today-axis-marker-title { -webkit-line-clamp: 1; }
 
 .today-axis-marker-link {
+  appearance: none;
   box-sizing: border-box;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -6861,6 +6862,7 @@ body {
   background: #e7f0eb;
   color: #214e43;
   font-size: 11px;
+  font-family: inherit;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   line-height: 1.25;
@@ -6868,6 +6870,7 @@ body {
   text-decoration: none;
   white-space: normal;
   pointer-events: auto;
+  cursor: pointer;
 }
 
 .today-axis-marker.is-arrangement .today-axis-marker-link {
@@ -7918,14 +7921,30 @@ body {
 }
 
 .tasks-content {
+  container: tasks-content / inline-size;
   min-width: 0;
 }
 
 .tasks-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   padding-bottom: 11px;
   border-bottom: 1px solid var(--parity-border);
+}
+
+.tasks-toolbar > div:first-child {
+  min-width: 0;
+  flex: 1 1 13rem;
+}
+
+.tasks-toolbar-actions {
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .tasks-toolbar .section-label {
@@ -8490,6 +8509,13 @@ body {
 .calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-editor-titlebar { display: flex; align-items: flex-start; gap: 0.5rem; }
 .calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-title-field { flex: 1 1 auto; min-width: 0; }
 .calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-more-menu { flex: 0 0 auto; }
+.task-editor-compact .task-calendar-list-fields { padding-top: 0.35rem; }
+.task-editor-compact .task-calendar-schedule-fields {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.45rem 0 0.5rem;
+  border-top: 1px solid var(--parity-border);
+}
 
 @media (max-width: 680px) {
   .app-shell[data-workspace-destination="calendar"] .calendar-day {
@@ -8829,6 +8855,7 @@ button.habit-cell:focus-visible {
 
 .destination-page-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: 1.5rem;
@@ -8839,8 +8866,13 @@ button.habit-cell:focus-visible {
 }
 
 .destination-page-header > div:first-child {
-  min-width: 0;
-  flex: 1 1 auto;
+  min-width: min(100%, 18rem);
+  flex: 1 1 21rem;
+}
+
+.destination-page-header > :not(:first-child) {
+  max-width: 100%;
+  flex: 0 1 auto;
 }
 
 .destination-page-header .section-label {
@@ -9974,10 +10006,6 @@ button.habit-cell:focus-visible {
     align-items: flex-start;
   }
 
-  .collaboration-date-toolbar {
-    width: 100%;
-  }
-
   .collaboration-date-controls {
     flex-wrap: wrap;
   }
@@ -10547,11 +10575,9 @@ button.habit-cell:focus-visible {
   scrollbar-width: thin;
 }
 
-@media (max-width: 1100px) {
+@container tasks-content (max-width: 42rem) {
   .tasks-content > .tasks-toolbar {
     align-items: flex-start;
-    flex-wrap: wrap;
-    gap: 0.5rem;
   }
 
   .tasks-content > .tasks-toolbar > .tasks-toolbar-actions {
@@ -10803,6 +10829,18 @@ button.habit-cell:focus-visible {
   gap: 0.4rem;
 }
 
+.task-editor-footer-actions > button {
+  box-sizing: border-box;
+  display: inline-flex;
+  min-height: 1.9rem;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+
 .task-editor-details[data-task-surface="tasks"] .task-editor-footer button {
   min-height: 1.9rem;
   margin: 0;
@@ -10833,13 +10871,14 @@ button.habit-cell:focus-visible {
 .task-more-menu > summary::after { content: "···"; font-size: 1rem; letter-spacing: 0.08em; }
 
 .task-more-menu-panel {
-  position: absolute;
-  z-index: 4;
-  top: calc(100% + 0.25rem);
-  right: 0;
+  position: fixed;
+  z-index: 1005;
+  top: var(--task-more-menu-top, 0px);
+  right: auto;
+  left: var(--task-more-menu-left, 0px);
   display: grid;
   width: min(13rem, calc(100vw - 2rem));
-  max-height: min(18rem, calc(100dvh - 4rem));
+  max-height: var(--task-more-menu-max-height, min(18rem, calc(100dvh - 4rem)));
   padding: 0.25rem;
   overflow: auto;
   border: 1px solid var(--parity-border);

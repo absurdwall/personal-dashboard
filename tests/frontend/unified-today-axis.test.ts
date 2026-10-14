@@ -53,13 +53,17 @@ test("plans, point Tasks and facts share a scale with separate clickable collisi
     const result = render(`
       const markers=[...todayTimedEvents.querySelectorAll('li')];
       const cluster=markers.filter(m=>m.dataset.stackId===markers[0].dataset.stackId);
-      const solitary=markers.find(m=>m.querySelector('a').dataset.axisItemText==='14:00 Plan alone');
+      let openedTask='';
+      openTodayAxisTaskPopup=id=>{openedTask=id;};
+      const solitary=markers.find(m=>m.querySelector('.today-axis-marker-link').dataset.axisItemText==='14:00 Plan alone');
       const clicks=cluster.map(m=>{
-        const a=m.querySelector('a'),target=document.querySelector(a.getAttribute('href'));
-        a.click();
+        const action=m.querySelector('.today-axis-marker-link');
+        const target=action.getAttribute('href') ? document.querySelector(action.getAttribute('href')) : null;
+        action.click();
         const editor=document.querySelector('dialog.plan-time-editor[open]');
-        const outcome={editable:Boolean(m.dataset.planId),detail:target.open,editor:Boolean(editor)};
+        const outcome={task:m.dataset.taskId||'',editable:Boolean(m.dataset.planId),detail:Boolean(target?.open),editor:Boolean(editor),taskPopup:openedTask};
         editor?.close();
+        todayAxisTaskPopup?.close();
         return outcome;
       });
       return JSON.stringify({cluster:cluster.map(rect),solo:rect(solitary),plot:rect(document.querySelector('.today-axis-plot')),clicks,sources:cluster.map(m=>m.querySelector('.today-axis-marker-source-status').textContent),scales:todayContinuousAxis.querySelectorAll('.today-hour-scale').length,viewportHeight:window.innerHeight});
@@ -72,13 +76,61 @@ test("plans, point Tasks and facts share a scale with separate clickable collisi
     assert.ok(result.solo.width >= result.plot.width - 12, "unconflicted card uses the row");
     assert.equal(result.clicks.length,3);
     for(const click of result.clicks) {
-      assert.equal(click.editor,click.editable);
-      assert.equal(click.detail,!click.editable);
+      if (click.task) {
+        assert.equal(click.taskPopup,click.task);
+        assert.equal(click.editor,false);
+        assert.equal(click.detail,false);
+      } else if (click.editable) {
+        assert.equal(click.editor,true);
+        assert.equal(click.detail,false);
+      } else {
+        assert.equal(click.editor,false);
+        assert.equal(click.detail,true);
+      }
     }
     assert.ok(result.sources.some((s:string)=>s.includes('arrangement')));
     assert.ok(result.sources.some((s:string)=>s.includes('fact')));
     assert.ok(result.sources.some((s:string)=>s.includes('Task')));
   }
+});
+
+test("read-only arrangement markers use semantic titles while full arrangement and fact text stays reachable", { skip: process.platform !== "darwin" }, () => {
+  const result = render(`
+    currentTodayView={...currentTodayView,tasks:{lists:[],tasks:[]},timeAxis:{
+      currentArrangement:[
+        {...entry('Prepare brief; keep the complete source note A',510),title:'Prepare brief',planPrecision:'exactPoint'},
+        {...entry('Prepare brief; keep the complete source note B',530),title:'Prepare brief',planPrecision:'exactPoint'}
+      ],
+      confirmedFacts:[entry('10:30 Confirmed fact; retain the complete evidence',630)],
+      unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]
+    }};
+    renderTodayTimeAxis(currentTodayView);
+    const markers=[...todayTimedEvents.querySelectorAll('.today-axis-marker')];
+    const details=[...todayTimedDetails.querySelectorAll('details')];
+    const before={titles:markers.map(marker=>marker.querySelector('.today-axis-marker-title').textContent),
+      fullSourceText:markers.map(marker=>marker.querySelector('.today-axis-marker-link').dataset.axisItemText),
+      arrangementDetails:details.filter(detail=>detail.id.startsWith('today-axis-arrangement-')).map(detail=>detail.querySelector(':scope > p').textContent),
+      factDetails:details.filter(detail=>detail.id.startsWith('today-axis-facts-')).map(detail=>detail.querySelector(':scope > p').textContent),
+      editableControls:details.flatMap(detail=>[...detail.querySelectorAll('button')]).length,
+      detailsVisible:!todayTimedDetails.hidden};
+    markers[0].querySelector('.today-axis-marker-link').click();
+    markers[2].querySelector('.today-axis-marker-link').click();
+    return JSON.stringify({...before,opened:details.map(detail=>detail.open)});
+  `);
+  assert.deepEqual(result.titles, ["Prepare brief", "Prepare brief", "10:30 Confirmed fact; retain the complete evidence"]);
+  assert.deepEqual(result.fullSourceText, [
+    "Prepare brief; keep the complete source note A",
+    "Prepare brief; keep the complete source note B",
+    "10:30 Confirmed fact; retain the complete evidence",
+  ]);
+  assert.deepEqual(result.arrangementDetails, [
+    "Prepare brief; keep the complete source note A",
+    "Prepare brief; keep the complete source note B",
+  ]);
+  assert.deepEqual(result.factDetails, ["10:30 Confirmed fact; retain the complete evidence"]);
+  assert.equal(result.editableControls, 0);
+  assert.equal(result.detailsVisible, true);
+  assert.deepEqual(result.opened, [true, false, true]);
 });
 
 test("the Daytime axis scrolls independently and quiet-hour expansion preserves its reading position", { skip: process.platform !== "darwin" }, () => {
@@ -87,7 +139,7 @@ test("the Daytime axis scrolls independently and quiet-hour expansion preserves 
     const outerBefore=workspaceInformation.scrollTop;
     const height=surface.clientHeight, total=surface.scrollHeight;
     surface.scrollTop=380;
-    const middle=()=>[...todayTimedEvents.querySelectorAll('a')].find(a=>a.dataset.axisItemText==='14:00 Plan alone');
+    const middle=()=>[...todayTimedEvents.querySelectorAll('.today-axis-marker-link')].find(a=>a.dataset.axisItemText==='14:00 Plan alone');
     const before=middle().getBoundingClientRect().top;
     document.getElementById('today-expand-early').click();
     const after=middle().getBoundingClientRect().top;

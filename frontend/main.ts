@@ -206,6 +206,7 @@ type TimeAxisEntryView = Readonly<{
   planPrecision?: "broad" | "approximatePoint" | "exactPoint" | "exactRange" | "unlocated" | null;
   period: string | null;
   text: string;
+  title?: string | null;
   sourceDate: string;
   startMinute: number | null;
   endMinute: number | null;
@@ -5808,6 +5809,12 @@ function hasExactPlanTime(entry: TimeAxisEntryView): boolean {
   return entry.planPrecision === "exactPoint" || entry.planPrecision === "exactRange";
 }
 
+function canEditTodayPlanTime(entry: TimeAxisEntryView): boolean {
+  return (hasExactPlanTime(entry) || entry.planPrecision === "broad" || entry.planPrecision === "approximatePoint") &&
+    Boolean(entry.planId) && Boolean(entry.timeEditable) &&
+    !entry.continuesFromPreviousDay && !entry.continuesIntoNextDay;
+}
+
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
   if(entry.task) {
     const task=currentTodayView?.tasks.tasks.find(task=>task.id===entry.task!.id);
@@ -6423,9 +6430,10 @@ function renderTodayTimeAxisEntries(
   ordered.forEach(({ entry, index }) => {
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
   });
-  const lowerDetailEntries = ordered.filter(({ entry }) => entry.lane === "facts");
-  todayTimedDetails.replaceChildren(...lowerDetailEntries.map(({ index }) => detailElements.get(index)!));
-  todayTimedDetails.toggleAttribute("hidden", lowerDetailEntries.length === 0);
+  const detailEntries = ordered.filter(({ entry }) => entry.lane === "facts" ||
+    (entry.lane === "arrangement" && !canEditTodayPlanTime(entry)));
+  todayTimedDetails.replaceChildren(...detailEntries.map(({ index }) => detailElements.get(index)!));
+  todayTimedDetails.toggleAttribute("hidden", detailEntries.length === 0);
   const [visibleStart, visibleEnd] = axisBounds();
   const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
     entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
@@ -6475,10 +6483,7 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-completed", entry.task?.state === "completed");
       marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
       if (entry.task) marker.dataset.taskId = entry.task.id;
-      const editablePlan = original.lane === "arrangement" &&
-        (hasExactPlanTime(original) || original.planPrecision === "broad" || original.planPrecision === "approximatePoint") &&
-        original.planId && original.timeEditable &&
-        !original.continuesFromPreviousDay && !original.continuesIntoNextDay;
+      const editablePlan = original.lane === "arrangement" && canEditTodayPlanTime(original);
       if (editablePlan) marker.dataset.planId = original.planId!;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
       marker.style.setProperty(
@@ -6498,9 +6503,11 @@ function renderTodayTimeAxisEntries(
       markersByStack.set(placement.stackId, [...(markersByStack.get(placement.stackId) ?? []), marker]);
 
       const readOnlyArrangement = original.lane === "arrangement" && !editablePlan;
-      const link = document.createElement(readOnlyArrangement ? "span" : "a");
+      const link = document.createElement(editablePlan || entry.task ? "button" : "a");
       if (link instanceof HTMLAnchorElement) {
         link.href = `#today-axis-${entry.lane}-entry-${index}`;
+      } else {
+        link.type = "button";
       }
       link.className = "today-axis-marker-link";
       if (readOnlyArrangement) link.classList.add("is-read-only");
@@ -6518,36 +6525,36 @@ function renderTodayTimeAxisEntries(
       title.className = "today-axis-marker-title";
       title.textContent = entry.task
         ? entry.text
-        : stripLeadingAxisTimeLabel(
-          entry.text,
-          formatAxisMinute(original.startMinute!),
-          original.endMinute === null ? null : formatAxisMinute(original.endMinute),
-        );
+        : original.lane === "arrangement"
+          ? stripLeadingAxisTimeLabel(
+            original.title ?? entry.text,
+            formatAxisMinute(original.startMinute!),
+            original.endMinute === null ? null : formatAxisMinute(original.endMinute),
+          )
+          : original.title ?? entry.text;
       const metadata = document.createElement("span");
       metadata.className = "today-axis-marker-source-status";
       appendAxisEntryMetadata(metadata, entry, entry.lane);
       link.append(timeLabel, title, metadata);
       link.classList.toggle("is-short-range", durationMinutes !== null && markerLayout.isCenteredLabel);
-      if (!readOnlyArrangement) {
-        link.addEventListener("click", (event) => {
-          event.preventDefault();
-          const members = markersByStack.get(placement.stackId) ?? [];
-          members.forEach((member) => member.classList.toggle("is-stack-front", member === marker));
-          if (editablePlan) {
-            openPlanTimeEditor(original);
-            return;
-          }
-          if (entry.task) {
-            openTodayAxisTaskPopup(entry.task.id, marker);
-            return;
-          }
-          const target = detailElements.get(index);
-          if (!target) return;
-          target.open = true;
-          todayAxisFollowState = onManualScroll(todayAxisFollowState);
-          target.scrollIntoView({ block: "center", behavior: "smooth" });
-        });
-      }
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        const members = markersByStack.get(placement.stackId) ?? [];
+        members.forEach((member) => member.classList.toggle("is-stack-front", member === marker));
+        if (editablePlan) {
+          openPlanTimeEditor(original);
+          return;
+        }
+        if (entry.task) {
+          openTodayAxisTaskPopup(entry.task.id, marker);
+          return;
+        }
+        const target = detailElements.get(index);
+        if (!target) return;
+        target.open = true;
+        todayAxisFollowState = onManualScroll(todayAxisFollowState);
+        target.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
       marker.append(link);
       if (editablePlan && original.planPrecision === "exactRange" && original.endMinute !== null) {
         const endHandle = document.createElement("button");
@@ -11611,6 +11618,52 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
   return true;
 }
 
+function positionTaskMoreMenu(menu: HTMLDetailsElement): void {
+  const menuPanel = menu.querySelector<HTMLElement>(".task-more-menu-panel");
+  const moreSummary = menu.querySelector<HTMLElement>("summary");
+  const footer = menu.closest("form")?.querySelector<HTMLElement>(".task-editor-footer");
+  if (!menu.open || !menu.isConnected || !menuPanel || !moreSummary || !footer) {
+    menuPanel?.style.removeProperty("--task-more-menu-left");
+    menuPanel?.style.removeProperty("--task-more-menu-top");
+    menuPanel?.style.removeProperty("--task-more-menu-max-height");
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    if (!menu.open || !menu.isConnected) return;
+    const anchor = moreSummary.getBoundingClientRect();
+    const panel = menuPanel.getBoundingClientRect();
+    const footerBounds = footer.getBoundingClientRect();
+    const margin = 8;
+    const gap = 4;
+    const width = Math.min(panel.width, window.innerWidth - margin * 2);
+    const left = Math.max(margin, Math.min(anchor.right - width, window.innerWidth - width - margin));
+    const footerCoversColumn = left < footerBounds.right && left + width > footerBounds.left;
+    const belowTop = anchor.bottom + gap;
+    const belowLimit = footerCoversColumn && footerBounds.top < window.innerHeight
+      ? Math.min(window.innerHeight - margin, footerBounds.top - margin)
+      : window.innerHeight - margin;
+    const belowSpace = Math.max(0, belowLimit - belowTop);
+    const aboveBottom = anchor.top - gap;
+    const aboveSpace = Math.max(0, aboveBottom - margin);
+    const desiredHeight = Math.min(panel.height, window.innerHeight - margin * 2);
+    const placeAbove = belowSpace < desiredHeight && aboveSpace > belowSpace;
+    const available = placeAbove ? aboveSpace : belowSpace;
+    const height = Math.max(0, Math.min(desiredHeight, available));
+    const top = placeAbove ? aboveBottom - height : belowTop;
+    menuPanel.style.setProperty("--task-more-menu-left", `${left}px`);
+    menuPanel.style.setProperty("--task-more-menu-top", `${Math.max(margin, top)}px`);
+    menuPanel.style.setProperty("--task-more-menu-max-height", `${height}px`);
+  });
+}
+
+function positionOpenTaskMoreMenus(): void {
+  document.querySelectorAll<HTMLDetailsElement>(".task-more-menu[open]")
+    .forEach(positionTaskMoreMenu);
+}
+
+window.addEventListener("resize", positionOpenTaskMoreMenus);
+document.addEventListener("scroll", positionOpenTaskMoreMenus, { capture: true, passive: true });
+
 function taskEditor(
   task: TaskView,
   writable: boolean,
@@ -11896,40 +11949,54 @@ function taskEditor(
     stashTaskSurfaceDraft(surface, editorForm);
   });
   if (compact) {
-    const listDetails = document.createElement("details");
-    listDetails.className = "task-property-disclosure task-list-disclosure";
-    listDetails.dataset.taskListDisclosure = "";
-    const listSummary = document.createElement("summary");
-    const listSummaryLabel = document.createElement("span");
-    setCopy(listSummaryLabel, "tasks.list");
-    const listSummaryValue = document.createElement("small");
-    listSummaryValue.dataset.taskListSummary = "";
-    const selectedList = view ? taskListForId(view, draft?.listId ?? task.listId) : undefined;
-    listSummaryValue.textContent = selectedList
-      ? taskListDisplayName(selectedList, t("tasks.inbox"))
-      : task.listId;
-    listSummary.append(listSummaryLabel, listSummaryValue);
-    listDetails.append(listSummary, listLabel);
+    const listSection = document.createElement(surface === "calendar" ? "div" : "details");
+    if (surface === "calendar") {
+      listSection.className = "task-calendar-list-fields";
+      listSection.setAttribute("role", "group");
+      listSection.setAttribute("aria-label", t("tasks.list"));
+      listSection.append(listLabel);
+    } else {
+      listSection.className = "task-property-disclosure task-list-disclosure";
+      listSection.dataset.taskListDisclosure = "";
+      const listSummary = document.createElement("summary");
+      const listSummaryLabel = document.createElement("span");
+      setCopy(listSummaryLabel, "tasks.list");
+      const listSummaryValue = document.createElement("small");
+      listSummaryValue.dataset.taskListSummary = "";
+      const selectedList = view ? taskListForId(view, draft?.listId ?? task.listId) : undefined;
+      listSummaryValue.textContent = selectedList
+        ? taskListDisplayName(selectedList, t("tasks.inbox"))
+        : task.listId;
+      listSummary.append(listSummaryLabel, listSummaryValue);
+      listSection.append(listSummary, listLabel);
+    }
 
-    const scheduleDetails = document.createElement("details");
-    scheduleDetails.className = "task-property-disclosure task-schedule-disclosure";
-    scheduleDetails.dataset.taskScheduleDisclosure = "";
-    const scheduleSummary = document.createElement("summary");
-    const scheduleSummaryLabel = document.createElement("span");
-    setCopy(scheduleSummaryLabel, "tasks.schedule");
-    const scheduleSummaryValue = document.createElement("small");
-    scheduleSummaryValue.dataset.taskScheduleSummary = "";
-    const scheduleEnd = draft
-      ? draft.endDate && draft.endTime
-        ? {date: draft.endDate, time: draft.endTime}
-        : null
-      : task.executionEnd;
-    scheduleSummaryValue.textContent = taskScheduleText(
-      draft?.date ?? task.date,
-      draft?.time ?? task.time,
-      scheduleEnd,
-    );
-    scheduleSummary.append(scheduleSummaryLabel, scheduleSummaryValue);
+    const scheduleSection = document.createElement(surface === "calendar" ? "div" : "details");
+    if (surface === "calendar") {
+      scheduleSection.className = "task-calendar-schedule-fields";
+      scheduleSection.setAttribute("role", "group");
+      scheduleSection.setAttribute("aria-label", t("tasks.schedule"));
+    } else {
+      scheduleSection.className = "task-property-disclosure task-schedule-disclosure";
+      scheduleSection.dataset.taskScheduleDisclosure = "";
+      const scheduleSummary = document.createElement("summary");
+      const scheduleSummaryLabel = document.createElement("span");
+      setCopy(scheduleSummaryLabel, "tasks.schedule");
+      const scheduleSummaryValue = document.createElement("small");
+      scheduleSummaryValue.dataset.taskScheduleSummary = "";
+      const scheduleEnd = draft
+        ? draft.endDate && draft.endTime
+          ? {date: draft.endDate, time: draft.endTime}
+          : null
+        : task.executionEnd;
+      scheduleSummaryValue.textContent = taskScheduleText(
+        draft?.date ?? task.date,
+        draft?.time ?? task.time,
+        scheduleEnd,
+      );
+      scheduleSummary.append(scheduleSummaryLabel, scheduleSummaryValue);
+      scheduleSection.append(scheduleSummary);
+    }
     const scheduleGrid = document.createElement("div");
     scheduleGrid.className = "task-schedule-fields";
     scheduleGrid.append(dateLabel, timeLabel, endDateLabel, endTimeLabel);
@@ -11959,7 +12026,7 @@ function taskEditor(
       updateTaskEditorSummaries(editorForm, view);
       stashTaskSurfaceDraft(surface, editorForm);
     });
-    scheduleDetails.append(scheduleSummary, scheduleGrid, clearEnd, clearSchedule);
+    scheduleSection.append(scheduleGrid, clearEnd, clearSchedule);
 
     const propertiesDetails = document.createElement("details");
     propertiesDetails.className = "task-property-disclosure task-organizing-disclosure";
@@ -12095,7 +12162,7 @@ function taskEditor(
     }
     grid.append(contentLabel);
     if (addChildAction) grid.append(addChildAction);
-    grid.append(listDetails, scheduleDetails);
+    grid.append(listSection, scheduleSection);
     if (surface === "tasks") grid.append(propertiesDetails, parentDetails);
     if (!usesModal) editorForm.prepend(nameLabel);
   } else {
@@ -12262,6 +12329,7 @@ function taskEditor(
     }
     menuPanel.append(...Array.from(stateActions.children));
     menu.append(moreSummary, menuPanel);
+    menu.addEventListener("toggle", () => positionTaskMoreMenu(menu));
     const titlebar = document.createElement("div");
     titlebar.className = "task-editor-titlebar";
     titlebar.append(nameLabel, menu);
@@ -12838,7 +12906,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-list], [data-task-parent], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-clear-timed-schedule], [data-task-completion-date], [data-task-completion-time], [data-task-priority], input[data-task-tag-choice], input[data-task-tag-new], input[data-task-tag-rename], button[data-task-tag-create], button[data-task-tag-rename-begin], button[data-task-tag-rename-save], button[data-task-tag-rename-cancel], button[data-task-tag-delete], button[data-task-open-schedule], button[data-task-open-list], button[data-task-open-parent-relationship], button[data-task-add-child], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-list], [data-task-parent], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-clear-timed-schedule], [data-task-completion-date], [data-task-completion-time], [data-task-priority], input[data-task-tag-choice], input[data-task-tag-new], input[data-task-tag-rename], button[data-task-tag-create], button[data-task-tag-rename-begin], button[data-task-tag-rename-save], button[data-task-tag-rename-cancel], button[data-task-tag-delete], button[data-task-open-schedule], button[data-task-open-list], button[data-task-open-parent-relationship], button[data-task-add-child], button[data-task-correct-completion], button[data-task-editor-close], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
