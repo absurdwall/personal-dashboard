@@ -56,10 +56,10 @@ their worktrees were clean at handoff.
 
 | Ticket | Working branch | Start commit | Worktree | Claim operation |
 | --- | --- | --- | --- | --- |
-| PDEX-20 | `codex/pdex-20-refinement-reimplementation` | `7099c0949d61e50254bb6e9fa4e8e61d8dd08f29` | `/Users/tingranwang/.codex/worktrees/pdex-20-refinement-reimplementation/personal-dashboard` | `pdex-20-reimplementation-claim-2026-10-13` |
-| PDEX-21 | `codex/pdex-21-refinement-reimplementation` | `7099c0949d61e50254bb6e9fa4e8e61d8dd08f29` | `/Users/tingranwang/.codex/worktrees/pdex-21-refinement-reimplementation/personal-dashboard` | `pdex-21-reimplementation-claim-2026-10-13` |
-| PDEX-22 | `codex/pdex-22-refinement-reimplementation` | `7099c0949d61e50254bb6e9fa4e8e61d8dd08f29` | `/Users/tingranwang/.codex/worktrees/pdex-22-refinement-reimplementation/personal-dashboard` | `pdex-22-reimplementation-claim-2026-10-13` |
-| PDEX-25 | `codex/pdex-25-refinement-reimplementation` | `7099c0949d61e50254bb6e9fa4e8e61d8dd08f29` | `/Users/tingranwang/.codex/worktrees/pdex-25-refinement-reimplementation/personal-dashboard` | `pdex-25-reimplementation-claim-2026-10-13` |
+| PDEX-20 | `codex/pdex-20-refinement-reimplementation` | `ad697e01cf5a51a619fb97bbad174ebb50161d91` | `/Users/tingranwang/.codex/worktrees/pdex-20-refinement-reimplementation/personal-dashboard` | `pdex-20-reimplementation-claim-2026-10-13` |
+| PDEX-21 | `codex/pdex-21-refinement-reimplementation` | `ad697e01cf5a51a619fb97bbad174ebb50161d91` | `/Users/tingranwang/.codex/worktrees/pdex-21-refinement-reimplementation/personal-dashboard` | `pdex-21-reimplementation-claim-2026-10-13` |
+| PDEX-22 | `codex/pdex-22-refinement-reimplementation` | `ad697e01cf5a51a619fb97bbad174ebb50161d91` | `/Users/tingranwang/.codex/worktrees/pdex-22-refinement-reimplementation/personal-dashboard` | `pdex-22-reimplementation-claim-2026-10-13` |
+| PDEX-25 | `codex/pdex-25-refinement-reimplementation` | `ad697e01cf5a51a619fb97bbad174ebb50161d91` | `/Users/tingranwang/.codex/worktrees/pdex-25-refinement-reimplementation/personal-dashboard` | `pdex-25-reimplementation-claim-2026-10-13` |
 
 ## History
 
@@ -132,5 +132,7 @@ their worktrees were clean at handoff.
   branches `codex/pdex-20-refinement-reimplementation`,
   `codex/pdex-21-refinement-reimplementation`,
   `codex/pdex-22-refinement-reimplementation`, and
-  `codex/pdex-25-refinement-reimplementation`. The exact paths and commit are
-  recorded in the claim-frontier table above.
+  `codex/pdex-25-refinement-reimplementation`. Before implementation handoff,
+  each branch was fast-forwarded to the then-current integration tip
+  `ad697e01cf5a51a619fb97bbad174ebb50161d91`; each worktree was clean at that
+  exact commit. The claim-frontier table records the handoff bases and paths.
