@@ -259,8 +259,11 @@ no integration merge, install, remote operation or main change was recorded.
 
 ## PDEX-26 packaged acceptance attempt — 2026-10-14
 
-- Synced `codex/pdex-26-restart` with integration before this ticket-state
-  update. The `gate` attempt launched a relocated package with synthetic app
+- `codex/pdex-26-restart` was synchronized with integration at
+  `359537f9d51bb213c19df37cebed539beaa49afb`; the packaged-attempt tracker and
+  evidence update is commit `bfa0f3f` on that ticket branch. Product source
+  remains the reviewed PDEX-25 integration at `fe14333`.
+- The `gate` attempt launched a relocated package with synthetic app
   data/Vaults and selected the synthetic Vault. The settings scenario passed
   Today and Calendar accent checks, then failed on an old Habit refresh-control
   pixel assertion (`#ffffff` versus `#597897`). Baseline `918e7e0` and current
