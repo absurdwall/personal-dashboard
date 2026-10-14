@@ -31,11 +31,14 @@ The dependency graph at the starting commit declares PDEX-19, PDEX-23 and
 PDEX-24 eligible. They are claimed here; the other tickets remain open and
 unclaimed until their blockers are integrated with evidence.
 
-| Ticket | Working branch | Starting integration tip | Implementation commits |
+| Ticket | Working branch | Authorized source baseline | Implementation commits |
 | --- | --- | --- | --- |
 | PDEX-19 | `codex/pdex-19-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | pending |
 | PDEX-23 | `codex/pdex-23-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | pending |
 | PDEX-24 | `codex/pdex-24-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | pending |
+
+Each worker worktree must start from the integration branch's current tip
+immediately before implementation; record that exact tip with its handoff.
 
 ## Verification boundary
 

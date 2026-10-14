@@ -53,8 +53,9 @@ PDEX-SPEC-02 stories 4–14、30–34、48–49；共同承担 1–3、88–91 �
 ## Reimplementation claim — 2026-10-13
 
 Owner: Codex implementer `/root/pdex19_reimplementation`. Working branch
-`codex/pdex-19-refinement-reimplementation`; starting integration tip and
-authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. This is a fresh
-claim on the verified unimplemented checkpoint; earlier rejected source and
-its commits remain on the preserved previous integration branch. Local Git
-only; no installation, main merge, or remote operation.
+`codex/pdex-19-refinement-reimplementation`; authorized source baseline
+`918e7e0d9c4b2c524c429bfd309482e328bc4c91`. The claim is recorded on the fresh
+integration branch; the implementer worktree starts from its current tip and
+will retain that full history. Earlier rejected source remains on the preserved
+previous integration branch. Local Git only; no installation, main merge, or
+remote operation.
