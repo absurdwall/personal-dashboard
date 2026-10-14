@@ -468,6 +468,8 @@ type HabitView = Readonly<{
   goalLabel: string;
   weeklyTarget: number | null;
   completedCount: number | null;
+  weeklyPeriodStart: string | null;
+  weeklyPeriodPartial: boolean;
   sourceLabels: readonly string[];
   coverageLabel: string;
   goalHistory: readonly Readonly<{
@@ -509,6 +511,7 @@ type HabitSnapshotView = Readonly<{
     targetCompletions: number;
     coverageNote: string;
     excludedNoGoal: number;
+    partialWeeksExcluded: number;
   }>;
   habits: readonly HabitView[];
 }>;
@@ -1641,8 +1644,13 @@ function t(
 }
 
 function displayHabitName(
-  habit: Readonly<{ name: string; localizedNames?: HabitLocalizedNames | null }>,
+  habit: Readonly<{
+    name: string;
+    localizedNames?: HabitLocalizedNames | null;
+    isLocalDefinition?: boolean;
+  }>,
 ): string {
+  if (habit.isLocalDefinition) return habit.name;
   return localizedHabitName(habit.name, habit.localizedNames, currentInterfaceLanguage);
 }
 
@@ -3576,7 +3584,13 @@ async function refreshCanonicalDateProjections(targetDate: string, evidence?: Co
       definitionRevision: null,
       definitionTargetBinding: null,
       namesConfigurationState: "missing",
-      summary: { knownCompletions: 0, targetCompletions: 0, coverageNote: "", excludedNoGoal: 0 },
+      summary: {
+        knownCompletions: 0,
+        targetCompletions: 0,
+        coverageNote: "",
+        excludedNoGoal: 0,
+        partialWeeksExcluded: 0,
+      },
       habits: [],
     });
   }
@@ -8583,6 +8597,13 @@ function habitProgressLabel(habit: HabitView): string {
   if (habit.weeklyTarget === null) {
     return t("habits.noGoal", { count: habit.completedCount });
   }
+  if (habit.weeklyPeriodPartial) {
+    return t("habits.partialWeeklyProgress", {
+      count: habit.completedCount,
+      start: habit.weeklyPeriodStart ?? "",
+      target: habit.weeklyTarget,
+    });
+  }
   return `${habit.completedCount} / ${habit.weeklyTarget}`;
 }
 
@@ -9331,7 +9352,7 @@ function openHabitDefinitionForm(habit?: HabitView): void {
   const emoji = habitDefinitionForm.querySelector<HTMLInputElement>("#habit-definition-emoji");
   const group = habitDefinitionForm.querySelector<HTMLInputElement>("#habit-definition-group");
   if (!name || !startDate || !emoji || !group) return;
-  name.value = habit?.name ?? "";
+  name.value = habit ? displayHabitName(habit) : "";
   startDate.value = habit
     ? habit.startDate ?? ""
     : loaded?.currentLivedDate ?? "";
@@ -9484,7 +9505,10 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
     const noGoal = view.summary.excludedNoGoal
       ? t("habits.noGoalExcluded", { count: view.summary.excludedNoGoal })
       : "";
-    habitsSummaryNote.textContent = `${applicationMessage(view.summary.coverageNote)}${noGoal}`;
+    const partialWeeks = view.summary.partialWeeksExcluded
+      ? t("habits.partialWeeksExcluded", { count: view.summary.partialWeeksExcluded })
+      : "";
+    habitsSummaryNote.textContent = `${applicationMessage(view.summary.coverageNote)}${noGoal}${partialWeeks}`;
   }
   if (habitsGeneratedAt) habitsGeneratedAt.textContent = view.generatedAt ?? t("common.unknown");
   if (habitsProducer) habitsProducer.textContent = view.producerLabel ?? t("common.unknown");
@@ -9556,6 +9580,7 @@ async function refreshHabits(): Promise<void> {
         targetCompletions: 0,
         coverageNote: "",
         excludedNoGoal: 0,
+        partialWeeksExcluded: 0,
       },
       habits: [],
     });

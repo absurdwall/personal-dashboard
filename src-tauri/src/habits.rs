@@ -561,6 +561,8 @@ pub struct HabitView {
     pub goal_label: String,
     pub weekly_target: Option<u32>,
     pub completed_count: Option<u32>,
+    pub weekly_period_start: Option<String>,
+    pub weekly_period_partial: bool,
     pub can_record_completion: bool,
     pub source_labels: Vec<String>,
     pub coverage_label: String,
@@ -583,6 +585,7 @@ pub struct HabitSummaryView {
     pub target_completions: u32,
     pub coverage_note: String,
     pub excluded_no_goal: u32,
+    pub partial_weeks_excluded: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1105,6 +1108,8 @@ pub fn project_snapshot_with_names_at_local_date(
                 _ => None,
             },
             completed_count,
+            weekly_period_start: None,
+            weekly_period_partial: false,
             can_record_completion: habit.tracking_kind == TrackingKind::WeeklyCount,
             source_labels,
             coverage_label: format!(
@@ -1273,6 +1278,8 @@ fn apply_local_habit_definition(
     habit.emoji = definition.emoji.clone();
     habit.group = definition.group.clone();
     habit.start_date = definition.start_date.clone();
+    habit.weekly_period_start = None;
+    habit.weekly_period_partial = false;
     let current_goal = definition.goal_on(current_lived_date);
     habit.current_goal = current_goal.clone();
     let pending_revision = definition.pending_goal(current_lived_date);
@@ -1298,6 +1305,9 @@ fn apply_local_habit_definition(
                 habit.completed_count = Some(u32::from(habit.today.counts_as_completion));
             }
             LocalHabitGoal::WeeklyCount { .. } => {
+                let period_start = local_weekly_period_start(definition, current_lived_date);
+                habit.weekly_period_start = Some(period_start.to_string());
+                habit.weekly_period_partial = period_start > today_week(current_lived_date);
                 habit.completed_count = Some(
                     habit
                         .history
@@ -1306,6 +1316,7 @@ fn apply_local_habit_definition(
                             cell.counts_as_completion
                                 && CalendarDate::parse(&cell.date).is_some_and(|date| {
                                     date.monday() == today_week(current_lived_date)
+                                        && date >= period_start
                                 })
                         })
                         .count() as u32,
@@ -1388,13 +1399,63 @@ fn today_week(date: &str) -> CalendarDate {
         .monday()
 }
 
+fn local_weekly_period_start(
+    definition: &LocalHabitDefinition,
+    current_lived_date: &str,
+) -> CalendarDate {
+    let week_start = today_week(current_lived_date);
+    let mut period_start = week_start;
+    if let Some(start_date) = definition
+        .start_date
+        .as_deref()
+        .and_then(CalendarDate::parse)
+    {
+        if start_date > period_start {
+            period_start = start_date;
+        }
+    }
+
+    let active_revision = definition
+        .goal_revisions
+        .iter()
+        .filter(|revision| {
+            revision.disposition == LocalHabitRevisionDisposition::Scheduled
+                && revision.effective_on.as_str() <= current_lived_date
+        })
+        .max_by(|left, right| {
+            left.effective_on
+                .cmp(&right.effective_on)
+                .then_with(|| left.changed_at.cmp(&right.changed_at))
+        });
+    if let Some(revision) = active_revision.filter(|revision| {
+        matches!(
+            revision.goal.as_ref(),
+            Some(LocalHabitGoal::WeeklyCount { .. })
+        )
+    }) {
+        let revision_date = CalendarDate::parse(&revision.effective_on)
+            .expect("scheduled local goal revisions have validated effective dates");
+        let previous_goal = definition.goal_on(&revision_date.plus_days(-1).to_string());
+        if !matches!(previous_goal, Some(LocalHabitGoal::WeeklyCount { .. }))
+            && revision_date > period_start
+        {
+            period_start = revision_date;
+        }
+    }
+    period_start
+}
+
 fn summary_for_habits(habits: &[HabitView]) -> HabitSummaryView {
     let mut summary = HabitSummaryView::default();
     for habit in habits.iter().filter(|habit| habit.active) {
         if habit.goal_kind == "weekly-count" {
             if let Some(target) = habit.weekly_target {
-                summary.target_completions += target;
-                summary.known_completions += habit.completed_count.unwrap_or_default();
+                if habit.weekly_period_partial {
+                    summary.partial_weeks_excluded += 1;
+                } else {
+                    summary.target_completions += target;
+                    summary.known_completions += habit.completed_count.unwrap_or_default();
+                }
             } else {
                 summary.excluded_no_goal += 1;
             }

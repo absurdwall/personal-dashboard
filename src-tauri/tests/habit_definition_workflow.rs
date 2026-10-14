@@ -247,9 +247,190 @@ fn daily_count_goal_revision_takes_effect_on_the_next_lived_day_and_survives_reo
     let reopened_next_day = app(&vault, "2026-09-09").habits().unwrap();
     let next_day = reopened_next_day.habit("local-reading").unwrap();
     assert_eq!(next_day.weekly_target, Some(5));
+    assert_eq!(
+        next_day.completed_count,
+        Some(0),
+        "the Tuesday daily completion must not carry into the new weekly cycle"
+    );
+    assert_eq!(next_day.weekly_period_start.as_deref(), Some("2026-09-09"));
+    assert!(next_day.weekly_period_partial);
+    assert_eq!(reopened_next_day.summary.target_completions, 0);
+    assert_eq!(reopened_next_day.summary.known_completions, 0);
+    assert_eq!(reopened_next_day.summary.partial_weeks_excluded, 1);
     assert_eq!(next_day.name, "Read a little");
     assert!(next_day.history.iter().any(|cell| {
         cell.date == "2026-09-08" && cell.counts_as_completion
+    }));
+
+    let partial_app = app(&vault, "2026-09-09");
+    partial_app
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-reading".into(),
+            lived_date: "2026-09-09".into(),
+            completed: true,
+            change_id: "complete-first-weekly-day".into(),
+            target_binding: reopened_next_day.completion_target_binding.clone().unwrap(),
+            expected_revision: reopened_next_day.completion_revision.clone(),
+        })
+        .unwrap();
+    let partial_week_readback = app(&vault, "2026-09-10").habits().unwrap();
+    let partial_week_habit = partial_week_readback.habit("local-reading").unwrap();
+    assert_eq!(partial_week_habit.completed_count, Some(1));
+    assert_eq!(partial_week_habit.weekly_period_start.as_deref(), Some("2026-09-09"));
+    assert!(partial_week_habit.weekly_period_partial);
+    assert_eq!(partial_week_readback.summary.known_completions, 0);
+    assert_eq!(partial_week_readback.summary.target_completions, 0);
+    assert_eq!(partial_week_readback.summary.partial_weeks_excluded, 1);
+
+    let next_full_week = app(&vault, "2026-09-14").habits().unwrap();
+    let full_week_habit = next_full_week.habit("local-reading").unwrap();
+    assert_eq!(full_week_habit.weekly_period_start.as_deref(), Some("2026-09-14"));
+    assert!(!full_week_habit.weekly_period_partial);
+    assert_eq!(next_full_week.summary.target_completions, 5);
+    assert_eq!(next_full_week.summary.partial_weeks_excluded, 0);
+}
+
+#[test]
+fn daily_to_weekly_revision_at_the_four_am_monday_boundary_starts_a_full_week() {
+    let vault = TempVault::new();
+    let before_boundary = app_with_clock(
+        &vault,
+        EarlyClock {
+            date: "2026-09-14",
+            time: "03:30",
+        },
+    );
+    let empty = before_boundary.habits().unwrap();
+    assert_eq!(empty.current_lived_date.as_deref(), Some("2026-09-13"));
+    let created = before_boundary
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "create".into(),
+            key: "local-boundary-reading".into(),
+            name: "Read".into(),
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-13".into()),
+            goal: Some(LocalHabitGoal::DailyCount),
+            change_id: "create-boundary-reading".into(),
+            target_binding: empty.definition_target_binding.unwrap(),
+            expected_revision: empty.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    let completed = before_boundary
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-boundary-reading".into(),
+            lived_date: "2026-09-13".into(),
+            completed: true,
+            change_id: "complete-sunday-reading".into(),
+            target_binding: created.completion_target_binding.unwrap(),
+            expected_revision: created.completion_revision,
+        })
+        .unwrap();
+    let revised = before_boundary
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-boundary-reading".into(),
+            name: "Read".into(),
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-13".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 3 }),
+            change_id: "schedule-weekly-at-boundary".into(),
+            target_binding: completed.definition_target_binding.unwrap(),
+            expected_revision: completed.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    assert_eq!(revised.habit("local-boundary-reading").unwrap().goal_kind, "daily-count");
+    assert_eq!(revised.habit("local-boundary-reading").unwrap().completed_count, Some(1));
+
+    let still_sunday = app_with_clock(
+        &vault,
+        EarlyClock {
+            date: "2026-09-14",
+            time: "03:59",
+        },
+    )
+    .habits()
+    .unwrap();
+    assert_eq!(still_sunday.current_lived_date.as_deref(), Some("2026-09-13"));
+    assert_eq!(still_sunday.habit("local-boundary-reading").unwrap().goal_kind, "daily-count");
+
+    let monday = app_with_clock(
+        &vault,
+        EarlyClock {
+            date: "2026-09-14",
+            time: "04:00",
+        },
+    )
+    .habits()
+    .unwrap();
+    let habit = monday.habit("local-boundary-reading").unwrap();
+    assert_eq!(habit.current_goal, Some(LocalHabitGoal::WeeklyCount { days: 3 }));
+    assert_eq!(habit.weekly_period_start.as_deref(), Some("2026-09-14"));
+    assert!(!habit.weekly_period_partial);
+    assert_eq!(habit.completed_count, Some(0));
+    assert_eq!(monday.summary.known_completions, 0);
+    assert_eq!(monday.summary.target_completions, 3);
+    assert_eq!(monday.summary.partial_weeks_excluded, 0);
+}
+
+#[test]
+fn weekly_start_date_excludes_earlier_completions_from_partial_week() {
+    let vault = TempVault::new();
+    let application = app(&vault, "2026-09-08");
+    let empty = application.habits().unwrap();
+    let created = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "create".into(),
+            key: "local-start-date-walk".into(),
+            name: "Walk".into(),
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 3 }),
+            change_id: "create-start-date-walk".into(),
+            target_binding: empty.definition_target_binding.unwrap(),
+            expected_revision: empty.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    let completed = application
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-start-date-walk".into(),
+            lived_date: "2026-09-07".into(),
+            completed: true,
+            change_id: "complete-before-start-date".into(),
+            target_binding: created.completion_target_binding.clone().unwrap(),
+            expected_revision: created.completion_revision,
+        })
+        .unwrap();
+    application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-start-date-walk".into(),
+            name: "Walk".into(),
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-09".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 3 }),
+            change_id: "move-start-date-forward".into(),
+            target_binding: completed.definition_target_binding.unwrap(),
+            expected_revision: completed.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+
+    let reopened = app(&vault, "2026-09-09").habits().unwrap();
+    let habit = reopened.habit("local-start-date-walk").unwrap();
+    assert_eq!(habit.completed_count, Some(0));
+    assert_eq!(habit.weekly_period_start.as_deref(), Some("2026-09-09"));
+    assert!(habit.weekly_period_partial);
+    assert_eq!(reopened.summary.target_completions, 0);
+    assert_eq!(reopened.summary.partial_weeks_excluded, 1);
+    assert!(habit.history.iter().any(|cell| {
+        cell.date == "2026-09-07" && cell.counts_as_completion
     }));
 }
 
@@ -547,10 +728,20 @@ fn next_goal_after_reopen(vault: &TempVault) -> LocalHabitGoal {
 fn source_habit_edit_and_snapshot_refresh_preserve_local_overlay_and_evidence_identity() {
     let vault = TempVault::new();
     write_source_snapshot(&vault, include_str!("fixtures/habits-v1-complete.json"));
+    let names_path = vault.0.join("life/.personal-dashboard/habit-names/v1/names.json");
+    fs::create_dir_all(names_path.parent().unwrap()).unwrap();
+    fs::write(
+        &names_path,
+        r#"{"schemaVersion":1,"habits":{"exercise":{"zh":"锻炼","en":"Exercise"}}}"#,
+    )
+    .unwrap();
+    let source_snapshot_before = fs::read(snapshot_path(&vault)).unwrap();
     let application = app(&vault, "2026-09-08");
     let before = application.habits().unwrap();
     let source = before.habit("exercise").unwrap();
     assert!(!source.created_locally);
+    assert_eq!(source.localized_names.zh.as_deref(), Some("锻炼"));
+    assert_eq!(source.localized_names.en.as_deref(), Some("Exercise"));
     let original_status = source.today.status;
     let original_source_labels = source.source_labels.clone();
 
@@ -573,6 +764,8 @@ fn source_habit_edit_and_snapshot_refresh_preserve_local_overlay_and_evidence_id
     let local = edited.habit("exercise").unwrap();
     assert_eq!(local.key, source.key);
     assert_eq!(local.name, "Strength walk");
+    assert_eq!(local.localized_names, source.localized_names);
+    assert_eq!(fs::read(snapshot_path(&vault)).unwrap(), source_snapshot_before);
     assert_eq!(local.emoji.as_deref(), Some("🚶"));
     assert_eq!(local.group.as_deref(), Some("Movement"));
     assert_eq!(local.source_labels, original_source_labels);
@@ -608,6 +801,8 @@ fn source_habit_edit_and_snapshot_refresh_preserve_local_overlay_and_evidence_id
     let habit = refreshed.habit("exercise").unwrap();
     assert_eq!(habit.key, "exercise");
     assert_eq!(habit.name, "Strength walk");
+    assert_eq!(habit.localized_names.zh.as_deref(), Some("锻炼"));
+    assert_eq!(habit.localized_names.en.as_deref(), Some("Exercise"));
     assert_eq!(habit.goal_label, "每周 3 天");
     assert_eq!(habit.pending_goal_label.as_deref(), Some("每周 5 天"));
     assert_eq!(habit.source_labels, original_source_labels);

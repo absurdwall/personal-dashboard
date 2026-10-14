@@ -1111,6 +1111,14 @@ const interfaceCopies = {
   "habits.recordOnly": { zh: "有文字记录 · 不计次", en: "Text record · Not counted" },
   "habits.actualUnknown": { zh: "实际未知", en: "Actual time unknown" },
   "habits.noGoal": { zh: "{count} 次 · 无目标", en: "{count} · No target" },
+  "habits.partialWeeklyProgress": {
+    zh: "部分周 · 已完成 {count} 天（从 {start} 起；完整周目标 {target} 天）",
+    en: "Partial week · {count} completed since {start}; full-week target {target} days",
+  },
+  "habits.partialWeeksExcluded": {
+    zh: " {count} 个部分周未纳入完整周合计。",
+    en: " Partial weeks excluded from the comparable full-week total: {count}.",
+  },
   "habits.sources": { zh: "来源：{sources}", en: "Sources: {sources}" },
   "habits.notDeclared": { zh: "未声明", en: "Not declared" },
   "habits.todayStatus": { zh: "今天：{status}", en: "Today: {status}" },
