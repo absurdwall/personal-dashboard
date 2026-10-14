@@ -18,7 +18,7 @@ function render(check: string, width = 830, height = 758): any {
   if (!probe) { probe = join(output, "webkit"); execFileSync("swiftc", [join(root, "tests/frontend/helpers/rendered-today-layout.swift"), "-o", probe], { timeout: 60000 }); }
   writeFileSync(join(output, "index.html"), readFileSync(join(root, "frontend/index.html"), "utf8").replace(/<script[^]*?<\/script>/g, ""));
   copyFileSync(join(root, "frontend/styles.css"), join(output, "styles.css"));
-  const bindings = ["todayContinuousAxis:today-continuous-axis", "todayHourTicks:today-hour-ticks", "todayTimedEvents:today-timed-events", "todayTimedDurations:today-timed-duration", "todayTimedDetails:today-timed-details", "todayTimedEmpty:today-timed-empty", "todayCurrentArrangementUnlocated:today-current-arrangement-unlocated", "todayConfirmedFactsUnlocated:today-confirmed-facts-unlocated", "todayCurrentTime:today-current-time", "todayLocateNowButton:today-locate-now", "todayUnlocatedTimeRegion:today-unlocated-time-region", "todayUnlocatedTimeShortcut:today-unlocated-time-shortcut", "todaySideRegion:today-side-region", "todayAxisScrollSurface:today-axis-scroll-surface"].map(binding => { const [name,id] = binding.split(":"); return `const ${name} = document.getElementById('${id}');`; }).join("\n");
+  const bindings = ["todayContinuousAxis:today-continuous-axis", "todayHourTicks:today-hour-ticks", "todayTimedEvents:today-timed-events", "todayTimedDurations:today-timed-duration", "todayTimedDetails:today-timed-details", "todayTimedEmpty:today-timed-empty", "todayCurrentArrangementUnlocated:today-current-arrangement-unlocated", "todayConfirmedFactsUnlocated:today-confirmed-facts-unlocated", "todayCurrentTime:today-current-time", "todayLocateNowButton:today-locate-now", "todayUnlocatedTimeRegion:today-unlocated-time-region", "todayUnlocatedTimeShortcut:today-unlocated-time-shortcut", "todaySideRegion:today-side-region", "todayAxisScrollSurface:today-axis-scroll-surface", "todayAxisTaskPopup:today-axis-task-popup", "todayAxisTaskPopupHeading:today-axis-task-popup-heading", "todayAxisTaskPopupContent:today-axis-task-popup-content", "todayAxisTaskPopupStatus:today-axis-task-popup-status", "todayAxisTaskPopupClose:today-axis-task-popup-close"].map(binding => { const [name,id] = binding.split(":"); return `const ${name} = document.getElementById('${id}');`; }).join("\n");
   const pure = ["today-time-axis", "task-presentation", "interface-language"].map(name => readFileSync(join(output, `${name}.js`), "utf8").replaceAll("export ", "")).join("\n");
   const script = `(() => {
     document.getElementById('workspace-destination-today').hidden = false;
@@ -38,6 +38,7 @@ function render(check: string, width = 830, height = 758): any {
     let currentTodayView = {date:'2026-10-01',isToday:true,currentTime:'12:00',tasks:{lists:[],tasks:[{id:'same-task',listId:'inbox',name:'Task at 08:30',date:'2026-10-01',time:'08:30',state:'pending',timePassed:true,deletedAt:null}]},timeAxis:{currentArrangement:[entry('08:00–10:00 Plan',480,600),entry('14:00 Plan alone',840)],confirmedFacts:[entry('08:30 Fact',510)],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
     ${slice('function todayTimelineItem(', 'function todayEvidenceGroup(')}
     ${slice('function scrollTodayAxisToNow(', 'function scheduleTodayAxisFollowScroll(')}
+    ${fn('adjustTodayAxisZoom')}
     ${main.slice(main.lastIndexOf('for (const id of ["today-expand-early", "today-expand-late"])'))}
     renderTodayTimeAxis(currentTodayView);
     const rect = node => { const r=node.getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}; };
@@ -185,4 +186,35 @@ test("advancing the clock keeps plans, pending Tasks and confirmed facts distinc
   assert.equal(result.facts,1);
   assert.equal(result.completed,0);
   assert.match(result.pending,/Pending/);
+});
+
+test("the Today axis keeps the accepted zoomed-window geometry in smaller viewports", { skip: process.platform !== "darwin" }, () => {
+  const check = `
+    const surface=todayAxisScrollSurface, plot=document.querySelector('.today-axis-plot');
+    const hourHeight=()=>plot.getBoundingClientRect().height/18;
+    const initial={surfaceClientWidth:surface.clientWidth,surfaceScrollWidth:surface.scrollWidth,surfaceClientHeight:surface.clientHeight,surfaceScrollHeight:surface.scrollHeight,plotWidth:plot.getBoundingClientRect().width,hourHeight:hourHeight()};
+    document.getElementById('today-axis-zoom-in').click();
+    const zoomedHourHeight=hourHeight();
+    document.getElementById('today-axis-zoom-out').click();
+    return JSON.stringify({...initial,zoomedHourHeight,restoredHourHeight:hourHeight()});
+  `;
+  const measurements = [[1914,1518],[1280,800],[1280,720],[830,758],[680,560]].map(([width,height]) => ({
+    viewport:[width,height],
+    ...render(check,width,height),
+  }));
+  const reference = measurements[0];
+  assert.ok(Math.abs(reference.plotWidth - 580) < 0.5,`580px preserves the zoomed-window track (raw natural measurement 578.47px): ${JSON.stringify(reference)}`);
+  assert.equal(reference.hourHeight,18,`large-window reference is 18px per hour: ${JSON.stringify(reference)}`);
+  for (const measurement of measurements) {
+    assert.equal(measurement.hourHeight,reference.hourHeight,`hour height stays at the large-window reference: ${JSON.stringify(measurement)}`);
+    assert.ok(measurement.plotWidth+0.5>=reference.plotWidth,`track does not fall below the large-window reference: ${JSON.stringify(measurement)}`);
+    assert.equal(measurement.zoomedHourHeight,28,`explicit zoom-in remains available: ${JSON.stringify(measurement)}`);
+    assert.equal(measurement.restoredHourHeight,18,`explicit zoom-out returns to the fixed default: ${JSON.stringify(measurement)}`);
+  }
+  for (const measurement of measurements.filter(({viewport})=>viewport[0]<=830)) {
+    assert.ok(measurement.surfaceScrollWidth>measurement.surfaceClientWidth,`narrow viewport scrolls over the stable track: ${JSON.stringify(measurement)}`);
+  }
+  for (const measurement of measurements.filter(({viewport})=>viewport[1]<=560)) {
+    assert.ok(measurement.surfaceScrollHeight>measurement.surfaceClientHeight,`short viewport scrolls over the stable hour scale: ${JSON.stringify(measurement)}`);
+  }
 });

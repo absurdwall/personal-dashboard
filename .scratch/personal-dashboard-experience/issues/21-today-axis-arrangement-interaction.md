@@ -59,3 +59,20 @@ The installed local Management helper confirmed native claim operation
 packaged acceptance remains under PDEX-26. The exact worktree start commit and
 path are recorded in the shared [restart record](../refinement-reimplementation-2026-10-13.md)
 after worktree creation.
+
+## Window-scale clarification — 2026-10-14
+
+After reviewing the integrated App, the user clarified that resizing the window
+must not shrink the Today timeline's default hour scale or base track width.
+The selected reference is the previously previewed large App window reached via
+macOS Window → Zoom. Its screenshot is 3840 physical px wide; the default 960×720
+window screenshot is 1920×1440 physical px, establishing a 2× Retina mapping.
+The accepted zoomed reference is therefore about 1920 CSS px wide, not the
+1280×800 test viewport. A 1914×1518 CSS WebKit viewport closely matches that
+large window and measures a natural 578.47px plot track and 18px per hour.
+Preserve that geometry at smaller sizes, allow horizontal/vertical scrolling,
+and keep explicit zoom available. This supersedes only the height-adaptation
+part of the first acceptance bullet above. It does not change the timeline
+range, data, gestures, or other screens. Implementation evidence and the
+bounded test result are recorded in the shared restart record. PDEX-21 remains
+in progress pending its other criteria and PDEX-26 packaged acceptance.

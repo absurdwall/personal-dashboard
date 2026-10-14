@@ -263,3 +263,51 @@ used the pinned fba6f5b tip. The local tracker exception was followed.
 Review total: Standards 3 findings (worst: untranslated retained Habit errors);
 Spec 5 findings (worst: blank Calendar Task editor); two Standards fixes and all
 five bounded Spec fixes implemented. This record does not assert release acceptance.
+
+## Today axis scale repair and isolated Collaboration diagnosis — 2026-10-14
+
+This bounded follow-up started from clean integration branch
+`codex/dashboard-experience-refinement-reimplementation` at
+`902fc032ab232e34feb218b766f8b123a1a8fc57`. It repairs only Today timeline
+geometry in the integrated source and records the Collaboration send-state
+diagnosis; no Task, Calendar, Habit, Collaboration, or shared-shell product code
+was changed. The earlier PDEX-21 implementation and merge history above remain
+intact; this is an integration-branch repair, not a rewritten ticket branch.
+
+The user clarified that window resizing should preserve the accepted large
+window's default hour scale and base track width, using scroll at smaller sizes
+while retaining explicit zoom. The accepted reference is the previously
+previewed macOS Window → Zoom state: its screenshot is 3840 physical px wide,
+while the default 960×720 window screenshot is 1920×1440 physical px, a 2×
+Retina mapping. The large state is therefore about 1920 CSS px wide. A
+1914×1518 CSS WebKit viewport closely matches it; before the repair it measured
+a natural 578.47px plot track and 18px/hour. The CSS now fixes the defaults at
+580px and 18px/hour. At smaller widths the plot keeps at least the reference
+width and scrolls horizontally; at 680×560 the constrained axis scrolls
+vertically. Zoom-in still reaches 28px/hour and zoom-out restores the default.
+No time data or pointer behavior changed.
+
+The isolated review App's disabled Send state was a profile connection state,
+not a product defect: its synthetic profile showed Codex CLI detected but
+ChatGPT disconnected, and Send remained disabled with a non-empty synthetic
+draft for the explicit reason that ChatGPT must be connected. The draft was
+cleared without sending. The installed App showed ChatGPT connected; its Send
+button was disabled only while the composer was empty. No credentials or
+profile files were inspected, no message was sent, and no Collaboration source
+change was needed.
+
+Verification: the targeted macOS WebKit geometry test passed across
+1914×1518 (reference), 1280×800, 1280×720, 830×758, and 680×560, including the
+fixed reference scale, stable minimum width, horizontal scrolling, short-window
+vertical scrolling, and explicit zoom/reset. `npm run build` and `git diff
+--check` passed. The broader `unified-today-axis.test.ts` run remains 6/10: four
+fixture expectations fail for read-only tag/anchor output and folded
+early/late/after-midnight disclosures. Those failures were not broadened into
+this visual repair. Source commit and candidate package identity are appended
+after they are verified.
+
+The implementation commit is on the integration branch above and retains
+`902fc032ab232e34feb218b766f8b123a1a8fc57` as its direct parent. Candidate
+build uses the production bundle identifier and full source commit revision,
+without profile, Vault, or fixed-clock overrides. It remains uninstalled and
+unlaunched for the separate reviewer.
