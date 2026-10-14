@@ -240,13 +240,14 @@ test('Calendar task previews open a compact editor without selecting another dat
     const beforeScroll=document.querySelector('.workspace-information').scrollTop;
     document.querySelector('[data-calendar-task-summary="preview-0"]').click();await new Promise(r=>setTimeout(r,20));
     const editDialog=document.querySelector('#calendar-task-editor-dialog-root [data-task-editor-dialog="preview-0"]');
+    const footerButtons=[...editDialog.querySelectorAll('.task-editor-footer button')].map(button=>{const bounds=button.getBoundingClientRect();return {top:bounds.top,bottom:bounds.bottom,height:bounds.height};});
     const content=editDialog.querySelector('[data-task-content]'),contentLabel=content.closest('label'),caption=contentLabel.querySelector('span');
     const afterPreview={selected:calendarHarness.selected().date,gridSelected:document.querySelector('.calendar-day[data-calendar-date="2026-09-09"]').dataset.selected!==undefined,
       open:!document.querySelector('#calendar-task-editor-dialog-root').hidden&&!editDialog.hidden,
       name:editDialog.querySelector('[data-task-name]').value,scroll:document.querySelector('.workspace-information').scrollTop,
       focusedContent:document.activeElement===content,contentHeight:content.getBoundingClientRect().height,captionBottom:caption.getBoundingClientRect().bottom,
       contentTop:content.getBoundingClientRect().top,contentIsCaptionSibling:contentLabel.children[0]===caption&&contentLabel.children[1]===content,
-      contentOutline:getComputedStyle(content).outlineWidth,editorCompact:editDialog.querySelector('[data-task-editor]').classList.contains('task-editor-compact')};
+      contentOutline:getComputedStyle(content).outlineWidth,editorCompact:editDialog.querySelector('[data-task-editor]').classList.contains('task-editor-compact'),footerButtons};
     document.querySelector('#calendar-task-editor-dialog-root [data-task-editor-close]').click();
     const add=document.querySelector('#calendar-add-task');add.click();
     const createDialog=document.querySelector('#calendar-task-create-dialog'),name=document.querySelector('#calendar-task-create-name'),date=document.querySelector('#calendar-task-create-date');
@@ -268,6 +269,9 @@ test('Calendar task previews open a compact editor without selecting another dat
   assert.notEqual(result.afterPreview.contentOutline,'0px');
   assert.notEqual(result.afterPreview.contentOutline,'none');
   assert.equal(result.afterPreview.editorCompact,true);
+  assert.equal(result.afterPreview.footerButtons.length,2,JSON.stringify(result.afterPreview.footerButtons));
+  assert.ok(result.afterPreview.footerButtons.every((button:any)=>button.height===result.afterPreview.footerButtons[0].height&&button.height>=30),JSON.stringify(result.afterPreview.footerButtons));
+  assert.ok(result.afterPreview.footerButtons.every((button:any)=>Math.abs(button.top-result.afterPreview.footerButtons[0].top)<1&&Math.abs(button.bottom-result.afterPreview.footerButtons[0].bottom)<1),JSON.stringify(result.afterPreview.footerButtons));
   assert.deepEqual(result.creation,{open:true,selected:'2026-09-09',date:'2026-09-09',focused:true,dateEditable:true});
   assert.equal(result.editedDate,'2026-09-12');assert.equal(result.selectedAfterDateEdit,'2026-09-09');
   assert.equal(result.closed,true);
@@ -308,7 +312,7 @@ test('Calendar keeps list and schedule fields directly expanded and clear action
     const afterClearEnd={schedule:scheduleValues(timed),
       clearEndHidden:timed.querySelector('[data-task-clear-end]').hidden,clearScheduleVisible:!timed.querySelector('[data-task-clear-timed-schedule]').hidden,
       directFieldsVisible:directFieldsVisible(timed)};
-    const buttons=[...timed.querySelectorAll('.task-editor-footer > button, .task-editor-footer-actions > button')].map(button=>{const bounds=button.getBoundingClientRect();return {top:bounds.top,bottom:bounds.bottom,height:bounds.height};});
+    const buttons=[...timed.querySelectorAll('.task-editor-footer-actions > button')].map(button=>button.getBoundingClientRect().height);
     timed.querySelector('[data-task-editor-close]').click();
     const afterTimedCancel=view.tasks.tasks.find(task=>task.id==='preview-0');
 
@@ -333,7 +337,7 @@ test('Calendar keeps list and schedule fields directly expanded and clear action
   assert.deepEqual(result.afterClearEnd,{schedule:{'[data-task-date]':'2026-09-12','[data-task-time]':'08:15','[data-task-end-date]':'','[data-task-end-time]':''},clearEndHidden:true,clearScheduleVisible:true,directFieldsVisible:true});
   assert.deepEqual(result.beforeClearSchedule,{schedule:{'[data-task-date]':'2026-09-14','[data-task-time]':'10:30','[data-task-end-date]':'2026-09-14','[data-task-end-time]':'11:45'},directFieldsVisible:true,clearEndVisible:true,clearScheduleVisible:true,duplicateSummaries:0,date:'2026-09-14'});
   assert.deepEqual(result.afterClearSchedule,{schedule:{'[data-task-date]':'2026-09-14','[data-task-time]':'','[data-task-end-date]':'','[data-task-end-time]':''},clearEndHidden:true,clearScheduleHidden:true,directFieldsVisible:true});
-  assert.equal(result.buttons.length,2);assert.ok(result.buttons.every((button:any)=>button.height===result.buttons[0].height&&button.height>=30),JSON.stringify(result.buttons));assert.ok(result.buttons.every((button:any)=>Math.abs(button.top-result.buttons[0].top)<1&&Math.abs(button.bottom-result.buttons[0].bottom)<1),JSON.stringify(result.buttons));
+  assert.equal(result.buttons.length,2);assert.ok(result.buttons.every((height:number)=>height===result.buttons[0]&&height>=30),JSON.stringify(result.buttons));
   assert.deepEqual(result.afterTimedCancel,result.before['preview-0']);
   assert.deepEqual(result.afterUntimedCancel,result.before['preview-1']);
   assert.deepEqual(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)),[]);
