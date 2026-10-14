@@ -2,6 +2,8 @@ export const TODAY_AXIS_MINUTES = 24 * 60;
 export const TODAY_AXIS_LABEL_MINIMUM_MINUTES = 48;
 export const TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES = 36;
 export const TODAY_AXIS_NOW_LABEL_CLEARANCE_MINUTES = 12;
+export const TODAY_AXIS_MINIMUM_HOUR_HEIGHT_PX = 16;
+export const TODAY_AXIS_DETAIL_HOUR_HEIGHT_PX = 80;
 
 export type TimeAxisEntry = Readonly<{ startMinute: number; endMinute: number | null }>;
 export type AxisOverlapPlacement = Readonly<{ stackId: number; stackIndex: number; stackSize: number }>;
@@ -13,6 +15,26 @@ export type AxisMarkerLayout = Readonly<{
 export type TodayAxisFollowState = 'following' | 'manual';
 export type TodayAxisSession = Readonly<{ date: string; targetBinding: string | null }>;
 export type ClockTickDecision = 'update-marker' | 'reload-today' | 'preserve-history';
+
+export function todayAxisHourHeightPx(
+  visibleMinutes: number,
+  viewportHeight: number,
+  nonPlotChromeHeight: number,
+  mode: 'overview' | 'detail',
+): number {
+  if (!Number.isFinite(visibleMinutes) || visibleMinutes <= 0 ||
+      !Number.isFinite(viewportHeight) || viewportHeight < 0 ||
+      !Number.isFinite(nonPlotChromeHeight) || nonPlotChromeHeight < 0 ||
+      (mode !== 'overview' && mode !== 'detail')) {
+    throw new RangeError('Today axis scale requires a positive time range and nonnegative viewport measurements.');
+  }
+  if (mode === 'detail') return TODAY_AXIS_DETAIL_HOUR_HEIGHT_PX;
+  const availablePlotHeight = Math.max(0, viewportHeight - nonPlotChromeHeight);
+  return Math.max(
+    TODAY_AXIS_MINIMUM_HOUR_HEIGHT_PX,
+    Math.min(TODAY_AXIS_DETAIL_HOUR_HEIGHT_PX, availablePlotHeight / (visibleMinutes / 60)),
+  );
+}
 
 export function stripLeadingAxisTimeLabel(
   text: string,
