@@ -143,7 +143,7 @@ their worktrees were clean at handoff.
   `ad697e01cf5a51a619fb97bbad174ebb50161d91`; each worktree was clean at that
   exact commit. The claim-frontier table records the handoff bases and paths.
 
-## Final local integration — 2026-10-14
+## Original local implementation integration — 2026-10-14
 
 The remaining four implementation branches were integrated locally with
 `--no-ff`; each implementation, evidence commit, and branch refresh remains
@@ -161,3 +161,34 @@ The final integration tip is `f50ae2df167e53d9707b0b6105a093446b9a5cec`;
 the integration checkout was clean after all four merges. PDEX-26 packaged
 acceptance remains open. PDEX-22 leaves China 2027 holiday data unspecified
 because the verified official source set has no published 2027 schedule.
+
+## Independent review repair integration — 2026-10-13
+
+The review fixes were made on the existing per-ticket branches, preserving
+their earlier implementation commits. Both ticket branches were refreshed
+from integration tip `e92f1a764f3c4b48a8a1ca6d491f518a271fb43f` with no-ff
+merges before the fixes, then merged back with `--no-ff`.
+
+| Ticket | Working branch | Refresh merge | Review repair commits | Branch tip after repair | Integration merge |
+| --- | --- | --- | --- | --- | --- |
+| PDEX-20 | `codex/pdex-20-refinement-reimplementation` | `caebc0249860b3ed4e4993eda53848da3f1a45bb` | `8cdfd9a2bf8f817521c373092432dc0e8e6591c9`, `d25ab0c0d11d568c5d73c4a6c6e438098120f7fe` | `d25ab0c0d11d568c5d73c4a6c6e438098120f7fe` | `b62db46480f2f858a46d77b50c92dcd1b734810e` |
+| PDEX-25 | `codex/pdex-25-refinement-reimplementation` | `ab87d36b94a64179b2ca699dae4cd685f6961963` | `1ef70ccb388a804e776a5746b607ddcc3ea4f0da` | `1ef70ccb388a804e776a5746b607ddcc3ea4f0da` | `54677b47be16d08428c26171023222becb5459f2` |
+
+The integration checkout was clean at `e92f1a764f3c4b48a8a1ca6d491f518a271fb43f`
+before these merges. After both merges, the integrated source tip was
+`54677b47be16d08428c26171023222becb5459f2` before this ledger update.
+
+Verification on the integrated source: PDEX-20 `task-surface.test.ts` passed
+12/12; PDEX-25 Rust statistics tests passed 5/5, Habit definition workflow
+tests passed 10/10, Habit detail panel test passed 1/1, and Node parsed
+`frontend/main.ts` with type stripping. `git diff --check` passed. The
+production build could not run TypeScript compilation because `tsc` is
+unavailable in this environment; no dependency was installed.
+
+The repairs address the deep Task nesting cue and move Habit detail statistics
+into Rust while preserving cumulative local completion counts after a forward
+start-date change. PDEX-25 still cannot show sourced/provenance observations
+older than the snapshot schema's rolling 12-week window. PDEX-22 still lacks
+verified official China 2027 holiday data. PDEX-26 packaged acceptance remains
+open; no ticket was closed, and no remote Git operation or normal App install
+was made.
