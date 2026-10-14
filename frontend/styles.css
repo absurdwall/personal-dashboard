@@ -11559,10 +11559,6 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   padding-inline: 0.45rem;
   font-size: 0.62rem;
 }
-#workspace-destination-collaboration .collaboration-context-toggle svg {
-  width: 16px;
-  height: 16px;
-}
 #workspace-destination-collaboration .collaboration-composer textarea {
   height: clamp(4rem, 9vh, 5.5rem);
   min-height: 4rem;
