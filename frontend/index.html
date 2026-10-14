@@ -1224,7 +1224,10 @@
                   <h2 id="habits-heading" class="destination-heading" data-i18n="habits.weekly">本周习惯</h2>
                   <p id="habits-range" data-i18n="habits.loadingOnDemand">正在读取按需快照…</p>
                 </div>
-                <button id="refresh-habits" type="button" data-i18n="habits.refresh">刷新快照</button>
+                <div class="habits-header-actions">
+                  <button id="new-habit" type="button" class="secondary-button"><span aria-hidden="true">+</span><span data-i18n="habits.add">添加习惯</span></button>
+                  <button id="refresh-habits" type="button" data-i18n="habits.refresh">刷新快照</button>
+                </div>
               </header>
               <p id="habits-status" class="today-status" role="status" aria-live="polite">
                 <span data-i18n="habits.loading">正在读取 Habits 快照…</span>
@@ -1278,6 +1281,65 @@
                 <h3 id="habits-empty-heading" data-i18n="habits.noSnapshot">尚无可显示的快照。</h3>
                 <p id="habits-empty-copy" data-i18n="habits.noProducer">Dashboard 不会自行生成或连接 Dida365。</p>
               </section>
+              <dialog id="habit-definition-dialog" class="habit-definition-dialog" aria-labelledby="habit-definition-heading">
+                <form id="habit-definition-form" class="task-form habit-definition-form">
+                  <div class="task-form-heading">
+                    <h3 id="habit-definition-heading" data-i18n="habits.addHeading">新建习惯</h3>
+                    <small id="habit-definition-mode"></small>
+                  </div>
+                  <div class="task-form-grid habit-definition-grid">
+                    <label class="task-form-wide">
+                      <span data-i18n="habits.name">名称</span>
+                      <input id="habit-definition-name" type="text" maxlength="200" required autocomplete="off" />
+                    </label>
+                    <label>
+                      <span data-i18n="habits.goalType">频率与目标</span>
+                      <select id="habit-definition-goal-kind">
+                        <option value="daily-completion" data-i18n="habits.goalDaily">每日完成</option>
+                        <option value="weekly-count" data-i18n="habits.goalWeekly">每周达标天数</option>
+                        <option value="daily-time" data-i18n="habits.goalTime">每日时间阈值</option>
+                        <option id="habit-definition-keep-source-option" value="keep-source" data-i18n="habits.keepSourceGoal" hidden>沿用来源目标</option>
+                      </select>
+                    </label>
+                    <label id="habit-weekly-target-field" hidden>
+                      <span data-i18n="habits.weeklyTarget">每周天数</span>
+                      <input id="habit-definition-weekly-target" type="number" min="1" max="7" step="1" value="3" />
+                    </label>
+                    <label id="habit-time-target-field" hidden>
+                      <span data-i18n="habits.timeTarget">目标时刻</span>
+                      <input id="habit-definition-time-target" type="time" />
+                    </label>
+                    <label id="habit-day-relation-field" hidden>
+                      <span data-i18n="habits.dayRelation">日期归属</span>
+                      <select id="habit-definition-day-relation">
+                        <option value="same-day" data-i18n="habits.sameDay">当日</option>
+                        <option value="next-day" data-i18n="habits.nextDay">次日（入睡）</option>
+                        <option value="unresolved" data-i18n="habits.unresolved">沿用来源解释</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span data-i18n="habits.startDate">开始日期</span>
+                      <input id="habit-definition-start-date" type="date" required />
+                    </label>
+                    <label>
+                      <span data-i18n="habits.emojiOptional">图标（可选）</span>
+                      <input id="habit-definition-emoji" type="text" maxlength="24" autocomplete="off" />
+                    </label>
+                    <label class="task-form-wide">
+                      <span data-i18n="habits.groupOptional">分组（可选）</span>
+                      <input id="habit-definition-group" type="text" maxlength="80" autocomplete="off" />
+                    </label>
+                  </div>
+                  <p id="habit-definition-goal-note" class="task-form-boundary" data-i18n="habits.keepSourceGoalNote" hidden>本次只保存其他字段，不更改来源目标或解释。</p>
+                  <p class="task-form-boundary" data-i18n="habits.localDefinitionBoundary">定义和本地完成保存在所选 Vault；不会创建或修改外部 Habit。</p>
+                  <p id="habit-definition-status" role="status" aria-live="polite"></p>
+                  <div class="task-form-actions">
+                    <button id="habit-definition-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button>
+                    <button id="habit-definition-refresh" type="button" class="secondary-button" data-i18n="habits.refreshDefinition" hidden>刷新后继续编辑</button>
+                    <button id="habit-definition-submit" type="submit" data-i18n="habits.save">保存习惯</button>
+                  </div>
+                </form>
+              </dialog>
             </section>
 
           </section>

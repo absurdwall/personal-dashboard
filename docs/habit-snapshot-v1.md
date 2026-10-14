@@ -25,9 +25,10 @@ missing. A present canonical file always wins; malformed canonical data is
 reported rather than masked by legacy data. The Dashboard never copies or
 recreates the old path.
 
-The Dashboard separately owns explicit [local habit completions](habit-completions-v1.md)
-and optional bilingual [Habit display names](habit-names-v1.md) in the selected
-Vault; both are merged only while projecting the UI. The checked-in
+The Dashboard separately owns local [Habit definitions](habit-definitions-v1.md),
+explicit [local habit completions](habit-completions-v1.md), and the optional
+bilingual [Habit display-name sidecar](habit-names-v1.md) in the selected Vault.
+These sources are merged only while projecting the UI. The checked-in
 [synthetic fixture](../src-tauri/tests/fixtures/habits-v1-complete.json) is the
 complete production shape and contains semantic keys only—never private
 external IDs.
