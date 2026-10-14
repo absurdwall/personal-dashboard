@@ -17,7 +17,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-19 | ticket | [Task 编辑、属性与操作入口](issues/19-task-editing-properties-actions.md) | ready-for-agent | in-progress | none | Implemented on `codex/pdex-19-restart`; non-fast-forward integrated as `dd472702dc6ff4762e84c6877b4d052d1b5229e4`; [implementation and test record](evidence/pdex-19-implementation-2026-10-14.md); packaged acceptance remains under PDEX-26 |
 | PDEX-20 | ticket | [Task 父子关系与清单文件夹](issues/20-task-parents-list-folders.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-21 | ticket | [Today 时间轴与安排交互](issues/21-today-axis-arrangement-interaction.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
-| PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | in-progress | PDEX-19 | Claimed by `/root` on `codex/pdex-22-restart` from `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`; Calendar shell and Task persistence path inspected; local holiday source verification and implementation in progress |
 | PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | in-progress | none | Implemented on `codex/pdex-23-restart`; non-fast-forward integrated as `224b42e4052f12f1ea9211a0843f6fa3dc100a0c`; packaged acceptance remains under PDEX-26 |
 | PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | in-progress | none | Implemented on `codex/pdex-24-restart`; final independent Spec and Standards review pending; packaged acceptance remains under PDEX-26 |
 | PDEX-25 | ticket | [Habit 详情、历史统计与停用恢复](issues/25-habit-details-history-lifecycle.md) | ready-for-agent | open | PDEX-24 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
@@ -68,7 +68,7 @@ blocking edges. Initial eligible ticket frontier: PDEX-19, PDEX-23 and PDEX-24;
 five later tickets are dependency-gated. There are no cycles or redundant
 transitive edges. Eligibility is not a claim or implementation authorization.
 
-All eight remain unassigned/not started. [Approved proposal](refinement-ticket-breakdown-proposal-2026-10-11.md),
+Initial publication left all eight unassigned/not started. On 2026-10-14, the user authorized reimplementation from `918e7e0`; PDEX-19 and PDEX-23 are integrated, PDEX-24 is under review repair, PDEX-20 and PDEX-22 are claimed. [Approved proposal](refinement-ticket-breakdown-proposal-2026-10-11.md),
 [ticket publication/commit receipt](refinement-ticket-publication-2026-10-11.md)
 and [new execution record](refinement-execution-2026-10-11.md) retain the complete
 scope, graph and branch/commit convention. The parent full spec and its index

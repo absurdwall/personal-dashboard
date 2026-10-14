@@ -4,13 +4,13 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-22
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** open
-**Implementation:** not started
+**Lifecycle:** in-progress
+**Implementation:** claimed by /root on `codex/pdex-22-restart`, based at `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -44,6 +44,7 @@ PDEX-SPEC-02 stories 61–67；共同承担 1–3、88–91 的保存与保留�
 ## Execution
 
 - 2026-10-11：经用户批准发布本地完整票体，未分配assignee、未claim、未开始实现。
+- 2026-10-14：用户授权从 `918e7e0` 重启 PDEX-SPEC-02 实现。本票依赖 PDEX-19 已本地整合；由 `/root` 在 `codex/pdex-22-restart` claim，claim base 为 `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`。Calendar 现有外壳作为基线，原型只作指定区域视觉依据；不搬入周视图、交互或布局。
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
