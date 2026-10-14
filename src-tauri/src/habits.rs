@@ -1415,31 +1415,31 @@ fn local_weekly_period_start(
         }
     }
 
-    let active_revision = definition
+    let latest_weekly_transition = definition
         .goal_revisions
         .iter()
         .filter(|revision| {
             revision.disposition == LocalHabitRevisionDisposition::Scheduled
                 && revision.effective_on.as_str() <= current_lived_date
         })
-        .max_by(|left, right| {
-            left.effective_on
-                .cmp(&right.effective_on)
-                .then_with(|| left.changed_at.cmp(&right.changed_at))
-        });
-    if let Some(revision) = active_revision.filter(|revision| {
-        matches!(
-            revision.goal.as_ref(),
-            Some(LocalHabitGoal::WeeklyCount { .. })
-        )
-    }) {
-        let revision_date = CalendarDate::parse(&revision.effective_on)
-            .expect("scheduled local goal revisions have validated effective dates");
-        let previous_goal = definition.goal_on(&revision_date.plus_days(-1).to_string());
-        if !matches!(previous_goal, Some(LocalHabitGoal::WeeklyCount { .. }))
-            && revision_date > period_start
-        {
-            period_start = revision_date;
+        .filter_map(|revision| {
+            if !matches!(
+                revision.goal.as_ref(),
+                Some(LocalHabitGoal::WeeklyCount { .. })
+            ) {
+                return None;
+            }
+            let revision_date = CalendarDate::parse(&revision.effective_on)
+                .expect("scheduled local goal revisions have validated effective dates");
+            let previous_goal = definition.goal_on(&revision_date.plus_days(-1).to_string());
+            (!matches!(previous_goal, Some(LocalHabitGoal::WeeklyCount { .. })))
+                .then_some(revision_date)
+        })
+        .filter(|revision_date| *revision_date > week_start)
+        .max();
+    if let Some(transition_date) = latest_weekly_transition {
+        if transition_date > period_start {
+            period_start = transition_date;
         }
     }
     period_start

@@ -435,6 +435,113 @@ fn weekly_start_date_excludes_earlier_completions_from_partial_week() {
 }
 
 #[test]
+fn weekly_target_revision_keeps_the_partial_week_start_from_frequency_transition() {
+    let vault = TempVault::new();
+    let monday = app(&vault, "2026-09-07");
+    let empty = monday.habits().unwrap();
+    let created = monday
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "create".into(),
+            key: "local-revised-frequency".into(),
+            name: "Read".into(),
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::DailyCount),
+            change_id: "create-revised-frequency".into(),
+            target_binding: empty.definition_target_binding.unwrap(),
+            expected_revision: empty.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    let monday_completion = monday
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-revised-frequency".into(),
+            lived_date: "2026-09-07".into(),
+            completed: true,
+            change_id: "complete-daily-monday".into(),
+            target_binding: created.completion_target_binding.unwrap(),
+            expected_revision: created.completion_revision,
+        })
+        .unwrap();
+    monday
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-revised-frequency".into(),
+            name: "Read".into(),
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 3 }),
+            change_id: "schedule-weekly-three".into(),
+            target_binding: monday_completion.definition_target_binding.unwrap(),
+            expected_revision: monday_completion.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+
+    let thursday = app(&vault, "2026-09-10");
+    let weekly_view = thursday.habits().unwrap();
+    let habit = weekly_view.habit("local-revised-frequency").unwrap();
+    assert_eq!(habit.weekly_period_start.as_deref(), Some("2026-09-08"));
+    assert_eq!(habit.completed_count, Some(0));
+    let tuesday_completion = thursday
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-revised-frequency".into(),
+            lived_date: "2026-09-08".into(),
+            completed: true,
+            change_id: "complete-weekly-tuesday".into(),
+            target_binding: weekly_view.completion_target_binding.unwrap(),
+            expected_revision: weekly_view.completion_revision,
+        })
+        .unwrap();
+    thursday
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-revised-frequency".into(),
+            name: "Read".into(),
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 5 }),
+            change_id: "schedule-weekly-five".into(),
+            target_binding: tuesday_completion.definition_target_binding.unwrap(),
+            expected_revision: tuesday_completion.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+
+    let catalog_path = vault.0.join("life/.personal-dashboard/habits/v1/catalog.json");
+    let mut catalog: serde_json::Value =
+        serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+    let revisions = catalog["habits"][0]["goalRevisions"]
+        .as_array_mut()
+        .unwrap();
+    let weekly_target_revision = revisions
+        .iter_mut()
+        .find(|revision| revision["goal"]["days"] == 5)
+        .unwrap();
+    weekly_target_revision["effectiveOn"] = "2026-09-10".into();
+    fs::write(&catalog_path, serde_json::to_vec_pretty(&catalog).unwrap()).unwrap();
+
+    let friday = app(&vault, "2026-09-11").habits().unwrap();
+    let habit = friday.habit("local-revised-frequency").unwrap();
+    assert_eq!(habit.current_goal, Some(LocalHabitGoal::WeeklyCount { days: 5 }));
+    assert_eq!(habit.weekly_period_start.as_deref(), Some("2026-09-08"));
+    assert!(habit.weekly_period_partial);
+    assert_eq!(habit.completed_count, Some(1));
+    assert_eq!(friday.summary.known_completions, 0);
+    assert_eq!(friday.summary.target_completions, 0);
+    assert_eq!(friday.summary.partial_weeks_excluded, 1);
+    assert!(habit.history.iter().any(|cell| {
+        cell.date == "2026-09-07" && cell.counts_as_completion
+    }));
+    assert!(habit.history.iter().any(|cell| {
+        cell.date == "2026-09-08" && cell.counts_as_completion
+    }));
+}
+
+#[test]
 fn daily_time_next_day_relation_survives_a_new_application_instance() {
     let vault = TempVault::new();
     let application = app(&vault, "2026-09-08");
