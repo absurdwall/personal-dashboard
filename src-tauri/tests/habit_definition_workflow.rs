@@ -74,6 +74,26 @@ impl TodayClock for FixedClock {
     }
 }
 
+#[derive(Clone, Copy)]
+struct TimestampClock {
+    date: &'static str,
+    time: &'static str,
+}
+
+impl TodayClock for TimestampClock {
+    fn current_date(&self) -> String {
+        self.date.into()
+    }
+
+    fn current_time_label(&self) -> String {
+        self.time.into()
+    }
+
+    fn current_timestamp_label(&self) -> String {
+        format!("{}T{}:00-04:00", self.date, self.time)
+    }
+}
+
 type App = TodayApplication<SelectedVault, NoSelection, FixedClock>;
 
 fn app(vault: &TempVault, date: &'static str) -> App {
@@ -87,8 +107,16 @@ fn app_with_clock<C: TodayClock>(
     TodayApplication::new(SelectedVault(vault.0.clone()), NoSelection, clock)
 }
 
-fn create_local_habit(
-    application: &App,
+fn app_at(
+    vault: &TempVault,
+    date: &'static str,
+    time: &'static str,
+) -> TodayApplication<SelectedVault, NoSelection, TimestampClock> {
+    app_with_clock(vault, TimestampClock { date, time })
+}
+
+fn create_local_habit<C: TodayClock>(
+    application: &TodayApplication<SelectedVault, NoSelection, C>,
     key: &str,
     start_date: &str,
     goal: LocalHabitGoal,
@@ -112,8 +140,8 @@ fn create_local_habit(
         .unwrap()
 }
 
-fn complete_local_habit(
-    application: &App,
+fn complete_local_habit<C: TodayClock>(
+    application: &TodayApplication<SelectedVault, NoSelection, C>,
     view: personal_dashboard_lib::habits::HabitSnapshotView,
     key: &str,
     date: &str,
@@ -130,8 +158,8 @@ fn complete_local_habit(
         .unwrap()
 }
 
-fn lifecycle_local_habit(
-    application: &App,
+fn lifecycle_local_habit<C: TodayClock>(
+    application: &TodayApplication<SelectedVault, NoSelection, C>,
     view: personal_dashboard_lib::habits::HabitSnapshotView,
     key: &str,
     active: bool,
@@ -1744,6 +1772,171 @@ fn first_midweek_goal_attainment_counts_days_but_is_not_a_full_week_streak() {
     let value = serde_json::to_value(stats).unwrap();
     assert_eq!(value["stats"]["allTime"]["value"], 2);
     assert_eq!(value["stats"]["highestStreak"]["precision"], "unknown");
+}
+
+#[test]
+fn same_day_deactivation_after_completion_keeps_daily_success_in_the_ending_streak() {
+    let vault = TempVault::new();
+    let mut view = create_local_habit(
+        &app_at(&vault, "2026-09-07", "09:00"),
+        "local-same-day-deactivate-after",
+        "2026-09-07",
+        LocalHabitGoal::DailyCount,
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-07", "10:00"),
+        view,
+        "local-same-day-deactivate-after",
+        "2026-09-07",
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-08", "10:00"),
+        view,
+        "local-same-day-deactivate-after",
+        "2026-09-08",
+    );
+    let _view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-08", "11:00"),
+        view,
+        "local-same-day-deactivate-after",
+        false,
+        "deactivate-after-completion",
+    );
+
+    let stats = app_at(&vault, "2026-09-08", "12:00")
+        .read_habit_history_statistics("local-same-day-deactivate-after")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["allTime"]["value"], 2);
+    assert_eq!(value["stats"]["currentStreak"]["value"], 2);
+    assert_eq!(value["stats"]["highestStreak"]["value"], 2);
+}
+
+#[test]
+fn same_day_deactivation_before_completion_does_not_count_the_lived_date() {
+    let vault = TempVault::new();
+    let view = create_local_habit(
+        &app_at(&vault, "2026-09-07", "09:00"),
+        "local-same-day-deactivate-before",
+        "2026-09-07",
+        LocalHabitGoal::DailyCount,
+    );
+    let view = complete_local_habit(
+        &app_at(&vault, "2026-09-07", "10:00"),
+        view,
+        "local-same-day-deactivate-before",
+        "2026-09-07",
+    );
+    let view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-08", "10:00"),
+        view,
+        "local-same-day-deactivate-before",
+        false,
+        "deactivate-before-completion",
+    );
+    let _view = complete_local_habit(
+        &app_at(&vault, "2026-09-08", "11:00"),
+        view,
+        "local-same-day-deactivate-before",
+        "2026-09-08",
+    );
+
+    let stats = app_at(&vault, "2026-09-08", "12:00")
+        .read_habit_history_statistics("local-same-day-deactivate-before")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["allTime"]["precision"], "at-least");
+    assert_eq!(value["stats"]["allTime"]["value"], 1);
+    assert!(value["stats"]["currentStreak"]["value"].is_null());
+    assert_eq!(value["stats"]["highestStreak"]["value"], 1);
+}
+
+#[test]
+fn same_day_restore_completion_starts_a_new_daily_streak_segment() {
+    let vault = TempVault::new();
+    let mut view = create_local_habit(
+        &app_at(&vault, "2026-09-07", "09:00"),
+        "local-same-day-restore",
+        "2026-09-07",
+        LocalHabitGoal::DailyCount,
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-07", "10:00"),
+        view,
+        "local-same-day-restore",
+        "2026-09-07",
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-08", "10:00"),
+        view,
+        "local-same-day-restore",
+        "2026-09-08",
+    );
+    view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-09", "10:00"),
+        view,
+        "local-same-day-restore",
+        false,
+        "deactivate-before-restore",
+    );
+    view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-10", "10:00"),
+        view,
+        "local-same-day-restore",
+        true,
+        "restore-before-completion",
+    );
+    let _view = complete_local_habit(
+        &app_at(&vault, "2026-09-10", "11:00"),
+        view,
+        "local-same-day-restore",
+        "2026-09-10",
+    );
+
+    let stats = app_at(&vault, "2026-09-10", "12:00")
+        .read_habit_history_statistics("local-same-day-restore")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["currentStreak"]["value"], 1);
+    assert_eq!(value["stats"]["highestStreak"]["value"], 2);
+}
+
+#[test]
+fn same_day_weekly_deactivation_keeps_attained_week_in_the_ending_streak() {
+    let vault = TempVault::new();
+    let mut view = create_local_habit(
+        &app_at(&vault, "2026-09-07", "09:00"),
+        "local-same-day-weekly-deactivate",
+        "2026-09-07",
+        LocalHabitGoal::WeeklyCount { days: 2 },
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-07", "10:00"),
+        view,
+        "local-same-day-weekly-deactivate",
+        "2026-09-07",
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-08", "10:00"),
+        view,
+        "local-same-day-weekly-deactivate",
+        "2026-09-08",
+    );
+    let _view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-08", "11:00"),
+        view,
+        "local-same-day-weekly-deactivate",
+        false,
+        "deactivate-after-weekly-attainment",
+    );
+
+    let stats = app_at(&vault, "2026-09-08", "12:00")
+        .read_habit_history_statistics("local-same-day-weekly-deactivate")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["allTime"]["value"], 2);
+    assert_eq!(value["stats"]["currentStreak"]["value"], 1);
+    assert_eq!(value["stats"]["highestStreak"]["value"], 1);
 }
 
 #[test]

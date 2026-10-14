@@ -118,7 +118,9 @@ struct Period {
     key: String,
     unit: HabitHistoryUnit,
     outcome: Outcome,
-    breaks_streak: bool,
+    streak_eligible: bool,
+    breaks_before: bool,
+    breaks_after: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,6 +206,8 @@ fn goal_on(
 struct LifecycleState {
     active: bool,
     transition: bool,
+    breaks_before_streak: bool,
+    breaks_after_streak: bool,
     source_history_before_first_restore: bool,
 }
 
@@ -254,6 +258,10 @@ fn lifecycle_at(
         return LifecycleState {
             active: completed_before_deactivation || completed_after_restore,
             transition: true,
+            breaks_before_streak: completed_after_restore
+                && change.kind == LocalHabitLifecycleKind::Restored,
+            breaks_after_streak: completed_before_deactivation
+                && change.kind == LocalHabitLifecycleKind::Deactivated,
             source_history_before_first_restore: false,
         };
     }
@@ -262,6 +270,8 @@ fn lifecycle_at(
         return LifecycleState {
             active: date < current_date || context.source_active,
             transition: false,
+            breaks_before_streak: false,
+            breaks_after_streak: false,
             source_history_before_first_restore: false,
         };
     }
@@ -272,6 +282,8 @@ fn lifecycle_at(
         return LifecycleState {
             active: false,
             transition: false,
+            breaks_before_streak: false,
+            breaks_after_streak: false,
             source_history_before_first_restore: context.source_exists,
         };
     }
@@ -286,6 +298,8 @@ fn lifecycle_at(
     LifecycleState {
         active,
         transition: false,
+        breaks_before_streak: false,
+        breaks_after_streak: false,
         source_history_before_first_restore: false,
     }
 }
@@ -423,6 +437,43 @@ fn lifecycle_transition_in_week(changes: &[LocalHabitLifecycleChange], week_of: 
         .any(|change| change.effective_on.as_str() >= week_of && change.effective_on <= week_end)
 }
 
+fn lifecycle_boundaries_in_week(
+    context: &HabitHistoryHabitContext,
+    week_of: &str,
+    weekly_days: &[String],
+    outcomes: &BTreeMap<String, Outcome>,
+    facts: &BTreeMap<String, HabitHistoryFact>,
+    current_date: &str,
+) -> (bool, bool) {
+    let week_end = shift_date(week_of, 6);
+    let successful_days = weekly_days
+        .iter()
+        .filter(|date| outcomes.get(*date) == Some(&Outcome::Success))
+        .collect::<Vec<_>>();
+    let mut breaks_before = false;
+    let mut breaks_after = false;
+    for change in context.lifecycle_changes.iter().filter(|change| {
+        change.effective_on.as_str() >= week_of && change.effective_on.as_str() <= week_end.as_str()
+    }) {
+        for date in &successful_days {
+            match date.as_str().cmp(change.effective_on.as_str()) {
+                std::cmp::Ordering::Less => breaks_after = true,
+                std::cmp::Ordering::Greater => {
+                    if change.kind == LocalHabitLifecycleKind::Restored {
+                        breaks_before = true;
+                    }
+                }
+                std::cmp::Ordering::Equal => {
+                    let boundary = lifecycle_at(context, date, current_date, facts.get(*date));
+                    breaks_before |= boundary.breaks_before_streak;
+                    breaks_after |= boundary.breaks_after_streak;
+                }
+            }
+        }
+    }
+    (breaks_before, breaks_after)
+}
+
 fn week_start_partial(
     week_of: &str,
     effective_start_date: Option<&str>,
@@ -481,8 +532,11 @@ fn build_periods(
                 key: date.clone(),
                 unit: HabitHistoryUnit::Days,
                 outcome: *outcome,
-                breaks_streak: lifecycle_at(context, date, current_date, facts.get(date))
-                    .transition,
+                streak_eligible: true,
+                breaks_before: lifecycle_at(context, date, current_date, facts.get(date))
+                    .breaks_before_streak,
+                breaks_after: lifecycle_at(context, date, current_date, facts.get(date))
+                    .breaks_after_streak,
             }),
         }
     }
@@ -524,7 +578,14 @@ fn build_periods(
         } else {
             week_start_partial(&week_of, effective_start_date, first_weekly_goal_date)
         };
-        let breaks_streak = transition || partial_start;
+        let (breaks_before, breaks_after) = lifecycle_boundaries_in_week(
+            context,
+            &week_of,
+            &weekly_days,
+            &outcomes,
+            facts,
+            current_date,
+        );
         let week_is_open = week_end.as_str() >= current_date;
         let outcome = if !goals_consistent {
             Outcome::Unknown
@@ -534,7 +595,7 @@ fn build_periods(
             Outcome::Success
         } else if week_is_open {
             Outcome::Unknown
-        } else if breaks_streak {
+        } else if transition || partial_start {
             Outcome::Partial
         } else if weekly_days
             .iter()
@@ -555,7 +616,9 @@ fn build_periods(
             key: week_of,
             unit: HabitHistoryUnit::Weeks,
             outcome,
-            breaks_streak,
+            streak_eligible: !partial_start,
+            breaks_before,
+            breaks_after,
         });
     }
     daily_periods.sort_by(|left, right| {
@@ -578,7 +641,7 @@ fn run_length(periods: &[Period], start: isize) -> u32 {
         return 0;
     }
     let first = &periods[start as usize];
-    if first.outcome != Outcome::Success || first.breaks_streak {
+    if first.outcome != Outcome::Success || !first.streak_eligible {
         return 0;
     }
     let mut count = 1;
@@ -586,7 +649,11 @@ fn run_length(periods: &[Period], start: isize) -> u32 {
     let mut right = first;
     while index >= 0 {
         let period = &periods[index as usize];
-        if period.outcome != Outcome::Success || period.breaks_streak || !consecutive(period, right)
+        if period.outcome != Outcome::Success
+            || !period.streak_eligible
+            || !consecutive(period, right)
+            || period.breaks_after
+            || right.breaks_before
         {
             break;
         }
@@ -817,7 +884,7 @@ pub(crate) fn derive_habit_history_statistics(
     if let Some(current_index) = current_index {
         let current = &periods[current_index];
         match current.outcome {
-            Outcome::Success if !current.breaks_streak => {
+            Outcome::Success if current.streak_eligible => {
                 let run = run_length(&periods, current_index as isize);
                 current_value = (run > 0).then_some(run);
                 current_precision = if run > 0 {
@@ -858,8 +925,11 @@ pub(crate) fn derive_habit_history_statistics(
         let mut previous: Option<&Period> = None;
         for period in periods.iter().filter(|period| period.unit == unit) {
             let is_contiguous = previous.is_some_and(|prior| consecutive(prior, period));
-            if period.outcome == Outcome::Success && !period.breaks_streak {
-                run = if is_contiguous { run + 1 } else { 1 };
+            if period.outcome == Outcome::Success && period.streak_eligible {
+                let continues = is_contiguous
+                    && previous.is_some_and(|prior| !prior.breaks_after)
+                    && !period.breaks_before;
+                run = if continues { run + 1 } else { 1 };
                 highest = highest.max(run);
             } else {
                 run = 0;
