@@ -212,7 +212,8 @@ no integration merge, install, remote operation or main change was recorded.
   PDEX-24-integrated restart integration tip.
 - PDEX-25 is limited to Habit selected-detail/history/lifecycle behavior. The
   parent PDEX-SPEC-02 and published PDEX-25 body are unchanged. The worker branch
-  remains separate; no integration merge has been performed.
+  was separate at this claim checkpoint; no integration merge had yet been
+  performed. The later integration is recorded below.
 
 ## PDEX-25 integration and review — 2026-10-14
 
