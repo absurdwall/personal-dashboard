@@ -35,3 +35,27 @@ The isolated candidate receipt is at
 It records the unique bundle ID, synthetic profile/Vault, fixed synthetic clock,
 executable hash and package verification. The installed app, restart worktree,
 real Vault, and real profile were not modified by this repair branch.
+
+## Runtime location correction — 2026-10-14
+
+The reviewer reported a read-only sample of the first candidate launch (PID
+14512): the main thread stopped at
+`FileTodayWorkspacePersistence::inspect_document → std::fs::read → open`, and a
+scheduler thread also stopped in `open`. A first-run Documents TCC access issue
+for the unique bundle ID is a hypothesis only; it was not confirmed, and no
+permission was requested or granted.
+
+After the reviewer confirmed PID 14512 had exited, the candidate-only runtime
+copy was moved to
+`/private/tmp/pdex-visual-repairs-20261014.noindex/preview-runtime/`. The seeded
+`Profile/` and `Synthetic Vault/` under the output directory remain intact. The
+runtime copy's `today-workspace.json` and the candidate bundle's
+`LSEnvironment` now point to the `/private/tmp` copies. Product source remains
+`cb08a9f72ba5ec99c62f5c6e1325662af656dd5b`; no rebuild was needed. The
+candidate was re-signed, strict signature verification passed, and
+`lsregister -f` completed. Its post-resign executable SHA-256 is
+`a5dd98567afe87d294b1e7898e53b36cc5871b5e31f76c78c26fbf4ec7c901ee`.
+
+The reviewer had not launched the relocated candidate at this record's
+creation. This packaging change does not establish native acceptance or change
+any ticket lifecycle.
