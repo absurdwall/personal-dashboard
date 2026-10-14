@@ -104,3 +104,44 @@ PDEX-SPEC-02 stories 1–3、88–91，以及全部功能票的组合验收。
   relaunch, migration, failure/recovery, pointer cross-feature checks, IME,
   microphone and human acceptance remain outstanding. No installed-app
   replacement, `main` merge, push, PR or parent-spec closure occurred.
+
+## Packaged acceptance repair and retry — 2026-10-14
+
+- On `codex/pdex-26-restart`, sync merge `1c64284` brought in integration
+  `ff45a91`. Acceptance-only commits `e20d53d`, `33caa8f`, `323052a`, and
+  `0d08ad4` corrected two stale gate assumptions and the Task modal check order
+  without changing product source. `bash -n scripts/acceptance/macos-ipc-workflow.sh`
+  and `git diff --check` passed.
+- The `settings-vault-colors` standalone scenario passed against the existing
+  candidate package and synthetic Vaults. It saved the blue accent, verified
+  rendered accent surfaces on Today, Calendar, and a completed Habit day cell,
+  then proved preference persistence after relaunch and Vault switching,
+  unavailable-Vault recovery, default restoration, and unchanged Daily Record
+  and Habits snapshot bytes.
+- The `dashboard-4` scenario now loads the Morning baseline explicitly before
+  returning to the synthetic Day view. It passed that check, loaded the Tasks
+  fixture, and verified the future task before opening the New Task dialog.
+  The Accessibility driver then timed out waiting for the dialog's visible
+  `加入收集箱` button, even with a 10-second `wait-text`; the saved screenshot
+  shows the dialog rendered. This attempt did not complete the scripted
+  cross-feature scenario.
+- A separate manual probe used that same isolated candidate and synthetic
+  profile. Clicking the visible submit button saved a Task through the app;
+  the Vault JSON readback was `name: "Inbox  · No date"`, `listId: inbox`,
+  null date/time, pending state, manual source. The CUA text entry omitted the
+  Chinese portion of the intended synthetic title, so this is not IME evidence.
+  Relaunching the exact candidate executable with the same profile and driving
+  it by PID showed the saved row in Tasks. The synthetic Daily Record matched
+  its checked-in fixture byte-for-byte. This bounded readback/relaunch result
+  does not replace the incomplete dashboard-4 workflow.
+- Screenshot: [Dashboard 4 Task dialog](../evidence/pdex-26-dashboard4-task-dialog-2026-10-14.png).
+- During the manual probe, CUA's app-by-path binding re-resolved a temporary
+  same-bundle process to the installed app after a quit shortcut. No further
+  UI action was sent through that binding. The installed PID remained running
+  with its original executable SHA-256; the unprofiled temporary candidate was
+  stopped, and the synthetic-profile process was verified separately.
+- PDEX-26 remains `open` / `in-progress`. The complete Dashboard 4 matrix,
+  migrations, revision conflicts, write/read failure recovery, pointer
+  cross-feature matrix, valid CJK/IME behavior, microphone, and human acceptance
+  remain unverified. No installed-app replacement, `main` merge, push, PR, or
+  parent-spec closure occurred.
