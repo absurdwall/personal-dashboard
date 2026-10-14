@@ -14,6 +14,7 @@ pub mod collaboration_memory;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
+pub mod habit_history;
 pub mod habit_producer;
 pub mod interface_language;
 pub mod migration;
@@ -966,6 +967,14 @@ fn read_habit_completion_history(
 }
 
 #[tauri::command]
+fn read_habit_history_statistics(
+    application: State<'_, DesktopTodayApplication>,
+    habit_key: String,
+) -> Result<habit_history::HabitHistoryStatisticsView, String> {
+    application.read_habit_history_statistics(&habit_key)
+}
+
+#[tauri::command]
 fn set_historical_habit_completion(
     application: State<'_, DesktopTodayApplication>,
     input: HabitCompletionMutationInput,
@@ -1234,6 +1243,7 @@ pub fn run() {
             save_habit_definition,
             set_habit_lifecycle,
             read_habit_completion_history,
+            read_habit_history_statistics,
             tasks_view,
             create_task,
             create_task_subtask,

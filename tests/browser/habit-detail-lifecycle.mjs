@@ -93,6 +93,22 @@ async function pageFixture(viewport={width:1280,height:800}) {
         definitionTargetBinding:'definition-binding',habitContexts:[context],coverage:'Synthetic bounded evidence',
       };
     };
+    const historyStatistics=habitKey=>{
+      const hasToday=window.__canonicalRecords.some(record=>record.habitKey===habitKey&&record.livedDate===livedDate&&record.state==='completed');
+      const metric=(value,precision='at-least',unit='days')=>({value,precision,unit});
+      const month=metric(hasToday?3:2,hasToday?'confirmed':'at-least');
+      const highest=metric(2,'at-least');
+      return {
+        habitKey,stats:{month,allTime:month,currentStreak:highest,highestStreak:highest,
+          highestStreakByUnit:{days:highest,weeks:null},coverageFrom:window.__historyStartOverride??'2026-10-12',
+          coverageTo:livedDate,coverageIsComplete:false},
+        historicalGoals:[{effectiveOn:'2026-10-12',effectiveThrough:null,goal:{kind:'daily-count'},source:'start'}],
+        rangeFrom:window.__historyStartOverride??'2026-10-12',rangeTo:livedDate,currentLivedDate:livedDate,
+        canonicalState:'ready',canonicalRevision:window.__view.completionRevision,projectionState:'ready',
+        projectionRevision:'snapshot-r1',catalogRevision:window.__view.definitionRevision,
+        definitionTargetBinding:'definition-binding',coverage:'Synthetic bounded evidence',
+      };
+    };
     window.__TAURI__={core:{invoke:async(command,args)=>{
       window.__calls.push({command,args});
       if(command==='application_identity')return {productName:'Personal Dashboard'};
@@ -103,6 +119,7 @@ async function pageFixture(viewport={width:1280,height:800}) {
       if(command==='appearance_preferences')return {accentColor:'forest',backgroundImageState:'none',backgroundImageUrl:null,cleanupWarning:null};
       if(command==='habit_snapshot')return structuredClone(window.__view);
       if(command==='read_habit_completion_history')return historyView(args.dates);
+      if(command==='read_habit_history_statistics')return historyStatistics(args.habitKey);
       if(command==='save_habit_definition')return structuredClone(window.__view);
       if(command==='set_local_habit_completion'){
         const input=args.input;const existing=window.__canonicalRecords.find(record=>record.habitKey===input.habitKey&&record.livedDate===input.livedDate);
@@ -145,9 +162,13 @@ test('deliberate detail entry preserves the Today list and local lifecycle reads
     assert.equal(await page.locator('#habits-today-default').isHidden(),true,'detail replaces only the Today-side content');
     assert.match(await page.locator('#habit-detail-month').innerText(),/至少 2 天/);
     assert.match(await page.locator('#habit-detail-current-streak').innerText(),/至少 2 天/,'open current day does not break the active streak');
+    assert.match(await page.locator('#habit-detail-historical-goals').innerText(),/每日完成/,'backend historical goal segments are presented in the detail');
     assert.match(await page.locator('#habit-detail-coverage').innerText(),/2026-10-12.*2026-10-14/);
     assert.equal(await page.locator('#habit-detail-record-list .habit-detail-record').count(),3);
     const pageCalls=await page.evaluate(()=>window.__calls.filter(call=>call.command==='read_habit_completion_history'));
+    const statisticsCalls=await page.evaluate(()=>window.__calls.filter(call=>call.command==='read_habit_history_statistics'));
+    assert.ok(statisticsCalls.length>=1,'the Rust statistics application seam supplies detail metrics');
+    assert.ok(statisticsCalls.every(call=>call.args.habitKey==='local-reading'));
     assert.ok(pageCalls.length>=1);
     assert.ok(pageCalls.every(call=>call.args.dates.length<=366));
     assert.ok(pageCalls.every(call=>call.args.dates.every((date,index)=>index===0||date===new Date(Date.parse(call.args.dates[index-1]+'T00:00:00Z')+86400000).toISOString().slice(0,10))));
@@ -214,7 +235,8 @@ test('detail remains compact and usable at the ticket viewport sizes',async()=>{
       assert.equal(layout.detailVisible,true);assert.equal(layout.summaryVisible,true);
       assert.ok(layout.actionWidth<100,`${width}x${height} keeps lifecycle action quiet and compact`);
       if(output){
-        await page.locator('#habit-detail-view').scrollIntoViewIfNeeded();
+        await page.locator('#habit-detail-heading').scrollIntoViewIfNeeded();
+        assert.equal(await page.locator('#habit-detail-heading').isVisible(),true,`${width}x${height} shows the detail heading in the captured viewport`);
         await page.screenshot({path:resolve(output,`pdex-25-habits-${width}x${height}.png`)});
       }
       if(width===680){

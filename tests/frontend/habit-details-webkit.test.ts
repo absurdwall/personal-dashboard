@@ -33,6 +33,8 @@ function render(width: number, height: number): any {
       document.querySelector('#habit-detail-current-streak').textContent='At least 2 days';
       document.querySelector('#habit-detail-highest-streak').textContent='At least 2 days';
       document.querySelector('#habit-detail-coverage').textContent='History range: 2024-01-01 — 2026-10-14 · Source snapshot window: 2026-10-12 — 2026-10-14 · Snapshot state: Ready';
+      const historicalGoal=document.createElement('p');historicalGoal.className='habit-detail-goal-segment';historicalGoal.textContent='2026-10-12 · Complete daily';
+      document.querySelector('#habit-detail-historical-goals').replaceChildren(historicalGoal);
       document.querySelector('#habit-detail-record-count').textContent='3 records';
       const summary=document.querySelector('.habits-week-summary');
       summary.hidden=false;
@@ -55,9 +57,10 @@ function render(width: number, height: number): any {
       const detail=rect(document.querySelector('#habit-detail-view'));
       const summaryRect=rect(summary);
       const stats=document.querySelector('.habit-detail-stats');
+      const goals=document.querySelector('.habit-detail-goals');
       const button=rect(document.querySelector('#habit-detail-lifecycle'));
       return JSON.stringify({viewport:{width:innerWidth,height:innerHeight},bodyWidth:document.documentElement.scrollWidth,
-        detail,summary:summaryRect,statsColumns:getComputedStyle(stats).gridTemplateColumns,button,
+        detail,summary:summaryRect,statsColumns:getComputedStyle(stats).gridTemplateColumns,goals:rect(goals),button,
         checkInVisible:!checkIn.hidden,recordRows:list.children.length,
         title:document.querySelector('#habits-today-heading').textContent});
     })()`;
@@ -76,6 +79,7 @@ test("PDEX-25 detail DOM and current Dashboard styles render in WKWebView at wid
     assert.deepEqual(result.viewport, { width, height });
     assert.equal(result.bodyWidth <= width, true, `no horizontal overflow at ${width}x${height}: ${JSON.stringify(result)}`);
     assert.ok(result.detail.width > 0 && result.summary.width > 0, `detail and summary remain visible at ${width}x${height}`);
+    assert.ok(result.goals.width > 0, `historical goals remain present at ${width}x${height}`);
     assert.ok(result.button.width < 100, `lifecycle action retains quiet sizing at ${width}x${height}`);
     assert.equal(result.checkInVisible, true);
     assert.equal(result.recordRows, 3);

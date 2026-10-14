@@ -11,6 +11,10 @@ use crate::habits::{
     project_habit_corrections_with_recording_limit, project_snapshot_with_names_at_local_date,
     project_uncatalogued_habit_corrections_with_recording_limit, snapshot_dates_at_local_date,
 };
+use crate::habit_history::{
+    derive_habit_history_statistics, historical_goal_segments, CanonicalHistoryState,
+    HabitHistoryFact, HabitHistoryStatisticsView,
+};
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
 };
@@ -3566,6 +3570,203 @@ where
             definition_target_binding,
             habit_contexts,
             coverage: "Only explicit local completed/withdrawn changes establish local state. Unrecorded dates remain unknown. Change timestamps record saves, not activity time. Published snapshot goal thresholds, actual event times and source observations remain distinct; its freshness and coverage do not limit canonical local facts. Dated notes are context, not completion evidence. This read makes no writes or external calls.",
+        })
+    }
+
+    /// Read bounded local and projected history pages, then derive product
+    /// statistics here at the Rust application/domain boundary. The web layer
+    /// receives presentation-ready values and does not interpret outcomes.
+    pub fn read_habit_history_statistics(
+        &self,
+        habit_key: &str,
+    ) -> Result<HabitHistoryStatisticsView, String> {
+        let today = self.clock.current_lived_date();
+        let overview = self.read_habit_completion_history(std::slice::from_ref(&today))?;
+        let context = overview
+            .habit_contexts
+            .iter()
+            .find(|context| context.key == habit_key)
+            .cloned()
+            .ok_or_else(|| format!("Habit history context is unavailable: {habit_key}"))?;
+        let earliest_canonical = overview
+            .canonical
+            .get("earliestLivedDateByHabit")
+            .and_then(|dates| dates.get(habit_key))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let projection_start = overview
+            .projection
+            .range_label
+            .as_deref()
+            .and_then(|range| range.split_once(" — ").map(|(from, _)| from.to_string()));
+        let range_from = [
+            context.start_date.clone(),
+            earliest_canonical,
+            projection_start,
+            Some(today.clone()),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or_else(|| today.clone());
+
+        let canonical_state = overview
+            .canonical
+            .get("state")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("error")
+            .to_string();
+        let canonical_state_for_fact = match canonical_state.as_str() {
+            "ready" => CanonicalHistoryState::Ready,
+            "missing" | "unconfigured" => CanonicalHistoryState::Missing,
+            _ => CanonicalHistoryState::Error,
+        };
+        let canonical_revision = overview
+            .canonical
+            .get("revision")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let projection_revision = overview.projection_revision.clone();
+        let catalog_revision = overview.catalog_revision.clone();
+        let definition_target_binding = overview.definition_target_binding.clone();
+        let projection_state = overview.projection.state;
+
+        let mut facts = Vec::new();
+        let mut from = range_from.clone();
+        loop {
+            let mut dates = Vec::new();
+            let mut date = CalendarDate::parse(&from)
+                .ok_or_else(|| format!("Invalid Habit history start date: {from}"))?;
+            for _ in 0..366 {
+                let lived_date = date.to_string();
+                if lived_date > today {
+                    break;
+                }
+                dates.push(lived_date.clone());
+                if lived_date == today {
+                    break;
+                }
+                date = date.plus_days(1);
+            }
+            if dates.is_empty() {
+                break;
+            }
+
+            let page = self.read_habit_completion_history(&dates)?;
+            if page.catalog_revision != catalog_revision
+                || page.catalog_state != overview.catalog_state
+                || page.canonical.get("state").and_then(serde_json::Value::as_str)
+                    != Some(canonical_state.as_str())
+                || page.canonical.get("revision").and_then(serde_json::Value::as_str)
+                    != canonical_revision.as_deref()
+                || page.projection_revision != projection_revision
+                || page.projection.state != projection_state
+                || page.definition_target_binding != definition_target_binding
+                || page.current_lived_date.as_deref() != Some(today.as_str())
+            {
+                return Err("Habit history changed while statistics were being read".into());
+            }
+            let mut local_by_date = BTreeMap::<
+                String,
+                (
+                    HabitLocalCompletionState,
+                    Option<String>,
+                    Option<String>,
+                ),
+            >::new();
+            if let Some(records) = page
+                .canonical
+                .get("records")
+                .and_then(serde_json::Value::as_array)
+            {
+                for record in records {
+                    if record.get("habitKey").and_then(serde_json::Value::as_str) != Some(habit_key) {
+                        continue;
+                    }
+                    let Some(lived_date) = record.get("livedDate").and_then(serde_json::Value::as_str) else {
+                        continue;
+                    };
+                    let state = match record.get("state").and_then(serde_json::Value::as_str) {
+                        Some("completed") => HabitLocalCompletionState::Completed,
+                        Some("withdrawn") => HabitLocalCompletionState::Withdrawn,
+                        _ => HabitLocalCompletionState::None,
+                    };
+                    local_by_date.insert(
+                        lived_date.to_string(),
+                        (
+                            state,
+                            record
+                                .get("recordedCompletedAt")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_string),
+                            record
+                                .get("modifiedAt")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_string),
+                        ),
+                    );
+                }
+            }
+            let projected = page
+                .projection
+                .habits
+                .iter()
+                .find(|habit| habit.key == habit_key)
+                .map(|habit| {
+                    habit
+                        .history
+                        .iter()
+                        .map(|cell| (cell.date.clone(), cell.clone()))
+                        .collect::<BTreeMap<_, _>>()
+                })
+                .unwrap_or_default();
+            for date in &dates {
+                let (local_state, completed_at, local_changed_at) = local_by_date
+                    .get(date)
+                    .cloned()
+                    .unwrap_or((HabitLocalCompletionState::None, None, None));
+                facts.push(HabitHistoryFact {
+                    date: date.clone(),
+                    canonical_state: canonical_state_for_fact,
+                    local_state,
+                    completed_at,
+                    local_changed_at,
+                    projected: projected.get(date).cloned(),
+                });
+            }
+
+            let page_end = dates.last().expect("nonempty page");
+            if page_end == &today {
+                break;
+            }
+            from = CalendarDate::parse(page_end)
+                .expect("validated page end")
+                .plus_days(1)
+                .to_string();
+        }
+
+        let stats = derive_habit_history_statistics(
+            &context,
+            &facts,
+            &range_from,
+            &today,
+            &today,
+            projection_state,
+        );
+        Ok(HabitHistoryStatisticsView {
+            habit_key: habit_key.to_string(),
+            stats,
+            historical_goals: historical_goal_segments(&context, &today),
+            range_from,
+            range_to: today.clone(),
+            current_lived_date: today,
+            canonical_state,
+            canonical_revision,
+            projection_state,
+            projection_revision,
+            catalog_revision,
+            definition_target_binding,
+            coverage: overview.coverage,
         })
     }
 

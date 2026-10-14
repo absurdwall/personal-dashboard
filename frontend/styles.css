@@ -11060,6 +11060,21 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+.habit-detail-goals { margin-top: 0.55rem; }
+.habit-detail-goals[hidden] { display: none; }
+.habit-detail-goals h5 {
+  margin: 0 0 0.22rem;
+  color: var(--parity-muted);
+  font-size: 0.56rem;
+  font-weight: 600;
+}
+.habit-detail-goal-segment {
+  margin: 0;
+  color: var(--parity-muted);
+  font-size: 0.54rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
 .habit-detail-status[data-state="error"] { color: #9a463c; }
 .habit-detail-checkin {
   display: flex;

@@ -1216,6 +1216,8 @@ const interfaceCopies = {
   "habits.statCurrentStreak": { zh: "当前连续", en: "Current streak" },
   "habits.statHighestStreak": { zh: "历史最高连续", en: "Highest streak" },
   "habits.detailRecords": { zh: "历史记录", en: "History" },
+  "habits.historyGoals": { zh: "历史目标", en: "Goal history" },
+  "habits.noConfiguredGoal": { zh: "无目标", en: "No goal" },
   "habits.showOlderRecords": { zh: "查看更早记录", en: "Show older records" },
   "habits.metricUnknown": { zh: "未知", en: "Unknown" },
   "habits.metricAtLeastDays": { zh: "至少 {count} 天", en: "At least {count} days" },

@@ -106,12 +106,6 @@ import {
 } from "./habit-completion.js";
 import { reconcileHabitCompletionWrite } from "./habit-completion-command.js";
 import {
-  deriveHabitHistoryStats,
-  type HabitHistoryContext,
-  type HabitHistoryFact,
-  type HabitHistoryStats,
-} from "./habit-history-stats.js";
-import {
   localizedHabitName,
   type HabitLocalizedNames,
 } from "./habit-presentation.js";
@@ -547,11 +541,67 @@ type HabitSnapshotView = Readonly<{
   habits: readonly HabitView[];
 }>;
 
-type HabitHistoryHabitContext = HabitHistoryContext & Readonly<{
+type HabitHistoryHabitContext = Readonly<{
+  key: string;
   name: string;
   localizedNames: HabitLocalizedNames;
   isLocalDefinition: boolean;
   active: boolean;
+  startDate: string | null;
+  currentGoal: LocalHabitGoal | null;
+  baseGoal: LocalHabitGoal | null;
+  sourceGoalHistory: readonly Readonly<{ weekOf: string; goal: LocalHabitGoal }>[];
+  goalRevisions: readonly Readonly<{
+    effectiveOn: string;
+    changedAt: string;
+    disposition: "scheduled" | "superseded" | "cancelled";
+    goal: LocalHabitGoal | null;
+  }>[];
+  lifecycleChanges: readonly Readonly<{
+    kind: "deactivated" | "restored";
+    effectiveOn: string;
+    changedAt: string;
+  }>[];
+}>;
+
+type HabitHistoryMetric = Readonly<{
+  value: number | null;
+  precision: "confirmed" | "at-least" | "unknown";
+  unit: "days" | "weeks";
+}>;
+
+type HabitHistoryStats = Readonly<{
+  month: HabitHistoryMetric;
+  allTime: HabitHistoryMetric;
+  currentStreak: HabitHistoryMetric;
+  highestStreak: HabitHistoryMetric;
+  highestStreakByUnit: Readonly<{ days: HabitHistoryMetric | null; weeks: HabitHistoryMetric | null }>;
+  coverageFrom: string;
+  coverageTo: string;
+  coverageIsComplete: boolean;
+}>;
+
+type HabitHistoryGoalSegment = Readonly<{
+  effectiveOn: string | null;
+  effectiveThrough: string | null;
+  goal: LocalHabitGoal | null;
+  source: "start" | "source-snapshot" | "local-revision";
+}>;
+
+type HabitHistoryStatisticsView = Readonly<{
+  habitKey: string;
+  stats: HabitHistoryStats;
+  historicalGoals: readonly HabitHistoryGoalSegment[];
+  rangeFrom: string;
+  rangeTo: string;
+  currentLivedDate: string;
+  canonicalState: string;
+  canonicalRevision: string | null;
+  projectionState: HabitSnapshotState;
+  projectionRevision: string | null;
+  catalogRevision: string | null;
+  definitionTargetBinding: string | null;
+  coverage: string;
 }>;
 
 type HabitHistoryCompletionRecord = Readonly<{
@@ -606,7 +656,7 @@ type HabitDetailHistoryState = Readonly<{
   habitKey: string;
   context: HabitHistoryHabitContext;
   stats: HabitHistoryStats;
-  facts: readonly HabitHistoryFact[];
+  historicalGoals: readonly HabitHistoryGoalSegment[];
   records: readonly HabitDetailRecord[];
   rangeFrom: string;
   rangeTo: string;
@@ -1460,6 +1510,7 @@ const habitDetailMonth = document.querySelector<HTMLElement>("#habit-detail-mont
 const habitDetailAllTime = document.querySelector<HTMLElement>("#habit-detail-all-time");
 const habitDetailCurrentStreak = document.querySelector<HTMLElement>("#habit-detail-current-streak");
 const habitDetailHighestStreak = document.querySelector<HTMLElement>("#habit-detail-highest-streak");
+const habitDetailHistoricalGoals = document.querySelector<HTMLElement>("#habit-detail-historical-goals");
 const habitDetailCoverage = document.querySelector<HTMLElement>("#habit-detail-coverage");
 const habitDetailRecordCount = document.querySelector<HTMLElement>("#habit-detail-record-count");
 const habitDetailRecordList = document.querySelector<HTMLElement>("#habit-detail-record-list");
@@ -9954,6 +10005,19 @@ function habitHistoryMetricLabel(metric: HabitHistoryStats["month"]): string {
   return t(key, { count: metric.value });
 }
 
+function localHabitGoalLabel(goal: LocalHabitGoal): string {
+  switch (goal.kind) {
+    case "daily-count": return "每日完成";
+    case "weekly-count": return `每周 ${goal.days} 天`;
+    case "daily-time":
+      return goal.dayRelation === "next-day"
+        ? `每日 次日 ${goal.standard}`
+        : goal.dayRelation === "unresolved"
+          ? `每日 ${goal.standard} · 日期归属待解释`
+          : `每日 ${goal.standard}`;
+  }
+}
+
 function habitDetailRecordStateLabel(state: HabitDetailRecord["state"]): string {
   const keys: Record<HabitDetailRecord["state"], InterfaceCopyKey> = {
     completed: "habits.completed",
@@ -10006,7 +10070,33 @@ function renderHabitDetailPanel(): void {
   if (habitDetailMonth) habitDetailMonth.textContent = metrics ? habitHistoryMetricLabel(metrics.month) : t("habits.metricUnknown");
   if (habitDetailAllTime) habitDetailAllTime.textContent = metrics ? habitHistoryMetricLabel(metrics.allTime) : t("habits.metricUnknown");
   if (habitDetailCurrentStreak) habitDetailCurrentStreak.textContent = metrics ? habitHistoryMetricLabel(metrics.currentStreak) : t("habits.metricUnknown");
-  if (habitDetailHighestStreak) habitDetailHighestStreak.textContent = metrics ? habitHistoryMetricLabel(metrics.highestStreak) : t("habits.metricUnknown");
+  if (habitDetailHighestStreak) {
+    const maxima = metrics
+      ? [metrics.highestStreakByUnit.days, metrics.highestStreakByUnit.weeks].filter((metric): metric is HabitHistoryMetric => metric !== null)
+      : [];
+    habitDetailHighestStreak.textContent = maxima.length > 0
+      ? maxima.map(habitHistoryMetricLabel).join(" · ")
+      : metrics ? habitHistoryMetricLabel(metrics.highestStreak) : t("habits.metricUnknown");
+  }
+
+  if (habitDetailHistoricalGoals) {
+    const goals = detail?.historicalGoals ?? [];
+    habitDetailHistoricalGoals.replaceChildren(...goals.map((segment) => {
+      const row = document.createElement("p");
+      row.className = "habit-detail-goal-segment";
+      const period = segment.effectiveOn
+        ? segment.effectiveThrough && segment.effectiveThrough !== segment.effectiveOn
+          ? `${segment.effectiveOn} — ${segment.effectiveThrough}`
+          : segment.effectiveOn
+        : "";
+      const goal = segment.goal
+        ? localizeHabitGoalLabel(localHabitGoalLabel(segment.goal), currentInterfaceLanguage)
+        : t("habits.noConfiguredGoal");
+      row.textContent = [period, goal].filter(Boolean).join(" · ");
+      return row;
+    }));
+    habitDetailHistoricalGoals.hidden = goals.length === 0;
+  }
 
   if (habitDetailCoverage) {
     if (!detail) {
@@ -10105,9 +10195,22 @@ async function loadHabitDetail(habitKey: string): Promise<void> {
     const context = overview.habitContexts.find((candidate) => candidate.key === habitKey);
     if (!context) throw new Error(t("habits.historyContextUnavailable"));
     const currentDate = overview.currentLivedDate ?? fallbackDate;
+    const statistics = await window.__TAURI__.core.invoke<HabitHistoryStatisticsView>(
+      "read_habit_history_statistics",
+      { habitKey },
+    );
+    if (!habitHistoryRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    if (
+      statistics.habitKey !== habitKey ||
+      statistics.catalogRevision !== overview.catalogRevision ||
+      statistics.canonicalRevision !== overview.canonical.revision ||
+      statistics.projectionRevision !== overview.projectionRevision ||
+      statistics.definitionTargetBinding !== overview.definitionTargetBinding ||
+      statistics.currentLivedDate !== currentDate
+    ) throw new Error(t("habits.historyChangedDuringRead"));
     const earliestCanonical = overview.canonical.earliestLivedDateByHabit[habitKey] ?? null;
     const projectionRange = parseHabitSnapshotRange(overview.projection.rangeLabel);
-    const rangeFrom = [context.startDate, earliestCanonical, projectionRange?.from, currentDate]
+    const rangeFrom = [statistics.rangeFrom, context.startDate, earliestCanonical, projectionRange?.from, currentDate]
       .filter((date): date is string => Boolean(date))
       .sort()[0] ?? currentDate;
 
@@ -10144,37 +10247,10 @@ async function loadHabitDetail(habitKey: string): Promise<void> {
       }
     }
 
-    const facts: HabitHistoryFact[] = [];
     const records: HabitDetailRecord[] = [];
     for (let date = rangeFrom; date <= currentDate; date = shiftDate(date, 1)) {
       const canonical = canonicalRecords.get(date);
       const cell = projectedCells.get(date);
-      const projected = cell ? {
-        coverage: cell.coverage,
-        status: cell.status,
-        countsAsCompletion: cell.countsAsCompletion,
-        actualTimeLabel: cell.actualTimeLabel,
-        details: cell.details.map((item) => ({
-          kind: item.kind,
-          status: item.kind === "observation" ? item.status : undefined,
-          observedAt: item.kind === "observation" ? item.observedAt : undefined,
-          actualTime: item.kind === "actualTime" ? {
-            localTime: item.localTime,
-            dayRelation: item.dayRelation,
-          } : undefined,
-          sourceLabel: "sourceLabel" in item ? item.sourceLabel : undefined,
-        })),
-      } : undefined;
-      facts.push({
-        date,
-        canonicalState: overview.canonical.state === "ready" ? "ready"
-          : overview.canonical.state === "error" ? "error" : "missing",
-        localState: canonical?.state ?? "none",
-        completedAt: canonical?.recordedCompletedAt ?? null,
-        localChangedAt: canonical?.modifiedAt ?? null,
-        projected,
-      });
-
       if (canonical || (cell && cell.hasRecord)) {
         const state: HabitDetailRecord["state"] = canonical
           ? canonical.state
@@ -10199,15 +10275,8 @@ async function loadHabitDetail(habitKey: string): Promise<void> {
     const next: HabitDetailHistoryState = {
       habitKey,
       context,
-      stats: deriveHabitHistoryStats({
-        context,
-        facts,
-        rangeFrom,
-        rangeTo: currentDate,
-        currentDate,
-        projectionFreshness: overview.projection.state,
-      }),
-      facts,
+      stats: statistics.stats,
+      historicalGoals: statistics.historicalGoals,
       records: records.sort((left, right) => right.date.localeCompare(left.date)),
       rangeFrom,
       rangeTo: currentDate,
