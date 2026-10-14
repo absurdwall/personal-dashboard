@@ -213,3 +213,44 @@ no integration merge, install, remote operation or main change was recorded.
 - PDEX-25 is limited to Habit selected-detail/history/lifecycle behavior. The
   parent PDEX-SPEC-02 and published PDEX-25 body are unchanged. The worker branch
   remains separate; no integration merge has been performed.
+
+## PDEX-25 integration and review — 2026-10-14
+
+- Complete ticket branch `codex/pdex-25-restart` ended at
+  `69fe84fc6681bd8fbd1b08e55526a1859a42abce`; it was non-fast-forward merged
+  into `codex/dashboard-experience-refinement-restart-20261014` as
+  `fe14333c8e1269c4c5b14faf89f2d802dd351487`. Its claim, implementation,
+  Rust-boundary correction, same-day lifecycle correction, evidence, and review
+  commits remain reachable. PDEX-25 remains open/in-progress under the shared
+  PDEX-26 packaged-acceptance boundary.
+- The ticket branch passed its focused Rust, frontend, browser, viewport and
+  build checks; the merged integration tree repeated the build, 30 Rust
+  workflow tests, 28 focused frontend tests and 2 browser tests. The source
+  diff review found no remaining spec gap or scope creep. See
+  [PDEX-25 implementation evidence](evidence/pdex-25-implementation-2026-10-14.md).
+- A tracker correction was required because the canonical map still described
+  PDEX-25 as isolated after the merge. The map and PDEX-SPEC-02 index now record
+  the integration commit while leaving the ticket open for packaged acceptance.
+
+## PDEX-26 local claim and candidate build — 2026-10-14
+
+- Owner `/root`; branch `codex/pdex-26-restart`; worktree
+  `/private/tmp/pdex-restart-20261014.noindex/pdex-26`; exact base
+  `fe14333c8e1269c4c5b14faf89f2d802dd351487`; claim commit
+  `147750868d2030f1a604d3d1e0ee7e6278fbad5c`. PDEX-26 remains open and
+  in-progress.
+- Built the macOS candidate with
+  `PATH=/Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/node_modules/.bin:$PATH npm run build:mac`.
+  The static bundle is at
+  `/private/tmp/pdex-restart-20261014.noindex/candidate/pdex-spec-02-2026-10-14/Personal Dashboard.app`;
+  it is version 4.0.7, arm64, 17 MB, ad-hoc signed, and has executable SHA-256
+  `fe9dbbc6933a7778ab90712f6b90623efa172387397c37e54efed9a893d0a30c`.
+  `codesign --verify --deep --strict` passed.
+- The candidate was not launched. An isolated launcher and empty data directory
+  are supplied; no Vault or synthetic records are configured. The installed
+  app remains unchanged at executable SHA-256
+  `8e43beff6cffa2dde5a664eb4ba0182181d81e7746d8eb3c96846f43c87a0ba2`.
+- PDEX-26 packaged IPC, persisted save/readback, relaunch, migration,
+  pointer/cross-feature and human acceptance remain untested. The build is a
+  reviewable candidate, not completion or release acceptance. See
+  [candidate build evidence](evidence/pdex-26-candidate-build-2026-10-14.md).
