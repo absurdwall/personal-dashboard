@@ -13,8 +13,8 @@
 - Latest integration tip `c34ca821cfceb7cdf6262129209cb1f2c3702922` was merged
   non-fast-forward as `fbdf8d2c1835244ea9454624c9997710f5876c30`. The merge
   parents are the P21 implementation commit and exact integration tip. It
-  retains the incoming PDEX-20, PDEX-22 and PDEX-24 history. PDEX-21 remains on
-  its worker branch and has not been merged back into integration.
+  retains the incoming PDEX-20, PDEX-22 and PDEX-24 history. The complete ticket
+  branch was later merged back into integration as recorded below.
 
 ## Verification
 
@@ -24,6 +24,25 @@
 - `node --test tests/frontend/today-time-axis.test.ts tests/frontend/unified-today-axis.test.ts tests/frontend/startup-interface-language.test.ts` — 24/24 passed. This includes the static WKWebView timeline probe; it is not packaged-App acceptance.
 - `cargo test --manifest-path src-tauri/Cargo.toml --test today_shared_tasks_workflow` — 7/7 passed. These application-workflow tests use isolated temporary data and exercise persisted Task schedule readback/reopen semantics. They are separate from the synthetic-IPC browser tests.
 - `git diff --check` — passed.
+
+## Merged-tree verification — 2026-10-14
+
+The clean ticket branch `codex/pdex-21-restart` at
+`d733c4a71cb8648e43bf0bf25dc58452f1c7ad9a` contains the exact integration tip
+`c34ca821cfceb7cdf6262129209cb1f2c3702922`. The complete branch was merged
+without conflicts into `codex/dashboard-experience-refinement-restart-20261014`
+using non-fast-forward merge `42ca01f42e05e5d9fe81fe08a42e6ff387be9872`.
+
+- `npm run build` — passed.
+- `node --test tests/frontend/today-time-axis.test.ts tests/frontend/unified-today-axis.test.ts tests/frontend/startup-interface-language.test.ts` — **24/24 passed**.
+- `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs PDEX21_SCREENSHOT_DIR=/tmp/pdex21-postmerge node --test tests/browser/today-axis-task-gestures.mjs` — **10/10 passed**.
+- `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs node --test tests/browser/today-axis-plan-gestures.mjs` — **8/8 passed**.
+- `cargo test --manifest-path src-tauri/Cargo.toml --test today_shared_tasks_workflow` — **7/7 passed**, covering persisted Task schedule readback and reopen semantics.
+- `git diff --check` — passed after the merge and before this tracking update.
+
+The browser suite uses synthetic IPC and does not establish packaged-App
+acceptance. No App installation, normal Vault write, `main`, or remote operation
+was performed. PDEX-21 remains `in-progress`; PDEX-26 owns packaged acceptance.
 
 ## Rendered checks and pointer evidence
 

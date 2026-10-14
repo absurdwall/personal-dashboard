@@ -9,8 +9,8 @@
 **Triage:** ready-for-agent
 **ID:** PDEX-21
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** open
-**Implementation:** in-progress
+**Lifecycle:** in-progress
+**Implementation:** `codex/pdex-21-restart` was locally integrated into `codex/dashboard-experience-refinement-restart-20261014` as `42ca01f42e05e5d9fe81fe08a42e6ff387be9872`; packaged acceptance remains under PDEX-26
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -48,6 +48,7 @@ PDEX-SPEC-02 stories 35–47、50；共同承担 1–3、88–91 的保存与保
 - 2026-10-11：经用户批准发布本地完整票体，未分配assignee、未claim、未开始实现。
 - 2026-10-14：用户授权从已核对的旧实现基线重新实现本票，限制为上述Today时间轴与安排交互；保留现有Dashboard字体、色彩、密度及未要求区域，不把原型整体搬入产品。
 - Claim：owner `/root/implement_pdex21`；本票工作分支为 `codex/pdex-21-restart`，base 为 `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`，claim记录 commit `eaec4605883f16158be4945fa8f20874027bc39`，独立 worktree 为 `/private/tmp/pdex-restart-20261014.noindex/pdex-21`。实现 commit `2562f4337850216c9c6a0836612b3e84f5684f25`；680×560 pointer-scroll 回归覆盖 commit `4f764147070e320691cece16982deca8d1837ec9`。
-- Integration sync：将最新 integration tip `c34ca821cfceb7cdf6262129209cb1f2c3702922` non-fast-forward merge 为 `fbdf8d2c1835244ea9454624c9997710f5876c30`；该提交的另一父项是 P21 实现 commit，完整保留了 PDEX-20、PDEX-22、PDEX-24 等 integration 历史。P21尚未合回 integration。
+- Integration sync：将最新 integration tip `c34ca821cfceb7cdf6262129209cb1f2c3702922` non-fast-forward merge 为 `fbdf8d2c1835244ea9454624c9997710f5876c30`；该提交的另一父项是 P21 实现 commit，完整保留了 PDEX-20、PDEX-22、PDEX-24 等 integration 历史。
 - 验证：build passed；Today Task browser 10/10、plan gesture browser 8/8、Today/WebKit/localization frontend 24/24、Rust `today_shared_tasks_workflow` 7/7、`git diff --check` passed。四尺寸视觉观察、截图位置、pointer trace 及限制见[实施证据](../evidence/pdex-21-implementation-2026-10-14.md)。
+- 2026-10-14：包含 integration tip `c34ca821cfceb7cdf6262129209cb1f2c3702922` 的完整 ticket branch 以 non-fast-forward merge 合回整合分支，merge commit `42ca01f42e05e5d9fe81fe08a42e6ff387be9872`，无冲突并保留完整历史。合并树重新通过 build、Today frontend 24/24、两个指针交互 browser suites 10/10 与 8/8、Rust persistence workflow 7/7 及 `git diff --check`；见[实施与集成证据](../evidence/pdex-21-implementation-2026-10-14.md)。
 - PDEX-21保持 `in-progress`；未完成打包 App 与真人安装验收，仍由PDEX-26处理。每票保留多次 commit 与完整历史；本票不授权安装、main merge、remote push或关闭父规格。
