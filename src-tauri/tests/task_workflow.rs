@@ -1,8 +1,10 @@
 use personal_dashboard_lib::tasks::{
     FileTaskStore, TaskApplication, TaskChangeKind, TaskCompletionCorrectionInput,
-    TaskCompletionSourceKind, TaskCreateInput, TaskDataState, TaskDeleteInput,
-    TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput, TaskListRestoreInput,
-    TaskRestoreInput, TaskState, TaskStateInput, TaskStore, TaskUpdateInput,
+    TaskCompletionSourceKind, TaskCreateInput, TaskCreateWithPropertiesInput, TaskDataState,
+    TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
+    TaskListRestoreInput, TaskPriority, TaskRestoreInput, TaskState, TaskStateInput, TaskStore,
+    TaskTagCreateInput, TaskTagDeleteInput, TaskTagRenameInput, TaskUpdateInput,
+    TaskUpdateWithPropertiesInput,
 };
 use personal_dashboard_lib::today::{TodayClock, TodayWorkspacePersistence};
 use std::fs;
@@ -245,6 +247,142 @@ fn empty_read_is_non_destructive_and_a_manual_inbox_task_survives_relaunch() {
         .path()
         .join("life/Journal/Daily/2026/2026-09/2026-09-17.md")
         .exists());
+}
+
+#[test]
+fn task_priority_and_tags_round_trip_and_partial_updates_preserve_or_clear_explicitly() {
+    let vault = TempVault::new("priority-tags");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let tagged = application
+        .create_tag(TaskTagCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            tag_id: "tag-work".into(),
+            name: "工作".into(),
+        })
+        .unwrap();
+    let created = application
+        .create_with_properties(TaskCreateWithPropertiesInput {
+            task: create_input(&tagged, "priority-task", "写提案", None, None),
+            priority: Some(TaskPriority::High),
+            tag_ids: vec!["tag-work".into()],
+        })
+        .unwrap();
+    assert_eq!(created.tasks[0].priority, Some(TaskPriority::High));
+    assert_eq!(created.tasks[0].tag_ids, ["tag-work"]);
+
+    let relaunched = app(vault.path()).read().unwrap();
+    assert_eq!(relaunched.tasks[0].priority, Some(TaskPriority::High));
+    assert_eq!(relaunched.tasks[0].tag_ids, ["tag-work"]);
+    assert_eq!(relaunched.tags[0].id, "tag-work");
+
+    let partial = app(vault.path())
+        .update_with_properties(TaskUpdateWithPropertiesInput {
+            task: TaskUpdateInput {
+                target_binding: relaunched.target_binding.clone().unwrap(),
+                expected_revision: relaunched.revision.clone().unwrap(),
+                task_id: "priority-task".into(),
+                change_id: "rename-priority-task".into(),
+                name: "写提案初稿".into(),
+                content: None,
+                date: None,
+                time: None,
+                execution_end: None,
+                list_id: None,
+            },
+            priority: None,
+            tag_ids: None,
+        })
+        .unwrap();
+    assert_eq!(partial.tasks[0].priority, Some(TaskPriority::High));
+    assert_eq!(partial.tasks[0].tag_ids, ["tag-work"]);
+
+    let cleared = app(vault.path())
+        .update_with_properties(TaskUpdateWithPropertiesInput {
+            task: TaskUpdateInput {
+                target_binding: partial.target_binding.clone().unwrap(),
+                expected_revision: partial.revision.clone().unwrap(),
+                task_id: "priority-task".into(),
+                change_id: "clear-priority-task-properties".into(),
+                name: "写提案初稿".into(),
+                content: None,
+                date: None,
+                time: None,
+                execution_end: None,
+                list_id: None,
+            },
+            priority: Some(None),
+            tag_ids: Some(Vec::new()),
+        })
+        .unwrap();
+    assert_eq!(cleared.tasks[0].priority, None);
+    assert!(cleared.tasks[0].tag_ids.is_empty());
+}
+
+#[test]
+fn task_tags_keep_stable_identity_and_deleting_a_tag_only_unlinks_tasks() {
+    let vault = TempVault::new("tag-lifecycle");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let tagged = application
+        .create_tag(TaskTagCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            tag_id: "tag-research".into(),
+            name: "研究".into(),
+        })
+        .unwrap();
+    let duplicate = application
+        .create_tag(TaskTagCreateInput {
+            target_binding: tagged.target_binding.clone().unwrap(),
+            expected_revision: tagged.revision.clone(),
+            tag_id: "tag-research-duplicate".into(),
+            name: " 研究 ".into(),
+        })
+        .unwrap();
+    assert_eq!(duplicate.tags.len(), 1);
+    assert_eq!(duplicate.tags[0].id, "tag-research");
+
+    let created = application
+        .create_with_properties(TaskCreateWithPropertiesInput {
+            task: create_input(&duplicate, "tagged-task", "读论文", None, None),
+            priority: None,
+            tag_ids: vec!["tag-research".into()],
+        })
+        .unwrap();
+    let renamed = application
+        .rename_tag(TaskTagRenameInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            tag_id: "tag-research".into(),
+            name: "待读".into(),
+        })
+        .unwrap();
+    assert_eq!(renamed.tags[0].id, "tag-research");
+    assert_eq!(renamed.tags[0].name, "待读");
+    assert_eq!(renamed.tasks[0].tag_ids, ["tag-research"]);
+
+    let delete = TaskTagDeleteInput {
+        target_binding: renamed.target_binding.clone().unwrap(),
+        expected_revision: renamed.revision.clone().unwrap(),
+        tag_id: "tag-research".into(),
+        change_id: "delete-tag-research".into(),
+    };
+    let deleted = application.delete_tag(delete.clone()).unwrap();
+    assert!(deleted.tags.is_empty());
+    assert_eq!(deleted.tasks.len(), 1);
+    assert!(deleted.tasks[0].tag_ids.is_empty());
+    assert_eq!(deleted.tasks[0].changes[0].kind, TaskChangeKind::Edited);
+    assert_eq!(
+        deleted.tasks[0].changes[0].previous_tag_ids,
+        ["tag-research"]
+    );
+    assert!(deleted.tasks[0].changes[0].new_tag_ids.is_empty());
+
+    let retry = application.delete_tag(delete).unwrap();
+    assert_eq!(retry.tasks.len(), 1);
+    assert_eq!(retry.tasks[0].changes.len(), 1);
 }
 
 #[test]
@@ -1369,10 +1507,12 @@ fn legacy_task_schema_is_read_and_upgraded_on_the_next_write() {
 
     let application = app(vault.path());
     let legacy = application.read().unwrap();
-    assert_eq!(legacy.schema_version, 2);
+    assert_eq!(legacy.schema_version, 3);
     assert_eq!(legacy.tasks[0].state, TaskState::Pending);
     assert_eq!(legacy.tasks[0].deleted_at, None);
     assert_eq!(legacy.tasks[0].completion, None);
+    assert_eq!(legacy.tasks[0].priority, None);
+    assert!(legacy.tasks[0].tag_ids.is_empty());
 
     let upgraded = application
         .set_state(TaskStateInput {
@@ -1383,9 +1523,9 @@ fn legacy_task_schema_is_read_and_upgraded_on_the_next_write() {
             state: TaskState::Completed,
         })
         .unwrap();
-    assert_eq!(upgraded.schema_version, 2);
+    assert_eq!(upgraded.schema_version, 3);
     let document: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-    assert_eq!(document["schemaVersion"], serde_json::json!(2));
+    assert_eq!(document["schemaVersion"], serde_json::json!(3));
     assert!(document["tasks"][0].get("deletedAt").is_some());
     assert!(document["tasks"][0].get("completion").is_some());
 }
