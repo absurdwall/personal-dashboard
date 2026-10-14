@@ -1281,6 +1281,86 @@ fn source_habit_goal_revision_changes_historical_correction_on_its_effective_dat
 }
 
 #[test]
+fn source_habit_weekly_to_time_threshold_revision_updates_historical_correction() {
+    let vault = TempVault::new();
+    write_source_snapshot(&vault, include_str!("fixtures/habits-v1-complete.json"));
+    let editing_app = app(&vault, "2026-09-08");
+    let before = editing_app.habits().unwrap();
+    let revised = editing_app
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "exercise".into(),
+            name: "Local Exercise".into(),
+            name_changed: true,
+            emoji: None,
+            group: None,
+            start_date: None,
+            goal: Some(LocalHabitGoal::DailyTime {
+                standard: "22:30".into(),
+                day_relation: DayRelation::NextDay,
+            }),
+            change_id: "schedule-exercise-time-threshold".into(),
+            target_binding: before.definition_target_binding.unwrap(),
+            expected_revision: before.definition_revision,
+            expected_snapshot_revision: before.snapshot_revision,
+        })
+        .unwrap();
+    assert_eq!(
+        revised
+            .habit("exercise")
+            .unwrap()
+            .pending_goal_label
+            .as_deref(),
+        Some("每日 次日 22:30")
+    );
+
+    let last_old_cycle = editing_app.read_date("2026-09-13").unwrap();
+    let old_goal = last_old_cycle.habit_corrections.habit("exercise").unwrap();
+    assert_eq!(old_goal.name, "Local Exercise");
+    assert_eq!(old_goal.goal_label.as_deref(), Some("每周 3 次"));
+    assert!(old_goal.can_record_completion);
+
+    let effective_app = app(&vault, "2026-09-15");
+    let effective_day = effective_app.read_date("2026-09-14").unwrap();
+    let effective_goal = effective_day
+        .habit_corrections
+        .habit("exercise")
+        .expect("source Habit remains present in historical correction");
+    assert_eq!(effective_goal.name, "Local Exercise");
+    assert_eq!(
+        effective_goal.goal_label.as_deref(),
+        Some("每日 次日 22:30")
+    );
+    assert!(!effective_goal.can_record_completion);
+
+    let attempt = effective_app.set_historical_habit_completion(HabitCompletionMutationInput {
+        habit_key: "exercise".into(),
+        lived_date: "2026-09-14".into(),
+        completed: true,
+        change_id: "threshold-correction-must-not-check-in".into(),
+        target_binding: effective_day
+            .habit_corrections
+            .completion_target_binding
+            .unwrap(),
+        expected_revision: effective_day.habit_corrections.completion_revision,
+    });
+    let error = attempt
+        .err()
+        .expect("time-threshold target must reject checkbox completion");
+    assert!(
+        error.contains("时刻和阈值证据不能用本地完成框记录"),
+        "{error}"
+    );
+    assert!(
+        !vault
+            .0
+            .join("life/.personal-dashboard/habit-completions/v1/completions.json")
+            .exists(),
+        "threshold correction must not write a checkbox completion"
+    );
+}
+
+#[test]
 fn created_locally_definition_cannot_claim_a_source_habit_key() {
     let vault = TempVault::new();
     write_source_snapshot(&vault, include_str!("fixtures/habits-v1-complete.json"));
