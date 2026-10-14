@@ -232,26 +232,33 @@ test("Today shared task copy has Chinese and English counterparts", () => {
   }
 });
 
-test("Calendar shows task previews and an editable shared task panel", () => {
+test("Calendar keeps its compact shell and uses the shared Task creation and edit surfaces", () => {
   for (const marker of [
     'id="calendar-task-panel"',
     'id="calendar-task-list"',
-    'id="calendar-task-create-form"',
-    'id="calendar-task-create-date"',
-    'id="calendar-task-create-list"',
+    'id="calendar-task-new"',
+    'id="calendar-holiday-preferences"',
+    'id="task-create-dialog"',
+    'id="task-create-date"',
+    'id="calendar-task-editor-dialog-root"',
   ]) {
     assert.match(html, new RegExp(marker));
   }
+  assert.doesNotMatch(html, /id="calendar-task-create-form"/);
   assert.match(main, /calendarTaskSummary/);
   assert.match(main, /calendarTaskOverflow/);
   assert.match(main, /dataset\.taskState = task\.state/);
   assert.match(main, /calendarTasksForDate\(/);
   assert.match(main, /taskEditor\(task, writable, shared, "calendar"\)/);
-  assert.match(main, /async function createCalendarTask/);
+  assert.match(main, /openTaskCreation\("calendar"\)/);
+  assert.match(main, /renderTaskCreationModal\(loaded, "calendar"\)/);
+  assert.match(main, /surface === "calendar" \? selectedCalendarDate/);
+  assert.match(main, /async function createTask/);
   assert.match(main, /updateTask\(taskId, form, "calendar"\)/);
   assert.match(main, /setTaskState\(taskId, state, "calendar"\)/);
   assert.match(main, /deleteTask\(remove\.dataset\.taskDelete, "calendar"\)/);
   assert.match(main, /correctTaskCompletion\(correct\.dataset\.taskCorrectCompletion, form, "calendar"\)/);
+  assert.match(main, /button\[data-calendar-task\]/);
 });
 
 test("Calendar isolates task selection changes and keeps state styles distinguishable", () => {
@@ -268,7 +275,13 @@ test("Calendar keeps the Daily Record entry and fixed copy bilingual", () => {
     "calendar.taskSection",
     "calendar.taskCount",
     "calendar.taskEmpty",
-    "calendar.taskCreateDefault",
+    "calendar.addTask",
+    "calendar.holidaySettings",
+    "calendar.holidaysEnabled",
+    "calendar.holidayChina",
+    "calendar.holidayUnitedStates",
+    "calendar.holidayPreferencesSaved",
+    "calendar.holidayScope",
     "calendar.taskOverflow",
   ]) {
     const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));

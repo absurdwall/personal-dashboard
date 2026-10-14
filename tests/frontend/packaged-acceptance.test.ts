@@ -48,7 +48,6 @@ test("packaged task creation fields expose a localized unique accessibility labe
   for (const id of [
     "task-create-name",
     "today-task-create-name",
-    "calendar-task-create-name",
   ]) {
     assert.match(
       html,
@@ -57,6 +56,11 @@ test("packaged task creation fields expose a localized unique accessibility labe
       ),
     );
   }
+  assert.match(
+    html,
+    /id="calendar-task-new"[^>]*data-i18n-aria-label="calendar\.addTask"[^>]*data-i18n-title="calendar\.addTask"/,
+  );
+  assert.doesNotMatch(html, /id="calendar-task-create-name"/);
 });
 
 test("the packaged list-scope reset has a distinct Accessibility label", () => {

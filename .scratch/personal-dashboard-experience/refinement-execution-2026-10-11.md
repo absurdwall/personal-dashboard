@@ -101,3 +101,17 @@ no integration merge, install, remote operation or main change was recorded.
   combination acceptance ticket.
 - No remote Git operation, protected-main change, app installation, or normal
   user-data write was performed.
+
+### PDEX-22 claim — 2026-10-14
+
+- Owner: `/root`; branch `codex/pdex-22-restart`; claim base
+  `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`, after non-ff integration of
+  PDEX-19 and PDEX-23. The PDEX-22 publication snapshot and acceptance criteria
+  remain unchanged.
+- Initial source review confirmed the Calendar month shell, selected-date
+  summary, below-month Task panel, and current dedicated create form. The new
+  work will keep those regions and replace only the oversized create entry and
+  add the ticketed holiday labels/settings and Task click editor behavior.
+- Implementation and verification commits will be recorded here and in the
+  ticket before integration. No install, push, or normal Vault write is part of
+  this branch work.
