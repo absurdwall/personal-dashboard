@@ -348,3 +348,24 @@ readback and will leave the installed App for the user.
 - After launch, reviewer-reported checks found the normal `tortilla-flat` Vault, existing Morning baseline and Current arrangement, and existing Collaboration sessions visible. ChatGPT showed connected with GPT-6-Luna medium; Send and microphone controls were visible. No real test message was sent, and no real Task or Daily Record was edited. The temporary fixture profile and fixed clock were not present in the installed App.
 - Reviewer-reported Vault authority-scope changes: 0. Vault selection, theme, and language setting hashes were unchanged. The Collaboration store had a byte-format change only; a JSON semantic comparison reported all fields retained, including sessions, messages, drafts, and settings.
 - This is an installed-candidate checkpoint, not completion of PDEX-21, PDEX-26, or PDEX-SPEC-02. Four broad-suite fixture failures remain open, the reviewer still owes the final readback, and user review remains outstanding. Native ticket states and blocker declarations were not changed.
+
+## Management progress-summary sync — 2026-10-14
+
+The user-local `tortilla-flat-management` skill v1.0.3 discovered the canonical
+Personal Dashboard project/workspace; `connect` returned `confirmed`. Its
+pre-write inspection showed the project summary was stale and still described
+PDEX-19–26 as unimplemented. Submitted operation
+`pdex02-reviewer-install-checkpoint-20261014-01` as a **partial** project
+progress checkpoint, with current evidence for all six readable local sources
+and explicit uncovered entries for the malformed Collaboration Markdown source
+and unavailable GitHub Issues source. The helper returned `confirmed`; the
+canonical summary revision is `bbc5d5bd17a3ceef`, and a subsequent `inspect`
+returned Registry revision `f8c5821510f4e9c4` with the new text and evidence.
+
+The Management reread confirmed PDEX-21 remains native `claimed`/queue
+`blocked`, and PDEX-26 remains `ready-for-agent`/queue `blocked` with its
+PDEX-20/21/22/23/25 dependencies. Neither ticket nor the parent spec was
+closed or otherwise changed. The older partial helper receipt
+`pdex-spec-02-local-publication-summary-20261011` remains pending and was not
+retried, cleared, or treated as evidence for this checkpoint. The current
+summary says the final reviewer readback and user review are still pending.
