@@ -23,6 +23,32 @@ id stored on its tasks. Inbox accepts dated and undated tasks. A new task in a
 user list defaults to that list without a date, while global and Inbox entry
 points default to Inbox. There is no nested folder or list-delete operation.
 
+### Schema 2: priorities and tags (PDEX-19)
+
+Schema 2 keeps the same document path and adds a top-level `tags` array. Each
+tag has a stable `id` and a unique normalized `name`. Each Task adds a
+`priority` value (`none`, `low`, `medium`, or `high`) and a `tagIds` array of
+references to tags in that document. A Task may have several distinct tag IDs;
+every reference must resolve to an existing tag. Missing `tags`, `priority`,
+or `tagIds` fields read as `[]`, `none`, or `[]` respectively, including in a
+schema-2 document. A successful write serializes the current schema and these
+fields.
+
+Reading a schema-1 document supplies those defaults in memory and retains all
+Task IDs, source references, schedules, state, completion evidence, and change
+history. It does not rewrite the file just by reading it; the next successful
+mutation writes the upgraded schema-2 document at the same path. Unsupported
+schema versions, unknown fields, duplicate tag IDs, duplicate names (ignoring
+case), invalid tag names, duplicate Task tag references, and references to
+missing tags fail closed rather than dropping or guessing data.
+
+Tag IDs are the relationship identity. Renaming a tag keeps its ID and Task
+assignments. Deleting a tag removes that tag and its assignments from Tasks;
+it does not delete Tasks. Priority and tag edits update the existing Task by
+its stable ID. They are stored in the same canonical document and follow the
+same selected-Vault, revision, atomic-write, and readback boundary as other
+Task edits.
+
 Each Task has a stable `id`, required `name`, optional `content`, optional
 `date` and `time`, `listId`, `source`, `state`, creation and modification
 timestamps, and append-only `changes`. A time requires a date. Clearing a date
