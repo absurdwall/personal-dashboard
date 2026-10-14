@@ -268,7 +268,8 @@ use platform::{
 };
 use tasks::{
     FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
-    TaskCreateWithPropertiesInput, TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput,
+    TaskCreateWithPropertiesInput, TaskDeleteInput, TaskFolderCreateInput, TaskFolderDeleteInput,
+    TaskFolderRenameInput, TaskListArchiveInput, TaskListCreateInput, TaskListFolderInput,
     TaskListRenameInput, TaskListRestoreInput, TaskRestoreInput, TaskStateInput,
     TaskTagCreateInput, TaskTagDeleteInput, TaskTagRenameInput, TaskUpdateInput,
     TaskUpdateWithPropertiesInput, TasksView,
@@ -870,6 +871,38 @@ fn restore_task_list(
 }
 
 #[tauri::command]
+fn create_task_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskFolderCreateInput,
+) -> Result<TasksView, String> {
+    application.create_folder(input)
+}
+
+#[tauri::command]
+fn rename_task_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskFolderRenameInput,
+) -> Result<TasksView, String> {
+    application.rename_folder(input)
+}
+
+#[tauri::command]
+fn delete_task_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskFolderDeleteInput,
+) -> Result<TasksView, String> {
+    application.delete_folder(input)
+}
+
+#[tauri::command]
+fn set_task_list_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListFolderInput,
+) -> Result<TasksView, String> {
+    application.set_list_folder(input)
+}
+
+#[tauri::command]
 fn update_task(
     application: State<'_, DesktopTaskApplication>,
     input: TaskUpdateInput,
@@ -1197,6 +1230,10 @@ pub fn run() {
             rename_task_list,
             archive_task_list,
             restore_task_list,
+            create_task_folder,
+            rename_task_folder,
+            delete_task_folder,
+            set_task_list_folder,
             update_task,
             update_task_with_properties,
             set_task_state,
@@ -1280,6 +1317,10 @@ pub fn run() {
         rename_task_list,
         archive_task_list,
         restore_task_list,
+        create_task_folder,
+        rename_task_folder,
+        delete_task_folder,
+        set_task_list_folder,
         update_task,
         update_task_with_properties,
         set_task_state,
