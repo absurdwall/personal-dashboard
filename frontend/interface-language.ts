@@ -883,6 +883,7 @@ const interfaceCopies = {
   "tasks.noSubtasks": { zh: "暂无直属子任务。", en: "No direct subtasks." },
   "tasks.addSubtask": { zh: "添加子任务", en: "Add subtask" },
   "tasks.changeParent": { zh: "父子关系", en: "Parent relationship" },
+  "tasks.nestingLevel": { zh: "嵌套层级 {level}", en: "Nested level {level}" },
   "tasks.parentChangedHistory": { zh: "父任务：{previous} → {next}", en: "Parent task: {previous} → {next}" },
   "tasks.parentOpenLabel": { zh: "打开父任务“{task}”", en: "Open parent task {task}" },
   "tasks.childOf": { zh: "属于“{task}”", en: "Subtask of {task}" },

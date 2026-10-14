@@ -12485,8 +12485,20 @@ function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boo
     visited.add(task.id);
     const parentVisible = Boolean(task.parentTaskId && byId.has(task.parentTaskId));
     const row = taskEditor(task, writable, view, "tasks", false, parentVisible);
-    row.dataset.taskDepth = String(Math.min(depth, 4));
+    row.dataset.taskDepth = String(depth);
     row.style.setProperty("--task-indent", `${Math.min(depth, 4) * 12}px`);
+    if (depth > 4) {
+      const titleLine = row.querySelector<HTMLElement>(".task-row-title-line");
+      if (titleLine) {
+        const marker = document.createElement("small");
+        marker.className = "task-nesting-depth";
+        const level = t("tasks.nestingLevel", { level: depth + 1 });
+        marker.textContent = `↳${depth + 1}`;
+        marker.title = level;
+        marker.setAttribute("aria-label", level);
+        titleLine.prepend(marker);
+      }
+    }
     rows.push(row);
     for (const child of children.get(task.id) ?? []) append(child, depth + 1);
   };

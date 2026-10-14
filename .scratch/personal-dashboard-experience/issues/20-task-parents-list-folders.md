@@ -78,3 +78,14 @@ after worktree creation.
   dependencies were installed. Packaged-app verification remains assigned to
   PDEX-26. A whole-crate `cargo fmt --check` reports formatting differences in
   untouched files; the focused check for the changed Rust files passes.
+
+## Review repair — 2026-10-13
+
+- Rebased the ticket branch by a no-ff merge of the integration branch, then
+  changed the Tasks tree to retain the actual depth and show a small localized
+  level marker only after compact indentation reaches its cap. The existing
+  list density and controls remain unchanged.
+- Added a focused check for the over-cap depth cue and corrected stale
+  source/style assertions to match the current Tasks/Calendar modal selector
+  and compact mobile row layout. All 12 checks in `task-surface.test.ts` pass.
+  Browser and packaged acceptance remain open under PDEX-26.
