@@ -62,7 +62,7 @@ no package installation, main merge, or remote operation.
 
 Implementation commits on `codex/pdex-19-refinement-reimplementation`:
 
-- `2b321c8d95b7ac75a01758421fd7579750f934cc` — schema 3, backward-compatible
+- `2b321c881e5db8c2161ca86f2fb2dcc9a1e5e528` — schema 3, backward-compatible
   Task properties, priority/tag persistence and patch workflows, native
   commands, workflow tests, and the Tasks storage contract.
 - `8ad5ba279911a8cecd23ac1f01a5b8b667824e04` — compact Task editor, quick-add

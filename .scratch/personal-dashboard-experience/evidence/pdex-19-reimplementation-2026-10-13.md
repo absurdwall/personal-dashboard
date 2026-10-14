@@ -5,7 +5,7 @@
 - Working branch: `codex/pdex-19-refinement-reimplementation`.
 - Implementation base: `b7dcd71b50b42de4a706d460d635f99bf059770d`.
 - Implementation commits, in order:
-  - `2b321c8d95b7ac75a01758421fd7579750f934cc` — Task schema, persistence,
+  - `2b321c881e5db8c2161ca86f2fb2dcc9a1e5e528` — Task schema, persistence,
     property APIs, compatibility behavior, workflow tests, and storage docs.
   - `8ad5ba279911a8cecd23ac1f01a5b8b667824e04` — compact Task UI, property
     controls, filters/sorting/context actions, localization, and UI tests.
