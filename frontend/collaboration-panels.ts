@@ -44,23 +44,21 @@ export function panelGeometry(available: number, preferences: PanelPreferences) 
   const historyExpanded = narrow ? preferences.narrow?.history ?? false : preferences.history.expanded;
   const contextExpanded = narrow ? preferences.narrow?.context ?? false
     : mode === "two" ? preferences.compact?.context ?? false : preferences.context.expanded;
-  const visible = (["history", "context"] as const).filter(side =>
-    side === "history" ? historyExpanded && !narrow : contextExpanded && mode === "three");
-  const separators = visible.length * 16;
-  const budget = Math.max(0, available - 360 - separators);
+  const historyVisible = historyExpanded && !narrow;
+  const budget = Math.max(0, available - 360 - (historyVisible ? 16 : 0));
   // Keep Sessions compact in the middle mode, even for oversized saved widths.
-  const requested = { history: mode === "two" ? Math.min(260, preferences.history.width) : preferences.history.width,
-    context: preferences.context.width };
-  const base = visible.reduce((sum, side) => sum + minimum[side], 0);
-  const extra = visible.reduce((sum, side) => sum + requested[side] - minimum[side], 0);
-  const extraScale = extra > 0 ? Math.min(1, Math.max(0, budget - base) / extra) : 1;
-  const width = (side: Side) => visible.includes(side)
-    ? minimum[side] + (requested[side] - minimum[side]) * extraScale : 0;
+  const requestedHistory = mode === "two" ? Math.min(260, preferences.history.width) : preferences.history.width;
+  const historyWidth = historyVisible ? Math.min(requestedHistory, Math.max(minimum.history, budget)) : 0;
+  const chatWidth = Math.max(0, available - (historyVisible ? historyWidth + 16 : 0));
+  // Current Work floats over the chat, so its width never reduces the
+  // conversation column. It remains bounded by the chat's usable width.
+  const contextMaximum = Math.min(640, Math.max(0, chatWidth - 16));
+  const contextWidth = contextExpanded ? Math.min(preferences.context.width, contextMaximum) : 0;
   return {
     mode, narrow, historyExpanded, contextExpanded,
-    history: width("history"), context: width("context"), budget,
-    historyMaximum: mode === "two" ? Math.min(260, budget) : Math.min(640, budget - width("context")),
-    contextMaximum: Math.min(640, budget - width("history")),
+    history: historyWidth, context: contextWidth, budget,
+    historyMaximum: mode === "two" ? Math.min(260, budget) : Math.min(640, budget),
+    contextMaximum,
   };
 }
 
@@ -101,12 +99,24 @@ export function initializeCollaborationPanels(): void {
     history: document.getElementById("collaboration-history-resizer")!,
     context: document.getElementById("collaboration-context-resizer")!,
   };
+  const closeContext = document.getElementById("collaboration-close-context");
+  const chat = panels.context.closest?.<HTMLElement>(".collaboration-chat-pane");
+  const composer = chat?.querySelector<HTMLElement>(".collaboration-composer");
+  const chatHeading = chat?.querySelector<HTMLElement>(".collaboration-chat-heading");
   // Old narrow defaults apply only when two columns genuinely no longer fit.
   const narrowExpanded = preferences.narrow ??= { history: false, context: false };
   const compactExpanded = preferences.compact ??= { context: false };
   const focusTargets: Partial<Record<Side, HTMLElement>> = {};
   let available = layout.getBoundingClientRect().width;
   let geometry = panelGeometry(available, preferences);
+  const positionContext = () => {
+    if (!chat || !composer || !chatHeading) return;
+    const chatRect = chat.getBoundingClientRect();
+    const composerRect = composer.getBoundingClientRect();
+    const headingRect = chatHeading.getBoundingClientRect();
+    chat.style.setProperty("--collaboration-context-top", `${Math.max(0, headingRect.bottom - chatRect.top + 8)}px`);
+    chat.style.setProperty("--collaboration-context-bottom", `${Math.max(8, chatRect.bottom - composerRect.top + 8)}px`);
+  };
   const save = () => {
     try { localStorage.setItem(preferenceKey, JSON.stringify(preferences)); } catch { /* Layout remains usable. */ }
   };
@@ -117,9 +127,12 @@ export function initializeCollaborationPanels(): void {
     layout.dataset.columns = geometry.mode;
     primary.dataset.narrow = String(geometry.narrow);
     primary.dataset.columns = geometry.mode;
+    chat?.style.setProperty("--collaboration-context-width", `${geometry.context}px`);
+    positionContext();
     for (const side of sides) {
       const expanded = side === "history" ? geometry.historyExpanded : geometry.contextExpanded;
-      const resizerHidden = !expanded || geometry.narrow || (side === "context" && geometry.mode === "two");
+      const resizerHidden = !expanded || (side === "history" && geometry.narrow) ||
+        (side === "context" && geometry.contextMaximum < minimum.context);
       const active = document.activeElement;
       if ((!expanded && panels[side].contains(active)) || (resizerHidden && active === resizers[side])) {
         focusTargets[side] = document.activeElement as HTMLElement;
@@ -137,23 +150,12 @@ export function initializeCollaborationPanels(): void {
       geometry.historyExpanded ? `${geometry.history}px 16px` : "",
       "minmax(0, 1fr)",
     ].filter(Boolean).join(" ");
-    if (geometry.mode === "three") {
-      layout.style.display = "grid";
-      layout.style.flexDirection = "";
-      layout.style.gridTemplateColumns = geometry.context > 0
-        ? `minmax(0, 1fr) 16px ${geometry.context}px`
-        : "minmax(0, 1fr)";
-      primary.style.flex = "";
-      primary.style.gridColumn = "1";
-      primary.style.gridRow = "1";
-    } else {
-      layout.style.display = "flex";
-      layout.style.flexDirection = "column";
-      layout.style.gridTemplateColumns = "";
-      primary.style.flex = "0 0 auto";
-      primary.style.gridColumn = "";
-      primary.style.gridRow = "";
-    }
+    layout.style.display = "block";
+    layout.style.flexDirection = "";
+    layout.style.gridTemplateColumns = "";
+    primary.style.flex = "";
+    primary.style.gridColumn = "";
+    primary.style.gridRow = "";
   };
   for (const side of sides) {
     toggles[side].addEventListener("click", () => {
@@ -186,7 +188,7 @@ export function initializeCollaborationPanels(): void {
       event.preventDefault(); resize(width); save();
     });
     resizers[side].addEventListener("pointerdown", event => {
-      if (event.button !== 0 || geometry.narrow) return;
+      if (event.button !== 0 || (side === "history" && geometry.narrow)) return;
       event.preventDefault();
       const startX = event.clientX;
       const startWidth = geometry[side];
@@ -202,10 +204,16 @@ export function initializeCollaborationPanels(): void {
       resizers[side].addEventListener("lostpointercapture", finish);
     });
   }
-  new ResizeObserver(entries => {
-    const width = entries[0]?.contentRect.width ?? 0;
-    if (width <= 0) return; // A hidden destination must not erase window preferences.
-    available = width; render();
-  }).observe(layout);
+  closeContext?.addEventListener("click", () => toggles.context.click());
+  const observer = new ResizeObserver(entries => {
+    const layoutEntry = entries.find(entry => entry.target === layout);
+    const width = layoutEntry?.contentRect.width ?? 0;
+    if (width > 0) { available = width; render(); }
+    else positionContext(); // A hidden destination must not erase window preferences.
+  });
+  observer.observe(layout);
+  if (chat) observer.observe(chat);
+  if (composer) observer.observe(composer);
+  if (typeof window !== "undefined") window.addEventListener("resize", positionContext);
   render();
 }

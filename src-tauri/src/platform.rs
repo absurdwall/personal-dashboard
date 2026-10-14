@@ -3,6 +3,7 @@ use crate::appearance::{
     SelectedBackgroundImage, MAX_BACKGROUND_IMAGE_BYTES,
 };
 use crate::backup::CompleteProfileReplacement;
+use crate::calendar_holidays::CalendarHolidayPreferencesPersistence;
 use crate::exercise::ExercisePersistence;
 use crate::interface_language::{InterfaceLanguage, InterfaceLanguagePersistence};
 use crate::migration::{BaselinePersistence, CompleteProfileAdoption, CompleteProfileDocuments};
@@ -23,6 +24,7 @@ const EXERCISE_FILE_NAME: &str = "exercise.json";
 const TODAY_WORKSPACE_FILE_NAME: &str = "today-workspace.json";
 const APPEARANCE_FILE_NAME: &str = "appearance.json";
 const INTERFACE_LANGUAGE_FILE_NAME: &str = "interface-language.json";
+const CALENDAR_HOLIDAY_PREFERENCES_FILE_NAME: &str = "calendar-holidays.json";
 const MAX_PROFILE_DOCUMENT_BYTES: u64 = 10 * 1024 * 1024;
 const RESTORE_TRANSACTION_DIRECTORY: &str = ".profile-restore-transaction";
 const RESTORE_PREPARED_MARKER: &str = "prepared";
@@ -347,6 +349,33 @@ impl InterfaceLanguagePersistence for FileInterfaceLanguagePersistence {
 
     fn save(&self, document: &[u8]) -> Result<(), String> {
         atomic_save(&self.preference_file, document, "interface language")
+    }
+}
+
+#[derive(Clone)]
+pub struct FileCalendarHolidayPreferencesPersistence {
+    preference_file: PathBuf,
+}
+
+impl FileCalendarHolidayPreferencesPersistence {
+    pub fn new(preference_file: PathBuf) -> Self {
+        Self { preference_file }
+    }
+}
+
+impl CalendarHolidayPreferencesPersistence for FileCalendarHolidayPreferencesPersistence {
+    fn load(&self) -> Result<Option<Vec<u8>>, String> {
+        match fs::read(&self.preference_file) {
+            Ok(document) => Ok(Some(document)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!(
+                "Could not read local Calendar preferences: {error}"
+            )),
+        }
+    }
+
+    fn save(&self, document: &[u8]) -> Result<(), String> {
+        atomic_save(&self.preference_file, document, "Calendar preferences")
     }
 }
 
@@ -822,6 +851,12 @@ pub fn interface_language_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<Pat
     application_data_file_for(app, INTERFACE_LANGUAGE_FILE_NAME)
 }
 
+pub fn calendar_holiday_preferences_file_for<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<PathBuf, String> {
+    application_data_file_for(app, CALENDAR_HOLIDAY_PREFERENCES_FILE_NAME)
+}
+
 fn application_data_file_for<R: Runtime>(
     app: &AppHandle<R>,
     file_name: &str,
@@ -880,6 +915,9 @@ pub fn legacy_exercise_directory_for<R: Runtime>(app: &AppHandle<R>) -> Result<P
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::calendar_holidays::{
+        CalendarHolidayPreferences, CalendarHolidayPreferencesApplication,
+    };
     use crate::today::TodayWorkspaceSelectionState;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -932,6 +970,38 @@ mod tests {
             background_picker_copy(InterfaceLanguage::En),
             ("Choose a local background image", "Images")
         );
+    }
+
+    #[test]
+    fn calendar_holiday_preferences_are_saved_and_loaded_from_the_local_app_file() {
+        let directory = TemporaryWorkspaceDirectory::new("calendar-holiday-preferences");
+        let preference_file = directory.0.join(CALENDAR_HOLIDAY_PREFERENCES_FILE_NAME);
+        let first_launch = CalendarHolidayPreferencesApplication::new(
+            FileCalendarHolidayPreferencesPersistence::new(preference_file.clone()),
+        );
+        assert_eq!(
+            first_launch.load().unwrap(),
+            CalendarHolidayPreferences {
+                enabled: true,
+                china: true,
+                united_states: true,
+            }
+        );
+
+        let requested = CalendarHolidayPreferences {
+            enabled: true,
+            china: false,
+            united_states: true,
+        };
+        assert_eq!(first_launch.set_preferences(requested).unwrap(), requested);
+        assert!(fs::read_to_string(&preference_file)
+            .unwrap()
+            .contains("\"schemaVersion\": 1"));
+
+        let reopened = CalendarHolidayPreferencesApplication::new(
+            FileCalendarHolidayPreferencesPersistence::new(preference_file),
+        );
+        assert_eq!(reopened.load().unwrap(), requested);
     }
 
     struct TemporaryWorkspaceDirectory(PathBuf);

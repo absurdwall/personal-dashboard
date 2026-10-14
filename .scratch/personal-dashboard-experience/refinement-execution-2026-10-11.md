@@ -77,8 +77,8 @@ were restored by the close path. The current complete Task-detail browser suite
 passes 19/19 and `npm run build` passes; the full frontend suite was not rerun.
 
 PDEX-19 remains `in-progress` because packaged application acceptance is
-separate and belongs to PDEX-26. No branch merge, install, remote operation or
-main change is recorded here.
+separate and belongs to PDEX-26. At the initial ticket-branch completion point,
+no integration merge, install, remote operation or main change was recorded.
 
 ## Local integration checkpoint — 2026-10-14
 
@@ -92,9 +92,13 @@ main change is recorded here.
   frontend suite was not rerun after the last Cancel repair. See the linked
   evidence file for the earlier full-suite result and qualified baseline checks.
 - PDEX-23 and PDEX-24 remain on their separate local ticket branches pending
-  final review and integration. PDEX-20/21/22 depend on PDEX-19 and have not
-  started. PDEX-25 depends on PDEX-24; PDEX-26 remains the packaged combination
-  acceptance ticket.
+  final review and integration. PDEX-23's final review is now closed and its
+  complete branch was non-fast-forward integrated as
+  `224b42e4052f12f1ea9211a0843f6fa3dc100a0c`; PDEX-24's final Spec and Standards
+  reviews are pending. PDEX-20 began from integration tip
+  `e1b28504e62d28ecbb05c5fa3f499204d7abefe1`; PDEX-21/22 remain unstarted and
+  depend on PDEX-19. PDEX-25 depends on PDEX-24; PDEX-26 remains the packaged
+  combination acceptance ticket.
 - No remote Git operation, protected-main change, app installation, or normal
   user-data write was performed.
 
@@ -111,6 +115,22 @@ main change is recorded here.
   lifecycle schema-note update `f1f9c5c7ee6067c67bbe12efb6fbc0d070402ec0`. See the
   [PDEX-20 implementation record](evidence/pdex-20-implementation-2026-10-14.md)
   for exact commands, results and remaining acceptance limits.
-- PDEX-20 remains `in-progress`; its ticket branch is not merged or pushed.
+- PDEX-20 remains `in-progress`; its ticket branch is not pushed.
   Packaged App acceptance remains with PDEX-26. PDEX-21/22 and PDEX-25 retain
   their existing dependency states.
+
+### PDEX-22 claim — 2026-10-14
+
+- Owner: `/root`; branch `codex/pdex-22-restart`; claim base
+  `2ef5d0e0fef34f8a6a4ebbb383eb886a7a1699b6`, after non-ff integration of
+  PDEX-19 and PDEX-23. The PDEX-22 publication snapshot and acceptance criteria
+  remain unchanged.
+- Initial source review confirmed the Calendar month shell, selected-date
+  summary, below-month Task panel, and dedicated create form. PDEX-22 kept those
+  regions, replaced only the ticketed create entry, and added the holiday labels,
+  settings, and Task click editor behavior.
+- PDEX-22 implementation commits `135add3c` and `41031c5` were non-fast-forward
+  integrated as `071202fb61781436b834bcbdeaac2bce88cbd69c`. Its focused evidence
+  and packaged-acceptance boundary are in
+  [PDEX-22 implementation evidence](evidence/pdex-22-implementation-2026-10-14.md).
+  No install, push, or normal Vault write was part of that branch work.

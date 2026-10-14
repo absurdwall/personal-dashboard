@@ -14,19 +14,19 @@ test("layout selections survive restart and corrupt storage cannot remove access
   });
 });
 
-test("restored oversized panels reserve conversation space as the window shrinks", () => {
+test("restored panels preserve the conversation width while context floats over it", () => {
   const choices = readPanelPreferences('{"history":{"width":640},"context":{"width":640,"expanded":true}}');
   for (const width of [900, 960, 1024, 1200, 1800]) {
     const layout = panelGeometry(width, choices);
     assert.equal(layout.narrow, false);
-    assert.ok(width - layout.history - layout.context - 32 >= 360);
+    assert.ok(width - layout.history - 16 >= 360);
     assert.ok(layout.history >= 180 && layout.context >= 240);
   }
   assert.equal(panelGeometry(500, choices).narrow, true);
   assert.equal(choices.history.width, 640, "window resize must preserve requested width");
 });
 
-test("independently collapsing either panel returns its space to the conversation", () => {
+test("collapsing context leaves history and conversation geometry unchanged", () => {
   const choices = readPanelPreferences(null);
   choices.context.expanded = true;
   choices.history.expanded = false;
@@ -35,7 +35,8 @@ test("independently collapsing either panel returns its space to the conversatio
   assert.equal(one.context, 304);
   choices.context.expanded = false;
   const neither = panelGeometry(1000, choices);
-  assert.equal(neither.history + neither.context, 0);
+  assert.equal(neither.history, one.history);
+  assert.equal(neither.context, 0);
 });
 
 test("middle widths keep compact Sessions beside a usable majority conversation", () => {
@@ -61,7 +62,7 @@ test("automatic width sequence restores roomy choices and separates compact cont
   preferences.compact = { context: true };
   const compact = panelGeometry(750, preferences);
   assert.equal(compact.contextExpanded, true);
-  assert.equal(compact.context, 0, "disclosed context takes a row rather than conversation width");
+  assert.equal(compact.context, 304, "disclosed context floats over the chat in compact widths");
   assert.equal(panelGeometry(1100, preferences).context, 304);
   preferences.history.expanded = false;
   assert.equal(panelGeometry(750, preferences).historyExpanded, false);
@@ -77,7 +78,7 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
   const oldRoomyChoice = '{"history":{"width":640},"context":{"width":640,"expanded":true},"narrow":{"history":false,"context":false}}';
   const stored = new Map([["personal-dashboard.collaboration-panels.v1", oldRoomyChoice]]);
   let available = 1100;
-  let observer!: (entries: { contentRect: { width: number } }[]) => void;
+  let observer!: (entries: { target?: unknown; contentRect: { width: number } }[]) => void;
   let active: any;
   class Node {
     hidden = false;
@@ -109,13 +110,13 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     setItem: (key: string, value: string) => { stored.set(key, value); },
   };
   const ResizeObserver = class { constructor(callback: typeof observer) { observer = callback; } observe() {} };
-  const resize = (width: number) => { available = width; observer([{ contentRect: { width } }]); };
+  const resize = (width: number) => { available = width; observer([{ target: layout, contentRect: { width } }]); };
   try {
     for (const [key, value] of Object.entries({ document, localStorage, ResizeObserver })) Object.defineProperty(globalThis, key, { value, configurable: true });
     initializeCollaborationPanels();
     assert.equal(layout.dataset.columns, "three");
     assert.equal(primary.dataset.columns, "three");
-    assert.equal(layout.style.display, "grid");
+    assert.equal(layout.style.display, "block");
     assert.equal(context.hidden, true, "the new default keeps Current Work out of the initial conversation view");
     assert.equal(contextToggle.attributes.get("aria-expanded"), "false");
     assert.equal(stored.get("personal-dashboard.collaboration-panels.v1"), oldRoomyChoice, "the previous preference is preserved but no longer expands Current Work by default");
@@ -128,7 +129,7 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     assert.equal(active, contextToggle, "three-to-two must move focus off the hidden sibling separator");
     contextToggle.click();
     assert.equal(context.hidden, false);
-    assert.notEqual(active, contextResizer, "compact disclosure must not restore focus to its still-hidden separator");
+    assert.equal(active, contextResizer, "compact disclosure returns focus to the visible overlay width control");
     contextToggle.click();
     resize(1100);
     contextToggle.click();
@@ -137,8 +138,8 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     active = context.child;
     resize(750);
     assert.equal(layout.dataset.columns, "two");
-    assert.equal(layout.style.display, "flex");
-    assert.equal(primary.style.flex, "0 0 auto");
+    assert.equal(layout.style.display, "block");
+    assert.equal(primary.style.flex, "");
     assert.equal(history.hidden, false);
     assert.equal(context.hidden, true);
     assert.equal(active, contextToggle, "auto-hidden focused content returns focus to its disclosure");
