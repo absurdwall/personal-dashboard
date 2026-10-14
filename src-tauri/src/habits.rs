@@ -1203,6 +1203,16 @@ pub fn merge_local_habit_definitions(
     }
 
     let present_keys: HashSet<String> = view.habits.iter().map(|habit| habit.key.clone()).collect();
+    if let Some(definition) = definitions
+        .habits
+        .iter()
+        .find(|definition| definition.created_locally && present_keys.contains(&definition.key))
+    {
+        return Err(format!(
+            "本地 Habit catalog 的 createdLocally key 与来源 Habit key 冲突：{}。",
+            definition.key
+        ));
+    }
     for habit in &mut view.habits {
         let Some(definition) = definitions.habits.iter().find(|item| item.key == habit.key) else {
             continue;
@@ -1771,6 +1781,115 @@ pub fn project_uncatalogued_habit_corrections_with_recording_limit(
         names_configuration_state: HabitNamesConfigurationState::Missing,
         habits,
     })
+}
+
+pub fn merge_local_habit_corrections(
+    view: &mut HabitCorrectionView,
+    definitions: &LocalHabitDefinitionsDocument,
+    local_completions: &[LocalHabitCompletion],
+    names_configuration: &HabitNamesConfiguration,
+    selected_date: &str,
+    latest_recordable_date: &str,
+) -> Result<(), String> {
+    let selected = CalendarDate::parse(selected_date)
+        .ok_or_else(|| "The selected date is not a valid YYYY-MM-DD calendar date.".to_string())?;
+    let recording_limit = CalendarDate::parse(latest_recordable_date)
+        .ok_or_else(|| "The recording date limit is invalid.".to_string())?;
+    let source_keys: HashSet<String> = view
+        .habits
+        .iter()
+        .filter(|habit| habit.name_known)
+        .map(|habit| habit.key.clone())
+        .collect();
+    if let Some(definition) = definitions
+        .habits
+        .iter()
+        .find(|definition| definition.created_locally && source_keys.contains(&definition.key))
+    {
+        return Err(format!(
+            "本地 Habit catalog 的 createdLocally key 与来源 Habit key 冲突：{}。",
+            definition.key
+        ));
+    }
+
+    for definition in &definitions.habits {
+        if let Some(habit) = view
+            .habits
+            .iter_mut()
+            .find(|habit| habit.key == definition.key)
+        {
+            if definition.created_locally || definition.name_override {
+                habit.name = definition.name.clone();
+                habit.localized_names = HabitLocalizedNames::default();
+            }
+            habit.name_known = true;
+            if definition.created_locally {
+                let goal = definition.goal_on(selected_date);
+                habit.goal_label = goal.as_ref().map(LocalHabitGoal::label);
+                habit.can_record_completion =
+                    goal.as_ref().is_some_and(LocalHabitGoal::allows_completion);
+            } else if let Some(revision) = definition
+                .goal_revisions
+                .iter()
+                .filter(|revision| {
+                    revision.disposition == LocalHabitRevisionDisposition::Scheduled
+                        && revision.effective_on.as_str() <= selected_date
+                })
+                .max_by(|left, right| {
+                    left.effective_on
+                        .cmp(&right.effective_on)
+                        .then_with(|| left.changed_at.cmp(&right.changed_at))
+                })
+            {
+                habit.goal_label = revision.goal.as_ref().map(LocalHabitGoal::label);
+                habit.can_record_completion = revision
+                    .goal
+                    .as_ref()
+                    .is_some_and(LocalHabitGoal::allows_completion);
+            }
+            continue;
+        }
+
+        if source_keys.contains(&definition.key)
+            || definition
+                .start_date
+                .as_deref()
+                .and_then(CalendarDate::parse)
+                .is_some_and(|start_date| start_date > selected)
+        {
+            continue;
+        }
+
+        let goal = definition.goal_on(selected_date);
+        let local_completion = local_completions.iter().find(|completion| {
+            completion.key == definition.key && completion.date == selected_date
+        });
+        let empty_sources: HashMap<&str, &Source> = HashMap::new();
+        let cell = project_cell(
+            selected_date,
+            None,
+            &empty_sources,
+            &[],
+            local_completion,
+            recording_limit,
+        );
+        view.habits.push(HabitCorrectionHabitView {
+            key: definition.key.clone(),
+            name: definition.name.clone(),
+            localized_names: names_configuration.names_for(&definition.key),
+            name_known: true,
+            can_record_completion: goal.as_ref().is_some_and(LocalHabitGoal::allows_completion),
+            goal_label: goal.as_ref().map(LocalHabitGoal::label),
+            local_change_count: local_completion
+                .map(|completion| completion.change_count)
+                .unwrap_or(0),
+            local_changes: local_completion
+                .map(|completion| completion.changes.clone())
+                .unwrap_or_default(),
+            cell,
+        });
+    }
+    Ok(())
 }
 
 fn project_cell(

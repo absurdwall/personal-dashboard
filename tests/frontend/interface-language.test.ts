@@ -520,6 +520,49 @@ test("historical correction copy and catalog boundaries are bilingual", () => {
   );
 });
 
+test("local Habit catalog diagnostics translate labels without changing dynamic values", () => {
+  const unsupported = "本地 Habit catalog schemaVersion 7 不受支持；当前只读取版本 1。";
+  assert.equal(
+    localizeApplicationError(unsupported, "en"),
+    "Local Habit catalog schemaVersion 7 is unsupported; only version 1 can be read.",
+  );
+  assert.equal(
+    localizeApplicationError(
+      "本地 Habit catalog 有重复稳定 key：local-focus-7。",
+      "en",
+    ),
+    "Local Habit catalog contains duplicate stable key: local-focus-7.",
+  );
+  assert.equal(
+    localizeApplicationError(
+      "本地 Habit 设置无效：本地 Habit catalog 的 createdLocally key 与来源 Habit key 冲突：exercise。",
+      "en",
+    ),
+    "Local Habit settings are invalid: Local Habit catalog createdLocally key conflicts with source Habit key: exercise.",
+  );
+  assert.equal(
+    localizeApplicationError(
+      "本地 Habit catalog 不是有效的 schema v1 JSON：unexpected token at 4:9",
+      "en",
+    ),
+    "Local Habit catalog is not valid schema-v1 JSON: unexpected token at 4:9",
+  );
+  assert.equal(
+    localizeApplicationError(
+      "Local Habit catalog schemaVersion 9 is unsupported; only version 1 can be read.",
+      "zh",
+    ),
+    "本地 Habit catalog schemaVersion 9 不受支持；当前只读取版本 1。",
+  );
+  assert.equal(
+    localizeApplicationError(
+      "Local Habit settings are invalid: Local Habit catalog contains duplicate stable key: local-focus-9.",
+      "zh",
+    ),
+    "本地 Habit 设置无效：本地 Habit catalog 有重复稳定 key：local-focus-9。",
+  );
+});
+
 test("Habits translates generated detail grammar but preserves source-owned text", () => {
   const detail = {
     kind: "observation" as const,

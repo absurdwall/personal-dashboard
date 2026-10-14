@@ -1123,3 +1123,182 @@ fn source_habit_edit_and_snapshot_refresh_preserve_local_overlay_and_evidence_id
             .any(|detail| format!("{detail:?}").contains("Refreshed source evidence"))
     );
 }
+
+#[test]
+fn historical_corrections_merge_local_definitions_by_key_and_effective_date() {
+    let vault = TempVault::new();
+    let application = app(&vault, "2026-09-08");
+    let empty = application.habits().unwrap();
+    let created = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "create".into(),
+            key: "local-history-walk".into(),
+            name: "History walk".into(),
+            name_changed: false,
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-08".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 2 }),
+            change_id: "create-history-walk".into(),
+            target_binding: empty.definition_target_binding.unwrap(),
+            expected_revision: empty.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    let revised = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-history-walk".into(),
+            name: "History walk".into(),
+            name_changed: false,
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-08".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 4 }),
+            change_id: "revise-history-walk".into(),
+            target_binding: created.definition_target_binding.unwrap(),
+            expected_revision: created.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    assert_eq!(
+        revised
+            .habit("local-history-walk")
+            .unwrap()
+            .pending_goal_label
+            .as_deref(),
+        Some("每周 4 天")
+    );
+
+    let before_start = application.read_date("2026-09-07").unwrap();
+    assert!(
+        before_start
+            .habit_corrections
+            .habit("local-history-walk")
+            .is_none()
+    );
+    let before_revision = application.read_date("2026-09-13").unwrap();
+    let habit = before_revision
+        .habit_corrections
+        .habit("local-history-walk")
+        .expect("local Habit should appear in historical correction by stable key");
+    assert!(habit.name_known);
+    assert_eq!(habit.name, "History walk");
+    assert_eq!(habit.goal_label.as_deref(), Some("每周 2 天"));
+    assert!(habit.can_record_completion);
+
+    let opened = application.read_date("2026-09-08").unwrap();
+    let completed = application
+        .set_historical_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-history-walk".into(),
+            lived_date: "2026-09-08".into(),
+            completed: true,
+            change_id: "complete-history-walk".into(),
+            target_binding: opened.habit_corrections.completion_target_binding.unwrap(),
+            expected_revision: opened.habit_corrections.completion_revision,
+        })
+        .unwrap();
+    let readback = completed
+        .habit_corrections
+        .habit("local-history-walk")
+        .unwrap();
+    assert!(readback.cell.counts_as_completion);
+    assert_eq!(readback.local_change_count, 1);
+
+    let after_revision = application.read_date("2026-09-14").unwrap();
+    assert_eq!(
+        after_revision
+            .habit_corrections
+            .habit("local-history-walk")
+            .unwrap()
+            .goal_label
+            .as_deref(),
+        Some("每周 4 天")
+    );
+}
+
+#[test]
+fn source_habit_goal_revision_changes_historical_correction_on_its_effective_date() {
+    let vault = TempVault::new();
+    write_source_snapshot(&vault, include_str!("fixtures/habits-v1-complete.json"));
+    let application = app(&vault, "2026-09-08");
+    let before = application.habits().unwrap();
+    let edited = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "exercise".into(),
+            name: "Exercise".into(),
+            name_changed: false,
+            emoji: None,
+            group: None,
+            start_date: None,
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 5 }),
+            change_id: "schedule-exercise-goal-for-next-week".into(),
+            target_binding: before.definition_target_binding.unwrap(),
+            expected_revision: before.definition_revision,
+            expected_snapshot_revision: before.snapshot_revision,
+        })
+        .unwrap();
+    assert_eq!(
+        edited
+            .habit("exercise")
+            .unwrap()
+            .pending_goal_label
+            .as_deref(),
+        Some("每周 5 天")
+    );
+
+    let previous_source_week = application.read_date("2026-09-06").unwrap();
+    assert_eq!(
+        previous_source_week
+            .habit_corrections
+            .habit("exercise")
+            .unwrap()
+            .goal_label
+            .as_deref(),
+        Some("每周 2 次")
+    );
+    let current_source_week = application.read_date("2026-09-13").unwrap();
+    assert_eq!(
+        current_source_week
+            .habit_corrections
+            .habit("exercise")
+            .unwrap()
+            .goal_label
+            .as_deref(),
+        Some("每周 3 次")
+    );
+    let effective_week = application.read_date("2026-09-14").unwrap();
+    assert_eq!(
+        effective_week
+            .habit_corrections
+            .habit("exercise")
+            .unwrap()
+            .goal_label
+            .as_deref(),
+        Some("每周 5 天")
+    );
+}
+
+#[test]
+fn created_locally_definition_cannot_claim_a_source_habit_key() {
+    let vault = TempVault::new();
+    write_source_snapshot(&vault, include_str!("fixtures/habits-v1-complete.json"));
+    let catalog_path = vault
+        .0
+        .join("life/.personal-dashboard/habits/v1/catalog.json");
+    fs::create_dir_all(catalog_path.parent().unwrap()).unwrap();
+    fs::write(
+        &catalog_path,
+        r#"{"schemaVersion":1,"habits":[{"key":"exercise","name":"Hijacked","createdLocally":true,"baseGoal":{"kind":"weekly-count","days":2},"sourceGoalHistory":[],"goalRevisions":[]}],"operations":[]}"#,
+    )
+    .unwrap();
+
+    let view = app(&vault, "2026-09-08").habits().unwrap();
+    assert_eq!(
+        view.state,
+        personal_dashboard_lib::habits::HabitSnapshotState::Error
+    );
+    assert!(view.habits.is_empty());
+    assert!(view.message.contains("exercise"), "{}", view.message);
+}

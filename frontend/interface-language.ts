@@ -1797,6 +1797,57 @@ function englishHabitValidationDiagnostic(message: string): string | null {
   return null;
 }
 
+function localHabitCatalogDiagnostic(
+  message: string,
+  language: InterfaceLanguage,
+): string | null {
+  const invalidSettingsPrefix = "本地 Habit 设置无效：";
+  if (message.startsWith(invalidSettingsPrefix)) {
+    const detail = localHabitCatalogDiagnostic(
+      message.slice(invalidSettingsPrefix.length),
+      language,
+    ) ?? message.slice(invalidSettingsPrefix.length);
+    return language === "en"
+      ? `Local Habit settings are invalid: ${detail}`
+      : `${invalidSettingsPrefix}${detail}`;
+  }
+  const englishInvalidSettingsPrefix = "Local Habit settings are invalid: ";
+  if (message.startsWith(englishInvalidSettingsPrefix)) {
+    if (language === "en") return message;
+    const detail = localHabitCatalogDiagnostic(
+      message.slice(englishInvalidSettingsPrefix.length),
+      language,
+    ) ?? message.slice(englishInvalidSettingsPrefix.length);
+    return `${invalidSettingsPrefix}${detail}`;
+  }
+
+  const patterns: readonly Readonly<[
+    RegExp,
+    (...values: string[]) => string,
+  ]>[] = language === "en"
+    ? [
+        [/^本地 Habit catalog 不是有效的 schema v1 JSON：([\s\S]+)$/, (reason) => `Local Habit catalog is not valid schema-v1 JSON: ${reason}`],
+        [/^本地 Habit catalog schemaVersion (.+) 不受支持；当前只读取版本 1。$/, (version) => `Local Habit catalog schemaVersion ${version} is unsupported; only version 1 can be read.`],
+        [/^本地 Habit catalog 有重复稳定 key：(.+)。$/, (key) => `Local Habit catalog contains duplicate stable key: ${key}.`],
+        [/^本地 Habit catalog 有重复目标修订 id：(.+)。$/, (id) => `Local Habit catalog contains duplicate goal revision id: ${id}.`],
+        [/^本地 Habit catalog 有重复操作 id：(.+)。$/, (id) => `Local Habit catalog contains duplicate operation id: ${id}.`],
+        [/^本地 Habit catalog 的 createdLocally key 与来源 Habit key 冲突：(.+)。$/, (key) => `Local Habit catalog createdLocally key conflicts with source Habit key: ${key}.`],
+      ]
+    : [
+        [/^Local Habit catalog is not valid schema-v1 JSON: ([\s\S]+)$/, (reason) => `本地 Habit catalog 不是有效的 schema v1 JSON：${reason}`],
+        [/^Local Habit catalog schemaVersion (.+) is unsupported; only version 1 can be read\.$/, (version) => `本地 Habit catalog schemaVersion ${version} 不受支持；当前只读取版本 1。`],
+        [/^Local Habit catalog contains duplicate stable key: (.+)\.$/, (key) => `本地 Habit catalog 有重复稳定 key：${key}。`],
+        [/^Local Habit catalog contains duplicate goal revision id: (.+)\.$/, (id) => `本地 Habit catalog 有重复目标修订 id：${id}。`],
+        [/^Local Habit catalog contains duplicate operation id: (.+)\.$/, (id) => `本地 Habit catalog 有重复操作 id：${id}。`],
+        [/^Local Habit catalog createdLocally key conflicts with source Habit key: (.+)\.$/, (key) => `本地 Habit catalog 的 createdLocally key 与来源 Habit key 冲突：${key}。`],
+      ];
+  for (const [pattern, render] of patterns) {
+    const match = pattern.exec(message);
+    if (match) return render(...match.slice(1));
+  }
+  return null;
+}
+
 function englishTaskDiagnostic(message: string): string | null {
   const exact: Readonly<Record<string, string>> = {
     "请选择 Vault，以读取 Tasks。": "Choose a Vault to read Tasks.",
@@ -2208,6 +2259,8 @@ export function localizeApplicationError(
     return language === "zh" ? error : "Document saved, but the readback changed; read the record again to verify.";
   }
   const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
+  const localCatalogDiagnostic = localHabitCatalogDiagnostic(applicationDiagnostic, language);
+  if (localCatalogDiagnostic) return localCatalogDiagnostic;
   const knownCollaborationDiagnostic = chineseApplicationErrors[applicationDiagnostic];
   if (knownCollaborationDiagnostic) {
     return language === "zh" ? knownCollaborationDiagnostic : applicationDiagnostic;
@@ -2262,6 +2315,8 @@ export function localizeApplicationMessage(
   message: string,
   language: InterfaceLanguage,
 ): string {
+  const localCatalogDiagnostic = localHabitCatalogDiagnostic(message, language);
+  if (localCatalogDiagnostic) return localCatalogDiagnostic;
   if (language === "zh") return message;
   const fixedDiagnostic = englishApplicationDiagnostic(message);
   if (fixedDiagnostic) return fixedDiagnostic;

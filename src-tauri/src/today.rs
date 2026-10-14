@@ -1,9 +1,10 @@
 use crate::habits::{
     FileHabitSnapshotStore, HABIT_DEFINITIONS_RELATIVE_PATH, HabitCorrectionView,
-    HabitLocalCompletionChangeView, HabitSnapshotStore, LEGACY_SNAPSHOT_RELATIVE_PATH,
-    LocalHabitCompletion, LocalHabitDefinition, LocalHabitDefinitionsDocument, LocalHabitGoal,
-    LocalHabitGoalRevision, LocalHabitOperationReceipt, LocalHabitRecord,
-    LocalHabitRevisionDisposition, SNAPSHOT_RELATIVE_PATH, load_habit_names,
+    HabitLocalCompletionChangeView, HabitNamesConfiguration, HabitSnapshotStore,
+    LEGACY_SNAPSHOT_RELATIVE_PATH, LocalHabitCompletion, LocalHabitDefinition,
+    LocalHabitDefinitionsDocument, LocalHabitGoal, LocalHabitGoalRevision,
+    LocalHabitOperationReceipt, LocalHabitRecord, LocalHabitRevisionDisposition,
+    SNAPSHOT_RELATIVE_PATH, load_habit_names, merge_local_habit_corrections,
     merge_local_habit_definitions, parse_local_habit_definitions,
     project_habit_corrections_with_recording_limit, project_snapshot_with_names_at_local_date,
     project_uncatalogued_habit_corrections_with_recording_limit, snapshot_dates_at_local_date,
@@ -207,26 +208,14 @@ impl FileHabitDefinitionStore {
             path,
             expected,
             updated,
-            StorageDocumentKind::HabitCompletions,
+            StorageDocumentKind::HabitDefinitions,
             |_| Ok(()),
         )
-        .map_err(translate_habit_definition_storage_error)
     }
 
     fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String> {
-        create_new_file(path, document, StorageDocumentKind::HabitCompletions)
-            .map_err(translate_habit_definition_storage_error)
+        create_new_file(path, document, StorageDocumentKind::HabitDefinitions)
     }
-}
-
-fn translate_habit_definition_storage_error(error: String) -> String {
-    error
-        .replace("本地习惯完成正本", "本地 Habit 定义正本")
-        .replace(
-            "local habit-completion document",
-            "local Habit definition document",
-        )
-        .replace("habit-completions", "habits")
 }
 
 #[derive(Clone, Copy)]
@@ -234,38 +223,57 @@ pub(crate) enum StorageDocumentKind {
     DailyRecord,
     DayTasks,
     HabitCompletions,
+    HabitDefinitions,
     Tasks,
 }
 
 impl StorageDocumentKind {
-    fn text(self, daily_record: &str, day_tasks: &str, habit_completions: &str) -> String {
+    fn text(
+        self,
+        daily_record: &'static str,
+        day_tasks: &'static str,
+        habit_completions: &'static str,
+    ) -> String {
         match self {
-            Self::DailyRecord => daily_record,
-            Self::DayTasks => day_tasks,
-            Self::HabitCompletions => habit_completions,
-            Self::Tasks => "任务正本操作失败。",
+            Self::DailyRecord => daily_record.into(),
+            Self::DayTasks => day_tasks.into(),
+            Self::HabitCompletions => habit_completions.into(),
+            Self::HabitDefinitions => local_habit_definition_storage_label(habit_completions),
+            Self::Tasks => "任务正本操作失败。".into(),
         }
-        .into()
     }
 
     fn error(
         self,
-        daily_record: &str,
-        day_tasks: &str,
-        habit_completions: &str,
+        daily_record: &'static str,
+        day_tasks: &'static str,
+        habit_completions: &'static str,
         error: impl std::fmt::Display,
     ) -> String {
-        format!(
-            "{}{}",
-            match self {
-                Self::DailyRecord => daily_record,
-                Self::DayTasks => day_tasks,
-                Self::HabitCompletions => habit_completions,
-                Self::Tasks => "任务正本操作失败：",
-            },
-            error
-        )
+        match self {
+            Self::DailyRecord => format!("{daily_record}{error}"),
+            Self::DayTasks => format!("{day_tasks}{error}"),
+            Self::HabitCompletions => format!("{habit_completions}{error}"),
+            Self::HabitDefinitions => {
+                format!(
+                    "{}{error}",
+                    local_habit_definition_storage_label(habit_completions)
+                )
+            }
+            Self::Tasks => format!("任务正本操作失败：{error}"),
+        }
     }
+}
+
+fn local_habit_definition_storage_label(message: &'static str) -> String {
+    // These are static message templates supplied separately from the dynamic OS error/path.
+    message
+        .replace("本地习惯完成正本", "本地 Habit 定义正本")
+        .replace(
+            "local habit-completion document",
+            "local Habit definition document",
+        )
+        .replace("local habit-completion", "local Habit definition")
 }
 
 #[derive(Clone, Copy)]
@@ -423,6 +431,7 @@ pub(crate) fn create_new_file(
                 StorageDocumentKind::DailyRecord => format!("{error}; the complete new Daily Record is present at {} and can be verified by refreshing", path.display()),
                 StorageDocumentKind::DayTasks => format!("{error}; the complete new day-task document is present at {} and can be verified by refreshing", path.display()),
                 StorageDocumentKind::HabitCompletions => format!("{error}; the complete new local habit-completion document is present at {} and can be verified by refreshing", path.display()),
+                StorageDocumentKind::HabitDefinitions => format!("{error}; the complete new local Habit definition document is present at {} and can be verified by refreshing", path.display()),
                 StorageDocumentKind::Tasks => format!("{error}; the complete task document is present at {} and can be verified by refreshing", path.display()),
             }
         })?;
@@ -431,6 +440,7 @@ pub(crate) fn create_new_file(
                 StorageDocumentKind::DailyRecord => format!("The new Daily Record is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::DayTasks => format!("The new day-task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::HabitCompletions => format!("The new local habit-completion document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
+                StorageDocumentKind::HabitDefinitions => format!("The new local Habit definition document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::Tasks => format!("The new task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
             }
         })?;
@@ -513,12 +523,13 @@ where
                     StorageDocumentKind::DailyRecord => format!("{preservation_error}; activation was rolled back and the rejected Dashboard candidate remains at {}", temporary.display()),
                     StorageDocumentKind::DayTasks => format!("{preservation_error}; activation was rolled back and the rejected day-task candidate remains at {}", temporary.display()),
                     StorageDocumentKind::HabitCompletions => format!("{preservation_error}; activation was rolled back and the rejected local habit-completion candidate remains at {}", temporary.display()),
+                    StorageDocumentKind::HabitDefinitions => format!("{preservation_error}; activation was rolled back and the rejected local Habit definition candidate remains at {}", temporary.display()),
                     StorageDocumentKind::Tasks => format!("{preservation_error}; activation was rolled back and the rejected task candidate remains at {}", temporary.display()),
                 })
             }
             Err(rollback_error) => Err(format!(
                 "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced {} inode remains linked at {}",
-                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document", StorageDocumentKind::Tasks => "task document" }, temporary.display()
+                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document", StorageDocumentKind::HabitDefinitions => "local Habit definition document", StorageDocumentKind::Tasks => "task document" }, temporary.display()
             )),
         }
     })?;
@@ -527,6 +538,7 @@ where
             StorageDocumentKind::DailyRecord => format!("Could not verify the displaced daily record after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::DayTasks => format!("Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::HabitCompletions => format!("Could not verify the displaced local habit-completion document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
+            StorageDocumentKind::HabitDefinitions => format!("Could not verify the displaced local Habit definition document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::Tasks => format!("Could not verify the displaced task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
         }
     })?;
@@ -536,6 +548,7 @@ where
                     StorageDocumentKind::DailyRecord => format!("Could not verify today's daily record after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::DayTasks => format!("Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::HabitCompletions => format!("Could not verify the local habit-completion document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
+                    StorageDocumentKind::HabitDefinitions => format!("Could not verify the local Habit definition document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::Tasks => format!("Could not verify the task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                 }
             })?;
@@ -568,6 +581,7 @@ where
                 StorageDocumentKind::DailyRecord => "record",
                 StorageDocumentKind::DayTasks => "day-task document",
                 StorageDocumentKind::HabitCompletions => "local habit-completion document",
+                StorageDocumentKind::HabitDefinitions => "local Habit definition document",
                 StorageDocumentKind::Tasks => "task document",
             },
             temporary.display()
@@ -645,6 +659,7 @@ fn preserve_displaced_inode(
             StorageDocumentKind::DailyRecord => "daily-record",
             StorageDocumentKind::DayTasks => "day-tasks",
             StorageDocumentKind::HabitCompletions => "habit-completions",
+            StorageDocumentKind::HabitDefinitions => "habit-definitions",
             StorageDocumentKind::Tasks => "tasks",
         });
     for attempt in 0..32u8 {
@@ -706,6 +721,7 @@ fn create_temporary_file(
                 StorageDocumentKind::DailyRecord => "md",
                 StorageDocumentKind::DayTasks => "json",
                 StorageDocumentKind::HabitCompletions => "json",
+                StorageDocumentKind::HabitDefinitions => "json",
                 StorageDocumentKind::Tasks => "json",
             },
             std::process::id()
@@ -739,10 +755,12 @@ fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -
         (Some(path), StorageDocumentKind::DailyRecord) => format!("今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。", path.display()),
         (Some(path), StorageDocumentKind::DayTasks) => format!("当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新当天任务。", path.display()),
         (Some(path), StorageDocumentKind::HabitCompletions) => format!("本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
+        (Some(path), StorageDocumentKind::HabitDefinitions) => format!("本地 Habit 定义正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
         (Some(path), StorageDocumentKind::Tasks) => format!("任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请刷新 Tasks 后重试。", path.display()),
         (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::HabitCompletions) => "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
+        (None, StorageDocumentKind::HabitDefinitions) => "本地 Habit 定义正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::Tasks) => "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。".into(),
     }
 }
@@ -780,6 +798,7 @@ fn preserve_conflict_snapshot(
                 StorageDocumentKind::DailyRecord => "daily-record",
                 StorageDocumentKind::DayTasks => "day-tasks",
                 StorageDocumentKind::HabitCompletions => "habit-completions",
+                StorageDocumentKind::HabitDefinitions => "habit-definitions",
                 StorageDocumentKind::Tasks => "tasks",
             });
         let recovery = recovery_directory.join(format!(
@@ -2530,15 +2549,37 @@ where
 
     fn habit_corrections_for(&self, vault: &Path, date: &str) -> HabitCorrectionView {
         let snapshot_path = vault.join(SNAPSHOT_RELATIVE_PATH);
+        let definition_path = vault.join(HABIT_DEFINITIONS_RELATIVE_PATH);
         let completion_path = canonical_habit_completion_path(vault);
         let completion_target_binding = habit_completion_target_binding(&completion_path);
+        let current_timestamp = self.clock.current_timestamp_label();
+        let local_definitions = match self.habit_definition_store.load(&definition_path) {
+            Ok(Some(bytes)) => match parse_local_habit_definitions(&bytes, &current_timestamp) {
+                Ok(definitions) => definitions,
+                Err(error) => {
+                    return self.retained_habit_correction_or(
+                        &snapshot_path,
+                        date,
+                        HabitSnapshotState::Error,
+                        format!("本地 Habit 设置无效：{error}"),
+                    );
+                }
+            },
+            Ok(None) => LocalHabitDefinitionsDocument::default(),
+            Err(error) => {
+                return self.retained_habit_correction_or(
+                    &snapshot_path,
+                    date,
+                    HabitSnapshotState::Error,
+                    error,
+                );
+            }
+        };
+        let names_configuration = load_habit_names(vault);
         let (completion_revision, local_completions) =
             match self.habit_completion_store.load(&completion_path) {
                 Ok(Some(bytes)) => {
-                    let parsed = match parse_habit_completion_document(
-                        &bytes,
-                        &self.clock.current_timestamp_label(),
-                    ) {
+                    let parsed = match parse_habit_completion_document(&bytes, &current_timestamp) {
                         Ok(parsed) => parsed,
                         Err(error) => {
                             return self.retained_habit_correction_or(
@@ -2546,7 +2587,7 @@ where
                                 date,
                                 HabitSnapshotState::Error,
                                 error,
-                            )
+                            );
                         }
                     };
                     let local = parsed
@@ -2563,7 +2604,7 @@ where
                         date,
                         HabitSnapshotState::Error,
                         error,
-                    )
+                    );
                 }
             };
         let document = match load_habit_snapshot_from_vault(&self.habit_snapshot_store, vault) {
@@ -2584,6 +2625,8 @@ where
                     completion_revision,
                     completion_target_binding,
                     local_completions,
+                    &local_definitions,
+                    &names_configuration,
                 );
             }
             Err(error) => {
@@ -2602,6 +2645,8 @@ where
                     completion_revision,
                     completion_target_binding,
                     local_completions,
+                    &local_definitions,
+                    &names_configuration,
                 );
             }
         };
@@ -2613,7 +2658,7 @@ where
                     date,
                     HabitSnapshotState::Error,
                     error,
-                )
+                );
             }
         };
         let local_records = self
@@ -2634,7 +2679,6 @@ where
                 text: record.text,
             })
             .collect();
-        let names_configuration = load_habit_names(vault);
         match project_habit_corrections_with_recording_limit(
             &document,
             &self.clock.current_lived_date(),
@@ -2645,6 +2689,21 @@ where
             &names_configuration,
         ) {
             Ok(mut view) => {
+                if let Err(error) = merge_local_habit_corrections(
+                    &mut view,
+                    &local_definitions,
+                    &local_completions,
+                    &names_configuration,
+                    date,
+                    &self.clock.current_date(),
+                ) {
+                    return self.retained_habit_correction_or(
+                        &snapshot_path,
+                        date,
+                        HabitSnapshotState::Error,
+                        error,
+                    );
+                }
                 view.completion_revision = completion_revision;
                 view.completion_target_binding = Some(completion_target_binding);
                 let mut cache = match self.habit_correction_cache.lock() {
@@ -2654,7 +2713,7 @@ where
                             date,
                             HabitSnapshotState::Error,
                             "历史习惯缓存不可用。",
-                        )
+                        );
                     }
                 };
                 cache.insert((snapshot_path, date.into()), view.clone());
@@ -2676,6 +2735,8 @@ where
                         completion_revision,
                         completion_target_binding,
                         local_completions,
+                        &local_definitions,
+                        &names_configuration,
                     )
                 }
             }
@@ -2690,6 +2751,8 @@ where
         completion_revision: Option<String>,
         completion_target_binding: String,
         local_completions: Vec<LocalHabitCompletion>,
+        local_definitions: &LocalHabitDefinitionsDocument,
+        names_configuration: &HabitNamesConfiguration,
     ) -> HabitCorrectionView {
         match project_uncatalogued_habit_corrections_with_recording_limit(
             &self.clock.current_lived_date(),
@@ -2697,9 +2760,19 @@ where
             date,
             state,
             message,
-            local_completions,
+            local_completions.clone(),
         ) {
             Ok(mut view) => {
+                if let Err(error) = merge_local_habit_corrections(
+                    &mut view,
+                    local_definitions,
+                    &local_completions,
+                    names_configuration,
+                    date,
+                    &self.clock.current_date(),
+                ) {
+                    return HabitCorrectionView::empty(date, HabitSnapshotState::Error, error);
+                }
                 view.completion_revision = completion_revision;
                 view.completion_target_binding = Some(completion_target_binding);
                 view
@@ -2729,7 +2802,7 @@ where
                     date,
                     HabitSnapshotState::Error,
                     "历史习惯缓存不可用。",
-                )
+                        );
             }
         };
         if let Some(previous) = cache.get(&(snapshot_path.to_path_buf(), date.into())) {
@@ -8027,7 +8100,7 @@ fn clean_inline_markdown(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{save_file_if_unchanged, StorageDocumentKind};
+    use super::{StorageDocumentKind, external_change_message, save_file_if_unchanged};
     use std::cell::RefCell;
     use std::fs;
     use std::io::{Seek, SeekFrom, Write};
@@ -8036,6 +8109,28 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn habit_definition_storage_labels_do_not_rewrite_dynamic_paths() {
+        let path = "/tmp/Vault/local habit-completion document/habit-completions/catalog.json";
+        let recovery_path = PathBuf::from(path);
+        let error =
+            external_change_message(Some(&recovery_path), StorageDocumentKind::HabitDefinitions);
+
+        assert!(error.contains(path), "{error}");
+        assert!(error.starts_with("本地 Habit 定义正本"), "{error}");
+        let io_error = StorageDocumentKind::HabitDefinitions.error(
+            "Daily Record error: ",
+            "day-task error: ",
+            "Could not write the local habit-completion document: ",
+            path,
+        );
+        assert!(io_error.contains(path), "{io_error}");
+        assert!(
+            io_error.starts_with("Could not write the local Habit definition document: "),
+            "{io_error}"
+        );
+    }
 
     struct TempDirectory(PathBuf);
 
