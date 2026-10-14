@@ -10,7 +10,7 @@
 **ID:** PDEX-24
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** reimplementation started on `codex/pdex-24-restart`; packaged acceptance remains pending
+**Implementation:** committed on `codex/pdex-24-restart`; independent review and packaged acceptance remain pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -20,10 +20,27 @@
 ## Clean reimplementation tracking — 2026-10-14
 
 - Integration branch: `codex/dashboard-experience-refinement-restart-20261014`; ticket base is its exact tip `8275615a3f3cad2a783d74561472c78c4bbeb493`.
-- Ticket branch/worktree: `codex/pdex-24-restart` at `/private/tmp/pdex-restart-20261014.noindex/pdex-24`; implementation commits, in order: `ae05611018bd7266c7dc1d1c13e343922e2bd7ee`, `c4bbc2bf1b12caa9af08d31cf71a2aa522f71228`.
-- Verification on the ticket branch: `cargo test --manifest-path src-tauri/Cargo.toml --test habit_completion_workflow --test habit_snapshot_workflow --test habit_definition_workflow` (34 passed); `node --test tests/frontend/habit-completion.test.ts tests/frontend/habit-canonical-navigation.test.ts tests/frontend/habit-localized-names.test.ts tests/frontend/interface-language.test.ts` (29 passed); `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.npm/_npx/31e32ef8478fbf80/node_modules/playwright/index.mjs node --test tests/browser/habit-definition-workflow.mjs` (1 passed); `npm run build` passed; `git diff --check` passed.
+- Ticket branch/worktree: `codex/pdex-24-restart` at `/private/tmp/pdex-restart-20261014.noindex/pdex-24`; implementation commits, in order: `ae05611018bd7266c7dc1d1c13e343922e2bd7ee`, `c4bbc2bf1b12caa9af08d31cf71a2aa522f71228`, `784dfcdd3d685cddf82ce93cbec8ae64e1ec6721`, `c4762398c91b29d39e78c838e04fd3f23e691126`, `df33dd9a9a52cc4236d9a1fc35e784e7c031ef1c`.
+- Latest ticket-branch verification: `cargo test --manifest-path src-tauri/Cargo.toml --test habit_completion_workflow --test habit_snapshot_workflow --test habit_definition_workflow` (37 passed); `node --test tests/frontend/habit-completion.test.ts tests/frontend/habit-canonical-navigation.test.ts tests/frontend/habit-localized-names.test.ts tests/frontend/interface-language.test.ts` (29 passed); `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.npm/_npx/31e32ef8478fbf80/node_modules/playwright/index.mjs node --test tests/browser/habit-definition-workflow.mjs` (3 passed); `npm run build` passed; `git diff --check` passed.
 - The Rust workflow uses temporary Vault files through `TodayApplication`; the browser test uses a local IPC fixture and checks the real DOM flow. Packaged-app acceptance remains pending. Integration merge is waiting for the parent integration sequence; check and merge its latest tip before integration.
 - The earlier implementation remains on its previous branch with full history and is not this ticket's source baseline.
+
+## Independent Spec-review follow-up — 2026-10-14
+
+- Follow-up implementation commit: `c476239` (`Fix Habit partial-cycle and local-name behavior`). A daily-to-weekly revision now starts counting at the later of the current Monday, its effective lived date, and a later Habit `startDate`; it preserves the full weekly goal. The first partial week is identified in the row, excluded from the comparable full-week summary, and counted in an explicit summary note. A weekly period beginning on Monday remains a full week. Historic goal contexts remain tied to their original cycle.
+- Local source-Habit overlays now display and prefill the saved local name ahead of source `localizedNames`. The source snapshot remains byte-for-byte unchanged during the local edit; the Vault-backed readback keeps both configured translations and refreshed source evidence.
+- Red-to-green evidence: before the repair, the temporary-Vault `daily_count_goal_revision_takes_effect_on_the_next_lived_day_and_survives_reopen` check observed `completed_count: Some(1)` instead of `Some(0)`; the browser regression also observed the raw source name in edit prefill and no partial-cycle label. Both regressions pass after `c476239`.
+- Final targeted verification after the follow-up: `cargo test --manifest-path src-tauri/Cargo.toml --test habit_completion_workflow --test habit_snapshot_workflow --test habit_definition_workflow` — 36 passed; `node --test tests/frontend/habit-completion.test.ts tests/frontend/habit-canonical-navigation.test.ts tests/frontend/habit-localized-names.test.ts tests/frontend/interface-language.test.ts` — 29 passed; `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.npm/_npx/31e32ef8478fbf80/node_modules/playwright/index.mjs node --test tests/browser/habit-definition-workflow.mjs` — 3 passed; `npm run build` — passed; `git diff --check` — passed.
+- `rustfmt --check src-tauri/src/habits.rs src-tauri/tests/habit_definition_workflow.rs` reports pre-existing formatting differences elsewhere in those files. The added Rust code matches rustfmt output; no broad formatting changes were applied.
+- Exact follow-up commit: `c4762398c91b29d39e78c838e04fd3f23e691126`. Integration remains at `8275615a3f3cad2a783d74561472c78c4bbeb493`; this follow-up does not merge it. Packaged-app acceptance remains pending.
+
+## Weekly target revision edge follow-up — 2026-10-14
+
+- Review found that checking only the latest active revision could lose the first partial-week boundary: if daily-to-weekly takes effect Tuesday and a later weekly-to-weekly target revision is effective Thursday, Friday's projection could incorrectly restart the count on Monday. `local_weekly_period_start` now scans the scheduled revisions effective by the current lived date and preserves the latest in-week transition from a non-weekly goal to a weekly goal, still bounded by the Habit `startDate`. A weekly-to-weekly revision alone does not reset that partial period.
+- Red-to-green evidence: `cargo test --manifest-path src-tauri/Cargo.toml --test habit_definition_workflow weekly_target_revision_keeps_the_partial_week_start_from_frequency_transition -- --exact` failed before the fix with actual period start `2026-09-07` versus expected `2026-09-08`; the same command passed after the fix. The regression creates and revises a local Habit through the public workflow in a temporary Vault, persists the later target revision as Thursday-effective, then reopens Friday through `app.habits()` and checks target 5, Tuesday partial-period start, one completion counted, Monday completion excluded from the active count but retained in history, and exclusion from comparable full-week summary totals.
+- The current save workflow schedules weekly-to-weekly revisions for the next cycle, so the fixture adjusts only that persisted revision's effective date to exercise the required midweek revision chain. All create/edit/completion operations and the final readback use the real temporary-Vault workflow; no external service is called.
+- Final targeted verification after this follow-up: Rust workflow command above — 37 passed (12 completion, 10 definition, 15 snapshot); frontend command above — 29 passed; browser command above — 3 passed; `npm run build` — passed; `git diff --check` — passed.
+- Exact implementation commit: `df33dd9a9a52cc4236d9a1fc35e784e7c031ef1c` (`Keep partial weekly start across target revisions`). Base remains `8275615a3f3cad2a783d74561472c78c4bbeb493`; integration was not merged. Packaged-app acceptance remains pending.
 
 ## Acceptance criteria
 
