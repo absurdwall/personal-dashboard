@@ -264,7 +264,7 @@ function noteRefreshHarness(state: 'pending' | 'completed', nextBinding = 'tasks
     taskStateCopyKey: (value: string) => value, taskScheduleText: () => '', taskChangeHistory: () => null,
     taskCompletionMoment: () => '', taskCompletionSourceText: () => '', calendarDateLabel: (value: string) => value,
     taskListForId: () => ({ id: 'inbox', name: 'Inbox' }), taskListDisplayName: () => 'Inbox',
-    renderTaskListSelect() {}, normalizeTaskDateTimeFields() {}, t: (key: string) => key,
+    renderTaskListSelect() {}, normalizeTaskDateTimeFields() {}, closeTodayAxisTaskPopup() {}, closeTodayAxisFactPopup() {}, t: (key: string) => key,
     setCopy: (node: Element, key: string) => { node.textContent = key; },
   });
   const capture = main.includes('function captureTodayTaskEditors(')

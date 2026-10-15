@@ -40,7 +40,7 @@ function render(check: string, width = 830, height = 758): any {
     ${slice('function todayTimelineItem(', 'function todayEvidenceGroup(')}
     ${slice('function scrollTodayAxisToNow(', 'function scheduleTodayAxisFollowScroll(')}
     ${fn('adjustTodayAxisZoom')}
-    ${main.slice(main.indexOf('todayAxisFactPopupClose?.addEventListener'), main.indexOf('todayAxisTaskPopupClose?.addEventListener'))}
+    ${main.slice(main.lastIndexOf('document.getElementById("today-axis-zoom-out")'), main.indexOf('todayAxisTaskPopupClose?.addEventListener'))}
     renderTodayTimeAxis(currentTodayView);
     const rect = node => { const r=node.getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}; };
     ${check}
@@ -339,7 +339,7 @@ test("after-midnight cards keep their date, title and source readable within the
   const result=render(`
     currentTodayView={...currentTodayView,date:'2026-10-02',isToday:false,currentTime:null,tasks:{lists:[],tasks:[]},timeAxis:{currentArrangement:[entry('01:30 Long planned activity',1530)],confirmedFacts:[entry('01:30 Recorded activity',1530)],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
     renderTodayTimeAxis(currentTodayView);
-    return JSON.stringify([...todayTimedEvents.querySelectorAll('li')].map(m=>({card:rect(m.querySelector('a')),title:rect(m.querySelector('.today-axis-marker-title')),time:rect(m.querySelector('.today-axis-marker-time')),source:rect(m.querySelector('.today-axis-marker-source-status')),label:m.querySelector('.today-axis-marker-time').textContent})));
+    return JSON.stringify([...todayTimedEvents.querySelectorAll('li')].map(m=>({card:rect(m.querySelector('.today-axis-marker-link')),title:rect(m.querySelector('.today-axis-marker-title')),time:rect(m.querySelector('.today-axis-marker-time')),source:rect(m.querySelector('.today-axis-marker-source-status')),label:m.querySelector('.today-axis-marker-time').textContent})));
   `);
   assert.equal(result.length,2);
   for(const r of result){
@@ -363,7 +363,7 @@ test("advancing the clock keeps plans, pending Tasks and confirmed facts distinc
 test("the Today axis keeps the accepted zoomed-window geometry in smaller viewports", { skip: process.platform !== "darwin" }, () => {
   const check = `
     const surface=todayAxisScrollSurface, plot=document.querySelector('.today-axis-plot');
-    const hourHeight=()=>plot.getBoundingClientRect().height/18;
+    const hourHeight=()=>plot.getBoundingClientRect().height/24;
     const initial={surfaceClientWidth:surface.clientWidth,surfaceScrollWidth:surface.scrollWidth,surfaceClientHeight:surface.clientHeight,surfaceScrollHeight:surface.scrollHeight,plotWidth:plot.getBoundingClientRect().width,hourHeight:hourHeight()};
     document.getElementById('today-axis-zoom-in').click();
     const zoomedHourHeight=hourHeight();
