@@ -582,6 +582,64 @@ fn incomplete_damaged_and_user_authored_sections_are_not_overwritten() {
 }
 
 #[test]
+fn daytime_replan_accepts_plan_time_edit_serialization() {
+    use personal_dashboard_lib::today::PlanTimeEditInput;
+
+    let directory = TempDirectory::new();
+    let vault = directory.vault("vault");
+    let application = app(&vault);
+    let empty = application.read_date(DATE).unwrap();
+    let initial = application
+        .save_daily_plan(initial_plan_input(
+            empty.target_binding.unwrap(),
+            empty.revision,
+        ))
+        .unwrap();
+
+    let edited = application
+        .edit_plan_time(PlanTimeEditInput {
+            date: DATE.into(),
+            target_binding: initial.target_binding.clone().unwrap(),
+            expected_revision: initial.revision.clone().unwrap(),
+            plan_id: initial.time_axis.current_arrangement[0]
+                .plan_id
+                .clone()
+                .unwrap(),
+            operation_id: "plan-drag-before-replan".into(),
+            start_minute: 600,
+            end_minute: None,
+            precision: None,
+        })
+        .unwrap()
+        .view
+        .unwrap();
+    let path = record_path(&vault);
+    let after_drag = fs::read_to_string(&path).unwrap();
+    assert!(after_drag.contains("- **约10:00** Prepare the project brief"));
+    assert!(!after_drag.contains("- **约10:00：** Prepare the project brief"));
+    assert!(after_drag.contains("- **下午：** Review the draft"));
+
+    let mut replan = initial_plan_input(
+        edited.target_binding.clone().unwrap(),
+        edited.revision.clone(),
+    );
+    replan.operation_id = "plan-replan-after-drag".into();
+    replan.transition = DailyPlanTransition::DaytimeReplan;
+    replan.arrangement[0].period = edited.timeline[0].period.clone();
+    replan.arrangement[0].title = edited.timeline[0].title.clone();
+    replan.original_intent = Some("Keep the complete synthetic day plan".into());
+    replan.change_reason = Some("A planned time moved".into());
+    replan.revised_direction = Some("Keep both synthetic plan blocks".into());
+    refresh_fingerprint(&mut replan);
+
+    let saved = application.save_daily_plan(replan).unwrap();
+    assert_eq!(saved.timeline.len(), 2);
+    assert_eq!(saved.timeline[0].period, "约10:00");
+    assert_eq!(saved.timeline[1].title, "Review the draft");
+    assert!(receipt(&vault, "plan-replan-after-drag"));
+}
+
+#[test]
 fn manual_plan_time_edit_preserves_other_sources_and_survives_restart() {
     use personal_dashboard_lib::today::PlanTimeEditInput;
     let directory = TempDirectory::new();

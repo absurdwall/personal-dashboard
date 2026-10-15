@@ -9890,13 +9890,24 @@ fn collaboration_task_tool_spec(
     if daily_plan_operations_available {
         let block = json!({
             "type": "object",
-            "properties": {"period": string, "title": string, "detail": nullable_string},
+            "properties": {
+                "period": {"type":"string", "description":"Required time or period label for this block."},
+                "title": {"type":"string", "description":"Required concise description of this planned block."},
+                "detail": {"type":["string", "null"], "description":"Optional supporting detail; use null when there is none."}
+            },
             "required": ["period", "title", "detail"],
             "additionalProperties": false
         });
         let evidence = json!({
             "type": "object",
-            "properties": {"label": string, "items": {"type": "array", "items": string}},
+            "properties": {
+                "label": {"type":"string", "description":"Required source or evidence-group name."},
+                "items": {
+                    "type": "array",
+                    "items": {"type":"string"},
+                    "description":"Provide 1–20 concise evidence items for this group."
+                }
+            },
             "required": ["label", "items"],
             "additionalProperties": false
         });
@@ -9908,17 +9919,25 @@ fn collaboration_task_tool_spec(
                     "enum": ["initialPlan", "morningCalibration", "daytimeEvent", "daytimeReplan", "morningBaselineCorrection"],
                     "description": usage::description("dailyRecord.transition")
                 },
-                "arrangement": {"type": "array", "items": block},
-                "evidence": {"type": "array", "items": evidence},
-                "calibrationNote": nullable_string,
-                "baselineCorrectionReason": nullable_string,
+                "arrangement": {
+                    "type": "array",
+                    "items": block,
+                    "description": "For plan transitions, provide 1–24 blocks for the complete current-day arrangement. A daytimeReplan retains every existing block, including earlier blocks, unless the user explicitly asks to remove one. Use an empty array for daytimeEvent."
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": evidence,
+                    "description": "For plan transitions, provide 1–16 evidence groups; each group has 1–20 items. Use an empty array for daytimeEvent."
+                },
+                "calibrationNote": {"type":["string", "null"], "description":"Required nonempty explanation for morningCalibration; otherwise null or omit."},
+                "baselineCorrectionReason": {"type":["string", "null"], "description":"Required nonempty reason for morningBaselineCorrection; otherwise null or omit."},
                 "event": {
                     "type": ["string", "null"],
                     "description": usage::description("dailyRecord.event")
                 },
-                "originalIntent": nullable_string,
-                "changeReason": nullable_string,
-                "revisedDirection": nullable_string
+                "originalIntent": {"type":["string", "null"], "description":"Optional scalar string describing the prior intent; otherwise null or omit."},
+                "changeReason": {"type":["string", "null"], "description":"Optional scalar string explaining this replan; this field is named changeReason (singular), not changeReasons."},
+                "revisedDirection": {"type":["string", "null"], "description":"Required nonempty scalar string for daytimeReplan describing the new direction; otherwise null or omit."}
             }),
             &["transition"],
         ));
