@@ -40,6 +40,7 @@ function render(check: string, width = 830, height = 758): any {
     ${slice('function todayTimelineItem(', 'function todayEvidenceGroup(')}
     ${slice('function scrollTodayAxisToNow(', 'function scheduleTodayAxisFollowScroll(')}
     ${fn('adjustTodayAxisZoom')}
+    ${fn('showTodayPhase')}
     ${main.slice(main.lastIndexOf('document.getElementById("today-axis-zoom-out")'), main.indexOf('todayAxisTaskPopupClose?.addEventListener'))}
     renderTodayTimeAxis(currentTodayView);
     const rect = node => { const r=node.getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}; };
@@ -185,6 +186,30 @@ test("clicking a confirmed fact opens its full read-only anchored popup and retu
   assert.equal(result.independentScroll.axis, result.opened.axisScroll);
   assert.deepEqual(result.close, {open:false,focus:true});
   assert.deepEqual(result.escape, {open:false,focus:true});
+});
+
+test("leaving Daytime closes the fact popup without restoring focus to its hidden opener", { skip: process.platform !== "darwin" }, () => {
+  const result = render(`
+    let currentTodayPhase='daytime', todayPhaseSelectionRevision=0;
+    const todayPhaseButtons=[...document.querySelectorAll('[data-today-phase]')];
+    const todayPhasePanels=[...document.querySelectorAll('[data-today-phase-panel]')];
+    const todayEvidenceRegion=document.querySelector('.today-evidence-region');
+    const renderTodayEvidence=()=>{};
+    const todayReady=document.getElementById('today-ready');
+    const fact={...entry('10:30 Confirmed evidence',630),sourceDate:'2026-10-01'};
+    currentTodayView={...currentTodayView,tasks:{lists:[],tasks:[]},timeAxis:{
+      currentArrangement:[],confirmedFacts:[fact],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
+    renderTodayTimeAxis(currentTodayView);
+    const opener=todayTimedEvents.querySelector('.today-axis-marker-link');
+    opener.click();
+    const morningButton=document.querySelector('[data-today-phase="morning"]');
+    morningButton.focus();
+    showTodayPhase('morning');
+    return JSON.stringify({open:todayAxisFactPopup.open,focusOnMorning:document.activeElement===morningButton,
+      focusOnHiddenOpener:document.activeElement===opener,openerHidden:document.querySelector('[data-today-phase-panel="daytime"]').hidden,
+      morningVisible:!document.querySelector('[data-today-phase-panel="morning"]').hidden});
+  `);
+  assert.deepEqual(result, {open:false,focusOnMorning:true,focusOnHiddenOpener:false,openerHidden:true,morningVisible:true});
 });
 
 test("the Daytime axis shows the complete lived day at a fixed hour scale and scrolls independently", { skip: process.platform !== "darwin" }, () => {

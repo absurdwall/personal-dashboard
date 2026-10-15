@@ -7132,6 +7132,9 @@ function renderReadingList(
 function showTodayPhase(phase: TodayPhase, focus = false): void {
   todayPhaseSelectionRevision += 1;
   const phaseChanged = currentTodayPhase !== phase;
+  if (phaseChanged && currentTodayPhase === "daytime" && phase !== "daytime") {
+    closeTodayAxisFactPopup(false);
+  }
   currentTodayPhase = phase;
   if (todayReady) {
     todayReady.dataset.phase = phase;
