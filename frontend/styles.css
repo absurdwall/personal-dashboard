@@ -10432,9 +10432,38 @@ button.habit-cell:focus-visible {
 .task-row[data-task-surface="tasks"] .task-completion-toggle > span { display: none; }
 .task-row[data-task-surface="tasks"] .task-completion-toggle input { width: 15px; height: 15px; margin: 0; cursor: pointer; }
 .task-row[data-task-surface="tasks"] .task-title-button { font-family: inherit; font-size: 12px; font-weight: 400; line-height: 1.4; overflow-wrap: anywhere; }
+.task-row[data-task-surface="tasks"] .task-tree-toggle {
+  display: inline-grid;
+  flex: 0 0 16px;
+  width: 16px;
+  min-width: 16px !important;
+  height: 16px;
+  min-height: 16px !important;
+  place-items: center;
+  margin: 0 0 0 -3px;
+  padding: 0 !important;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--parity-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.task-row[data-task-surface="tasks"] .task-tree-toggle:hover,
+.task-row[data-task-surface="tasks"] .task-tree-toggle:focus-visible {
+  background: var(--parity-accent-soft);
+  color: var(--parity-accent-strong);
+}
+.task-row[data-task-surface="tasks"] .task-tree-toggle:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
 .task-row[data-task-surface="tasks"] .task-state-label { display: none; }
 .task-row[data-task-surface="tasks"].is-abandoned .task-state-label,
 .task-row[data-task-surface="tasks"].is-deleted .task-state-label { display: inline-flex; }
+.task-row[data-task-surface="tasks"] .task-row-tags { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; gap: 0.2rem; }
+.task-row[data-task-surface="tasks"] .task-row-tag { display: inline-flex; max-width: 100%; min-width: 0; align-items: center; padding: 0 0.3rem; border: 1px solid var(--parity-border); border-radius: 999px; color: var(--parity-muted); font-size: 0.62rem; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
 .task-row-schedule { max-width: 125px; color: var(--parity-muted); font-size: 10px; text-align: right; }
 @media(max-width:1100px) {
   .tasks-layout:has(.tasks-selected-detail:not([hidden])) { grid-template-columns: 140px minmax(0,1fr); }
@@ -10748,6 +10777,16 @@ button.habit-cell:focus-visible {
   color: var(--parity-ink);
   font: inherit;
   font-size: 0.64rem;
+}
+
+.task-editor-compact .task-schedule-fields :is(input, select) {
+  min-height: 1.75rem;
+  padding: 0.18rem 0.3rem;
+}
+
+.task-editor-compact :is(.task-list-disclosure, .task-calendar-list-fields) label > span {
+  display: grid;
+  gap: 0.18rem;
 }
 
 .task-editor-compact .task-clear-time {

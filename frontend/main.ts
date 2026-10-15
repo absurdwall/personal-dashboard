@@ -1744,6 +1744,7 @@ let taskTagFilter: string | null = null;
 let taskPrioritySort: TaskPrioritySort = "default";
 let taskTagRenameEditId: string | null = null;
 const taskTagRenameDrafts = new Map<string, string>();
+const collapsedTaskTreeNodesByBinding = new Map<string, Set<string>>();
 let taskCreateOpen = false;
 const composingTaskCreateForms = new WeakSet<HTMLFormElement>();
 let taskListManagementOpen = false;
@@ -11850,6 +11851,10 @@ function taskEditor(
   ));
   title.textContent = task.name;
   title.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
+  const assignedTagIds = new Set(task.tagIds ?? []);
+  const rowTags = surface === "tasks"
+    ? (view?.tags ?? []).filter((tag) => assignedTagIds.has(tag.id) && tag.name.trim().length > 0)
+    : [];
   const taskList = view ? taskListForId(view, task.listId) : undefined;
   const listName = taskList
     ? taskListDisplayName(taskList, t("tasks.inbox"))
@@ -11871,6 +11876,19 @@ function taskEditor(
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.overdue")));
   }
   titleLine.append(title, state);
+  if (rowTags.length > 0) {
+    const tags = document.createElement("span");
+    tags.className = "task-row-tags";
+    tags.setAttribute("role", "group");
+    tags.setAttribute("aria-label", t("tasks.tags"));
+    for (const tag of rowTags) {
+      const label = document.createElement("span");
+      label.className = "task-row-tag";
+      label.textContent = tag.name;
+      tags.append(label);
+    }
+    titleLine.append(tags);
+  }
   if (task.content && surface !== "tasks") {
     const contentPreview = document.createElement("p");
     contentPreview.className = "task-row-content";
@@ -12382,6 +12400,10 @@ function taskEditor(
     editorForm.prepend(titlebar, meta);
     const closeEdit = (): void => {
       if (binding) taskEditDrafts.delete(taskDraftKey(binding, task.id));
+      const collapsedDisclosureId =
+        surface === "tasks" && currentTasksView
+          ? taskTreeFocusDisclosureId(task.id, currentTasksView, binding ?? null)
+          : null;
       const root = taskEditorDialogRootForSurface(surface);
       if (surface === "calendar") {
         selectedCalendarTaskDetailId = null;
@@ -12394,10 +12416,23 @@ function taskEditor(
         root?.toggleAttribute("hidden", true);
         if (currentTasksView) renderTasks(currentTasksView);
       }
-      window.requestAnimationFrame(() =>
-        (surface === "calendar" ? calendarTaskList : tasksList)
-          ?.querySelector<HTMLButtonElement>(`[data-task-editor-open="${CSS.escape(task.id)}"]`)?.focus(),
-      );
+      window.requestAnimationFrame(() => {
+        if (surface === "calendar") {
+          calendarTaskList
+            ?.querySelector<HTMLButtonElement>(`[data-task-editor-open="${CSS.escape(task.id)}"]`)
+            ?.focus();
+          return;
+        }
+        const disclosure = collapsedDisclosureId
+          ? tasksList?.querySelector<HTMLButtonElement>(
+              `[data-task-tree-toggle="${CSS.escape(collapsedDisclosureId)}"]`,
+            )
+          : null;
+        const taskButton = tasksList?.querySelector<HTMLButtonElement>(
+          `[data-task-editor-open="${CSS.escape(task.id)}"]`,
+        );
+        (disclosure ?? taskButton)?.focus();
+      });
     };
     menu.querySelector<HTMLButtonElement>("[data-task-open-schedule]")?.addEventListener("click", () => {
       const disclosure = editorForm.querySelector<HTMLDetailsElement>("[data-task-schedule-disclosure]");
@@ -12605,7 +12640,60 @@ function taskHistorySection(
   return section;
 }
 
-function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boolean): HTMLElement[] {
+function taskTreeProjection(
+  matchingTasks: readonly TaskView[],
+  candidates: readonly TaskView[],
+  includeAncestorContext: boolean,
+): Readonly<{ tasks: readonly TaskView[]; matchingTaskIds?: ReadonlySet<string> }> {
+  if (!includeAncestorContext) return { tasks: matchingTasks };
+  const matchingTaskIds = new Set(matchingTasks.map((task) => task.id));
+  const candidatesById = new Map(candidates.map((task) => [task.id, task]));
+  const ancestorIds = new Set<string>();
+  for (const task of matchingTasks) {
+    let parentId = task.parentTaskId ?? null;
+    const visited = new Set<string>();
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = candidatesById.get(parentId);
+      if (!parent) break;
+      ancestorIds.add(parent.id);
+      parentId = parent.parentTaskId ?? null;
+    }
+  }
+  const contextTasks = candidates.filter((task) =>
+    ancestorIds.has(task.id) && !matchingTaskIds.has(task.id),
+  );
+  return { tasks: [...matchingTasks, ...contextTasks], matchingTaskIds };
+}
+
+function taskTreeFocusDisclosureId(
+  taskId: string,
+  view: TasksView,
+  targetBinding: string | null,
+): string | null {
+  if (!targetBinding || view.targetBinding !== targetBinding) return null;
+  const collapsedIds = collapsedTaskTreeNodesByBinding.get(targetBinding);
+  if (!collapsedIds?.size) return null;
+  const byId = new Map(view.tasks.map((task) => [task.id, task]));
+  let task = byId.get(taskId);
+  let disclosureId: string | null = null;
+  const visited = new Set<string>();
+  while (task?.parentTaskId && !visited.has(task.parentTaskId)) {
+    visited.add(task.parentTaskId);
+    const parent = byId.get(task.parentTaskId);
+    if (!parent) break;
+    if (collapsedIds.has(parent.id)) disclosureId = parent.id;
+    task = parent;
+  }
+  return disclosureId;
+}
+
+function taskTreeRows(
+  tasks: readonly TaskView[],
+  view: TasksView,
+  writable: boolean,
+  options: Readonly<{ matchingTaskIds?: ReadonlySet<string> }> = {},
+): HTMLElement[] {
   const byId = new Map(tasks.map((task) => [task.id, task]));
   const children = new Map<string, TaskView[]>();
   for (const task of tasks) {
@@ -12614,6 +12702,29 @@ function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boo
     const siblings = children.get(parentId) ?? [];
     siblings.push(task);
     children.set(parentId, siblings);
+  }
+  const targetBinding = view.targetBinding;
+  const collapsedIds = targetBinding
+    ? collapsedTaskTreeNodesByBinding.get(targetBinding) ?? new Set<string>()
+    : new Set<string>();
+  const forcedExpandedIds = new Set<string>();
+  const revealTargetIds = new Set(options.matchingTaskIds ?? []);
+  if (targetBinding && selectedTaskDetailBinding === targetBinding && selectedTaskDetailId) {
+    revealTargetIds.add(selectedTaskDetailId);
+  }
+  if (taskFocusRequestId) revealTargetIds.add(taskFocusRequestId);
+  const createDraft = targetBinding && taskCreateOpen ? taskCreateDrafts.get(targetBinding) : undefined;
+  if (createDraft?.parentTaskId) revealTargetIds.add(createDraft.parentTaskId);
+  for (const taskId of revealTargetIds) {
+    let task = byId.get(taskId);
+    const visited = new Set<string>();
+    while (task?.parentTaskId && !visited.has(task.parentTaskId)) {
+      visited.add(task.parentTaskId);
+      const parent = byId.get(task.parentTaskId);
+      if (!parent) break;
+      forcedExpandedIds.add(parent.id);
+      task = parent;
+    }
   }
   const rows: HTMLElement[] = [];
   const visited = new Set<string>();
@@ -12624,6 +12735,48 @@ function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boo
     const row = taskEditor(task, writable, view, "tasks", false, parentVisible);
     row.dataset.taskDepth = String(depth);
     row.style.setProperty("--task-indent", `${Math.min(depth, 4) * 12}px`);
+    if (options.matchingTaskIds && !options.matchingTaskIds.has(task.id)) {
+      row.dataset.taskTreeContext = "true";
+    }
+    const childTasks = children.get(task.id) ?? [];
+    const forcedExpanded = forcedExpandedIds.has(task.id);
+    const collapsed = collapsedIds.has(task.id) && !forcedExpanded;
+    if (childTasks.length) {
+      const titleLine = row.querySelector<HTMLElement>(".task-row-title-line");
+      if (titleLine) {
+        const disclosure = document.createElement("button");
+        disclosure.type = "button";
+        disclosure.className = "task-tree-toggle";
+        disclosure.dataset.taskTreeToggle = task.id;
+        disclosure.textContent = collapsed ? "›" : "⌄";
+        disclosure.setAttribute("aria-expanded", String(!collapsed));
+        disclosure.setAttribute(
+          "aria-label",
+          `${t(collapsed ? "habits.expand" : "habits.collapse")} · ${t("tasks.directSubtasks", { count: childTasks.length })}`,
+        );
+        disclosure.disabled = !targetBinding || forcedExpanded;
+        disclosure.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!targetBinding || disclosure.disabled) return;
+          const nextCollapsedIds = new Set(
+            collapsedTaskTreeNodesByBinding.get(targetBinding) ?? [],
+          );
+          if (nextCollapsedIds.has(task.id)) nextCollapsedIds.delete(task.id);
+          else nextCollapsedIds.add(task.id);
+          if (nextCollapsedIds.size) {
+            collapsedTaskTreeNodesByBinding.set(targetBinding, nextCollapsedIds);
+          } else {
+            collapsedTaskTreeNodesByBinding.delete(targetBinding);
+          }
+          renderTasks(view);
+          tasksList?.querySelector<HTMLButtonElement>(
+            `[data-task-tree-toggle="${CSS.escape(task.id)}"]`,
+          )?.focus();
+        });
+        titleLine.prepend(disclosure);
+      }
+    }
     if (depth > 4) {
       const titleLine = row.querySelector<HTMLElement>(".task-row-title-line");
       if (titleLine) {
@@ -12637,12 +12790,28 @@ function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boo
       }
     }
     rows.push(row);
-    for (const child of children.get(task.id) ?? []) append(child, depth + 1);
+    if (!collapsed) {
+      for (const child of childTasks) append(child, depth + 1);
+    }
+  };
+  const hasCollapsedAncestor = (task: TaskView): boolean => {
+    let parentId = task.parentTaskId ?? null;
+    const seen = new Set<string>();
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId);
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      if (collapsedIds.has(parentId) && !forcedExpandedIds.has(parentId)) return true;
+      parentId = parent.parentTaskId ?? null;
+    }
+    return false;
   };
   for (const task of tasks) {
     if (!task.parentTaskId || !byId.has(task.parentTaskId)) append(task, 0);
   }
-  for (const task of tasks) append(task, 0);
+  for (const task of tasks) {
+    if (!visited.has(task.id) && !hasCollapsedAncestor(task)) append(task, 0);
+  }
   return rows;
 }
 
@@ -12746,6 +12915,8 @@ function renderTasks(view: TasksView): void {
     selectedTaskDetailId = null;
   }
   const { main: visibleTasks, history: historyTasks } = taskDisplaySections(propertyTasks, taskStateScope);
+  const { main: treeContextCandidates } = taskDisplaySections(scopedTasks, taskStateScope);
+  const preserveFilteredTreeContext = taskPriorityFilter !== "all" || Boolean(taskTagFilter);
   taskListScopes?.querySelectorAll<HTMLButtonElement>("[data-task-scope]").forEach((button) => {
     const selected = button.dataset.taskScope === taskScope;
     button.setAttribute("aria-selected", String(selected));
@@ -12881,7 +13052,14 @@ function renderTasks(view: TasksView): void {
         );
         if (ended) group.append(ended);
       } else {
-        group.append(...taskTreeRows(listVisibleTasks, view, canOperate));
+        const treeProjection = taskTreeProjection(
+          listVisibleTasks,
+          treeContextCandidates.filter((task) => task.listId === list.id),
+          preserveFilteredTreeContext,
+        );
+        group.append(...taskTreeRows(treeProjection.tasks, view, canOperate, {
+          matchingTaskIds: treeProjection.matchingTaskIds,
+        }));
         const ended = taskHistorySection(
           listHistoryTasks,
           view,
@@ -12900,7 +13078,16 @@ function renderTasks(view: TasksView): void {
       taskRows.push(group);
     }
   } else {
-    if (!historyFilter) taskRows.push(...taskTreeRows(visibleTasks, view, canOperate));
+    if (!historyFilter) {
+      const treeProjection = taskTreeProjection(
+        visibleTasks,
+        treeContextCandidates,
+        preserveFilteredTreeContext,
+      );
+      taskRows.push(...taskTreeRows(treeProjection.tasks, view, canOperate, {
+        matchingTaskIds: treeProjection.matchingTaskIds,
+      }));
+    }
     const history = taskHistorySection(
       historyFilter ? visibleTasks : historyTasks,
       view,
