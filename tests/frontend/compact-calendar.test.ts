@@ -376,14 +376,15 @@ test('Tasks rows display label names from their stable tag identities',{skip:pro
     const baseView={state:'ready',message:'',schemaVersion:1,revision:'synthetic-revision',targetBinding:'synthetic-vault',vaultName:'Synthetic Vault',vaultPath:'/tmp/Synthetic Vault',currentDate:'2026-10-14',lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false}],folders:[],tags:[],tasks:[task]};
     const read=tags=>{
       const row=taskSurfaceHarness.render(task,{...baseView,tags}).row,container=row.querySelector('.task-row-tags'),chips=[...row.querySelectorAll('.task-row-tag')];
-      return {names:chips.map(chip=>chip.textContent),parent:container?.parentElement?.className??null,elementNames:chips.map(chip=>chip.tagName),hasInteractiveChild:chips.some(chip=>chip.children.length>0)};
+      const style=chips[0]?getComputedStyle(chips[0]):null;
+      return {names:chips.map(chip=>chip.textContent),parent:container?.parentElement?.className??null,elementNames:chips.map(chip=>chip.tagName),hasInteractiveChild:chips.some(chip=>chip.children.length>0),fontSize:style?.fontSize??null,maxWidth:style?.maxWidth??null,minWidth:style?.minWidth??null,overflowWrap:style?.overflowWrap??null};
     };
     const initial=read([{id:'tag-home',name:'Home'},{id:'tag-work',name:'Work'}]);
     const renamed=read([{id:'tag-home',name:'Home'},{id:'tag-work',name:'Projects'}]);
     const deleted=read([{id:'tag-home',name:'Home'}]);
     return JSON.stringify({initial,renamed,deleted,tagIds:task.tagIds,commands});
   `,969,723);
-  assert.deepEqual(result.initial,{names:['Home','Work'],parent:'task-row-title-line',elementNames:['SPAN','SPAN'],hasInteractiveChild:false});
+  assert.deepEqual(result.initial,{names:['Home','Work'],parent:'task-row-title-line',elementNames:['SPAN','SPAN'],hasInteractiveChild:false,fontSize:'9.92px',maxWidth:'100%',minWidth:'0px',overflowWrap:'anywhere'});
   assert.deepEqual(result.renamed.names,['Home','Projects']);
   assert.deepEqual(result.deleted.names,['Home']);
   assert.deepEqual(result.tagIds,['tag-home','tag-work','tag-deleted']);
