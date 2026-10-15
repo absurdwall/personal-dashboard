@@ -951,7 +951,6 @@
                           </div>
                         </div>
                         <div id="today-axis-scroll-surface" class="today-axis-scroll-surface" role="region" aria-label="today axis scroll region" data-i18n-aria-label="today.axisScrollRegion" tabindex="0">
-                          <button id="today-expand-early" type="button" class="today-axis-disclosure" aria-expanded="false" aria-controls="today-axis-plot" data-i18n="today.expandEarlyCollapsed">04:00–06:00 · 展开</button>
                           <div id="today-continuous-axis" class="today-continuous-axis" role="group" aria-labelledby="today-daytime-heading">
                             <div id="today-hour-scale" class="today-hour-scale" aria-label="00:00–24:00" data-i18n-aria-label="today.fullDayScale">
                               <span class="today-axis-heading-spacer" aria-hidden="true"></span>
@@ -968,7 +967,6 @@
                                   <ol id="today-timed-events" class="today-axis-markers" aria-label="当天安排和已确认事实" data-i18n-aria-label="today.timelineItemsHeading"></ol>
                                   <div id="today-timed-duration" class="today-axis-durations" aria-hidden="true"></div>
                                 </div>
-                                <button id="today-expand-late" type="button" class="today-axis-disclosure" aria-expanded="false" aria-controls="today-axis-plot" data-i18n="today.expandLateCollapsed">次日 00:00–04:00 · 展开</button>
                               </div>
                               <p id="today-timed-empty" class="today-axis-empty" data-i18n="today.noTimedItems" hidden>
                                 这份 Daily Record 尚无带明确时刻的安排或事实。
@@ -1154,6 +1152,13 @@
                         </header>
                         <p id="today-axis-task-popup-status" class="day-task-status" role="status" aria-live="polite"></p>
                         <div id="today-axis-task-popup-content"></div>
+                      </dialog>
+                      <dialog id="today-axis-fact-popup" class="today-axis-fact-popup" aria-labelledby="today-axis-fact-popup-heading">
+                        <header class="today-axis-fact-popup-heading">
+                          <h3 id="today-axis-fact-popup-heading" data-i18n="today.axisFactPopupHeading">事实详情</h3>
+                          <button id="today-axis-fact-popup-close" type="button" class="text-button" aria-label="关闭事实详情" data-i18n-aria-label="today.axisFactPopupClose" title="关闭事实详情" data-i18n-title="today.axisFactPopupClose">×</button>
+                        </header>
+                        <div id="today-axis-fact-popup-content" class="today-axis-fact-popup-content"></div>
                       </dialog>
                     </section>
 

@@ -65,8 +65,7 @@ async function pointAt(page,minute,ensureVisible=true) {
   const surface=page.locator('#today-axis-scroll-surface');await surface.scrollIntoViewIfNeeded();
   return page.evaluate(({minute,ensureVisible})=>{
     const plot=document.querySelector('#today-axis-plot'),surface=document.querySelector('#today-axis-scroll-surface');
-    const start=document.querySelector('#today-expand-early').getAttribute('aria-expanded')==='true'?240:360;
-    const end=document.querySelector('#today-expand-late').getAttribute('aria-expanded')==='true'?1680:1440;
+    const start=240,end=1680;
     const pos=()=>{const rect=plot.getBoundingClientRect();return {x:rect.right-30,y:rect.top+(minute-start)/(end-start)*rect.height};};
     if(ensureVisible){const rect=surface.getBoundingClientRect();surface.scrollTop+=pos().y-(rect.top+rect.height/2);}
     return pos();
@@ -98,8 +97,7 @@ async function dragTask(page,id,deltaMinutes) {
   const marker=page.locator(`.today-axis-marker[data-task-id="${id}"] .today-axis-marker-link`);
   await marker.scrollIntoViewIfNeeded();const box=await marker.boundingBox();assert.ok(box);
   const scale=await page.evaluate(()=>{
-    const start=document.querySelector('#today-expand-early').getAttribute('aria-expanded')==='true'?240:360;
-    const end=document.querySelector('#today-expand-late').getAttribute('aria-expanded')==='true'?1680:1440;
+    const start=240,end=1680;
     return document.querySelector('#today-axis-plot').getBoundingClientRect().height/(end-start);
   });
   const x=box.x+box.width/2,y=box.y+box.height/2;
@@ -176,7 +174,6 @@ test('an ordinary Task card click opens its detail editor with title-only axis t
 test('an overnight pointer selection retains both natural dates and fifteen-minute snapping',async()=>{
   const fixture=await pageFixture();const {page}=fixture;
   try {
-    await page.locator('#today-expand-late').click();
     const start=await pointAt(page,1412),end=await pointAt(page,1472,false);
     await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
     const dialog=page.locator('dialog[data-axis-task-create]');await dialog.waitFor({state:'visible'});

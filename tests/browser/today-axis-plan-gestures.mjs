@@ -48,8 +48,7 @@ async function dragTo(page,text,desiredStart,{long=false}={}) {
   const box=await link.boundingBox();assert.ok(box);const x=box.x+box.width/2,y=box.y+box.height/2;
   const info=await page.evaluate(({y,text})=>{
     const plot=document.querySelector('#today-axis-plot'),r=plot.getBoundingClientRect();
-    const start=document.querySelector('#today-expand-early').getAttribute('aria-expanded')==='true'?240:360;
-    const end=document.querySelector('#today-expand-late').getAttribute('aria-expanded')==='true'?1680:1440;
+    const start=240,end=1680;
     const original=window.__fixture.timeAxis.currentArrangement.find(e=>e.text===text).startMinute;
     return {origin:start+(y-r.top)/r.height*(end-start),start,end,original};
   },{y,text});
@@ -112,8 +111,7 @@ async function resizeEnd(page,text,minute) {
   const box=await handle.boundingBox();assert.ok(box);const x=box.x+box.width/2,y=box.y+box.height/2;
   const info=await page.evaluate(minute=>{
     const r=document.querySelector('#today-axis-plot').getBoundingClientRect();
-    const start=document.querySelector('#today-expand-early').getAttribute('aria-expanded')==='true'?240:360;
-    const end=document.querySelector('#today-expand-late').getAttribute('aria-expanded')==='true'?1680:1440;
+    const start=240,end=1680;
     return {y:r.top+(minute-start)/(end-start)*r.height};
   },minute);
   await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x,info.y,{steps:8});
