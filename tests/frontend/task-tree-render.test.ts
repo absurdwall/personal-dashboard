@@ -3,12 +3,14 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { stripTypeScriptTypes } from "node:module";
+import { taskHistoryGroups } from "../../frontend/task-presentation.ts";
 
 const main = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 const css = readFileSync(new URL("../../frontend/styles.css", import.meta.url), "utf8");
 
 class DomNode {
   children: DomNode[] = [];
+  parent: DomNode | null = null;
   dataset: Record<string, string> = {};
   attributes = new Map<string, string>();
   listeners = new Map<string, (event: any) => void>();
@@ -27,9 +29,30 @@ class DomNode {
     this.ownerDocument = ownerDocument;
   }
 
-  append(...children: DomNode[]) { this.children.push(...children); }
-  prepend(...children: DomNode[]) { this.children.unshift(...children); }
-  replaceChildren(...children: DomNode[]) { this.children = children; }
+  append(...children: DomNode[]) {
+    for (const child of children) {
+      child.remove();
+      child.parent = this;
+      this.children.push(child);
+    }
+  }
+  prepend(...children: DomNode[]) {
+    for (const child of children) {
+      child.remove();
+      child.parent = this;
+    }
+    this.children.unshift(...children);
+  }
+  replaceChildren(...children: DomNode[]) {
+    for (const child of this.children) child.parent = null;
+    this.children = [];
+    this.append(...children);
+  }
+  remove() {
+    if (!this.parent) return;
+    this.parent.children = this.parent.children.filter((child) => child !== this);
+    this.parent = null;
+  }
   addEventListener(name: string, listener: (event: any) => void) { this.listeners.set(name, listener); }
   setAttribute(name: string, value: string) { this.attributes.set(name, value); }
   getAttribute(name: string) { return this.attributes.get(name) ?? null; }
@@ -51,16 +74,24 @@ class DomNode {
   }
 }
 
+class DetailsNode extends DomNode {
+  open = false;
+}
+
 function taskTreeRenderer() {
   const document = {
     activeElement: null as DomNode | null,
-    createElement(tag: string) { return new DomNode(tag, document); },
+    createElement(tag: string) { return tag === "details" ? new DetailsNode(tag, document) : new DomNode(tag, document); },
   };
   const context: any = {
     document,
+    HTMLDetailsElement: DetailsNode,
     CSS: { escape: (value: string) => value },
     tasksList: new DomNode("div", document),
+    taskHistoryGroups,
+    taskOperationCount: 0,
     collapsedTaskTreeNodesByBinding: new Map<string, Set<string>>(),
+    taskHistoryFocusDisclosureRequest: null,
     selectedTaskDetailId: null,
     selectedTaskDetailBinding: null,
     taskFocusRequestId: null,
@@ -82,6 +113,10 @@ function taskTreeRenderer() {
       main.className = "task-row-main";
       const titleLine = new DomNode("div", document);
       titleLine.className = "task-row-title-line";
+      const editorButton = new DomNode("button", document);
+      editorButton.type = "button";
+      editorButton.dataset.taskEditorOpen = task.id;
+      titleLine.append(editorButton);
       main.append(titleLine);
       summary.append(main);
       row.append(summary);
@@ -95,7 +130,7 @@ function taskTreeRenderer() {
     return next ? rest.slice(0, next.index) : rest;
   };
   vm.runInNewContext(stripTypeScriptTypes(
-    `${productionFunction("taskTreeProjection")}\n${productionFunction("taskTreeFocusDisclosureId")}\n${productionFunction("taskTreeRows")}`,
+    `${productionFunction("taskHistorySection")}\n${productionFunction("taskTreeProjection")}\n${productionFunction("taskTreeFocusDisclosureId")}\n${productionFunction("taskHistoryFocusRequestForClose")}\n${productionFunction("taskTreeRows")}`,
   ), context);
   context.inputTasks = [];
   context.inputOptions = {};
@@ -103,6 +138,8 @@ function taskTreeRenderer() {
     const rows = context.taskTreeRows(context.inputTasks, view, true, context.inputOptions);
     context.tasksList.replaceChildren(...rows);
   };
+  context.renderTaskHistory = (tasks: any[], currentView: any, folded: boolean, openEditors = new Set<string>()) =>
+    context.taskHistorySection(tasks, currentView, "tasks", folded, openEditors);
   return context;
 }
 
@@ -114,6 +151,14 @@ const task = (id: string, parentTaskId: string | null = null) => ({
   state: "pending",
   deletedAt: null,
   date: null,
+});
+
+const completedTask = (id: string, parentTaskId: string | null, completedOn: string) => ({
+  ...task(id, parentTaskId),
+  state: "completed",
+  completion: { completedOn },
+  changes: [],
+  source: { kind: "manual" },
 });
 
 const view = (targetBinding: string, tasks: any[]) => ({
@@ -227,4 +272,120 @@ test("closing a temporarily revealed editor can return focus to its visible coll
   assert.equal(r.taskTreeFocusDisclosureId("grandchild", currentView, "vault-a"), "parent");
   assert.equal(r.taskTreeFocusDisclosureId("grandchild", currentView, "vault-b"), null);
   assert.equal(r.taskTreeFocusDisclosureId("parent", currentView, "vault-a"), null);
+});
+
+test("history subtree folding hides descendants across date groups and preserves pagination", () => {
+  const r = taskTreeRenderer();
+  const parent = completedTask("history-parent", null, "2026-10-13");
+  const child = completedTask("history-child", "history-parent", "2026-10-14");
+  const unrelated = Array.from({ length: 30 }, (_, index) =>
+    completedTask(`history-unrelated-${index}`, null, "2026-10-12"),
+  );
+  const tasks = [parent, child, ...unrelated];
+  const recordsBeforeToggle = structuredClone(tasks);
+  const section = r.renderTaskHistory(tasks, view("vault-a", tasks), false);
+
+  const groups = section.children[1];
+  assert.deepEqual(groups.children.slice(0, 3).map((group: any) => group.children[0].textContent), ["2026-10-14", "2026-10-13", "2026-10-12"]);
+  const moreBefore = groups.children.at(-1);
+  assert.equal(moreBefore.dataset.copyKey, "tasks.historyMore");
+  assert.equal(moreBefore.dataset.copyParams, JSON.stringify({ count: 2 }));
+  const parentButton = groups.querySelector('[data-task-tree-toggle="history-parent"]');
+  assert.ok(parentButton, "history parents with visible descendants have a disclosure");
+  assert.equal(parentButton.getAttribute("aria-expanded"), "true");
+  parentButton.listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} });
+
+  assert.deepEqual(groups.children.slice(0, 2).map((group: any) => group.children[0].textContent), ["2026-10-13", "2026-10-12"]);
+  const visibleTaskIds = groups.children.flatMap((group: any) =>
+    group.children.slice(1).filter((row: any) => row.dataset.taskEditorRow).map((row: any) => row.dataset.taskEditorRow),
+  );
+  assert.deepEqual(visibleTaskIds, ["history-parent", ...unrelated.slice(0, 28).map((item) => item.id)]);
+  assert.equal(groups.querySelector('[data-task-tree-toggle="history-parent"]')?.getAttribute("aria-expanded"), "false");
+  const moreAfter = groups.children.at(-1);
+  assert.equal(moreAfter.dataset.copyKey, "tasks.historyMore");
+  assert.equal(moreAfter.dataset.copyParams, moreBefore.dataset.copyParams, "folding does not change page accounting");
+  assert.equal(r.document.activeElement?.dataset.taskTreeToggle, "history-parent");
+  assert.equal(r.collapsedTaskTreeNodesByBinding.get("vault-a")?.has("history-parent"), true);
+  const otherVaultSection = r.renderTaskHistory(tasks, view("vault-b", tasks), false);
+  assert.ok(otherVaultSection.children[1].querySelector('[data-task-editor-row="history-child"]'));
+  assert.deepEqual(tasks, recordsBeforeToggle, "history folding only changes view state, not Task records");
+
+  parentButton.listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} });
+  assert.deepEqual(groups.children.slice(0, 3).map((group: any) => group.children[0].textContent), ["2026-10-14", "2026-10-13", "2026-10-12"]);
+});
+
+test("history folding retains selected descendants and shares behavior in folded and open history sections", () => {
+  const r = taskTreeRenderer();
+  const parent = completedTask("history-parent", null, "2026-10-12");
+  const child = completedTask("history-child", "history-parent", "2026-10-14");
+  const tasks = [parent, child];
+  const currentView = view("vault-a", tasks);
+  r.collapsedTaskTreeNodesByBinding.set("vault-a", new Set(["history-parent"]));
+  r.selectedTaskDetailId = "history-child";
+  r.selectedTaskDetailBinding = "vault-a";
+
+  const unfoldedSection = r.renderTaskHistory(tasks, currentView, false);
+  let rows = unfoldedSection.children[1];
+  assert.ok(rows.querySelector('[data-task-editor-row="history-child"]'), "selected child remains visible in an open history section");
+  assert.equal(rows.querySelector('[data-task-tree-toggle="history-parent"]')?.disabled, true);
+
+  r.selectedTaskDetailId = null;
+  r.selectedTaskDetailBinding = null;
+  const foldedSection = r.renderTaskHistory(tasks, currentView, true, new Set(["history-child"]));
+  assert.equal(foldedSection.open, true, "an open editor keeps the folded history section open");
+  rows = foldedSection.children[1];
+  assert.ok(rows.querySelector('[data-task-editor-row="history-child"]'), "open child editor keeps its ancestor path visible");
+  assert.equal(rows.querySelector('[data-task-tree-toggle="history-parent"]')?.disabled, true);
+
+  r.taskHistoryFocusDisclosureRequest = { taskId: "history-parent", binding: "vault-a" };
+  const focusSection = r.renderTaskHistory(tasks, currentView, true);
+  assert.equal(focusSection.open, true, "a pending focus return keeps the folded history section open");
+  assert.ok(focusSection.children[1].querySelector('[data-task-tree-toggle="history-parent"]'));
+});
+
+test("folder and non-folder Task history paths use the shared collapsible renderer", () => {
+  const start = main.indexOf("function renderTasks(");
+  const remaining = main.slice(start);
+  const nextFunction = /\n(?:async )?function /.exec(remaining);
+  const renderTasks = nextFunction ? remaining.slice(0, nextFunction.index) : remaining;
+  assert.match(renderTasks, /if \(historyFilter\) \{\s*const ended = taskHistorySection\(\s*listVisibleTasks,/);
+  assert.match(renderTasks, /const history = taskHistorySection\(\s*historyFilter \? visibleTasks : historyTasks,/);
+});
+
+test("editor-close focus requests are limited to visible historical subtrees", () => {
+  const r = taskTreeRenderer();
+  const historicalChild = completedTask("history-child", "history-parent", "2026-10-14");
+  const request = r.taskHistoryFocusRequestForClose(
+    historicalChild,
+    "history-parent",
+    "vault-a",
+    true,
+  );
+  assert.equal(request?.taskId, "history-parent");
+  assert.equal(request?.binding, "vault-a");
+  assert.equal(r.taskHistoryFocusRequestForClose(task("active-child", "history-parent"), "history-parent", "vault-a", true), null);
+  assert.equal(r.taskHistoryFocusRequestForClose(historicalChild, "history-parent", "vault-a", false), null);
+  assert.equal(r.taskHistoryFocusRequestForClose(historicalChild, "history-parent", null, true), null);
+});
+
+test("a reused history row drops disclosure controls when its visible child leaves the history set", () => {
+  const r = taskTreeRenderer();
+  const parent = completedTask("history-parent", null, "2026-10-12");
+  const child = completedTask("history-child", "history-parent", "2026-10-14");
+  const tasks = [parent, child];
+  const section = r.renderTaskHistory(tasks, view("vault-a", tasks), false);
+  const historyRows = section.children[1];
+  const originalButton = historyRows.querySelector('[data-task-tree-toggle="history-parent"]');
+  assert.ok(originalButton);
+
+  tasks.splice(1, 1);
+  originalButton.listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(historyRows.querySelector('[data-task-tree-toggle="history-parent"]'), null);
+
+  tasks.push(child);
+  originalButton.listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} });
+  const refreshedButton = historyRows.querySelector('[data-task-tree-toggle="history-parent"]');
+  assert.ok(refreshedButton);
+  assert.notEqual(refreshedButton, originalButton);
+  assert.equal(refreshedButton.getAttribute("aria-expanded"), "true");
 });
