@@ -1745,7 +1745,12 @@ let taskPrioritySort: TaskPrioritySort = "default";
 let taskTagRenameEditId: string | null = null;
 const taskTagRenameDrafts = new Map<string, string>();
 const collapsedTaskTreeNodesByBinding = new Map<string, Set<string>>();
-let taskHistoryFocusDisclosureRequest: Readonly<{ taskId: string; binding: string }> | null = null;
+let taskHistoryFocusDisclosureRequest: Readonly<{
+  editedTaskId: string;
+  disclosureId: string;
+  binding: string;
+  historyScopeKey: string;
+}> | null = null;
 let taskCreateOpen = false;
 const composingTaskCreateForms = new WeakSet<HTMLFormElement>();
 let taskListManagementOpen = false;
@@ -12412,18 +12417,24 @@ function taskEditor(
         surface === "tasks" && currentTasksView
           ? taskTreeFocusDisclosureId(task.id, currentTasksView, binding ?? null)
           : null;
-      const disclosureIsInHistory = collapsedDisclosureId
-        ? Array.from(tasksList?.querySelectorAll<HTMLButtonElement>("[data-task-tree-toggle]") ?? [])
-            .some((disclosure) =>
-              disclosure.dataset.taskTreeToggle === collapsedDisclosureId &&
-              Boolean(disclosure.closest(".task-ended-history")),
-            )
-        : false;
+      const editedTaskRow = tasksList?.querySelector<HTMLElement>(
+        `[data-task-editor-row="${CSS.escape(task.id)}"]`,
+      );
+      const historySection = editedTaskRow?.closest<HTMLElement>(".task-ended-history");
+      const historyScopeKey = historySection?.dataset.taskHistoryScope ?? null;
+      const disclosureIsInHistory = Boolean(
+        collapsedDisclosureId &&
+        historyScopeKey &&
+        historySection?.querySelector(
+          `[data-task-tree-toggle="${CSS.escape(collapsedDisclosureId)}"]`,
+        ),
+      );
       taskHistoryFocusDisclosureRequest = taskHistoryFocusRequestForClose(
         task,
         collapsedDisclosureId,
         binding ?? null,
         disclosureIsInHistory,
+        historyScopeKey,
       );
       const root = taskEditorDialogRootForSurface(surface);
       if (surface === "calendar") {
@@ -12444,6 +12455,43 @@ function taskEditor(
             ?.focus();
           return;
         }
+        if (binding && currentTasksView?.targetBinding !== binding) return;
+        const historyFocusRequest = taskHistoryFocusDisclosureRequest;
+        const isHistoryFocusRequestForClosedTask =
+          historyFocusRequest?.editedTaskId === task.id &&
+          historyFocusRequest.binding === binding &&
+          currentTasksView?.targetBinding === historyFocusRequest.binding &&
+          historyFocusRequest.disclosureId === collapsedDisclosureId;
+        if (isHistoryFocusRequestForClosedTask && historyFocusRequest) {
+          const focusRequestedDisclosure = (attemptsRemaining: number): void => {
+            if (taskHistoryFocusDisclosureRequest !== historyFocusRequest) return;
+            if (currentTasksView?.targetBinding !== historyFocusRequest.binding) {
+              taskHistoryFocusDisclosureRequest = null;
+              return;
+            }
+            const disclosure = tasksList?.querySelector<HTMLButtonElement>(
+              `[data-task-tree-toggle="${CSS.escape(historyFocusRequest.disclosureId)}"]`,
+            );
+            const section = disclosure?.closest<HTMLElement>(".task-ended-history");
+            if (
+              !disclosure || disclosure.disabled ||
+              section?.dataset.taskHistoryScope !== historyFocusRequest.historyScopeKey
+            ) {
+              taskHistoryFocusDisclosureRequest = null;
+              return;
+            }
+            disclosure.focus();
+            if (document.activeElement === disclosure) {
+              taskHistoryFocusDisclosureRequest = null;
+            } else if (attemptsRemaining > 0) {
+              window.requestAnimationFrame(() => focusRequestedDisclosure(attemptsRemaining - 1));
+            } else {
+              taskHistoryFocusDisclosureRequest = null;
+            }
+          };
+          focusRequestedDisclosure(1);
+          return;
+        }
         const disclosure = collapsedDisclosureId
           ? tasksList?.querySelector<HTMLButtonElement>(
               `[data-task-tree-toggle="${CSS.escape(collapsedDisclosureId)}"]`,
@@ -12453,12 +12501,6 @@ function taskEditor(
           `[data-task-editor-open="${CSS.escape(task.id)}"]`,
         );
         (disclosure ?? taskButton)?.focus();
-        if (
-          taskHistoryFocusDisclosureRequest?.taskId === collapsedDisclosureId &&
-          taskHistoryFocusDisclosureRequest.binding === binding
-        ) {
-          taskHistoryFocusDisclosureRequest = null;
-        }
       });
     };
     menu.querySelector<HTMLButtonElement>("[data-task-open-schedule]")?.addEventListener("click", () => {
@@ -12601,13 +12643,20 @@ function taskHistorySection(
   tasks: readonly TaskView[], view: TasksView,
   surface: TaskSurface, folded: boolean,
   openEditors: ReadonlySet<string> = new Set(),
+  historyScopeKey = "global",
 ): HTMLElement | null {
   if (!tasks.length) return null;
   const section = document.createElement(folded ? "details" : "section");
   section.className = "task-ended-history";
-  const focusDisclosureHere = surface === "tasks" &&
+  section.dataset.taskHistoryScope = historyScopeKey;
+  const focusRequest = surface === "tasks" &&
     taskHistoryFocusDisclosureRequest?.binding === view.targetBinding &&
-    tasks.some(task => task.id === taskHistoryFocusDisclosureRequest?.taskId);
+    taskHistoryFocusDisclosureRequest?.historyScopeKey === historyScopeKey &&
+    tasks.some(task => task.id === taskHistoryFocusDisclosureRequest?.disclosureId) &&
+    tasks.some(task => task.id === taskHistoryFocusDisclosureRequest?.editedTaskId)
+    ? taskHistoryFocusDisclosureRequest
+    : null;
+  const focusDisclosureHere = Boolean(focusRequest);
   if (folded && (tasks.some(task => openEditors.has(task.id)) || focusDisclosureHere)) {
     (section as HTMLDetailsElement).open = true;
   }
@@ -12635,6 +12684,7 @@ function taskHistorySection(
     const includedTaskIds = new Set(openEditors);
     if (surface === "tasks" && taskFocusRequestId) includedTaskIds.add(taskFocusRequestId);
     if (surface === "tasks" && selectedTaskDetailId) includedTaskIds.add(selectedTaskDetailId);
+    if (focusRequest) includedTaskIds.add(focusRequest.editedTaskId);
     const historyTasksById = new Map(tasks.map((task) => [task.id, task]));
     if (surface === "tasks") {
       for (const taskId of [...includedTaskIds]) {
@@ -12668,6 +12718,7 @@ function taskHistorySection(
       const revealTaskIds = new Set(openEditors);
       if (taskFocusRequestId) revealTaskIds.add(taskFocusRequestId);
       if (selectedTaskDetailId) revealTaskIds.add(selectedTaskDetailId);
+      if (focusRequest) revealTaskIds.add(focusRequest.editedTaskId);
       for (const taskId of revealTaskIds) {
         let task = historyTasksById.get(taskId);
         const visited = new Set<string>();
@@ -12675,7 +12726,9 @@ function taskHistorySection(
           visited.add(task.parentTaskId);
           const parent = historyTasksById.get(task.parentTaskId);
           if (!parent) break;
-          forcedExpandedIds.add(parent.id);
+          if (parent.id !== focusRequest?.disclosureId) {
+            forcedExpandedIds.add(parent.id);
+          }
           task = parent;
         }
       }
@@ -12835,14 +12888,20 @@ function taskHistoryFocusRequestForClose(
   disclosureId: string | null,
   targetBinding: string | null,
   disclosureIsInHistory: boolean,
-): Readonly<{ taskId: string; binding: string }> | null {
+  historyScopeKey: string | null,
+): Readonly<{
+  editedTaskId: string;
+  disclosureId: string;
+  binding: string;
+  historyScopeKey: string;
+}> | null {
   if (
-    !disclosureId || !targetBinding || !disclosureIsInHistory ||
+    !disclosureId || !targetBinding || !disclosureIsInHistory || !historyScopeKey ||
     (task.state !== "completed" && task.state !== "abandoned")
   ) {
     return null;
   }
-  return { taskId: disclosureId, binding: targetBinding };
+  return { editedTaskId: task.id, disclosureId, binding: targetBinding, historyScopeKey };
 }
 
 function taskTreeRows(
@@ -12973,6 +13032,12 @@ function taskTreeRows(
 }
 
 function renderTasks(view: TasksView): void {
+  if (
+    taskHistoryFocusDisclosureRequest &&
+    taskHistoryFocusDisclosureRequest.binding !== view.targetBinding
+  ) {
+    taskHistoryFocusDisclosureRequest = null;
+  }
   if (selectedTaskDetailBinding !== view.targetBinding) selectedTaskDetailId = null;
   currentTasksView = view;
   selectedTaskDetailBinding = view.targetBinding;
@@ -13206,6 +13271,7 @@ function renderTasks(view: TasksView): void {
           "tasks",
           false,
           new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
+          `folder-list:${list.id}`,
         );
         if (ended) group.append(ended);
       } else {
@@ -13223,6 +13289,7 @@ function renderTasks(view: TasksView): void {
           "tasks",
           true,
           new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
+          `folder-list:${list.id}`,
         );
         if (ended) group.append(ended);
       }

@@ -138,8 +138,13 @@ function taskTreeRenderer() {
     const rows = context.taskTreeRows(context.inputTasks, view, true, context.inputOptions);
     context.tasksList.replaceChildren(...rows);
   };
-  context.renderTaskHistory = (tasks: any[], currentView: any, folded: boolean, openEditors = new Set<string>()) =>
-    context.taskHistorySection(tasks, currentView, "tasks", folded, openEditors);
+  context.renderTaskHistory = (
+    tasks: any[],
+    currentView: any,
+    folded: boolean,
+    openEditors = new Set<string>(),
+    historyScopeKey = "global",
+  ) => context.taskHistorySection(tasks, currentView, "tasks", folded, openEditors, historyScopeKey);
   return context;
 }
 
@@ -337,10 +342,22 @@ test("history folding retains selected descendants and shares behavior in folded
   assert.ok(rows.querySelector('[data-task-editor-row="history-child"]'), "open child editor keeps its ancestor path visible");
   assert.equal(rows.querySelector('[data-task-tree-toggle="history-parent"]')?.disabled, true);
 
-  r.taskHistoryFocusDisclosureRequest = { taskId: "history-parent", binding: "vault-a" };
+  r.taskHistoryFocusDisclosureRequest = {
+    editedTaskId: "history-child",
+    disclosureId: "history-parent",
+    binding: "vault-a",
+    historyScopeKey: "global",
+  };
+  const otherVaultSection = r.renderTaskHistory(tasks, view("vault-b", tasks), true);
+  assert.equal(otherVaultSection.open, false, "a pending focus return does not open the same IDs in another Vault");
   const focusSection = r.renderTaskHistory(tasks, currentView, true);
   assert.equal(focusSection.open, true, "a pending focus return keeps the folded history section open");
-  assert.ok(focusSection.children[1].querySelector('[data-task-tree-toggle="history-parent"]'));
+  const focusRows = focusSection.children[1];
+  const focusDisclosure = focusRows.querySelector('[data-task-tree-toggle="history-parent"]');
+  assert.ok(focusDisclosure);
+  assert.equal(focusDisclosure.disabled, false, "the collapsed target remains focusable");
+  assert.equal(focusDisclosure.getAttribute("aria-expanded"), "false");
+  assert.equal(focusRows.querySelector('[data-task-editor-row="history-child"]'), null, "the collapsed child stays hidden");
 });
 
 test("folder and non-folder Task history paths use the shared collapsible renderer", () => {
@@ -360,12 +377,66 @@ test("editor-close focus requests are limited to visible historical subtrees", (
     "history-parent",
     "vault-a",
     true,
+    "global",
   );
-  assert.equal(request?.taskId, "history-parent");
+  assert.equal(request?.editedTaskId, "history-child");
+  assert.equal(request?.disclosureId, "history-parent");
   assert.equal(request?.binding, "vault-a");
-  assert.equal(r.taskHistoryFocusRequestForClose(task("active-child", "history-parent"), "history-parent", "vault-a", true), null);
-  assert.equal(r.taskHistoryFocusRequestForClose(historicalChild, "history-parent", "vault-a", false), null);
-  assert.equal(r.taskHistoryFocusRequestForClose(historicalChild, "history-parent", null, true), null);
+  assert.equal(request?.historyScopeKey, "global");
+  assert.equal(r.taskHistoryFocusRequestForClose(task("active-child", "history-parent"), "history-parent", "vault-a", true, "global"), null);
+  assert.equal(r.taskHistoryFocusRequestForClose(historicalChild, "history-parent", "vault-a", false, "global"), null);
+  assert.equal(r.taskHistoryFocusRequestForClose(historicalChild, "history-parent", "vault-a", true, null), null);
+});
+
+test("history focus return cannot reopen a different rendered history section", () => {
+  const r = taskTreeRenderer();
+  const parent = completedTask("history-parent", null, "2026-10-12");
+  const child = completedTask("history-child", "history-parent", "2026-10-14");
+  const tasks = [parent, child];
+  const currentView = view("vault-a", tasks);
+  r.taskHistoryFocusDisclosureRequest = {
+    editedTaskId: child.id,
+    disclosureId: parent.id,
+    binding: "vault-a",
+    historyScopeKey: "folder-list:list-b",
+  };
+
+  const otherSection = r.renderTaskHistory(tasks, currentView, true, new Set(), "folder-list:list-a");
+  assert.equal(otherSection.open, false, "a different list section ignores the pending request");
+  const requestedSection = r.renderTaskHistory(tasks, currentView, true, new Set(), "folder-list:list-b");
+  assert.equal(requestedSection.open, true, "the matching list section consumes the request");
+  assert.ok(requestedSection.children[1].querySelector('[data-task-tree-toggle="history-parent"]'));
+});
+
+test("history focus return includes a collapsed ancestor beyond the page limit", () => {
+  const r = taskTreeRenderer();
+  const parent = completedTask("history-parent", null, "2026-10-01");
+  const child = completedTask("history-child", "history-parent", "2026-10-02");
+  const unrelated = Array.from({ length: 60 }, (_, index) =>
+    completedTask(`history-unrelated-${index}`, null, "2026-10-14"),
+  );
+  const tasks = [...unrelated, parent, child];
+  const currentView = view("vault-a", tasks);
+  r.collapsedTaskTreeNodesByBinding.set("vault-a", new Set([parent.id]));
+  r.taskHistoryFocusDisclosureRequest = r.taskHistoryFocusRequestForClose(
+    child,
+    parent.id,
+    "vault-a",
+    true,
+    "global",
+  );
+
+  const section = r.renderTaskHistory(tasks, currentView, true);
+  const rows = section.children[1];
+  assert.equal(section.open, true, "focus return opens the matching history section");
+  const disclosure = rows.querySelector(`[data-task-tree-toggle="${parent.id}"]`);
+  assert.ok(disclosure, "the out-of-page ancestor disclosure is included for focus return");
+  assert.equal(disclosure.disabled, false);
+  assert.equal(disclosure.getAttribute("aria-expanded"), "false");
+  assert.equal(rows.querySelector(`[data-task-editor-row="${child.id}"]`), null, "the child remains hidden under its collapsed ancestor");
+  const more = rows.children.at(-1);
+  assert.equal(more.dataset.copyKey, "tasks.historyMore");
+  assert.equal(more.dataset.copyParams, JSON.stringify({ count: 30 }));
 });
 
 test("a reused history row drops disclosure controls when its visible child leaves the history set", () => {
