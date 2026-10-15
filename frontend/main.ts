@@ -12412,9 +12412,19 @@ function taskEditor(
         surface === "tasks" && currentTasksView
           ? taskTreeFocusDisclosureId(task.id, currentTasksView, binding ?? null)
           : null;
-      if (collapsedDisclosureId && binding) {
-        taskHistoryFocusDisclosureRequest = { taskId: collapsedDisclosureId, binding };
-      }
+      const disclosureIsInHistory = collapsedDisclosureId
+        ? Array.from(tasksList?.querySelectorAll<HTMLButtonElement>("[data-task-tree-toggle]") ?? [])
+            .some((disclosure) =>
+              disclosure.dataset.taskTreeToggle === collapsedDisclosureId &&
+              Boolean(disclosure.closest(".task-ended-history")),
+            )
+        : false;
+      taskHistoryFocusDisclosureRequest = taskHistoryFocusRequestForClose(
+        task,
+        collapsedDisclosureId,
+        binding ?? null,
+        disclosureIsInHistory,
+      );
       const root = taskEditorDialogRootForSurface(surface);
       if (surface === "calendar") {
         selectedCalendarTaskDetailId = null;
@@ -12746,6 +12756,8 @@ function taskHistorySection(
               });
               titleLine.prepend(control);
             }
+          } else {
+            disclosure?.remove();
           }
         }
         return editor;
@@ -12816,6 +12828,21 @@ function taskTreeFocusDisclosureId(
     task = parent;
   }
   return disclosureId;
+}
+
+function taskHistoryFocusRequestForClose(
+  task: TaskView,
+  disclosureId: string | null,
+  targetBinding: string | null,
+  disclosureIsInHistory: boolean,
+): Readonly<{ taskId: string; binding: string }> | null {
+  if (
+    !disclosureId || !targetBinding || !disclosureIsInHistory ||
+    (task.state !== "completed" && task.state !== "abandoned")
+  ) {
+    return null;
+  }
+  return { taskId: disclosureId, binding: targetBinding };
 }
 
 function taskTreeRows(

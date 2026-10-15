@@ -10,6 +10,7 @@ const css = readFileSync(new URL("../../frontend/styles.css", import.meta.url), 
 
 class DomNode {
   children: DomNode[] = [];
+  parent: DomNode | null = null;
   dataset: Record<string, string> = {};
   attributes = new Map<string, string>();
   listeners = new Map<string, (event: any) => void>();
@@ -28,9 +29,30 @@ class DomNode {
     this.ownerDocument = ownerDocument;
   }
 
-  append(...children: DomNode[]) { this.children.push(...children); }
-  prepend(...children: DomNode[]) { this.children.unshift(...children); }
-  replaceChildren(...children: DomNode[]) { this.children = children; }
+  append(...children: DomNode[]) {
+    for (const child of children) {
+      child.remove();
+      child.parent = this;
+      this.children.push(child);
+    }
+  }
+  prepend(...children: DomNode[]) {
+    for (const child of children) {
+      child.remove();
+      child.parent = this;
+    }
+    this.children.unshift(...children);
+  }
+  replaceChildren(...children: DomNode[]) {
+    for (const child of this.children) child.parent = null;
+    this.children = [];
+    this.append(...children);
+  }
+  remove() {
+    if (!this.parent) return;
+    this.parent.children = this.parent.children.filter((child) => child !== this);
+    this.parent = null;
+  }
   addEventListener(name: string, listener: (event: any) => void) { this.listeners.set(name, listener); }
   setAttribute(name: string, value: string) { this.attributes.set(name, value); }
   getAttribute(name: string) { return this.attributes.get(name) ?? null; }
@@ -108,7 +130,7 @@ function taskTreeRenderer() {
     return next ? rest.slice(0, next.index) : rest;
   };
   vm.runInNewContext(stripTypeScriptTypes(
-    `${productionFunction("taskHistorySection")}\n${productionFunction("taskTreeProjection")}\n${productionFunction("taskTreeFocusDisclosureId")}\n${productionFunction("taskTreeRows")}`,
+    `${productionFunction("taskHistorySection")}\n${productionFunction("taskTreeProjection")}\n${productionFunction("taskTreeFocusDisclosureId")}\n${productionFunction("taskHistoryFocusRequestForClose")}\n${productionFunction("taskTreeRows")}`,
   ), context);
   context.inputTasks = [];
   context.inputOptions = {};
@@ -328,4 +350,42 @@ test("folder and non-folder Task history paths use the shared collapsible render
   const renderTasks = nextFunction ? remaining.slice(0, nextFunction.index) : remaining;
   assert.match(renderTasks, /if \(historyFilter\) \{\s*const ended = taskHistorySection\(\s*listVisibleTasks,/);
   assert.match(renderTasks, /const history = taskHistorySection\(\s*historyFilter \? visibleTasks : historyTasks,/);
+});
+
+test("editor-close focus requests are limited to visible historical subtrees", () => {
+  const r = taskTreeRenderer();
+  const historicalChild = completedTask("history-child", "history-parent", "2026-10-14");
+  const request = r.taskHistoryFocusRequestForClose(
+    historicalChild,
+    "history-parent",
+    "vault-a",
+    true,
+  );
+  assert.equal(request?.taskId, "history-parent");
+  assert.equal(request?.binding, "vault-a");
+  assert.equal(r.taskHistoryFocusRequestForClose(task("active-child", "history-parent"), "history-parent", "vault-a", true), null);
+  assert.equal(r.taskHistoryFocusRequestForClose(historicalChild, "history-parent", "vault-a", false), null);
+  assert.equal(r.taskHistoryFocusRequestForClose(historicalChild, "history-parent", null, true), null);
+});
+
+test("a reused history row drops disclosure controls when its visible child leaves the history set", () => {
+  const r = taskTreeRenderer();
+  const parent = completedTask("history-parent", null, "2026-10-12");
+  const child = completedTask("history-child", "history-parent", "2026-10-14");
+  const tasks = [parent, child];
+  const section = r.renderTaskHistory(tasks, view("vault-a", tasks), false);
+  const historyRows = section.children[1];
+  const originalButton = historyRows.querySelector('[data-task-tree-toggle="history-parent"]');
+  assert.ok(originalButton);
+
+  tasks.splice(1, 1);
+  originalButton.listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(historyRows.querySelector('[data-task-tree-toggle="history-parent"]'), null);
+
+  tasks.push(child);
+  originalButton.listeners.get("click")?.({ preventDefault() {}, stopPropagation() {} });
+  const refreshedButton = historyRows.querySelector('[data-task-tree-toggle="history-parent"]');
+  assert.ok(refreshedButton);
+  assert.notEqual(refreshedButton, originalButton);
+  assert.equal(refreshedButton.getAttribute("aria-expanded"), "true");
 });
