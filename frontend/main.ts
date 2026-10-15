@@ -1745,6 +1745,7 @@ let taskPrioritySort: TaskPrioritySort = "default";
 let taskTagRenameEditId: string | null = null;
 const taskTagRenameDrafts = new Map<string, string>();
 const collapsedTaskTreeNodesByBinding = new Map<string, Set<string>>();
+let taskHistoryFocusDisclosureRequest: Readonly<{ taskId: string; binding: string }> | null = null;
 let taskCreateOpen = false;
 const composingTaskCreateForms = new WeakSet<HTMLFormElement>();
 let taskListManagementOpen = false;
@@ -12411,6 +12412,9 @@ function taskEditor(
         surface === "tasks" && currentTasksView
           ? taskTreeFocusDisclosureId(task.id, currentTasksView, binding ?? null)
           : null;
+      if (collapsedDisclosureId && binding) {
+        taskHistoryFocusDisclosureRequest = { taskId: collapsedDisclosureId, binding };
+      }
       const root = taskEditorDialogRootForSurface(surface);
       if (surface === "calendar") {
         selectedCalendarTaskDetailId = null;
@@ -12439,6 +12443,12 @@ function taskEditor(
           `[data-task-editor-open="${CSS.escape(task.id)}"]`,
         );
         (disclosure ?? taskButton)?.focus();
+        if (
+          taskHistoryFocusDisclosureRequest?.taskId === collapsedDisclosureId &&
+          taskHistoryFocusDisclosureRequest.binding === binding
+        ) {
+          taskHistoryFocusDisclosureRequest = null;
+        }
       });
     };
     menu.querySelector<HTMLButtonElement>("[data-task-open-schedule]")?.addEventListener("click", () => {
@@ -12585,7 +12595,10 @@ function taskHistorySection(
   if (!tasks.length) return null;
   const section = document.createElement(folded ? "details" : "section");
   section.className = "task-ended-history";
-  if (folded && tasks.some(task => openEditors.has(task.id))) {
+  const focusDisclosureHere = surface === "tasks" &&
+    taskHistoryFocusDisclosureRequest?.binding === view.targetBinding &&
+    tasks.some(task => task.id === taskHistoryFocusDisclosureRequest?.taskId);
+  if (folded && (tasks.some(task => openEditors.has(task.id)) || focusDisclosureHere)) {
     (section as HTMLDetailsElement).open = true;
   }
   const heading = document.createElement(folded ? "summary" : "h4");
@@ -12595,9 +12608,9 @@ function taskHistorySection(
       ? "tasks.abandonedHistory"
       : "tasks.endedHistory";
   setCopy(heading, headingKey, { count: tasks.length });
-  const rows = document.createElement("div");
-  rows.className = "tasks-list";
-  section.append(heading, rows);
+  const historyRows = document.createElement("div");
+  historyRows.className = "tasks-list";
+  section.append(heading, historyRows);
   let limit = 30;
   const editors = new Map<string, HTMLElement>();
   const render = (): void => {
@@ -12612,25 +12625,135 @@ function taskHistorySection(
     const includedTaskIds = new Set(openEditors);
     if (surface === "tasks" && taskFocusRequestId) includedTaskIds.add(taskFocusRequestId);
     if (surface === "tasks" && selectedTaskDetailId) includedTaskIds.add(selectedTaskDetailId);
+    const historyTasksById = new Map(tasks.map((task) => [task.id, task]));
+    if (surface === "tasks") {
+      for (const taskId of [...includedTaskIds]) {
+        let task = historyTasksById.get(taskId);
+        const visited = new Set<string>();
+        while (task?.parentTaskId && !visited.has(task.parentTaskId)) {
+          visited.add(task.parentTaskId);
+          const parent = historyTasksById.get(task.parentTaskId);
+          if (!parent) break;
+          includedTaskIds.add(parent.id);
+          task = parent;
+        }
+      }
+    }
     const visibleGroups = taskHistoryGroups(tasks, limit, includedTaskIds);
     const visibleCount = visibleGroups.reduce((count, group) => count + group.tasks.length, 0);
+    const visibleTasks = visibleGroups.flatMap((group) => group.tasks);
+    const visibleTaskIds = new Set(visibleTasks.map((task) => task.id));
+    const visibleChildCounts = new Map<string, number>();
+    for (const task of visibleTasks) {
+      const parentId = task.parentTaskId ?? null;
+      if (parentId && visibleTaskIds.has(parentId)) {
+        visibleChildCounts.set(parentId, (visibleChildCounts.get(parentId) ?? 0) + 1);
+      }
+    }
+    const collapsedIds = surface === "tasks" && view.targetBinding
+      ? collapsedTaskTreeNodesByBinding.get(view.targetBinding) ?? new Set<string>()
+      : new Set<string>();
+    const forcedExpandedIds = new Set<string>();
+    if (surface === "tasks") {
+      const revealTaskIds = new Set(openEditors);
+      if (taskFocusRequestId) revealTaskIds.add(taskFocusRequestId);
+      if (selectedTaskDetailId) revealTaskIds.add(selectedTaskDetailId);
+      for (const taskId of revealTaskIds) {
+        let task = historyTasksById.get(taskId);
+        const visited = new Set<string>();
+        while (task?.parentTaskId && !visited.has(task.parentTaskId)) {
+          visited.add(task.parentTaskId);
+          const parent = historyTasksById.get(task.parentTaskId);
+          if (!parent) break;
+          forcedExpandedIds.add(parent.id);
+          task = parent;
+        }
+      }
+    }
+    const hasCollapsedAncestor = (task: TaskView): boolean => {
+      let parentId = task.parentTaskId ?? null;
+      const visited = new Set<string>();
+      while (parentId && !visited.has(parentId)) {
+        visited.add(parentId);
+        const parent = historyTasksById.get(parentId);
+        if (!parent) break;
+        if (collapsedIds.has(parent.id) && !forcedExpandedIds.has(parent.id)) return true;
+        parentId = parent.parentTaskId ?? null;
+      }
+      return false;
+    };
     const groups = visibleGroups.map(group => {
       const container = document.createElement("section");
       container.className = "task-history-date-group";
       const date = document.createElement("h4");
       if (group.date) date.textContent = group.date;
       else setCopy(date, "tasks.historyUnknownDate");
-      container.append(date, ...group.tasks.map(task => {
+      const taskRows = group.tasks.filter((task) => !hasCollapsedAncestor(task)).map(task => {
         let editor = editors.get(task.id);
         if (!editor) {
           editor = taskEditor(task, writable, view, surface, openEditors.has(task.id));
           editors.set(task.id, editor);
         }
+        if (surface === "tasks") {
+          let depth = 0;
+          let parentId = task.parentTaskId ?? null;
+          const visited = new Set<string>();
+          while (parentId && visibleTaskIds.has(parentId) && !visited.has(parentId)) {
+            visited.add(parentId);
+            depth += 1;
+            parentId = historyTasksById.get(parentId)?.parentTaskId ?? null;
+          }
+          editor.dataset.taskDepth = String(depth);
+          editor.style.setProperty("--task-indent", `${Math.min(depth, 4) * 12}px`);
+          const directChildCount = visibleChildCounts.get(task.id) ?? 0;
+          const titleLine = editor.querySelector<HTMLElement>(".task-row-title-line");
+          const disclosure = editor.querySelector<HTMLButtonElement>(
+            `[data-task-tree-toggle="${CSS.escape(task.id)}"]`,
+          );
+          if (titleLine && directChildCount > 0) {
+            const control = disclosure ?? document.createElement("button");
+            const forcedExpanded = forcedExpandedIds.has(task.id);
+            const collapsed = collapsedIds.has(task.id) && !forcedExpanded;
+            control.type = "button";
+            control.className = "task-tree-toggle";
+            control.dataset.taskTreeToggle = task.id;
+            control.textContent = collapsed ? "›" : "⌄";
+            control.setAttribute("aria-expanded", String(!collapsed));
+            control.setAttribute(
+              "aria-label",
+              `${t(collapsed ? "habits.expand" : "habits.collapse")} · ${t("tasks.directSubtasks", { count: directChildCount })}`,
+            );
+            control.disabled = !view.targetBinding || forcedExpanded;
+            if (!disclosure) {
+              control.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!view.targetBinding || control.disabled) return;
+                const nextCollapsedIds = new Set(
+                  collapsedTaskTreeNodesByBinding.get(view.targetBinding) ?? [],
+                );
+                if (nextCollapsedIds.has(task.id)) nextCollapsedIds.delete(task.id);
+                else nextCollapsedIds.add(task.id);
+                if (nextCollapsedIds.size) {
+                  collapsedTaskTreeNodesByBinding.set(view.targetBinding, nextCollapsedIds);
+                } else {
+                  collapsedTaskTreeNodesByBinding.delete(view.targetBinding);
+                }
+                render();
+                historyRows.querySelector<HTMLButtonElement>(
+                  `[data-task-tree-toggle="${CSS.escape(task.id)}"]`,
+                )?.focus();
+              });
+              titleLine.prepend(control);
+            }
+          }
+        }
         return editor;
-      }));
+      });
+      if (taskRows.length) container.append(date, ...taskRows);
       return container;
-    });
-    rows.replaceChildren(...groups);
+    }).filter((group) => group.children.length > 0);
+    historyRows.replaceChildren(...groups);
     if (tasks.length > visibleCount) {
       const more = document.createElement("button");
       more.type = "button";
@@ -12639,7 +12762,7 @@ function taskHistorySection(
         .reduce((count, group) => count + group.tasks.length, 0);
       setCopy(more, "tasks.historyMore", { count: nextCount - visibleCount });
       more.addEventListener("click", () => { limit += 30; render(); });
-      rows.append(more);
+      historyRows.append(more);
     }
   };
   section.addEventListener("toggle", render);
