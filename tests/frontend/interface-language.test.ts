@@ -572,6 +572,15 @@ test("the shared copy entry provides both languages and variable interpolation",
   }
 });
 
+test("confirmed fact popover heading and close label have concise Chinese and English copy", () => {
+  assert.equal(interfaceCopy("today.axisFactPopupHeading", "zh"), "事实详情");
+  assert.equal(interfaceCopy("today.axisFactPopupHeading", "en"), "Confirmed fact details");
+  assert.equal(interfaceCopy("today.axisFactPopupClose", "zh"), "关闭事实详情");
+  assert.equal(interfaceCopy("today.axisFactPopupClose", "en"), "Close fact details");
+  assert.notEqual(interfaceCopy("today.axisFactPopupHeading", "zh"), interfaceCopy("today.axisTaskPopupHeading", "zh"));
+  assert.notEqual(interfaceCopy("today.axisFactPopupClose", "en"), interfaceCopy("today.axisTaskPopupClose", "en"));
+});
+
 test("Ready Habits copy and tagged source-result grammar have paired translations", () => {
   const ready = "已读取按需生成的本地快照；来源覆盖与刷新结果可分别核对。";
   assert.equal(localizeApplicationMessage(ready, "zh"), ready);
