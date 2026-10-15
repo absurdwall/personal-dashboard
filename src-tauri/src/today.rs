@@ -5818,13 +5818,44 @@ fn ensure_replaceable_plan_section(
     };
     let (_, body_start) = markdown_line(document, section_start)
         .ok_or_else(|| "Daily Record 的计划章节无法安全解析；未写入任何内容。".to_string())?;
-    let existing = document[body_start..section_end].replace("\r\n", "\n");
+    let existing = normalize_plan_prefix_colon_format(&document[body_start..section_end]);
     if existing.trim() != expected_canonical_body.trim() {
         return Err(format!(
             "Daily Record 的“{heading}”章节包含无法确认由当前计划结构管理的内容。请先检查或修复该章节；未写入任何内容。"
         ));
     }
     Ok(())
+}
+
+fn normalize_plan_prefix_colon_format(body: &str) -> String {
+    let body = body.replace("\r\n", "\n");
+    let mut normalized = String::with_capacity(body.len());
+    for line in body.split_inclusive('\n') {
+        let (content, newline) = line
+            .strip_suffix('\n')
+            .map_or((line, ""), |content| (content, "\n"));
+        if let Some(rest) = content.strip_prefix("- **") {
+            if let Some(close) = rest.find("**") {
+                let period = &rest[..close];
+                let suffix = &rest[close + 2..];
+                if suffix.starts_with(' ') {
+                    let period = period
+                        .strip_suffix('：')
+                        .or_else(|| period.strip_suffix(':'))
+                        .unwrap_or(period);
+                    normalized.push_str("- **");
+                    normalized.push_str(period);
+                    normalized.push_str("：**");
+                    normalized.push_str(suffix);
+                    normalized.push_str(newline);
+                    continue;
+                }
+            }
+        }
+        normalized.push_str(content);
+        normalized.push_str(newline);
+    }
+    normalized
 }
 
 fn replace_canonical_section_body(

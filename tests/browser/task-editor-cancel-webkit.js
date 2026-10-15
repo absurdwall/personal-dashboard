@@ -81,6 +81,16 @@ for(const scenario of selectedCases){
     if(scenario.height===560){
       setDraft('[data-task-content]','Synthetic unsaved short-window draft');
       await pointer(form().querySelector('[data-task-more] > summary'));
+      const moreSummary=form().querySelector('[data-task-more] > summary');
+      const menuPanel=form().querySelector('[data-task-more] .task-more-menu-panel');
+      const anchorBounds=rect(moreSummary),panelBounds=rect(menuPanel);
+      const verticalGap=Math.min(Math.abs(panelBounds.bottom-anchorBounds.top),Math.abs(panelBounds.top-anchorBounds.bottom));
+      record.moreMenuAnchor=anchorBounds;
+      record.moreMenuPanel=panelBounds;
+      requireThat(panelBounds.left>=0&&panelBounds.right<=innerWidth&&panelBounds.top>=0&&panelBounds.bottom<=innerHeight,
+        'More menu panel fell outside the viewport',{anchorBounds,panelBounds,viewport:[innerWidth,innerHeight]});
+      requireThat(panelBounds.right>=anchorBounds.left&&panelBounds.left<=anchorBounds.right&&verticalGap<12,
+        'More menu panel no longer tracks its More control',{anchorBounds,panelBounds,verticalGap});
       const menuItems=[...form().querySelectorAll('[data-task-more] .task-more-menu-item')];
       record.moreMenuItems=[];
       for(const item of menuItems)record.moreMenuItems.push(await pointer(item,false));

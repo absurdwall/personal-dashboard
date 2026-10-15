@@ -54,7 +54,9 @@ window.cancelHarness={
         {"nav": nav, "width": 969, "height": 560}
         for nav in (True, False)
     ] + [{"nav": True, "width": 969, "height": 723}]
-    if "--quick" in sys.argv:
+    if "--menu-only" in sys.argv:
+        cases = [cases[0]]
+    elif "--quick" in sys.argv:
         cases = [cases[-1]]
     scenario = "const selectedCases=" + json.dumps(cases) + ";\n" + (HERE / "task-editor-cancel-webkit.js").read_text()
     check = work / "check.js"

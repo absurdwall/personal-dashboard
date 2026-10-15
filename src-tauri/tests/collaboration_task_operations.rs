@@ -560,7 +560,35 @@ impl AppServerTransport for DynamicRuntime {
         }
         // Controlled resolver output exercises the date protocol and persisted
         // results without claiming these fixtures test model language quality.
-        let (call_id, tool, mut arguments) = if request.user_text.contains("refresh habits") || (request.user_text.contains("生成发布习惯快照") || request.user_text.contains("生成习惯快照") || request.user_text.contains("刷新习惯")) {
+        let (call_id, tool, mut arguments) = if request.user_text == "execute replan with a user-authored section" {
+            (
+                "failed-replan-call",
+                "dashboard_task_operation",
+                json!({
+                    "operation":"saveDailyPlan",
+                    "transition":"daytimeReplan",
+                    "executionMode":"execute",
+                    "arrangement":[{"period":"上午","title":"Updated synthetic appointment","detail":null}],
+                    "evidence":[{"label":"Synthetic user update","items":["Retain the existing plan context"]}],
+                    "calibrationNote":null,
+                    "baselineCorrectionReason":null,
+                    "event":null,
+                    "originalIntent":"Keep the synthetic appointment",
+                    "changeReason":"Synthetic schedule adjustment",
+                    "revisedDirection":"Retain the complete synthetic plan"
+                }),
+            )
+        } else if request.user_text == "apply schema replan example" {
+            let tools = self
+                .registered_tools
+                .lock()
+                .map_err(|_| "tool lock poisoned")?;
+            (
+                "schema-replan-example-call",
+                "dashboard_task_operation",
+                daily_plan_replan_example(&tools)?,
+            )
+        } else if request.user_text.contains("refresh habits") || (request.user_text.contains("生成发布习惯快照") || request.user_text.contains("生成习惯快照") || request.user_text.contains("刷新习惯")) {
             ("habit-refresh-call", "dashboard_refresh_habits", habit_refresh_fixture(&request.user_text))
         } else if let Some(arguments) = natural_daily_fixture(&request.user_text) {
             ("natural-daily-call", "dashboard_task_operation", arguments)
@@ -1049,6 +1077,30 @@ fn habit_refresh_fixture(text: &str) -> Value {
     let reads:Vec<Value> = if text.contains("failed query") {vec![]} else {[catalog,checkins].iter().filter_map(personal_dashboard_lib::habit_producer::native_source_read).collect()};
     let quote=match text {"我准备明天生成习惯快照。"=>"生成习惯快照","不要刷新习惯。"=>"刷新习惯",_=>text};
     json!({"mappings":{"exercise":"synthetic-habit"},"executionMode":"execute","authorizationQuote":quote,"hostSourceReads":reads})
+}
+
+fn daily_plan_replan_example(registered_tools: &[Value]) -> Result<Value, String> {
+    let tool = registered_tools
+        .iter()
+        .find(|tool| tool["name"] == "dashboard_task_operation")
+        .ok_or("daily plan operation tool was not registered")?;
+    let variants = tool["inputSchema"]["oneOf"]
+        .as_array()
+        .ok_or("daily plan operation schema has no variants")?;
+    let daily_plan = variants
+        .iter()
+        .find(|variant| variant["properties"]["operation"]["const"] == "saveDailyPlan")
+        .ok_or("daily plan operation schema is missing")?;
+    let description = daily_plan["properties"]["transition"]["description"]
+        .as_str()
+        .ok_or("daily plan transition description is missing")?;
+    let example = description
+        .split_once("Minimal valid synthetic payload:")
+        .map(|(_, example)| example.trim())
+        .ok_or("minimal replan example is missing")?;
+    let example = example.strip_suffix('.').unwrap_or(example).trim();
+    serde_json::from_str(example)
+        .map_err(|error| format!("minimal replan example is not valid JSON: {error}"))
 }
 
 fn natural_daily_fixture(text: &str) -> Option<Value> {
@@ -1579,6 +1631,37 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
             && transition_guidance.contains("arrangement"),
         "{transition_guidance}"
     );
+    assert!(
+        transition_guidance.contains("complete current-day arrangement")
+            && transition_guidance.contains("Minimal valid synthetic payload")
+            && transition_guidance.contains("revisedDirection")
+            && transition_guidance.contains("changeReason"),
+        "{transition_guidance}"
+    );
+    let arrangement_guidance = daily_plan["properties"]["arrangement"]["description"]
+        .as_str()
+        .expect("the runtime schema describes complete-day plan blocks");
+    assert!(
+        arrangement_guidance.contains("1–24 blocks")
+            && arrangement_guidance.contains("complete current-day arrangement")
+            && arrangement_guidance.contains("earlier blocks"),
+        "{arrangement_guidance}"
+    );
+    let revised_direction_guidance = daily_plan["properties"]["revisedDirection"]["description"]
+        .as_str()
+        .expect("the runtime schema describes the required replan direction");
+    assert!(
+        revised_direction_guidance.contains("Required nonempty scalar string"),
+        "{revised_direction_guidance}"
+    );
+    let change_reason_guidance = daily_plan["properties"]["changeReason"]["description"]
+        .as_str()
+        .expect("the runtime schema describes the singular optional reason field");
+    assert!(
+        change_reason_guidance.contains("scalar string explaining")
+            && change_reason_guidance.contains("changeReason (singular)"),
+        "{change_reason_guidance}"
+    );
     let daytime_event_guidance = daily_plan["properties"]["event"]["description"]
         .as_str()
         .expect("the runtime schema routes daytime facts to the daytime event field");
@@ -1728,6 +1811,148 @@ fn exact_current_user_instruction_executes_task_without_a_second_approval() {
     .unwrap();
     assert_eq!(saved.tasks.len(), 1);
     assert_eq!(saved.tasks[0].name, "Synthetic report");
+}
+
+#[test]
+fn minimal_schema_replan_example_executes_through_dashboard_writer() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("schema-example-vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "09:15");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    let baseline = initial_fixture_plan(
+        &today,
+        "schema-example-baseline",
+        "Synthetic existing appointment",
+    );
+    let (application, registered_tools, results, _) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "apply schema replan example",
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let result = results.lock().unwrap().last().unwrap().clone();
+    assert!(result.success, "{}", result.text);
+    let completed = application.session("vault-a", &session.id).unwrap();
+    assert_eq!(completed.task_operations.len(), 1);
+    assert_eq!(completed.task_operations[0].status, "applied");
+    match &completed.task_operations[0].operation {
+        CollaborationTaskOperation::SaveDailyPlan {
+            transition: DailyPlanTransition::DaytimeReplan,
+            arrangement,
+            evidence,
+            revised_direction,
+            ..
+        } => {
+            assert_eq!(arrangement.len(), 2);
+            assert_eq!(evidence.len(), 1);
+            assert_eq!(
+                revised_direction.as_deref(),
+                Some("Keep both blocks and move the review")
+            );
+        }
+        other => panic!("expected DaytimeReplan, got {other:?}"),
+    }
+
+    let saved = today.read_date("2026-09-27").unwrap();
+    assert_eq!(saved.timeline.len(), 2);
+    assert_eq!(saved.timeline[0].title, "Keep the appointment");
+    assert_eq!(saved.timeline[1].title, "Review the draft");
+    assert_eq!(saved.baseline.timeline, baseline.baseline.timeline);
+    let registered = registered_tools.lock().unwrap();
+    let arguments = daily_plan_replan_example(&registered).unwrap();
+    assert_eq!(arguments["arrangement"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn failed_daily_plan_business_effect_returns_failed_tool_result() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("failed-operation-vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "09:15");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    initial_fixture_plan(
+        &today,
+        "failed-operation-baseline",
+        "Synthetic existing appointment",
+    );
+    let path = record_path(&vault_path);
+    let source = fs::read_to_string(&path).unwrap();
+    let current_block = "- **上午：** Synthetic existing appointment；Synthetic fixture plan";
+    let section_start = source.find("## 今天的大致安排").unwrap();
+    let section_end = source[section_start..]
+        .find("## 计划依据")
+        .map(|offset| section_start + offset)
+        .unwrap();
+    let section = &source[section_start..section_end];
+    assert!(section.contains(current_block));
+    let current_block_end = source[section_start..]
+        .find(current_block)
+        .map(|offset| section_start + offset + current_block.len())
+        .unwrap();
+    let source = format!(
+        "{}\n\n<!-- user-authored comment -->{}",
+        &source[..current_block_end],
+        &source[current_block_end..]
+    );
+    fs::write(&path, source).unwrap();
+    let before_failed_write = fs::read(&path).unwrap();
+
+    let (application, _, results, _) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "execute replan with a user-authored section",
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let result = results.lock().unwrap().last().unwrap().clone();
+    let completed = application.session("vault-a", &session.id).unwrap();
+    assert_eq!(completed.task_operations.len(), 1);
+    assert_eq!(completed.task_operations[0].status, "failed");
+    assert!(
+        completed.task_operations[0]
+            .result_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("未写入任何内容"),
+        "{:?}",
+        completed.task_operations[0]
+    );
+    assert!(
+        !result.success,
+        "a failed Daily Record write must not be returned as a successful tool result: {}",
+        result.text
+    );
+    assert_eq!(fs::read(&path).unwrap(), before_failed_write);
+    let readback = today.read_date("2026-09-27").unwrap();
+    assert_eq!(readback.timeline[0].title, "Synthetic existing appointment");
+    assert_eq!(
+        readback.baseline.timeline[0].title,
+        "Synthetic existing appointment"
+    );
 }
 
 

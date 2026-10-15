@@ -1549,6 +1549,11 @@ const todayAxisTaskPopupContent = document.querySelector<HTMLElement>("#today-ax
 const todayAxisTaskPopupStatus = document.querySelector<HTMLElement>("#today-axis-task-popup-status");
 const todayAxisTaskPopupClose = document.querySelector<HTMLButtonElement>("#today-axis-task-popup-close");
 let todayAxisTaskPopupOpener: HTMLElement | null = null;
+const todayAxisFactPopup = document.querySelector<HTMLDialogElement>("#today-axis-fact-popup");
+const todayAxisFactPopupHeading = document.querySelector<HTMLElement>("#today-axis-fact-popup-heading");
+const todayAxisFactPopupContent = document.querySelector<HTMLElement>("#today-axis-fact-popup-content");
+const todayAxisFactPopupClose = document.querySelector<HTMLButtonElement>("#today-axis-fact-popup-close");
+let todayAxisFactPopupOpener: HTMLElement | null = null;
 const todayHourTicks = document.querySelector<HTMLElement>("#today-hour-ticks");
 const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#today-current-arrangement-unlocated");
 const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
@@ -1739,6 +1744,13 @@ let taskTagFilter: string | null = null;
 let taskPrioritySort: TaskPrioritySort = "default";
 let taskTagRenameEditId: string | null = null;
 const taskTagRenameDrafts = new Map<string, string>();
+const collapsedTaskTreeNodesByBinding = new Map<string, Set<string>>();
+let taskHistoryFocusDisclosureRequest: Readonly<{
+  editedTaskId: string;
+  disclosureId: string;
+  binding: string;
+  historyScopeKey: string;
+}> | null = null;
 let taskCreateOpen = false;
 const composingTaskCreateForms = new WeakSet<HTMLFormElement>();
 let taskListManagementOpen = false;
@@ -5781,13 +5793,52 @@ function todayTimelineItem(block: MorningBlockView): HTMLLIElement {
   return item;
 }
 
-let todayAxisEarlyExpanded = false;
-let todayAxisLateExpanded = false;
+function renderTodayTimeline(view: Pick<TodayView, "timeline" | "timeAxis">): void {
+  if (!todayTimeline) return;
+
+  const axisEntries = [
+    ...view.timeAxis.currentArrangement,
+    ...view.timeAxis.unlocatedCurrentArrangement,
+  ];
+  const axisEntryQueues = new Map<string, TimeAxisEntryView[]>();
+  const axisEntryKey = (period: string | null, title: string | null | undefined, text: string): string =>
+    JSON.stringify([period, title ?? null, text]);
+  for (const entry of axisEntries) {
+    const key = axisEntryKey(entry.period, entry.title, entry.text);
+    const queue = axisEntryQueues.get(key);
+    if (queue) queue.push(entry);
+    else axisEntryQueues.set(key, [entry]);
+  }
+  const ordered = view.timeline
+    .map((block, index) => {
+      const text = block.detail ? `${block.title} ${block.detail}` : block.title;
+      const axisEntry = axisEntryQueues.get(axisEntryKey(block.period, block.title, text))?.shift();
+      const startMinute = axisEntry &&
+        (axisEntry.planPrecision === "broad" ||
+          axisEntry.planPrecision === "exactPoint" ||
+          axisEntry.planPrecision === "exactRange" ||
+          axisEntry.planPrecision === "approximatePoint")
+        ? axisEntry.startMinute
+        : null;
+      return { block, index, startMinute };
+    })
+    .sort((left, right) => {
+      if (left.startMinute !== null && right.startMinute !== null) {
+        return left.startMinute - right.startMinute || left.index - right.index;
+      }
+      if (left.startMinute !== null) return -1;
+      if (right.startMinute !== null) return 1;
+      return left.index - right.index;
+    });
+
+  todayTimeline.replaceChildren(...ordered.map(({ block }) => todayTimelineItem(block)));
+}
+
 let todayAxisZoomLevel = 0;
 let todayAxisRenderedDate: string | null = null;
 const todayAxisZoomHeights = [null, "28px", "40px", "56px"] as const;
 function axisBounds(): readonly [number, number] {
-  return [todayAxisEarlyExpanded ? 240 : 360, todayAxisLateExpanded ? 1680 : 1440];
+  return [240, 1680];
 }
 function minutePosition(minute: number): number {
   const [start, end] = axisBounds();
@@ -6430,8 +6481,9 @@ function renderTodayTimeAxisEntries(
   ordered.forEach(({ entry, index }) => {
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
   });
-  const detailEntries = ordered.filter(({ entry }) => entry.lane === "facts" ||
-    (entry.lane === "arrangement" && !canEditTodayPlanTime(entry)));
+  const detailEntries = ordered.filter(({ entry }) =>
+    entry.lane === "arrangement" && !canEditTodayPlanTime(entry),
+  );
   todayTimedDetails.replaceChildren(...detailEntries.map(({ index }) => detailElements.get(index)!));
   todayTimedDetails.toggleAttribute("hidden", detailEntries.length === 0);
   const [visibleStart, visibleEnd] = axisBounds();
@@ -6497,13 +6549,12 @@ function renderTodayTimeAxisEntries(
       marker.style.setProperty("--axis-stack-size", String(placement.stackSize));
       marker.style.height = `${markerLayout.heightMinutes / (visibleEnd - visibleStart) * 100}%`;
       marker.dataset.stackId = String(placement.stackId);
-      marker.dataset.axisEntryId = detailElements.get(index)!.id;
       marker.classList.toggle("is-stacked", placement.stackSize > 1);
       marker.classList.toggle("is-centered-label", markerLayout.isCenteredLabel);
       markersByStack.set(placement.stackId, [...(markersByStack.get(placement.stackId) ?? []), marker]);
 
       const readOnlyArrangement = original.lane === "arrangement" && !editablePlan;
-      const link = document.createElement(editablePlan || entry.task ? "button" : "a");
+      const link = document.createElement(editablePlan || entry.task || entry.lane === "facts" ? "button" : "a");
       if (link instanceof HTMLAnchorElement) {
         link.href = `#today-axis-${entry.lane}-entry-${index}`;
       } else {
@@ -6547,6 +6598,10 @@ function renderTodayTimeAxisEntries(
         }
         if (entry.task) {
           openTodayAxisTaskPopup(entry.task.id, marker);
+          return;
+        }
+        if (entry.lane === "facts") {
+          openTodayAxisFactPopup(original, marker);
           return;
         }
         const target = detailElements.get(index);
@@ -6660,6 +6715,94 @@ function positionTodayAxisTaskPopup(): void {
   todayAxisTaskPopup.style.top = `${top}px`;
 }
 
+function absoluteAxisDateTimeLabel(date: string, minute: number): string {
+  const actualDate = minute >= 1440 ? nextAxisDate(date) : date;
+  return `${actualDate} ${formatAxisMinute(minute)}`;
+}
+
+function positionTodayAxisFactPopup(): void {
+  if (!todayAxisFactPopup?.open) return;
+  if (!todayAxisFactPopupOpener?.isConnected) {
+    closeTodayAxisFactPopup(false);
+    return;
+  }
+  const anchor = todayAxisFactPopupOpener.getBoundingClientRect();
+  if (anchor.width === 0 && anchor.height === 0) {
+    closeTodayAxisFactPopup(false);
+    return;
+  }
+  const popup = todayAxisFactPopup.getBoundingClientRect();
+  const margin = 12;
+  const width = popup.width || Math.min(430, window.innerWidth - margin * 2);
+  const height = popup.height || Math.min(480, window.innerHeight - margin * 2);
+  const right = anchor.right + 8;
+  const leftOfAnchor = anchor.left - width - 8;
+  const left = right + width <= window.innerWidth - margin
+    ? right
+    : leftOfAnchor >= margin
+      ? leftOfAnchor
+      : Math.max(margin, Math.min(anchor.left, window.innerWidth - width - margin));
+  const top = Math.max(margin, Math.min(anchor.top, window.innerHeight - height - margin));
+  todayAxisFactPopup.style.left = `${left}px`;
+  todayAxisFactPopup.style.top = `${top}px`;
+}
+
+function closeTodayAxisFactPopup(restoreFocus = true): void {
+  if (!todayAxisFactPopup?.open) return;
+  const opener = todayAxisFactPopupOpener;
+  todayAxisFactPopup.close();
+  todayAxisFactPopupContent?.replaceChildren();
+  todayAxisFactPopupOpener = null;
+  if (restoreFocus && opener?.isConnected) opener.focus({ preventScroll: true });
+}
+
+function openTodayAxisFactPopup(entry: TimeAxisEntryView, marker: HTMLElement): void {
+  if (!currentTodayView || !todayAxisFactPopup || !todayAxisFactPopupHeading || !todayAxisFactPopupContent) return;
+  closeTodayAxisFactPopup(false);
+  setCopy(todayAxisFactPopupHeading, "today.axisFactPopupHeading");
+  todayAxisFactPopupOpener = marker.querySelector<HTMLElement>(".today-axis-marker-link") ?? marker;
+  todayAxisFactPopupContent.replaceChildren();
+
+  const time = document.createElement("time");
+  time.className = "today-axis-fact-popup-time";
+  if (entry.startMinute !== null) {
+    const startDateTime = absoluteAxisDateTimeLabel(currentTodayView.date, entry.startMinute);
+    const endDateTime = entry.endMinute === null
+      ? null
+      : absoluteAxisDateTimeLabel(currentTodayView.date, entry.endMinute);
+    time.dateTime = `${startDateTime.replace(" ", "T")}`;
+    time.textContent = endDateTime ? `${startDateTime}–${endDateTime}` : startDateTime;
+  } else {
+    setCopy(time, "today.unlocatedConfirmedFactLabel");
+  }
+
+  const copy = document.createElement("p");
+  copy.className = "today-axis-fact-popup-copy";
+  copy.textContent = entry.text;
+  const metadata = document.createElement("div");
+  metadata.className = "today-axis-entry-metadata";
+  appendAxisEntryMetadata(metadata, entry, "facts");
+  const sourceDate = document.createElement("span");
+  setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
+  metadata.append(sourceDate);
+  if (entry.continuesFromPreviousDay) {
+    const continuation = document.createElement("span");
+    setCopy(continuation, "today.continuesFromPrevious");
+    metadata.append(continuation);
+  }
+  if (entry.continuesIntoNextDay) {
+    const continuation = document.createElement("span");
+    setCopy(continuation, "today.continuesIntoNext");
+    metadata.append(continuation);
+  }
+  todayAxisFactPopupContent.append(time, copy, metadata);
+  if (!todayAxisFactPopup.open) todayAxisFactPopup.show();
+  window.requestAnimationFrame(() => {
+    positionTodayAxisFactPopup();
+    todayAxisFactPopupClose?.focus({ preventScroll: true });
+  });
+}
+
 function closeTodayAxisTaskPopup(discardDraft = false, restoreFocus = true): void {
   if (!todayAxisTaskPopup?.open) return;
   const taskId = todayAxisTaskPopup.dataset.taskId;
@@ -6757,16 +6900,10 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
       new Set(view.tasks.lists.filter((list) => list.archived).map((list) => list.id)),
     ).map((entry) => ({ ...entry, lane: "tasks" as const })),
   ];
-  const earlyCount = entries.filter((entry) => entry.startMinute !== null && entry.startMinute < 360).length;
-  const lateCount = entries.filter((entry) => entry.startMinute !== null &&
-    (entry.endMinute ?? entry.startMinute) >= 1440).length;
   if (todayAxisRenderedDate !== view.date) {
     todayAxisRenderedDate = view.date;
     todayUnlocatedOverride = null;
     todaySidebarReadingPosition = null;
-    const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
-    todayAxisEarlyExpanded = now !== null && now < 360;
-    todayAxisLateExpanded = now !== null && now >= 1440;
   }
   const zoomHeight = todayAxisZoomHeights[todayAxisZoomLevel];
   if (zoomHeight) todayContinuousAxis.style.setProperty("--today-axis-hour-height", zoomHeight);
@@ -6776,17 +6913,6 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
   const zoomIn = document.getElementById("today-axis-zoom-in") as HTMLButtonElement | null;
   if (zoomOut) zoomOut.disabled = todayAxisZoomLevel === 0;
   if (zoomIn) zoomIn.disabled = todayAxisZoomLevel === todayAxisZoomHeights.length - 1;
-  for (const [id, expanded] of [["today-expand-early", todayAxisEarlyExpanded], ["today-expand-late", todayAxisLateExpanded]] as const) {
-    const button = document.getElementById(id);
-    if (button) {
-      button.setAttribute("aria-expanded", String(expanded));
-      setCopy(button, id === "today-expand-early"
-        ? (expanded ? "today.expandEarlyExpanded" : "today.expandEarlyCollapsed")
-        : (expanded ? "today.expandLateExpanded" : "today.expandLateCollapsed"));
-      const count = id === "today-expand-early" ? earlyCount : lateCount;
-      if (count) button.textContent += ` · ${t("today.axisPeriodItemCount", { count })}`;
-    }
-  }
   todayHourTicks?.replaceChildren(
     ...hourTickMinutes().map((minute) => {
       const tick = document.createElement("span");
@@ -6807,65 +6933,6 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
   todayUnlocatedCount = view.timeAxis.unlocatedCurrentArrangement.length + view.timeAxis.unlocatedConfirmedFacts.length;
   updateTodayUnlocatedPresentation();
   updateTodayTimeAxisClock(view, currentTime);
-}
-
-// Disclosures change only the visible window of the same lived day. Preserve
-// the minute at the reader's viewport edge rather than locating the clock.
-function toggleTodayAxisSegment(id: string): void {
-  if (!currentTodayView) return;
-  const plot = todayContinuousAxis?.querySelector<HTMLElement>(".today-axis-plot");
-  const scrollSurface = todayAxisScrollSurface ?? workspaceInformation;
-  const viewport = scrollSurface?.getBoundingClientRect();
-  const oldPlot = plot?.getBoundingClientRect();
-  const [start, end] = axisBounds();
-  const anchorY = viewport && oldPlot ? Math.max(viewport.top, oldPlot.top) : null;
-  const anchorMinute = anchorY !== null && oldPlot && viewport && oldPlot.height > 0 &&
-    oldPlot.bottom > viewport.top && oldPlot.top < viewport.bottom
-    ? start + (anchorY - oldPlot.top) / oldPlot.height * (end - start) : null;
-  const details = [...(todayTimedDetails?.querySelectorAll<HTMLDetailsElement>("details") ?? [])];
-  const openDetails = new Set(details.filter((detail) => detail.open).map((detail) => detail.id));
-  const detailAnchor = viewport && anchorMinute === null
-    ? details.find((detail) => {
-      const rect = detail.getBoundingClientRect();
-      return rect.bottom > viewport.top && rect.top < viewport.bottom;
-    }) : null;
-  const detailY = detailAnchor?.getBoundingClientRect().top;
-  const frontEntries = new Set(
-    [...(todayTimedEvents?.querySelectorAll<HTMLElement>(".is-stack-front") ?? [])]
-      .map((marker) => marker.dataset.axisEntryId),
-  );
-  if (id === "today-expand-early") todayAxisEarlyExpanded = !todayAxisEarlyExpanded;
-  else todayAxisLateExpanded = !todayAxisLateExpanded;
-  todayAxisFollowState = onManualScroll(todayAxisFollowState);
-  renderTodayTimeAxis(currentTodayView);
-  todayTimedDetails?.querySelectorAll<HTMLDetailsElement>("details").forEach((detail) => {
-    detail.open = openDetails.has(detail.id);
-  });
-  todayTimedEvents?.querySelectorAll<HTMLElement>(".today-axis-marker").forEach((marker) => {
-    // Keep a revealed member at the front when its stack still exists.
-    if (frontEntries.has(marker.dataset.axisEntryId)) {
-      const members = todayTimedEvents?.querySelectorAll<HTMLElement>(".today-axis-marker") ?? [];
-      members.forEach((member) => {
-        if (member.dataset.stackId === marker.dataset.stackId) {
-          member.classList.toggle("is-stack-front", member === marker);
-        }
-      });
-    }
-  });
-  if (!scrollSurface) return;
-  let delta = 0;
-  if (anchorMinute !== null && anchorY !== null && plot) {
-    const next = plot.getBoundingClientRect();
-    const [nextStart, nextEnd] = axisBounds();
-    const minute = Math.max(nextStart, Math.min(nextEnd, anchorMinute));
-    delta = next.top + (minute - nextStart) / (nextEnd - nextStart) * next.height - anchorY;
-  } else if (detailAnchor && detailY !== undefined) {
-    const next = document.getElementById(detailAnchor.id);
-    if (next) delta = next.getBoundingClientRect().top - detailY;
-  }
-  if (delta !== 0) {
-    scrollSurface.scrollTo({ top: scrollSurface.scrollTop + delta, behavior: "instant" });
-  }
 }
 
 function adjustTodayAxisZoom(delta: number): void {
@@ -7065,6 +7132,9 @@ function renderReadingList(
 function showTodayPhase(phase: TodayPhase, focus = false): void {
   todayPhaseSelectionRevision += 1;
   const phaseChanged = currentTodayPhase !== phase;
+  if (phaseChanged && currentTodayPhase === "daytime" && phase !== "daytime") {
+    closeTodayAxisFactPopup(false);
+  }
   currentTodayPhase = phase;
   if (todayReady) {
     todayReady.dataset.phase = phase;
@@ -7216,6 +7286,7 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
 
 function renderToday(view: TodayView, preserveTaskEditors = false): void {
   closeTodayAxisTaskPopup(false, false);
+  closeTodayAxisFactPopup(false);
   const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
   stashEveningReviewDraft();
   todayPresentationFresh = true;
@@ -7270,9 +7341,7 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
   if (todayHandoff) {
     todayHandoff.hidden = readable;
   }
-  if (todayTimeline) {
-    todayTimeline.replaceChildren(...view.timeline.map(todayTimelineItem));
-  }
+  renderTodayTimeline(view);
   if (todayBlockCount) {
     setCopy(todayBlockCount, "count.timeBlocks", { count: view.timeline.length });
   }
@@ -8130,12 +8199,6 @@ async function refreshToday(
 }
 
 function scrollTodayAxisToNow(): void {
-  const now = currentTodayView?.isToday && currentTodayView.currentTime ? livedAxisMinute(currentTodayView.currentTime) : null;
-  if (now !== null && currentTodayView && ((now < 360 && !todayAxisEarlyExpanded) || (now >= 1440 && !todayAxisLateExpanded))) {
-    if (now < 360) todayAxisEarlyExpanded = true;
-    if (now >= 1440) todayAxisLateExpanded = true;
-    renderTodayTimeAxis(currentTodayView);
-  }
   if (
     currentWorkspaceDestination !== "today" ||
     !currentTodayView?.isToday ||
@@ -11628,32 +11691,29 @@ function positionTaskMoreMenu(menu: HTMLDetailsElement): void {
     menuPanel?.style.removeProperty("--task-more-menu-max-height");
     return;
   }
-  window.requestAnimationFrame(() => {
-    if (!menu.open || !menu.isConnected) return;
-    const anchor = moreSummary.getBoundingClientRect();
-    const panel = menuPanel.getBoundingClientRect();
-    const footerBounds = footer.getBoundingClientRect();
-    const margin = 8;
-    const gap = 4;
-    const width = Math.min(panel.width, window.innerWidth - margin * 2);
-    const left = Math.max(margin, Math.min(anchor.right - width, window.innerWidth - width - margin));
-    const footerCoversColumn = left < footerBounds.right && left + width > footerBounds.left;
-    const belowTop = anchor.bottom + gap;
-    const belowLimit = footerCoversColumn && footerBounds.top < window.innerHeight
-      ? Math.min(window.innerHeight - margin, footerBounds.top - margin)
-      : window.innerHeight - margin;
-    const belowSpace = Math.max(0, belowLimit - belowTop);
-    const aboveBottom = anchor.top - gap;
-    const aboveSpace = Math.max(0, aboveBottom - margin);
-    const desiredHeight = Math.min(panel.height, window.innerHeight - margin * 2);
-    const placeAbove = belowSpace < desiredHeight && aboveSpace > belowSpace;
-    const available = placeAbove ? aboveSpace : belowSpace;
-    const height = Math.max(0, Math.min(desiredHeight, available));
-    const top = placeAbove ? aboveBottom - height : belowTop;
-    menuPanel.style.setProperty("--task-more-menu-left", `${left}px`);
-    menuPanel.style.setProperty("--task-more-menu-top", `${Math.max(margin, top)}px`);
-    menuPanel.style.setProperty("--task-more-menu-max-height", `${height}px`);
-  });
+  const anchor = moreSummary.getBoundingClientRect();
+  const panel = menuPanel.getBoundingClientRect();
+  const footerBounds = footer.getBoundingClientRect();
+  const margin = 8;
+  const gap = 4;
+  const width = Math.min(panel.width, window.innerWidth - margin * 2);
+  const left = Math.max(margin, Math.min(anchor.right - width, window.innerWidth - width - margin));
+  const footerCoversColumn = left < footerBounds.right && left + width > footerBounds.left;
+  const belowTop = anchor.bottom + gap;
+  const belowLimit = footerCoversColumn && footerBounds.top < window.innerHeight
+    ? Math.min(window.innerHeight - margin, footerBounds.top - margin)
+    : window.innerHeight - margin;
+  const belowSpace = Math.max(0, belowLimit - belowTop);
+  const aboveBottom = anchor.top - gap;
+  const aboveSpace = Math.max(0, aboveBottom - margin);
+  const desiredHeight = Math.min(panel.height, window.innerHeight - margin * 2);
+  const placeAbove = belowSpace < desiredHeight && aboveSpace > belowSpace;
+  const available = placeAbove ? aboveSpace : belowSpace;
+  const height = Math.max(0, Math.min(desiredHeight, available));
+  const top = placeAbove ? aboveBottom - height : belowTop;
+  menuPanel.style.setProperty("--task-more-menu-left", `${left}px`);
+  menuPanel.style.setProperty("--task-more-menu-top", `${Math.max(margin, top)}px`);
+  menuPanel.style.setProperty("--task-more-menu-max-height", `${height}px`);
 }
 
 function positionOpenTaskMoreMenus(): void {
@@ -11808,6 +11868,10 @@ function taskEditor(
   ));
   title.textContent = task.name;
   title.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
+  const assignedTagIds = new Set(task.tagIds ?? []);
+  const rowTags = surface === "tasks"
+    ? (view?.tags ?? []).filter((tag) => assignedTagIds.has(tag.id) && tag.name.trim().length > 0)
+    : [];
   const taskList = view ? taskListForId(view, task.listId) : undefined;
   const listName = taskList
     ? taskListDisplayName(taskList, t("tasks.inbox"))
@@ -11829,6 +11893,19 @@ function taskEditor(
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.overdue")));
   }
   titleLine.append(title, state);
+  if (rowTags.length > 0) {
+    const tags = document.createElement("span");
+    tags.className = "task-row-tags";
+    tags.setAttribute("role", "group");
+    tags.setAttribute("aria-label", t("tasks.tags"));
+    for (const tag of rowTags) {
+      const label = document.createElement("span");
+      label.className = "task-row-tag";
+      label.textContent = tag.name;
+      tags.append(label);
+    }
+    titleLine.append(tags);
+  }
   if (task.content && surface !== "tasks") {
     const contentPreview = document.createElement("p");
     contentPreview.className = "task-row-content";
@@ -12329,13 +12406,40 @@ function taskEditor(
     }
     menuPanel.append(...Array.from(stateActions.children));
     menu.append(moreSummary, menuPanel);
-    menu.addEventListener("toggle", () => positionTaskMoreMenu(menu));
+    const scheduleTaskMoreMenuPosition = (): void => {
+      window.setTimeout(() => positionTaskMoreMenu(menu), 0);
+    };
+    menu.addEventListener("toggle", scheduleTaskMoreMenuPosition);
+    moreSummary.addEventListener("click", scheduleTaskMoreMenuPosition);
     const titlebar = document.createElement("div");
     titlebar.className = "task-editor-titlebar";
     titlebar.append(nameLabel, menu);
     editorForm.prepend(titlebar, meta);
     const closeEdit = (): void => {
       if (binding) taskEditDrafts.delete(taskDraftKey(binding, task.id));
+      const collapsedDisclosureId =
+        surface === "tasks" && currentTasksView
+          ? taskTreeFocusDisclosureId(task.id, currentTasksView, binding ?? null)
+          : null;
+      const editedTaskRow = tasksList?.querySelector<HTMLElement>(
+        `[data-task-editor-row="${CSS.escape(task.id)}"]`,
+      );
+      const historySection = editedTaskRow?.closest<HTMLElement>(".task-ended-history");
+      const historyScopeKey = historySection?.dataset.taskHistoryScope ?? null;
+      const disclosureIsInHistory = Boolean(
+        collapsedDisclosureId &&
+        historyScopeKey &&
+        historySection?.querySelector(
+          `[data-task-tree-toggle="${CSS.escape(collapsedDisclosureId)}"]`,
+        ),
+      );
+      taskHistoryFocusDisclosureRequest = taskHistoryFocusRequestForClose(
+        task,
+        collapsedDisclosureId,
+        binding ?? null,
+        disclosureIsInHistory,
+        historyScopeKey,
+      );
       const root = taskEditorDialogRootForSurface(surface);
       if (surface === "calendar") {
         selectedCalendarTaskDetailId = null;
@@ -12348,10 +12452,60 @@ function taskEditor(
         root?.toggleAttribute("hidden", true);
         if (currentTasksView) renderTasks(currentTasksView);
       }
-      window.requestAnimationFrame(() =>
-        (surface === "calendar" ? calendarTaskList : tasksList)
-          ?.querySelector<HTMLButtonElement>(`[data-task-editor-open="${CSS.escape(task.id)}"]`)?.focus(),
-      );
+      window.requestAnimationFrame(() => {
+        if (surface === "calendar") {
+          calendarTaskList
+            ?.querySelector<HTMLButtonElement>(`[data-task-editor-open="${CSS.escape(task.id)}"]`)
+            ?.focus();
+          return;
+        }
+        if (binding && currentTasksView?.targetBinding !== binding) return;
+        const historyFocusRequest = taskHistoryFocusDisclosureRequest;
+        const isHistoryFocusRequestForClosedTask =
+          historyFocusRequest?.editedTaskId === task.id &&
+          historyFocusRequest.binding === binding &&
+          currentTasksView?.targetBinding === historyFocusRequest.binding &&
+          historyFocusRequest.disclosureId === collapsedDisclosureId;
+        if (isHistoryFocusRequestForClosedTask && historyFocusRequest) {
+          const focusRequestedDisclosure = (attemptsRemaining: number): void => {
+            if (taskHistoryFocusDisclosureRequest !== historyFocusRequest) return;
+            if (currentTasksView?.targetBinding !== historyFocusRequest.binding) {
+              taskHistoryFocusDisclosureRequest = null;
+              return;
+            }
+            const disclosure = tasksList?.querySelector<HTMLButtonElement>(
+              `[data-task-tree-toggle="${CSS.escape(historyFocusRequest.disclosureId)}"]`,
+            );
+            const section = disclosure?.closest<HTMLElement>(".task-ended-history");
+            if (
+              !disclosure || disclosure.disabled ||
+              section?.dataset.taskHistoryScope !== historyFocusRequest.historyScopeKey
+            ) {
+              taskHistoryFocusDisclosureRequest = null;
+              return;
+            }
+            disclosure.focus();
+            if (document.activeElement === disclosure) {
+              taskHistoryFocusDisclosureRequest = null;
+            } else if (attemptsRemaining > 0) {
+              window.requestAnimationFrame(() => focusRequestedDisclosure(attemptsRemaining - 1));
+            } else {
+              taskHistoryFocusDisclosureRequest = null;
+            }
+          };
+          focusRequestedDisclosure(1);
+          return;
+        }
+        const disclosure = collapsedDisclosureId
+          ? tasksList?.querySelector<HTMLButtonElement>(
+              `[data-task-tree-toggle="${CSS.escape(collapsedDisclosureId)}"]`,
+            )
+          : null;
+        const taskButton = tasksList?.querySelector<HTMLButtonElement>(
+          `[data-task-editor-open="${CSS.escape(task.id)}"]`,
+        );
+        (disclosure ?? taskButton)?.focus();
+      });
     };
     menu.querySelector<HTMLButtonElement>("[data-task-open-schedule]")?.addEventListener("click", () => {
       const disclosure = editorForm.querySelector<HTMLDetailsElement>("[data-task-schedule-disclosure]");
@@ -12493,11 +12647,21 @@ function taskHistorySection(
   tasks: readonly TaskView[], view: TasksView,
   surface: TaskSurface, folded: boolean,
   openEditors: ReadonlySet<string> = new Set(),
+  historyScopeKey = "global",
 ): HTMLElement | null {
   if (!tasks.length) return null;
   const section = document.createElement(folded ? "details" : "section");
   section.className = "task-ended-history";
-  if (folded && tasks.some(task => openEditors.has(task.id))) {
+  section.dataset.taskHistoryScope = historyScopeKey;
+  const focusRequest = surface === "tasks" &&
+    taskHistoryFocusDisclosureRequest?.binding === view.targetBinding &&
+    taskHistoryFocusDisclosureRequest?.historyScopeKey === historyScopeKey &&
+    tasks.some(task => task.id === taskHistoryFocusDisclosureRequest?.disclosureId) &&
+    tasks.some(task => task.id === taskHistoryFocusDisclosureRequest?.editedTaskId)
+    ? taskHistoryFocusDisclosureRequest
+    : null;
+  const focusDisclosureHere = Boolean(focusRequest);
+  if (folded && (tasks.some(task => openEditors.has(task.id)) || focusDisclosureHere)) {
     (section as HTMLDetailsElement).open = true;
   }
   const heading = document.createElement(folded ? "summary" : "h4");
@@ -12507,9 +12671,9 @@ function taskHistorySection(
       ? "tasks.abandonedHistory"
       : "tasks.endedHistory";
   setCopy(heading, headingKey, { count: tasks.length });
-  const rows = document.createElement("div");
-  rows.className = "tasks-list";
-  section.append(heading, rows);
+  const historyRows = document.createElement("div");
+  historyRows.className = "tasks-list";
+  section.append(heading, historyRows);
   let limit = 30;
   const editors = new Map<string, HTMLElement>();
   const render = (): void => {
@@ -12524,25 +12688,141 @@ function taskHistorySection(
     const includedTaskIds = new Set(openEditors);
     if (surface === "tasks" && taskFocusRequestId) includedTaskIds.add(taskFocusRequestId);
     if (surface === "tasks" && selectedTaskDetailId) includedTaskIds.add(selectedTaskDetailId);
+    if (focusRequest) includedTaskIds.add(focusRequest.editedTaskId);
+    const historyTasksById = new Map(tasks.map((task) => [task.id, task]));
+    if (surface === "tasks") {
+      for (const taskId of [...includedTaskIds]) {
+        let task = historyTasksById.get(taskId);
+        const visited = new Set<string>();
+        while (task?.parentTaskId && !visited.has(task.parentTaskId)) {
+          visited.add(task.parentTaskId);
+          const parent = historyTasksById.get(task.parentTaskId);
+          if (!parent) break;
+          includedTaskIds.add(parent.id);
+          task = parent;
+        }
+      }
+    }
     const visibleGroups = taskHistoryGroups(tasks, limit, includedTaskIds);
     const visibleCount = visibleGroups.reduce((count, group) => count + group.tasks.length, 0);
+    const visibleTasks = visibleGroups.flatMap((group) => group.tasks);
+    const visibleTaskIds = new Set(visibleTasks.map((task) => task.id));
+    const visibleChildCounts = new Map<string, number>();
+    for (const task of visibleTasks) {
+      const parentId = task.parentTaskId ?? null;
+      if (parentId && visibleTaskIds.has(parentId)) {
+        visibleChildCounts.set(parentId, (visibleChildCounts.get(parentId) ?? 0) + 1);
+      }
+    }
+    const collapsedIds = surface === "tasks" && view.targetBinding
+      ? collapsedTaskTreeNodesByBinding.get(view.targetBinding) ?? new Set<string>()
+      : new Set<string>();
+    const forcedExpandedIds = new Set<string>();
+    if (surface === "tasks") {
+      const revealTaskIds = new Set(openEditors);
+      if (taskFocusRequestId) revealTaskIds.add(taskFocusRequestId);
+      if (selectedTaskDetailId) revealTaskIds.add(selectedTaskDetailId);
+      if (focusRequest) revealTaskIds.add(focusRequest.editedTaskId);
+      for (const taskId of revealTaskIds) {
+        let task = historyTasksById.get(taskId);
+        const visited = new Set<string>();
+        while (task?.parentTaskId && !visited.has(task.parentTaskId)) {
+          visited.add(task.parentTaskId);
+          const parent = historyTasksById.get(task.parentTaskId);
+          if (!parent) break;
+          if (parent.id !== focusRequest?.disclosureId) {
+            forcedExpandedIds.add(parent.id);
+          }
+          task = parent;
+        }
+      }
+    }
+    const hasCollapsedAncestor = (task: TaskView): boolean => {
+      let parentId = task.parentTaskId ?? null;
+      const visited = new Set<string>();
+      while (parentId && !visited.has(parentId)) {
+        visited.add(parentId);
+        const parent = historyTasksById.get(parentId);
+        if (!parent) break;
+        if (collapsedIds.has(parent.id) && !forcedExpandedIds.has(parent.id)) return true;
+        parentId = parent.parentTaskId ?? null;
+      }
+      return false;
+    };
     const groups = visibleGroups.map(group => {
       const container = document.createElement("section");
       container.className = "task-history-date-group";
       const date = document.createElement("h4");
       if (group.date) date.textContent = group.date;
       else setCopy(date, "tasks.historyUnknownDate");
-      container.append(date, ...group.tasks.map(task => {
+      const taskRows = group.tasks.filter((task) => !hasCollapsedAncestor(task)).map(task => {
         let editor = editors.get(task.id);
         if (!editor) {
           editor = taskEditor(task, writable, view, surface, openEditors.has(task.id));
           editors.set(task.id, editor);
         }
+        if (surface === "tasks") {
+          let depth = 0;
+          let parentId = task.parentTaskId ?? null;
+          const visited = new Set<string>();
+          while (parentId && visibleTaskIds.has(parentId) && !visited.has(parentId)) {
+            visited.add(parentId);
+            depth += 1;
+            parentId = historyTasksById.get(parentId)?.parentTaskId ?? null;
+          }
+          editor.dataset.taskDepth = String(depth);
+          editor.style.setProperty("--task-indent", `${Math.min(depth, 4) * 12}px`);
+          const directChildCount = visibleChildCounts.get(task.id) ?? 0;
+          const titleLine = editor.querySelector<HTMLElement>(".task-row-title-line");
+          const disclosure = editor.querySelector<HTMLButtonElement>(
+            `[data-task-tree-toggle="${CSS.escape(task.id)}"]`,
+          );
+          if (titleLine && directChildCount > 0) {
+            const control = disclosure ?? document.createElement("button");
+            const forcedExpanded = forcedExpandedIds.has(task.id);
+            const collapsed = collapsedIds.has(task.id) && !forcedExpanded;
+            control.type = "button";
+            control.className = "task-tree-toggle";
+            control.dataset.taskTreeToggle = task.id;
+            control.textContent = collapsed ? "›" : "⌄";
+            control.setAttribute("aria-expanded", String(!collapsed));
+            control.setAttribute(
+              "aria-label",
+              `${t(collapsed ? "habits.expand" : "habits.collapse")} · ${t("tasks.directSubtasks", { count: directChildCount })}`,
+            );
+            control.disabled = !view.targetBinding || forcedExpanded;
+            if (!disclosure) {
+              control.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!view.targetBinding || control.disabled) return;
+                const nextCollapsedIds = new Set(
+                  collapsedTaskTreeNodesByBinding.get(view.targetBinding) ?? [],
+                );
+                if (nextCollapsedIds.has(task.id)) nextCollapsedIds.delete(task.id);
+                else nextCollapsedIds.add(task.id);
+                if (nextCollapsedIds.size) {
+                  collapsedTaskTreeNodesByBinding.set(view.targetBinding, nextCollapsedIds);
+                } else {
+                  collapsedTaskTreeNodesByBinding.delete(view.targetBinding);
+                }
+                render();
+                historyRows.querySelector<HTMLButtonElement>(
+                  `[data-task-tree-toggle="${CSS.escape(task.id)}"]`,
+                )?.focus();
+              });
+              titleLine.prepend(control);
+            }
+          } else {
+            disclosure?.remove();
+          }
+        }
         return editor;
-      }));
+      });
+      if (taskRows.length) container.append(date, ...taskRows);
       return container;
-    });
-    rows.replaceChildren(...groups);
+    }).filter((group) => group.children.length > 0);
+    historyRows.replaceChildren(...groups);
     if (tasks.length > visibleCount) {
       const more = document.createElement("button");
       more.type = "button";
@@ -12551,7 +12831,7 @@ function taskHistorySection(
         .reduce((count, group) => count + group.tasks.length, 0);
       setCopy(more, "tasks.historyMore", { count: nextCount - visibleCount });
       more.addEventListener("click", () => { limit += 30; render(); });
-      rows.append(more);
+      historyRows.append(more);
     }
   };
   section.addEventListener("toggle", render);
@@ -12559,7 +12839,81 @@ function taskHistorySection(
   return section;
 }
 
-function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boolean): HTMLElement[] {
+function taskTreeProjection(
+  matchingTasks: readonly TaskView[],
+  candidates: readonly TaskView[],
+  includeAncestorContext: boolean,
+): Readonly<{ tasks: readonly TaskView[]; matchingTaskIds?: ReadonlySet<string> }> {
+  if (!includeAncestorContext) return { tasks: matchingTasks };
+  const matchingTaskIds = new Set(matchingTasks.map((task) => task.id));
+  const candidatesById = new Map(candidates.map((task) => [task.id, task]));
+  const ancestorIds = new Set<string>();
+  for (const task of matchingTasks) {
+    let parentId = task.parentTaskId ?? null;
+    const visited = new Set<string>();
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = candidatesById.get(parentId);
+      if (!parent) break;
+      ancestorIds.add(parent.id);
+      parentId = parent.parentTaskId ?? null;
+    }
+  }
+  const contextTasks = candidates.filter((task) =>
+    ancestorIds.has(task.id) && !matchingTaskIds.has(task.id),
+  );
+  return { tasks: [...matchingTasks, ...contextTasks], matchingTaskIds };
+}
+
+function taskTreeFocusDisclosureId(
+  taskId: string,
+  view: TasksView,
+  targetBinding: string | null,
+): string | null {
+  if (!targetBinding || view.targetBinding !== targetBinding) return null;
+  const collapsedIds = collapsedTaskTreeNodesByBinding.get(targetBinding);
+  if (!collapsedIds?.size) return null;
+  const byId = new Map(view.tasks.map((task) => [task.id, task]));
+  let task = byId.get(taskId);
+  let disclosureId: string | null = null;
+  const visited = new Set<string>();
+  while (task?.parentTaskId && !visited.has(task.parentTaskId)) {
+    visited.add(task.parentTaskId);
+    const parent = byId.get(task.parentTaskId);
+    if (!parent) break;
+    if (collapsedIds.has(parent.id)) disclosureId = parent.id;
+    task = parent;
+  }
+  return disclosureId;
+}
+
+function taskHistoryFocusRequestForClose(
+  task: TaskView,
+  disclosureId: string | null,
+  targetBinding: string | null,
+  disclosureIsInHistory: boolean,
+  historyScopeKey: string | null,
+): Readonly<{
+  editedTaskId: string;
+  disclosureId: string;
+  binding: string;
+  historyScopeKey: string;
+}> | null {
+  if (
+    !disclosureId || !targetBinding || !disclosureIsInHistory || !historyScopeKey ||
+    (task.state !== "completed" && task.state !== "abandoned")
+  ) {
+    return null;
+  }
+  return { editedTaskId: task.id, disclosureId, binding: targetBinding, historyScopeKey };
+}
+
+function taskTreeRows(
+  tasks: readonly TaskView[],
+  view: TasksView,
+  writable: boolean,
+  options: Readonly<{ matchingTaskIds?: ReadonlySet<string> }> = {},
+): HTMLElement[] {
   const byId = new Map(tasks.map((task) => [task.id, task]));
   const children = new Map<string, TaskView[]>();
   for (const task of tasks) {
@@ -12568,6 +12922,29 @@ function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boo
     const siblings = children.get(parentId) ?? [];
     siblings.push(task);
     children.set(parentId, siblings);
+  }
+  const targetBinding = view.targetBinding;
+  const collapsedIds = targetBinding
+    ? collapsedTaskTreeNodesByBinding.get(targetBinding) ?? new Set<string>()
+    : new Set<string>();
+  const forcedExpandedIds = new Set<string>();
+  const revealTargetIds = new Set(options.matchingTaskIds ?? []);
+  if (targetBinding && selectedTaskDetailBinding === targetBinding && selectedTaskDetailId) {
+    revealTargetIds.add(selectedTaskDetailId);
+  }
+  if (taskFocusRequestId) revealTargetIds.add(taskFocusRequestId);
+  const createDraft = targetBinding && taskCreateOpen ? taskCreateDrafts.get(targetBinding) : undefined;
+  if (createDraft?.parentTaskId) revealTargetIds.add(createDraft.parentTaskId);
+  for (const taskId of revealTargetIds) {
+    let task = byId.get(taskId);
+    const visited = new Set<string>();
+    while (task?.parentTaskId && !visited.has(task.parentTaskId)) {
+      visited.add(task.parentTaskId);
+      const parent = byId.get(task.parentTaskId);
+      if (!parent) break;
+      forcedExpandedIds.add(parent.id);
+      task = parent;
+    }
   }
   const rows: HTMLElement[] = [];
   const visited = new Set<string>();
@@ -12578,6 +12955,48 @@ function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boo
     const row = taskEditor(task, writable, view, "tasks", false, parentVisible);
     row.dataset.taskDepth = String(depth);
     row.style.setProperty("--task-indent", `${Math.min(depth, 4) * 12}px`);
+    if (options.matchingTaskIds && !options.matchingTaskIds.has(task.id)) {
+      row.dataset.taskTreeContext = "true";
+    }
+    const childTasks = children.get(task.id) ?? [];
+    const forcedExpanded = forcedExpandedIds.has(task.id);
+    const collapsed = collapsedIds.has(task.id) && !forcedExpanded;
+    if (childTasks.length) {
+      const titleLine = row.querySelector<HTMLElement>(".task-row-title-line");
+      if (titleLine) {
+        const disclosure = document.createElement("button");
+        disclosure.type = "button";
+        disclosure.className = "task-tree-toggle";
+        disclosure.dataset.taskTreeToggle = task.id;
+        disclosure.textContent = collapsed ? "›" : "⌄";
+        disclosure.setAttribute("aria-expanded", String(!collapsed));
+        disclosure.setAttribute(
+          "aria-label",
+          `${t(collapsed ? "habits.expand" : "habits.collapse")} · ${t("tasks.directSubtasks", { count: childTasks.length })}`,
+        );
+        disclosure.disabled = !targetBinding || forcedExpanded;
+        disclosure.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!targetBinding || disclosure.disabled) return;
+          const nextCollapsedIds = new Set(
+            collapsedTaskTreeNodesByBinding.get(targetBinding) ?? [],
+          );
+          if (nextCollapsedIds.has(task.id)) nextCollapsedIds.delete(task.id);
+          else nextCollapsedIds.add(task.id);
+          if (nextCollapsedIds.size) {
+            collapsedTaskTreeNodesByBinding.set(targetBinding, nextCollapsedIds);
+          } else {
+            collapsedTaskTreeNodesByBinding.delete(targetBinding);
+          }
+          renderTasks(view);
+          tasksList?.querySelector<HTMLButtonElement>(
+            `[data-task-tree-toggle="${CSS.escape(task.id)}"]`,
+          )?.focus();
+        });
+        titleLine.prepend(disclosure);
+      }
+    }
     if (depth > 4) {
       const titleLine = row.querySelector<HTMLElement>(".task-row-title-line");
       if (titleLine) {
@@ -12591,16 +13010,38 @@ function taskTreeRows(tasks: readonly TaskView[], view: TasksView, writable: boo
       }
     }
     rows.push(row);
-    for (const child of children.get(task.id) ?? []) append(child, depth + 1);
+    if (!collapsed) {
+      for (const child of childTasks) append(child, depth + 1);
+    }
+  };
+  const hasCollapsedAncestor = (task: TaskView): boolean => {
+    let parentId = task.parentTaskId ?? null;
+    const seen = new Set<string>();
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId);
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      if (collapsedIds.has(parentId) && !forcedExpandedIds.has(parentId)) return true;
+      parentId = parent.parentTaskId ?? null;
+    }
+    return false;
   };
   for (const task of tasks) {
     if (!task.parentTaskId || !byId.has(task.parentTaskId)) append(task, 0);
   }
-  for (const task of tasks) append(task, 0);
+  for (const task of tasks) {
+    if (!visited.has(task.id) && !hasCollapsedAncestor(task)) append(task, 0);
+  }
   return rows;
 }
 
 function renderTasks(view: TasksView): void {
+  if (
+    taskHistoryFocusDisclosureRequest &&
+    taskHistoryFocusDisclosureRequest.binding !== view.targetBinding
+  ) {
+    taskHistoryFocusDisclosureRequest = null;
+  }
   if (selectedTaskDetailBinding !== view.targetBinding) selectedTaskDetailId = null;
   currentTasksView = view;
   selectedTaskDetailBinding = view.targetBinding;
@@ -12700,6 +13141,8 @@ function renderTasks(view: TasksView): void {
     selectedTaskDetailId = null;
   }
   const { main: visibleTasks, history: historyTasks } = taskDisplaySections(propertyTasks, taskStateScope);
+  const { main: treeContextCandidates } = taskDisplaySections(scopedTasks, taskStateScope);
+  const preserveFilteredTreeContext = taskPriorityFilter !== "all" || Boolean(taskTagFilter);
   taskListScopes?.querySelectorAll<HTMLButtonElement>("[data-task-scope]").forEach((button) => {
     const selected = button.dataset.taskScope === taskScope;
     button.setAttribute("aria-selected", String(selected));
@@ -12832,16 +13275,25 @@ function renderTasks(view: TasksView): void {
           "tasks",
           false,
           new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
+          `folder-list:${list.id}`,
         );
         if (ended) group.append(ended);
       } else {
-        group.append(...taskTreeRows(listVisibleTasks, view, canOperate));
+        const treeProjection = taskTreeProjection(
+          listVisibleTasks,
+          treeContextCandidates.filter((task) => task.listId === list.id),
+          preserveFilteredTreeContext,
+        );
+        group.append(...taskTreeRows(treeProjection.tasks, view, canOperate, {
+          matchingTaskIds: treeProjection.matchingTaskIds,
+        }));
         const ended = taskHistorySection(
           listHistoryTasks,
           view,
           "tasks",
           true,
           new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
+          `folder-list:${list.id}`,
         );
         if (ended) group.append(ended);
       }
@@ -12854,7 +13306,16 @@ function renderTasks(view: TasksView): void {
       taskRows.push(group);
     }
   } else {
-    if (!historyFilter) taskRows.push(...taskTreeRows(visibleTasks, view, canOperate));
+    if (!historyFilter) {
+      const treeProjection = taskTreeProjection(
+        visibleTasks,
+        treeContextCandidates,
+        preserveFilteredTreeContext,
+      );
+      taskRows.push(...taskTreeRows(treeProjection.tasks, view, canOperate, {
+        matchingTaskIds: treeProjection.matchingTaskIds,
+      }));
+    }
     const history = taskHistorySection(
       historyFilter ? visibleTasks : historyTasks,
       view,
@@ -16168,14 +16629,19 @@ void connectToApplication();
 
 export {};
 
-for (const id of ["today-expand-early", "today-expand-late"]) {
-  document.getElementById(id)?.addEventListener("click", () => {
-    toggleTodayAxisSegment(id);
-  });
-}
-
 document.getElementById("today-axis-zoom-out")?.addEventListener("click", () => adjustTodayAxisZoom(-1));
 document.getElementById("today-axis-zoom-in")?.addEventListener("click", () => adjustTodayAxisZoom(1));
+
+todayAxisFactPopupClose?.addEventListener("click", () => closeTodayAxisFactPopup());
+todayAxisFactPopup?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeTodayAxisFactPopup();
+});
+todayAxisFactPopup?.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  closeTodayAxisFactPopup();
+});
 
 todayAxisTaskPopupClose?.addEventListener("click", () => closeTodayAxisTaskPopup(true));
 todayAxisTaskPopup?.addEventListener("cancel", (event) => {
@@ -16204,3 +16670,6 @@ todayAxisTaskPopup?.addEventListener("close", () => {
 todayAxisScrollSurface?.addEventListener("scroll", positionTodayAxisTaskPopup, { passive: true });
 workspaceInformation?.addEventListener("scroll", positionTodayAxisTaskPopup, { passive: true });
 window.addEventListener("resize", positionTodayAxisTaskPopup);
+todayAxisScrollSurface?.addEventListener("scroll", positionTodayAxisFactPopup, { passive: true });
+workspaceInformation?.addEventListener("scroll", positionTodayAxisFactPopup, { passive: true });
+window.addEventListener("resize", positionTodayAxisFactPopup);
