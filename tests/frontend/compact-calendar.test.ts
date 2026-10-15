@@ -343,6 +343,54 @@ test('Calendar keeps list and schedule fields directly expanded and clear action
   assert.deepEqual(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)),[]);
 });
 
+test('Task and Calendar schedule controls use compact fields with space below the list label',{skip:process.platform!=='darwin'},()=>{
+  const result=webKit(`
+    const task={id:'schedule-spacing',name:'Schedule spacing',content:'',date:'2026-10-14',time:'09:30',executionEnd:{date:'2026-10-14',time:'10:00'},priority:null,tagIds:[],parentTaskId:null,listId:'inbox',source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-01T12:00:00Z',modifiedAt:'2026-10-01T12:00:00Z',changes:[]};
+    const view={state:'ready',message:'',schemaVersion:1,revision:'synthetic-revision',targetBinding:'synthetic-vault',vaultName:'Synthetic Vault',vaultPath:'/tmp/Synthetic Vault',currentDate:'2026-10-14',lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false}],folders:[],tags:[],tasks:[task]};
+    const controls=form=>{
+      const list=form.querySelector('[data-task-list]'),listText=list.closest('span'),range=document.createRange();range.selectNodeContents(listText.firstChild);
+      const listTextBounds=range.getBoundingClientRect(),listBounds=list.getBoundingClientRect();
+      const fields=['[data-task-date]','[data-task-time]','[data-task-end-date]','[data-task-end-time]'].map(selector=>form.querySelector(selector));
+      return {height:fields.map(field=>field.getBoundingClientRect().height),padding:fields.map(field=>{const style=getComputedStyle(field);return [parseFloat(style.paddingTop),parseFloat(style.paddingBottom)];}),listLabelGap:listBounds.top-listTextBounds.bottom};
+    };
+    const taskEditor=taskSurfaceHarness.render(task,view).dialog;
+    taskEditor.querySelector('[data-task-list-disclosure]').open=true;taskEditor.querySelector('[data-task-schedule-disclosure]').open=true;
+    const taskControls=controls(taskEditor);
+    const month=structuredClone(sourceFixture.month),calendarView=structuredClone(sourceFixture.selected);
+    calendarHarness.render(month,calendarView);
+    document.querySelector('#calendar-task-list [data-task-editor-open="preview-0"]').click();
+    const calendarEditor=document.querySelector('#calendar-task-editor-dialog-root [data-task-editor="preview-0"]');
+    return JSON.stringify({task:taskControls,calendar:controls(calendarEditor),commands});
+  `,830,758);
+  for(const surface of [result.task,result.calendar]) {
+    assert.ok(surface.height.every((height:number)=>height>0&&height<=28),JSON.stringify(surface));
+    assert.ok(surface.padding.flat().every((padding:number)=>padding<=3.5),JSON.stringify(surface));
+    assert.ok(surface.listLabelGap>=2,JSON.stringify(surface));
+  }
+  assert.equal(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)).length,0);
+});
+
+test('Tasks rows display label names from their stable tag identities',{skip:process.platform!=='darwin'},()=>{
+  const result=webKit(`
+    const task={id:'labeled-task',name:'Task with labels',content:'',date:null,time:null,executionEnd:null,priority:null,tagIds:['tag-home','tag-work','tag-deleted'],parentTaskId:null,listId:'inbox',source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-01T12:00:00Z',modifiedAt:'2026-10-01T12:00:00Z',changes:[]};
+    const baseView={state:'ready',message:'',schemaVersion:1,revision:'synthetic-revision',targetBinding:'synthetic-vault',vaultName:'Synthetic Vault',vaultPath:'/tmp/Synthetic Vault',currentDate:'2026-10-14',lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false}],folders:[],tags:[],tasks:[task]};
+    const read=tags=>{
+      const row=taskSurfaceHarness.render(task,{...baseView,tags}).row,container=row.querySelector('.task-row-tags'),chips=[...row.querySelectorAll('.task-row-tag')];
+      const style=chips[0]?getComputedStyle(chips[0]):null;
+      return {names:chips.map(chip=>chip.textContent),parent:container?.parentElement?.className??null,elementNames:chips.map(chip=>chip.tagName),hasInteractiveChild:chips.some(chip=>chip.children.length>0),fontSize:style?.fontSize??null,maxWidth:style?.maxWidth??null,minWidth:style?.minWidth??null,overflowWrap:style?.overflowWrap??null};
+    };
+    const initial=read([{id:'tag-home',name:'Home'},{id:'tag-work',name:'Work'}]);
+    const renamed=read([{id:'tag-home',name:'Home'},{id:'tag-work',name:'Projects'}]);
+    const deleted=read([{id:'tag-home',name:'Home'}]);
+    return JSON.stringify({initial,renamed,deleted,tagIds:task.tagIds,commands});
+  `,969,723);
+  assert.deepEqual(result.initial,{names:['Home','Work'],parent:'task-row-title-line',elementNames:['SPAN','SPAN'],hasInteractiveChild:false,fontSize:'9.92px',maxWidth:'100%',minWidth:'0px',overflowWrap:'anywhere'});
+  assert.deepEqual(result.renamed.names,['Home','Projects']);
+  assert.deepEqual(result.deleted.names,['Home']);
+  assert.deepEqual(result.tagIds,['tag-home','tag-work','tag-deleted']);
+  assert.equal(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)).length,0);
+});
+
 test('Tasks opens directly on spaced Content and leaves Add subtask visible beside the collapsed relationship disclosure',{skip:process.platform!=='darwin'},()=>{
   const result=webKit(`
     const task={id:'synthetic-parent',name:'Synthetic parent task',content:'Synthetic editable context stays in its own content field.',date:'2026-10-14',time:'09:30',executionEnd:null,priority:'medium',tagIds:[],parentTaskId:null,listId:'inbox',source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-01T12:00:00Z',modifiedAt:'2026-10-01T12:00:00Z',changes:[]};
