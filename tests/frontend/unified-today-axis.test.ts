@@ -271,6 +271,25 @@ test("Morning shows the same current arrangement as Daytime without a baseline s
   assert.match(main, /const evidence = view\.evidence/);
 });
 
+test("Morning associates duplicate arrangement labels with distinct source-ordered times before sorting", { skip: process.platform !== "darwin" }, () => {
+  const result = render(`
+    const duplicate=(sourceKey)=>({period:'下午',title:'重复安排',detail:'保留相同原文',sourceKey});
+    const axis=(startMinute)=>({...entry('重复安排 保留相同原文',startMinute),period:'下午',title:'重复安排',planPrecision:'exactPoint'});
+    currentTodayView={...currentTodayView,timeline:[duplicate('first'),duplicate('second'),duplicate('third')],timeAxis:{
+      currentArrangement:[axis(840),axis(480),axis(480)],confirmedFacts:[],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
+    const before=JSON.stringify({timeline:currentTodayView.timeline,timeAxis:currentTodayView.timeAxis});
+    const rendered=[];
+    const original=todayTimelineItem;
+    todayTimelineItem=block=>{rendered.push(block.sourceKey);return document.createElement('li');};
+    renderTodayTimeline(currentTodayView);
+    todayTimelineItem=original;
+    const after=JSON.stringify({timeline:currentTodayView.timeline,timeAxis:currentTodayView.timeAxis});
+    return JSON.stringify({rendered,unchanged:before===after});
+  `);
+  assert.deepEqual(result.rendered, ['second','third','first']);
+  assert.equal(result.unchanged, true, 'duplicate matching and display sorting leave source objects untouched');
+});
+
 test("next-day live time stays concise and hour ticks do not repeat the date", { skip: process.platform !== "darwin" }, () => {
   const result = render(`
     currentTodayView={...currentTodayView,date:'2026-10-01',isToday:true,currentTime:'01:03',tasks:{lists:[],tasks:[]},timeAxis:{currentArrangement:[entry('01:00 next-day plan',1500)],confirmedFacts:[],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};

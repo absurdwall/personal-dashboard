@@ -5794,12 +5794,19 @@ function renderTodayTimeline(view: Pick<TodayView, "timeline" | "timeAxis">): vo
     ...view.timeAxis.currentArrangement,
     ...view.timeAxis.unlocatedCurrentArrangement,
   ];
+  const axisEntryQueues = new Map<string, TimeAxisEntryView[]>();
+  const axisEntryKey = (period: string | null, title: string | null | undefined, text: string): string =>
+    JSON.stringify([period, title ?? null, text]);
+  for (const entry of axisEntries) {
+    const key = axisEntryKey(entry.period, entry.title, entry.text);
+    const queue = axisEntryQueues.get(key);
+    if (queue) queue.push(entry);
+    else axisEntryQueues.set(key, [entry]);
+  }
   const ordered = view.timeline
     .map((block, index) => {
       const text = block.detail ? `${block.title} ${block.detail}` : block.title;
-      const axisEntry = axisEntries.find((entry) =>
-        entry.period === block.period && entry.title === block.title && entry.text === text,
-      );
+      const axisEntry = axisEntryQueues.get(axisEntryKey(block.period, block.title, text))?.shift();
       const startMinute = axisEntry &&
         (axisEntry.planPrecision === "exactPoint" ||
           axisEntry.planPrecision === "exactRange" ||
