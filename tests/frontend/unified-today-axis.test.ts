@@ -220,7 +220,7 @@ test("the Daytime axis shows the complete lived day at a fixed hour scale and sc
   }
 });
 
-test("Morning shows the same current arrangement as Daytime without a baseline source panel", { skip: process.platform !== "darwin" }, () => {
+test("Morning sorts broad period anchors with exact and approximate entries without changing source data", { skip: process.platform !== "darwin" }, () => {
   const result = render(`
     const morning=document.getElementById('today-phase-morning'); morning.hidden=false; document.getElementById('today-phase-daytime').hidden=true;
     const list=document.getElementById('today-baseline-timeline');
@@ -232,10 +232,11 @@ test("Morning shows the same current arrangement as Daytime without a baseline s
       block('23:00–次日01:00','跨午夜安排'),
       block('次日 00:15','夜间复核'),
       block('下午','保持宽泛'),
+      block('上午','晨间安排'),
       block('08:15','服药'),
       block('08:15','早餐'),
       block('约 14:00','散步'),
-      block('19:00','晚餐'),
+      block('20:00','晚间检查'),
       block('未定','之后再说')
     ];
     currentTodayView={...currentTodayView,timeline,timeAxis:{
@@ -244,10 +245,11 @@ test("Morning shows the same current arrangement as Daytime without a baseline s
         axis('23:00–次日01:00','跨午夜安排',1380,'exactRange',1500),
         axis('次日 00:15','夜间复核',1455,'exactPoint'),
         axis('下午','保持宽泛',780,'broad'),
+        axis('上午','晨间安排',540,'broad'),
         axis('08:15','服药',495,'exactPoint'),
         axis('08:15','早餐',495,'exactPoint'),
         axis('约 14:00','散步',840,'approximatePoint'),
-        axis('19:00','晚餐',1140,'exactPoint')
+        axis('20:00','晚间检查',1200,'exactPoint')
       ],
       confirmedFacts:[],
       unlocatedCurrentArrangement:[axis('稍后','待定',null,'unlocated'),axis('未定','之后再说',null,'unlocated')],
@@ -259,7 +261,7 @@ test("Morning shows the same current arrangement as Daytime without a baseline s
     const after=JSON.stringify({timeline:currentTodayView.timeline,timeAxis:currentTodayView.timeAxis});
     return JSON.stringify({order,unchanged:before===after,text:list.textContent,display:getComputedStyle(list.firstElementChild).display,axes:morning.querySelectorAll('.today-continuous-axis').length,source:morning.querySelector('.section-label').textContent,heading:morning.querySelector('h3').textContent,label:list.getAttribute('aria-label'),baselineStatus:document.getElementById('today-baseline-status')});
   `);
-  assert.deepEqual(result.order, ['服药','早餐','午餐','散步','晚餐','跨午夜安排','夜间复核','待定','保持宽泛','之后再说']);
+  assert.deepEqual(result.order, ['服药','早餐','晨间安排','午餐','保持宽泛','散步','晚间检查','跨午夜安排','夜间复核','待定','之后再说']);
   assert.equal(result.unchanged, true, 'display ordering never mutates the source arrangement or axis evidence');
   assert.equal(result.display, 'block');
   assert.equal(result.axes, 0);

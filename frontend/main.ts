@@ -5814,7 +5814,8 @@ function renderTodayTimeline(view: Pick<TodayView, "timeline" | "timeAxis">): vo
       const text = block.detail ? `${block.title} ${block.detail}` : block.title;
       const axisEntry = axisEntryQueues.get(axisEntryKey(block.period, block.title, text))?.shift();
       const startMinute = axisEntry &&
-        (axisEntry.planPrecision === "exactPoint" ||
+        (axisEntry.planPrecision === "broad" ||
+          axisEntry.planPrecision === "exactPoint" ||
           axisEntry.planPrecision === "exactRange" ||
           axisEntry.planPrecision === "approximatePoint")
         ? axisEntry.startMinute
