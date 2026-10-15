@@ -5057,7 +5057,7 @@ impl CollaborationApplication {
                 .then(|| operation.result_message.clone())?
         }) {
             return RuntimeDynamicToolResult {
-                success: true,
+                success: false,
                 text: message,
             };
         }
@@ -5095,7 +5095,7 @@ impl CollaborationApplication {
                         },
                         Some(item) => RuntimeDynamicToolResult {
                             text: item.result_message.clone().unwrap_or_else(|| format!("The Dashboard change was not saved (status: {}).", item.status)),
-                            success: true,
+                            success: false,
                         },
                         None => RuntimeDynamicToolResult {
                             text: "The Dashboard change result is missing from collaboration history. Check the saved result before retrying.".into(),

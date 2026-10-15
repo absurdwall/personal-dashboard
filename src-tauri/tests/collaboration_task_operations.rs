@@ -560,7 +560,25 @@ impl AppServerTransport for DynamicRuntime {
         }
         // Controlled resolver output exercises the date protocol and persisted
         // results without claiming these fixtures test model language quality.
-        let (call_id, tool, mut arguments) = if request.user_text == "apply schema replan example" {
+        let (call_id, tool, mut arguments) = if request.user_text == "execute replan with a user-authored section" {
+            (
+                "failed-replan-call",
+                "dashboard_task_operation",
+                json!({
+                    "operation":"saveDailyPlan",
+                    "transition":"daytimeReplan",
+                    "executionMode":"execute",
+                    "arrangement":[{"period":"上午","title":"Updated synthetic appointment","detail":null}],
+                    "evidence":[{"label":"Synthetic user update","items":["Retain the existing plan context"]}],
+                    "calibrationNote":null,
+                    "baselineCorrectionReason":null,
+                    "event":null,
+                    "originalIntent":"Keep the synthetic appointment",
+                    "changeReason":"Synthetic schedule adjustment",
+                    "revisedDirection":"Retain the complete synthetic plan"
+                }),
+            )
+        } else if request.user_text == "apply schema replan example" {
             let tools = self
                 .registered_tools
                 .lock()
@@ -1856,6 +1874,85 @@ fn minimal_schema_replan_example_executes_through_dashboard_writer() {
     let registered = registered_tools.lock().unwrap();
     let arguments = daily_plan_replan_example(&registered).unwrap();
     assert_eq!(arguments["arrangement"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn failed_daily_plan_business_effect_returns_failed_tool_result() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("failed-operation-vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "09:15");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    initial_fixture_plan(
+        &today,
+        "failed-operation-baseline",
+        "Synthetic existing appointment",
+    );
+    let path = record_path(&vault_path);
+    let source = fs::read_to_string(&path).unwrap();
+    let current_block = "- **上午：** Synthetic existing appointment；Synthetic fixture plan";
+    let section_start = source.find("## 今天的大致安排").unwrap();
+    let section_end = source[section_start..]
+        .find("## 计划依据")
+        .map(|offset| section_start + offset)
+        .unwrap();
+    let section = &source[section_start..section_end];
+    assert!(section.contains(current_block));
+    let current_block_end = source[section_start..]
+        .find(current_block)
+        .map(|offset| section_start + offset + current_block.len())
+        .unwrap();
+    let source = format!(
+        "{}\n\n<!-- user-authored comment -->{}",
+        &source[..current_block_end],
+        &source[current_block_end..]
+    );
+    fs::write(&path, source).unwrap();
+    let before_failed_write = fs::read(&path).unwrap();
+
+    let (application, _, results, _) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "execute replan with a user-authored section",
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let result = results.lock().unwrap().last().unwrap().clone();
+    let completed = application.session("vault-a", &session.id).unwrap();
+    assert_eq!(completed.task_operations.len(), 1);
+    assert_eq!(completed.task_operations[0].status, "failed");
+    assert!(
+        completed.task_operations[0]
+            .result_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("未写入任何内容"),
+        "{:?}",
+        completed.task_operations[0]
+    );
+    assert!(
+        !result.success,
+        "a failed Daily Record write must not be returned as a successful tool result: {}",
+        result.text
+    );
+    assert_eq!(fs::read(&path).unwrap(), before_failed_write);
+    let readback = today.read_date("2026-09-27").unwrap();
+    assert_eq!(readback.timeline[0].title, "Synthetic existing appointment");
+    assert_eq!(
+        readback.baseline.timeline[0].title,
+        "Synthetic existing appointment"
+    );
 }
 
 
