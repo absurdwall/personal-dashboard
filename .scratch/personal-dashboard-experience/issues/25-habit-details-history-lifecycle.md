@@ -4,13 +4,14 @@
 
 **Blocked by:** 24 — Habit 新增、编辑与目标设置
 
-**Status:** claimed
+**Status:** resolved
 
 **Triage:** ready-for-agent
 **ID:** PDEX-25
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** in-progress
-**Implementation:** in progress on the reimplementation branch
+**Lifecycle:** closed
+**Implementation:** complete under explicit user-authorized round acceptance; unrun checks remain documented
+**Updated:** 2026-10-14
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -104,3 +105,15 @@ after worktree creation.
   current snapshot contract. The PDEX-25 criterion for older sourced history
   remains unmet; this ticket stays claimed/in-progress pending a supported
   historical source path and PDEX-26 packaged acceptance.
+
+
+## Answer and local resolution
+
+- 2026-10-14: The user explicitly authorized resolving the complete
+  PDEX-SPEC-02 round after accepting it. This ticket is resolved by that
+  lifecycle decision. It does not represent unrun checks as passed; the
+  original acceptance checkboxes remain unchanged.
+- The current sourced snapshot exposes only a rolling 12-week external
+observation window. Older sourced/provenance observations are absent and the
+full/limited/gap history fixture matrix was not run. See the PDEX-25 row in the
+final acceptance audit.

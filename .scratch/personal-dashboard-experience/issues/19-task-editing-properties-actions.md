@@ -4,13 +4,14 @@
 
 **Blocked by:** None
 
-**Status:** claimed
+**Status:** resolved
 
 **Triage:** ready-for-agent
 **ID:** PDEX-19
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** in-progress
-**Implementation:** committed; component verification passed; packaged acceptance pending in PDEX-26
+**Lifecycle:** closed
+**Implementation:** complete under explicit user-authorized round acceptance; unrun checks remain documented
+**Updated:** 2026-10-14
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -80,3 +81,16 @@ The complete handoff commit set, in order, is
 `--no-ff` into `codex/dashboard-experience-refinement-reimplementation` by
 merge commit `5603d7ced3fa7325f1ea7c2bc83f9c475de938eb`. PDEX-19 remains
 claimed and `in-progress`; PDEX-26 owns the remaining packaged acceptance.
+
+
+## Answer and local resolution
+
+- 2026-10-14: The user explicitly authorized resolving the complete
+  PDEX-SPEC-02 round after accepting it. This ticket is resolved by that
+  lifecycle decision. It does not represent unrun checks as passed; the
+  original acceptance checkboxes remain unchanged.
+- The preserved packaged candidate evidence records Task Save with schema-4
+readback, Save→Cancel, More-open→Cancel, and content persistence after
+quit/relaunch; the display follow-up also records tag interaction. The full
+property/action/filter combination matrix remains unrun. See the PDEX-19 row
+in the final acceptance audit.

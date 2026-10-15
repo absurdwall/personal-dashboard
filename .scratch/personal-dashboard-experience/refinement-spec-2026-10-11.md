@@ -3,12 +3,12 @@
 ID: PDEX-SPEC-02
 Type: spec
 Triage: ready-for-agent
-Status: ready-for-agent
-Lifecycle: open
-Stage: local implementation in progress; packaged acceptance remains pending under PDEX-26
+Status: resolved
+Lifecycle: closed
+Stage: integrated on the local codex branch and closed under the user's 2026-10-14 acceptance; unrun checks remain explicitly recorded
 Date: 2026-10-11
 Canonical tracker: [local map](map.md)
-Working branch: codex/dashboard-experience-refinement-spec
+Working branch: codex/dashboard-experience-refinement-reimplementation
 Test boundary: 用户确认复用业务操作测试，并用打包 App 验证保存、重开、拖动和保留区域
 Publication: local Git; no GitHub publication
 
@@ -357,4 +357,32 @@ Habits 保留本周摘要和今日列表。顶部加号创建本地 Habit；点�
 - GitHub 恢复后可推送保留的分支历史，再通过 protected-main PR 处理整合；本轮不预先操作远程。Git push 只转移 Git 历史，不会自动把 Markdown tickets 发布成 GitHub Issues；若以后迁移 tracker，保留完整 body、依赖、状态、评论、验收与本地 ID→Issue 对应，并明确唯一 canonical 位置。
 - 本地发布后刷新已注册的 Management 来源，记录读回结果；不新建 Registry，不改变用户 focus/lifecycle，不因远程不可用把本地已发布规格说成未完成。
 
-总结：本规格发布的是全部已确认改善及最小必要的实施决策。实际产品、tickets、安装和接受尚待后续授权与证据。
+原始发布时的总结：本规格发布全部已确认改善及最小必要的实施决策；当时实际产品、tickets、安装和接受尚待后续授权与证据。后续实施与本轮最终结论见下方 closeout 记录。
+
+
+## Final resolution and retained limits — 2026-10-14
+
+The user authorized closing PDEX-SPEC-02 and PDEX-19–26 after accepting the
+complete round. All nine work items are now recorded as resolved/closed. This
+is a user-authorized lifecycle decision; it does not mark unchecked acceptance
+criteria or unrun checks as passed. The ticket checkboxes remain unchanged.
+
+The integrated local branch is
+codex/dashboard-experience-refinement-reimplementation, based on
+918e7e0d9c4b2c524c429bfd309482e328bc4c91. Merge commit
+526c6a3d67ea5de47f76d80469a8c4f1beba5435 retains both the primary
+acceptance-record history and accepted source history through
+58f283cac763a0f4f833f1b60bab70fd3dc969ff; no history was squashed or
+amended. Per-ticket branch and commit lineage remains in the local tracker.
+
+Concrete packaged evidence and its exact source identities are summarized in
+the final acceptance audit. The remaining unrun checks and limits are not
+waived as test results: the full per-ticket combination matrix was not
+exhausted on one frozen source; hardware dictation and Chinese IME behavior
+were not tested; official China 2027 holiday data was unavailable; and the
+available sourced Habit history covers only a rolling 12-week window, with
+the longer-history fixture matrix unrun. The final acceptance and lifecycle
+decision are recorded separately in the final completion record.
+
+No remote push, PR, protected-main merge, or new App replacement is part of
+this local closeout.

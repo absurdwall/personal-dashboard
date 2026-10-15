@@ -4,13 +4,14 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** claimed
+**Status:** resolved
 
 **Triage:** ready-for-agent
 **ID:** PDEX-21
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** in-progress
-**Implementation:** in progress on the reimplementation branch
+**Lifecycle:** closed
+**Implementation:** complete under explicit user-authorized round acceptance; unrun checks remain documented
+**Updated:** 2026-10-14
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -76,3 +77,15 @@ part of the first acceptance bullet above. It does not change the timeline
 range, data, gestures, or other screens. Implementation evidence and the
 bounded test result are recorded in the shared restart record. PDEX-21 remains
 in progress pending its other criteria and PDEX-26 packaged acceptance.
+
+
+## Answer and local resolution
+
+- 2026-10-14: The user explicitly authorized resolving the complete
+  PDEX-SPEC-02 round after accepting it. This ticket is resolved by that
+  lifecycle decision. It does not represent unrun checks as passed; the
+  original acceptance checkboxes remain unchanged.
+- The preserved packaged evidence records a saved 16:15–17:00 arrangement
+consistent between Morning and Daytime, Morning ordering, and fact-popup phase
+switching. The complete pointer, drag, edge-scroll, and cancel matrix remains
+unrun. See the PDEX-21 row in the final acceptance audit.

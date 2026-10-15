@@ -4,13 +4,14 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** claimed
+**Status:** resolved
 
 **Triage:** ready-for-agent
 **ID:** PDEX-20
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** in-progress
-**Implementation:** in progress on the reimplementation branch
+**Lifecycle:** closed
+**Implementation:** complete under explicit user-authorized round acceptance; unrun checks remain documented
+**Updated:** 2026-10-14
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -89,3 +90,14 @@ after worktree creation.
   source/style assertions to match the current Tasks/Calendar modal selector
   and compact mobile row layout. All 12 checks in `task-surface.test.ts` pass.
   Browser and packaged acceptance remain open under PDEX-26.
+
+
+## Answer and local resolution
+
+- 2026-10-14: The user explicitly authorized resolving the complete
+  PDEX-SPEC-02 round after accepting it. This ticket is resolved by that
+  lifecycle decision. It does not represent unrun checks as passed; the
+  original acceptance checkboxes remain unchanged.
+- The preserved native display follow-up records sub-tree collapse/expand.
+Every parent-link and folder CRUD, persistence, and recovery combination was
+not established. See the PDEX-20 row in the final acceptance audit.

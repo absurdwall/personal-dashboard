@@ -4,13 +4,14 @@
 
 **Blocked by:** None
 
-**Status:** claimed
+**Status:** resolved
 
 **Triage:** ready-for-agent
 **ID:** PDEX-24
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** in-progress
-**Implementation:** integrated from `codex/pdex-24-refinement-reimplementation` by no-ff merge `36a13077a3d58dbe90bcf38a0c9230d0b27d6efb`; lifecycle remains in-progress pending PDEX-26 packaged acceptance
+**Lifecycle:** closed
+**Implementation:** complete under explicit user-authorized round acceptance; unrun checks remain documented
+**Updated:** 2026-10-14
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -194,3 +195,15 @@ PDEX-26.
   and `in-progress` pending that acceptance.
 - [Integrated implementation evidence](../evidence/pdex-24-reimplementation-2026-10-13.md)
   records the merge and checks.
+
+
+## Answer and local resolution
+
+- 2026-10-14: The user explicitly authorized resolving the complete
+  PDEX-SPEC-02 round after accepting it. This ticket is resolved by that
+  lifecycle decision. It does not represent unrun checks as passed; the
+  original acceptance checkboxes remain unchanged.
+- Earlier PDEX-24 source and synthetic checks remain supporting evidence. The
+final 58f283c installation/preservation pass made no new Habit write; the full
+packaged current-source creation/edit/goal-cycle/source-refresh matrix was not
+established. See the PDEX-24 row in the final acceptance audit.

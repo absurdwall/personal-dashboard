@@ -4,13 +4,14 @@
 
 **Blocked by:** None
 
-**Status:** claimed
+**Status:** resolved
 
 **Triage:** ready-for-agent
 **ID:** PDEX-23
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** in-progress
-**Implementation:** scoped source implementation and integration committed; packaged acceptance pending
+**Lifecycle:** closed
+**Implementation:** complete under explicit user-authorized round acceptance; unrun checks remain documented
+**Updated:** 2026-10-14
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -198,3 +199,16 @@ was made to alter those baseline failures. The exact run is recorded in
 
 Lifecycle remains `in-progress`; packaged acceptance, real dictation-service
 capture and packaged persistence/readback remain outstanding under PDEX-26.
+
+
+## Answer and local resolution
+
+- 2026-10-14: The user explicitly authorized resolving the complete
+  PDEX-SPEC-02 round after accepting it. This ticket is resolved by that
+  lifecycle decision. It does not represent unrun checks as passed; the
+  original acceptance checkboxes remain unchanged.
+- Three real-account Collaboration rounds are present in the preserved
+Workflow/retro history. Hardware dictation capture, Chinese IME composition,
+and the remaining context/input combinations were not tested. The separate
+Workflow repair source remains identifiable in the merge history. See the
+PDEX-23 row in the final acceptance audit.

@@ -4,13 +4,14 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** claimed
+**Status:** resolved
 
 **Triage:** ready-for-agent
 **ID:** PDEX-22
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** in-progress
-**Implementation:** in progress on the reimplementation branch
+**Lifecycle:** closed
+**Implementation:** complete under explicit user-authorized round acceptance; unrun checks remain documented
+**Updated:** 2026-10-14
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -65,3 +66,15 @@ commit history, and local checks are recorded in
 [`pdex-22-reimplementation-2026-10-13.md`](../evidence/pdex-22-reimplementation-2026-10-13.md).
 Official China holiday data for 2027 remains unavailable in the verified source
 set, so acceptance requiring that year remains unmet.
+
+
+## Answer and local resolution
+
+- 2026-10-14: The user explicitly authorized resolving the complete
+  PDEX-SPEC-02 round after accepting it. This ticket is resolved by that
+  lifecycle decision. It does not represent unrun checks as passed; the
+  original acceptance checkboxes remain unchanged.
+- The preserved packaged evidence records Calendar-cell Cancel/layout behavior.
+Official China 2027 holiday data was unavailable, and the complete shared-Task
+create/save/readback matrix was not established. See the PDEX-22 row in the
+final acceptance audit.

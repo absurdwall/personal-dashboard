@@ -4,13 +4,14 @@
 
 **Blocked by:** 20 — Task 父子关系与清单文件夹; 21 — Today 时间轴与安排交互; 22 — Calendar 新增、详情与节日; 23 — Collaboration 空间与输入体验; 25 — Habit 详情、历史统计与停用恢复
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Triage:** ready-for-agent
 **ID:** PDEX-26
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** open
-**Implementation:** not started
+**Lifecycle:** closed
+**Implementation:** complete under explicit user-authorized round acceptance; unrun checks remain documented
+**Updated:** 2026-10-14
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -48,3 +49,16 @@ PDEX-SPEC-02 stories 1–3、88–91，以及全部功能票的组合验收。
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
+
+
+## Answer and local resolution
+
+- 2026-10-14: The user explicitly authorized resolving the complete
+  PDEX-SPEC-02 round after accepting it. This ticket is resolved by that
+  lifecycle decision. It does not represent unrun checks as passed; the
+  original acceptance checkboxes remain unchanged.
+- Concrete packaged Task, plan, sub-tree, tag, Morning-ordering, fact-popup,
+and Calendar Cancel/layout cases are preserved in the audit. The complete
+frozen-source cross-ticket matrix, migration/failure/retry combinations,
+hardware voice/IME, and official China 2027 source remain unverified or
+unavailable as specified in that audit. See the final acceptance audit.
