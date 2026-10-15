@@ -10902,6 +10902,11 @@ button.habit-cell:focus-visible {
   gap: 0.4rem;
 }
 
+.task-editor-details[data-task-surface="tasks"] .task-editor-footer-actions,
+.calendar-selected-detail .task-editor-details[data-task-surface="calendar"] .task-editor-footer-actions {
+  margin-bottom: 8px;
+}
+
 .task-editor-footer-actions > button {
   box-sizing: border-box;
   display: inline-flex;
