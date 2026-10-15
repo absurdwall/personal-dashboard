@@ -11805,6 +11805,10 @@ function taskEditor(
   ));
   title.textContent = task.name;
   title.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
+  const assignedTagIds = new Set(task.tagIds ?? []);
+  const rowTags = surface === "tasks"
+    ? (view?.tags ?? []).filter((tag) => assignedTagIds.has(tag.id) && tag.name.trim().length > 0)
+    : [];
   const taskList = view ? taskListForId(view, task.listId) : undefined;
   const listName = taskList
     ? taskListDisplayName(taskList, t("tasks.inbox"))
@@ -11826,6 +11830,19 @@ function taskEditor(
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.overdue")));
   }
   titleLine.append(title, state);
+  if (rowTags.length > 0) {
+    const tags = document.createElement("span");
+    tags.className = "task-row-tags";
+    tags.setAttribute("role", "group");
+    tags.setAttribute("aria-label", t("tasks.tags"));
+    for (const tag of rowTags) {
+      const label = document.createElement("span");
+      label.className = "task-row-tag";
+      label.textContent = tag.name;
+      tags.append(label);
+    }
+    titleLine.append(tags);
+  }
   if (task.content && surface !== "tasks") {
     const contentPreview = document.createElement("p");
     contentPreview.className = "task-row-content";
