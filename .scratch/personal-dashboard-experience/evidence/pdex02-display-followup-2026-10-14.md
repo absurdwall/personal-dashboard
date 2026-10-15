@@ -54,3 +54,17 @@ Earlier broad runs in this work session also exposed unrelated test-harness limi
 - The independent reviewer launched this durable candidate for the scoped native checks and left it on the Tasks page for the user. After unregistering the previous temporary path, the Launch Services dump resolves this bundle identifier to the durable output path; the previous temporary path no longer appears. The ordinary `/Applications/Personal Dashboard.app` was not replaced; the reviewer reported its executable hash still begins `8e43beff`. Final human confirmation and broader packaged save/readback acceptance remain open under PDEX-26.
 
 No issue lifecycle states were changed: PDEX-19–22 remain in-progress; PDEX-SPEC-02 and PDEX-26 remain open. No remote Git operation, PR, main merge, normal app install, or real Vault/profile edit occurred. The review candidate was launched only for the bounded native acceptance described above.
+
+## Production install acceptance — 2026-10-14
+
+This later checkpoint supersedes only the candidate-era statement above that the normal `/Applications/Personal Dashboard.app` had not been replaced. The independent main reviewer installed and launched the production bundle built from integration source `886ceea82155b697bd629913f4cffccfb778a336`.
+
+- Installed path: `/Applications/Personal Dashboard.app`; bundle identifier `com.tortillaflat.personal-dashboard`.
+- Installed executable SHA-256: `facce3b0f62640b85724c81ee6f786c966fd891a0cf4949d9083473b296ce93c`; previous executable SHA-256: `8e43beff6cffa2dde5a664eb4ba0182181d81e7746d8eb3c96846f43c87a0ba2`.
+- `LSEnvironment` is absent. Deep/strict code-signature verification passed. The replacement used an atomic swap and preserved the prior app for rollback.
+- The reviewer launched the installed app against the actual Tortilla Flat Vault with the existing appearance. Native Tasks and Calendar checks confirmed aligned Cancel/Save actions and the requested 8px space below the actions; Cancel exited each editor without saving. The app was left on Today, and no new personal data was saved during these checks.
+- A 6,030-file comparison found no changed Vault files. One Profile file, `collaboration/collaboration-v1.json`, differed at the byte level only because of serialization; the complete parsed JSON remained equal, including sessions, messages, and drafts.
+- The install receipt reports 39/39 existing focused checks and the production build passing. These are implementation-reported checks; this record update did not rerun them.
+- Private install receipt: [pdex-installed-spacing-repair-2026-10-14.json](</Users/tingranwang/Documents/Codex/Projectless task folder/2026-10-14/new-chat/outputs/pdex-installed-spacing-repair-2026-10-14.json>).
+
+Final human inspection of the installed app remains pending, as does the broader packaged save/readback acceptance tracked by PDEX-26. PDEX-SPEC-02 and PDEX-26 remain open; PDEX-19–22 remain in-progress. No issue lifecycle, remote Git, PR, or main-branch state changed.
