@@ -68,6 +68,7 @@ function licenseSatisfied(expression, documents) {
 
 /** Metadata must come from cargo metadata --locked --offline --filter-platform aarch64-apple-darwin. */
 export function collectRuntimeLicenses({ metadata, outputDirectory, supplementsDirectory }) {
+  if (supplementsDirectory) supplementsDirectory = path.resolve(supplementsDirectory);
   if (!path.isAbsolute(outputDirectory)) throw new Error('License output directory must be absolute');
   const crates = [];
   const pending = [];

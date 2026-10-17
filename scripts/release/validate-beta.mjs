@@ -16,6 +16,11 @@ const assert=(condition,message)=>{if(!condition) throw Error(message);};
 const run=(command,arguments_)=>execFileSync(command,arguments_,{encoding:'utf8'}).trim();
 const combined=(command,arguments_)=>{const r=spawnSync(command,arguments_,{encoding:'utf8'});if(r.status!==0) throw Error(r.stderr||r.stdout);return r.stdout+r.stderr;};
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+const privatePathMarkers=['/Users/','/private/tmp/','/tmp/pdbeta'].flatMap(value=>{
+  const utf16=Buffer.from(value,'utf16le');
+  return [Buffer.from(value),utf16,Buffer.from(utf16).swap16()];
+});
+const assertNoPrivatePath=(bytes,label)=>assert(privatePathMarkers.every(marker=>!bytes.includes(marker)),`Private path in ${label}`);
 const inventory=directory=>{
   const rows=[];
   const walk=path=>{for(const name of readdirSync(path).sort()) {const full=join(path,name),st=lstatSync(full),path_=relative(directory,full);if(st.isSymbolicLink()) rows.push({path:path_,symlink:readlinkSync(full)});else if(st.isDirectory()) walk(full);else rows.push({path:path_,size:st.size,mode:st.mode&0o777,sha256:sha(readFileSync(full))});}};
@@ -28,6 +33,7 @@ assert(JSON.stringify(embedded)===JSON.stringify(manifest),'Signed resource mani
 const plist=JSON.parse(run('/usr/bin/plutil',['-convert','json','-o','-',join(app,'Contents/Info.plist')]));
 for(const [key,value] of Object.entries({CFBundleIdentifier:release.identifier,CFBundleShortVersionString:release.version,CFBundleVersion:release.build,LSMinimumSystemVersion:release.minimumSystemVersion})) assert(plist[key]===value,`${key} differs from the declaration`);
 assert(lstatSync(executable).mode&0o111,'Main executable is not executable');
+assert(readFileSync(executable).includes(Buffer.from(manifest.sourceCommit)),'Compiled source identity differs from the signed manifest');
 const architectures=run('/usr/bin/lipo',['-archs',executable]);assert(architectures==='arm64','Candidate must contain exactly arm64');
 const dynamicDependencies=run('/usr/bin/otool',['-L',executable]).split('\n').slice(1).map(line=>line.trim().split(' ')[0]);
 assert(dynamicDependencies.every(path=>path.startsWith('/System/Library/') || path.startsWith('/usr/lib/')),'Non-system dynamic dependency requires an explicit distribution decision');
@@ -41,6 +47,7 @@ for(const row of rows) {
   assert(!forbiddenNames.test(row.path),`Unexpected bundled data/runtime: ${row.path}`);
   if(row.symlink) continue;
   const bytes=readFileSync(join(app,row.path));
+  assertNoPrivatePath(bytes,row.path);
   for(const marker of ['/Users/','/private/tmp/','/tmp/pdbeta','voice-runtime-gate.html','voice-runtime-gate.js','collaboration_voice_runtime_gate','collaboration_voice_gate_fixture']) {
     assert(!bytes.includes(Buffer.from(marker)),`Private build path or diagnostic residual ${marker} in ${row.path}`);
   }
@@ -54,8 +61,13 @@ for(const crate of licenses.crates) {
 run('/usr/bin/hdiutil',['verify',dmg]);
 const mount=join(candidate,'mount.noindex');mkdirSync(mount,{recursive:true});
 let mounted=false;
+let dmgEntries=[];
 try {
   run('/usr/bin/hdiutil',['attach','-readonly','-nobrowse','-mountpoint',mount,dmg]);mounted=true;
+  dmgEntries=readdirSync(mount).sort();
+  const allowedEntries=new Set([release.appAsset,'Applications','.DS_Store','.VolumeIcon.icns','.background','.fseventsd','.Trashes','.Spotlight-V100','.TemporaryItems']);
+  assert(dmgEntries.every(name=>allowedEntries.has(name)),'Unexpected content outside the App in the DMG');
+  for(const row of inventory(mount).filter(row=>!row.path.startsWith(`${release.appAsset}/`) && !row.symlink)) assertNoPrivatePath(readFileSync(join(mount,row.path)),`DMG ${row.path}`);
   assert(readlinkSync(join(mount,'Applications'))==='/Applications','DMG Applications drag target is missing');
   const mountedApp=join(mount,release.appAsset);
   run('/usr/bin/codesign',['--verify','--deep','--strict',mountedApp]);
@@ -67,6 +79,6 @@ const executableSha256=sha(readFileSync(executable)),dmgSha256=sha(readFileSync(
 const appInventorySha256=sha(JSON.stringify(rows));
 writeFileSync(join(candidate,'app-inventory.json'),JSON.stringify(rows,null,2)+'\n');
 writeFileSync(join(candidate,release.checksumAsset),`${dmgSha256}  ${release.dmgAsset}\n`);
-const report={schemaVersion:1,sourceCommit:manifest.sourceCommit,release,checkedAtUtc:new Date().toISOString(),host:{system:run('/usr/bin/sw_vers',['-productVersion']),build:run('/usr/bin/sw_vers',['-buildVersion']),architecture:run('/usr/bin/uname',['-m'])},checks:{bundleMetadata:'passed',architecture:'passed',dynamicDependencies:'passed',adHocSignature:'passed',privatePathAndDiagnosticScan:'passed',licenseDocuments:'passed',readOnlyDmgMount:'passed',applicationsLink:'passed',mountedAppMatchesCandidate:'passed'},dynamicDependencies,licenseCrates:licenses.crates.length,hashes:{executableSha256,appInventorySha256,dmgSha256,licenseManifestSha256:sha(readFileSync(join(app,'Contents/Resources/THIRD_PARTY_LICENSES/runtime-dependencies.json')))},notRun:['fresh macOS user installation (accepted deferral)','independent ChatGPT login (accepted deferral)','Internet-quarantine Gatekeeper installation','lower macOS runtime acceptance','replacement installation and data continuity','real model, microphone and automatic morning planning']};
+const report={schemaVersion:1,sourceCommit:manifest.sourceCommit,release,checkedAtUtc:new Date().toISOString(),host:{system:run('/usr/bin/sw_vers',['-productVersion']),build:run('/usr/bin/sw_vers',['-buildVersion']),architecture:run('/usr/bin/uname',['-m'])},checks:{bundleMetadata:'passed',architecture:'passed',dynamicDependencies:'passed',adHocSignature:'passed',privatePathAndDiagnosticScan:'passed',licenseDocuments:'passed',readOnlyDmgMount:'passed',applicationsLink:'passed',mountedAppMatchesCandidate:'passed'},dynamicDependencies,dmgEntries,licenseCrates:licenses.crates.length,hashes:{executableSha256,appInventorySha256,dmgSha256,licenseManifestSha256:sha(readFileSync(join(app,'Contents/Resources/THIRD_PARTY_LICENSES/runtime-dependencies.json')))},notRun:['fresh macOS user installation (accepted deferral)','independent ChatGPT login (accepted deferral)','Internet-quarantine Gatekeeper installation','lower macOS runtime acceptance','replacement installation and data continuity','real model, microphone and automatic morning planning']};
 writeFileSync(join(candidate,'package-validation.json'),JSON.stringify(report,null,2)+'\n');
 console.log(JSON.stringify(report,null,2));

@@ -63,12 +63,12 @@ test('a missing full license leaves no partial output', (t) => {
   assert.equal(existsSync(f.outputDirectory), false);
 });
 
-test('exact-version supplements verify VCS identity and hashes and publish their source provenance', (t) => {
+test('relative exact-version supplements verify VCS identity and hashes and publish their source provenance', (t) => {
   const f = fixture(t); f.pkg('app', [f.dep('runtime')]); f.pkg('runtime');
   writeFileSync(path.join(f.directory, 'runtime', 'LICENSE-MIT'), 'Licensed under MIT.');
   const commit = 'a'.repeat(40);
   writeFileSync(path.join(f.directory, 'runtime', '.cargo_vcs_info.json'), JSON.stringify({git: {sha1: commit}}));
-  const supplementsDirectory = path.join(f.directory, 'supplements');
+  const supplementsDirectory = path.relative(process.cwd(), path.join(f.directory, 'supplements'));
   const directory = path.join(supplementsDirectory, 'runtime-1.0.0'); mkdirSync(directory, {recursive: true});
   writeFileSync(path.join(directory, 'LICENSE-MIT.txt'), mit);
   const provenance = { name: 'runtime', version: '1.0.0', license: 'MIT', commit, documents: [{ file: 'LICENSE-MIT.txt', sourcePath: 'LICENSE-MIT.txt', url: `https://example.test/project/${commit}/LICENSE-MIT`, sha256: createHash('sha256').update(mit).digest('hex') }] };

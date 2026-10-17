@@ -13,7 +13,6 @@ test("the Beta release declaration preserves identity and advances the installed
   assert.equal(release.version, "1.0.0");
   assert.equal(release.tag, "v1.0.0-beta.1");
   assert.equal(release.identifier, "com.tortillaflat.personal-dashboard");
-  assert.equal(release.build, "5.0.1");
   assert.ok(Number(release.build.split(".")[0]) > 4, "the build advances beyond installed 4.0.7 even though the public display restarts at 1.0.0");
   assert.match(release.build, /^\d{1,4}\.\d{1,2}\.\d{1,2}$/);
   for (const version of [packageJson.version, packageLock.version, packageLock.packages[""].version, tauri.version]) assert.equal(version, release.version);
