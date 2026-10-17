@@ -128,6 +128,9 @@ type ApplicationIdentity = Readonly<{
   productName: string;
   featureArea: string;
   boundaryMessage: string;
+  displayVersion: string;
+  build: string;
+  sourceCommit: string;
 }>;
 
 declare global {
@@ -15191,6 +15194,11 @@ async function connectToApplication(): Promise<void> {
     document.title = identity.productName;
     document.querySelectorAll<HTMLElement>("[data-product-name]").forEach((element) => {
       element.textContent = identity.productName;
+    });
+    document.querySelectorAll<HTMLElement>("[data-release-version]").forEach((element) => {
+      if (identity.displayVersion && identity.build) {
+        element.textContent = `${identity.displayVersion} · ${identity.build}`;
+      }
     });
     renderWorkspaceFeatureArea(currentWorkspaceDestination);
     try {

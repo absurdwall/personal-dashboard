@@ -11434,7 +11434,7 @@ impl CodexAppServerRuntime {
     pub fn new(app_data_dir: PathBuf) -> Self {
         Self {
             working_directory: app_data_dir.join("collaboration-runtime"),
-            codex_home_dir: if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_some() {
+            codex_home_dir: if cfg!(feature = "diagnostic-voice-gate") && std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_some() {
                 std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_DATA_DIR")
                     .map(PathBuf::from)
                     .map(|root| root.join("codex-profile"))
