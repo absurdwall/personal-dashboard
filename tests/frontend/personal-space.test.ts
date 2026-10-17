@@ -19,3 +19,13 @@ test("space-creation failure translates recovery copy and preserves the OS diagn
   assert.ok(translated.includes("原有选择未更改"));
   assert.equal(localizeApplicationError(error, "en"), error);
 });
+
+test("unavailable standalone Codex explains recovery in both UI languages without rewriting its diagnostic", async () => {
+  const { localizeCollaborationDiagnostic } = await import("../../frontend/interface-language.ts");
+  const diagnostic = "/Users/synthetic/旧版 codex: Permission denied (os error 13)";
+  const error = `No compatible Codex CLI could start. Install or update the documented standalone Codex CLI, then refresh. Last check: ${diagnostic}`;
+  const translated = localizeCollaborationDiagnostic(error, "zh");
+  assert.ok(translated.startsWith("没有可启动的兼容 Codex CLI。"));
+  assert.ok(translated.endsWith(diagnostic));
+  assert.equal(localizeCollaborationDiagnostic(error, "en"), error);
+});

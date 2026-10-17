@@ -2470,7 +2470,7 @@ function renderCollaborationConnection(): void {
   let summary: string;
   let state: string;
   if (connection.error) {
-    summary = connection.error;
+    summary = localizeCollaborationDiagnostic(connection.error, currentInterfaceLanguage);
     state = "error";
   } else if (connection.authMode && connection.authMode !== "chatgpt") {
     summary = t("collaboration.connectionWrongAuth");
@@ -2483,7 +2483,7 @@ function renderCollaborationConnection(): void {
     state = "ready";
   }
   if (!connection.error && !connection.readOnlyTextTurnsAvailable) {
-    summary += ` · ${connection.textTurnUnavailableReason ?? t("collaboration.turnBlocked")}`;
+    summary += ` · ${connection.textTurnUnavailableReason ? localizeCollaborationDiagnostic(connection.textTurnUnavailableReason, currentInterfaceLanguage) : t("collaboration.turnBlocked")}`;
   }
   setRawText(collaborationConnectionStatus, summary);
   if (collaborationConnectionStatus) collaborationConnectionStatus.dataset.state = state;
@@ -2516,7 +2516,7 @@ function renderCollaborationConnection(): void {
     } else {
       setRawText(
         collaborationTurnCapability,
-        connection.textTurnUnavailableReason ?? t("collaboration.turnBlocked"),
+        connection.textTurnUnavailableReason ? localizeCollaborationDiagnostic(connection.textTurnUnavailableReason, currentInterfaceLanguage) : t("collaboration.turnBlocked"),
       );
       collaborationTurnCapability.dataset.state = "unavailable";
     }

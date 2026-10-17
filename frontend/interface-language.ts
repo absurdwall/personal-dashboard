@@ -2347,6 +2347,9 @@ export function localizeApplicationError(
   }
   const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
   if (language === "zh") {
+    if (applicationDiagnostic === "Codex CLI was not found. Install the documented standalone Codex CLI, then refresh the connection. Local features remain available.") return "找不到 Codex CLI。请按文档自行安装独立 Codex CLI，再刷新连接。本地功能仍可使用。";
+    const runtimeUnavailable = /^No compatible Codex CLI could start\. Install or update the documented standalone Codex CLI, then refresh\. Last check: ([\s\S]+)$/.exec(applicationDiagnostic);
+    if (runtimeUnavailable) return `没有可启动的兼容 Codex CLI。请按文档安装或更新独立 Codex CLI，再刷新连接。最近检查：${runtimeUnavailable[1]}`;
     const creation = /^Could not create personal space: ([\s\S]+)\. Choose a new folder name in a writable location\. Existing folders are never converted or overwritten; the previous selection is unchanged\.$/.exec(applicationDiagnostic);
     if (creation) return `无法新建个人空间：${creation[1]}。请在可写位置使用新的文件夹名称。不会转换或覆盖已有文件夹；原有选择未更改。`;
     const incomplete = /^([\s\S]+)\. Personal space setup did not complete; the previous selection is unchanged\. Any newly added content was preserved\.$/.exec(applicationDiagnostic);
