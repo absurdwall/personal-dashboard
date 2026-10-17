@@ -30,6 +30,9 @@ cleanup() {
     kill -TERM "$app_pid"
     wait "$app_pid" 2>/dev/null || true
   fi
+  if [[ -n "$app_bundle" && -d "$app_bundle" ]]; then
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$app_bundle" >/dev/null 2>&1 || true
+  fi
   if [[ -n "$acceptance_directory" && -d "$acceptance_directory" ]]; then
     case "$acceptance_directory" in
       /tmp/personal-dashboard-packaged-launch.* | /private/tmp/personal-dashboard-packaged-launch.*)
@@ -44,7 +47,8 @@ trap cleanup EXIT
 [[ -d "$source_app_bundle" ]] || fail "missing application bundle at $source_app_bundle"
 
 acceptance_directory="$(mktemp -d /tmp/personal-dashboard-packaged-launch.XXXXXX)"
-acceptance_directory="$(cd "$acceptance_directory" && pwd -P)"
+mv "$acceptance_directory" "$acceptance_directory.noindex"
+acceptance_directory="$(cd "$acceptance_directory.noindex" && pwd -P)"
 app_bundle="$acceptance_directory/Personal Dashboard.app"
 /usr/bin/ditto "$source_app_bundle" "$app_bundle"
 app_executable="$app_bundle/Contents/MacOS/personal-dashboard"

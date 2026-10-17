@@ -12,10 +12,10 @@ existing_profile_root="${PERSONAL_DASHBOARD_VOICE_GATE_DATA_DIR:-$HOME/Library/A
   exit 1
 }
 cat > "$gate_root/window.json" <<'JSON'
-{"app":{"windows":[{"label":"main","title":"Personal Dashboard voice gate","url":"voice-runtime-gate.html","width":960,"height":720}]}}
+{"build":{"beforeBuildCommand":"npm run build:voice-gate"},"app":{"windows":[{"label":"main","title":"Personal Dashboard voice gate","url":"voice-runtime-gate.html","width":960,"height":720}]}}
 JSON
 cd "$repository_root"
-npm run tauri -- build --bundles app --config "$gate_root/window.json"
+npm run tauri -- build --features diagnostic-voice-gate --bundles app --config "$gate_root/window.json"
 target_directory="${CARGO_TARGET_DIR:-$repository_root/src-tauri/target}"
 source_bundle="$target_directory/release/bundle/macos/Personal Dashboard.app"
 app_bundle="$gate_root/Personal Dashboard.app"

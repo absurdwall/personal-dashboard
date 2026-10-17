@@ -155,6 +155,9 @@ remove_acceptance_directory() {
   [[ -n "$directory" && -d "$directory" ]] || return 0
   case "$directory" in
     /tmp/personal-dashboard-ipc.* | /private/tmp/personal-dashboard-ipc.*)
+      if [[ -d "$directory/Personal Dashboard.app" ]]; then
+        /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$directory/Personal Dashboard.app" >/dev/null 2>&1 || true
+      fi
       find "$directory" -depth -delete
       ;;
     *)
@@ -277,7 +280,8 @@ run_bounded_scenario() {
   started_monotonic_millis="$(monotonic_millis)"
   supervision_directory="$(mktemp -d /tmp/personal-dashboard-ipc.XXXXXX)" ||
     fail "could not create packaged ${scenario} supervision directory"
-  supervision_directory="$(cd "$supervision_directory" && pwd -P)" ||
+  mv "$supervision_directory" "$supervision_directory.noindex"
+  supervision_directory="$(cd "$supervision_directory.noindex" && pwd -P)" ||
     fail "could not resolve packaged ${scenario} supervision directory"
   PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
     PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS="$scenario_budget_seconds" \
@@ -460,7 +464,8 @@ if [[ -n "${PERSONAL_DASHBOARD_ACCEPTANCE_DIRECTORY:-}" ]]; then
   acceptance_directory_owned_by_supervisor=1
 else
   acceptance_directory="$(mktemp -d /tmp/personal-dashboard-ipc.XXXXXX)"
-  acceptance_directory="$(cd "$acceptance_directory" && pwd -P)"
+  mv "$acceptance_directory" "$acceptance_directory.noindex"
+  acceptance_directory="$(cd "$acceptance_directory.noindex" && pwd -P)"
 fi
 app_bundle="$acceptance_directory/Personal Dashboard.app"
 acceptance_data_directory="$acceptance_directory/profile"
