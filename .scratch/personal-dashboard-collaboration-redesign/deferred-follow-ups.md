@@ -22,6 +22,15 @@ inspection: the reviewer observed two Work history panels collapsed by default.
 Further real examples may refine presentation and execution quality; this
 iteration does not redesign the accepted conversation model.
 
+## October 17 InitialPlan repair
+
+The user's explicit diagnosis-and-fix request resumes the bounded InitialPlan
+reliability follow-up. [Repair evidence](evidence/initial-plan-contract-2026-10-17.md)
+records the code-mode description gap, automatic schema mismatch, field-level
+recovery repair and real Luna automatic/manual saves in synthetic Vaults.
+Installed-app replacement and recovery of the personal day's plan remain separate
+from these checks. Other deferred work and the closed parent retain their status.
+
 ## October 10 follow-up design exploration
 
 The user accepts Personal Retro's current functional path and defers content

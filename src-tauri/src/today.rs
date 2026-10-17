@@ -993,13 +993,15 @@ impl DailyPlanWriteInput {
 
         match self.transition {
             DailyPlanTransition::InitialPlan | DailyPlanTransition::MorningCalibration => {
-                if self.event.is_some()
-                    || self.baseline_correction_reason.is_some()
-                    || self.original_intent.is_some()
-                    || self.change_reason.is_some()
-                    || self.revised_direction.is_some()
-                {
-                    return Err("所选计划操作包含不适用的事实或重排字段。".into());
+                let inapplicable: Vec<&str> = [
+                    ("event", &self.event),
+                    ("baselineCorrectionReason", &self.baseline_correction_reason),
+                    ("originalIntent", &self.original_intent),
+                    ("changeReason", &self.change_reason),
+                    ("revisedDirection", &self.revised_direction),
+                ].into_iter().filter_map(|(name, value)| value.is_some().then_some(name)).collect();
+                if !inapplicable.is_empty() {
+                    return Err(format!("所选计划操作包含不适用字段：{}。将这些字段省略或设为 null；保留有效的 arrangement 和 evidence。", inapplicable.join(", ")));
                 }
                 if self.transition == DailyPlanTransition::InitialPlan
                     && self.calibration_note.is_some()

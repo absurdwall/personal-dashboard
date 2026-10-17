@@ -9979,6 +9979,10 @@ fn collaboration_task_tool_spec(
             variant["properties"]["operation"]["description"] = json!(usage::description("tool.automaticInitialPlan"));
             variant["properties"]["transition"]["enum"] = json!(["initialPlan"]);
             variant["properties"]["transition"]["description"] = json!(usage::description("tool.automaticInitialPlan"));
+            variant["properties"].as_object_mut().expect("operation properties").retain(|name, _| {
+                matches!(name.as_str(), "operation" | "transition" | "arrangement" | "evidence")
+            });
+            variant["required"] = json!(["operation", "transition", "arrangement", "evidence"]);
         }
     }
     let alternatives = defs;
@@ -9986,6 +9990,25 @@ fn collaboration_task_tool_spec(
         usage::description("tool.taskOperation")
     } else {
         usage::description("tool.automaticInitialPlan")
+    };
+    // oneOf tools may be rendered as args: unknown in code-mode clients.
+    // Keep the initial-plan contract and an executable example discoverable
+    // in the top-level description as well as in the parameter schema.
+    let description = if daily_plan_operations_available {
+        let mut example = json!({
+            "operation":"saveDailyPlan", "transition":"initialPlan",
+            "arrangement":[
+                {"period":"later today", "title":"Review one pending task", "detail":null},
+                {"period":"evening", "title":"Brief review and rest", "detail":null}
+            ],
+            "evidence":[{"label":"Current sources", "items":["No activity confirmed; Habit completion remains unknown"]}]
+        });
+        if include_manual_fields {
+            example["executionMode"] = json!("execute");
+        }
+        format!("{description}\n\n{} Minimal valid InitialPlan payload: {example}", usage::description("dailyRecord.initialPlan"))
+    } else {
+        description.to_owned()
     };
     json!({
         "name": COLLABORATION_TASK_TOOL,
