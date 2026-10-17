@@ -1,5 +1,8 @@
 # 06: 保存 Task 计划执行时间段并兼容现有入口
 
+> Canonical tracker: [PDEX-06 · GitHub #95](https://github.com/absurdwall/personal-dashboard/issues/95). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户从真实 Task 编辑入口设置计划执行的起止时间，重开后仍保留；三个页面读同一 Task，现有对话和离线入口更新任务也不会丢失时段。
 
 **Blocked by:** None

@@ -1,5 +1,8 @@
 # 13: Today 未定位条目栏自动收起与手动抽屉
 
+> Canonical tracker: [PDEX-13 · GitHub #102](https://github.com/absurdwall/personal-dashboard/issues/102). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **ID:** PDEX-13
 **Type:** ticket
 **Parent:** [PDEX-FOLLOWUP-01](../followup-spec-2026-10-11.md)

@@ -1,5 +1,8 @@
 # Collaboration, toolbar and compact schedule polish
 
+> Canonical tracker: [PDEX-FOLLOWUP-03 · GitHub #74](https://github.com/absurdwall/personal-dashboard/issues/74). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-FOLLOWUP-03  
 Type: spec  
 Status: resolved

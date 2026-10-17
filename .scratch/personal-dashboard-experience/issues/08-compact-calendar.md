@@ -1,5 +1,8 @@
 # 08: Calendar 完整紧凑月历与记录状态
 
+> Canonical tracker: [PDEX-08 · GitHub #97](https://github.com/absurdwall/personal-dashboard/issues/97). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户在当前窗口看到整月等高日期格和最多四行预览，通过日期旁的小标记区分记录/复盘状态，并能进入完整日期详情。
 
 **Blocked by:** None

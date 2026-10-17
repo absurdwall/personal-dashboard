@@ -10,6 +10,19 @@ run between writes. Follow GitHub's retry instructions if rate limited.
 This is a per-project pacing convention; it does not require a cross-project
 queue or a local hourly write counter.
 
+## Current tracker after the 2026-10-17 migration
+
+GitHub Issues now owns live state for both the Dashboard experience and
+Collaboration redesign initiatives. Their 46 original records were imported
+with full bodies, stable IDs, original dates, native parent/blocker links and
+verified closeout dispositions. See the [canonical ID mapping](../../.scratch/personal-dashboard-remote-return-2026-10-17/github-issue-mapping.md).
+
+The two scoped local-only sections below retain historical authorization and
+preservation rules. Their local-only mode has ended; they no longer prohibit
+GitHub operations. Existing Markdown remains supporting history, not a second
+executable queue. PDCR-03/12 are closed-deferred and PDCR-11 closed-retired as
+unnecessary under the user's October 17 decision; no unrun check became a pass.
+
 ## Scoped local tracker: dashboard experience improvements
 
 On 2026-10-10 the user explicitly chose local-only publication, tickets and

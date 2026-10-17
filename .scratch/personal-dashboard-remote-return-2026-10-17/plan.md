@@ -1,6 +1,6 @@
 # Personal Dashboard — GitHub return plan · 2026-10-17
 
-Status: local preparation; remote execution has not started.
+Status: archive preservation and 46-record GitHub migration verified. PRs #67/#68 are merged; final integration and branch cleanup follow [PR #69](https://github.com/absurdwall/personal-dashboard/pull/69). See the [publication receipt](publication-receipt.json) and [canonical issue mapping](github-issue-mapping.md).
 
 ## Confirmed decisions
 
@@ -111,6 +111,17 @@ Status: local preparation; remote execution has not started.
 - No dependency/service/deployment addition, App replacement, personal data
   write, Dida test, voice capture or extra acceptance round is part of this
   publication/cleanup plan.
-- As of this preparation record, no remote tag/branch/issue/PR write, main merge
-  or branch deletion has occurred. Local tracker state remains canonical until
-  the GitHub migration is actually confirmed.
+- The sequence above retains the original execution plan. Archives and issue
+  migration are now confirmed, and GitHub is canonical. PR #69 and final native
+  refs provide the authoritative final integration/cleanup state; this record
+  is committed before that PR merges.
+
+## Verified execution checkpoint
+
+The repair #66 is closed under direct user authorization. Its final report
+confirms 537 frontend passes, zero failures/skips and independent Standards/Spec
+reviews with no findings. The actual archive inventory expanded to 38 feature
+branches after that repair; 39 remote archive tags (including the existing
+local prototype tag) were verified through a fresh fetch. All 46 historical
+records are published, closed and fully mapped with native relationships.
+Later publication-record changes do not alter the verified product objects.

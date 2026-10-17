@@ -1,5 +1,8 @@
 # 10: 在 Dashboard 完成 personal retro
 
+> Canonical tracker: [PDCR-10 · GitHub #87](https://github.com/absurdwall/personal-dashboard/issues/87). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户输入 /retro 或自然语言后，得到指定期间的计划/实际、Task 和 Habit
 分析、资料缺口、来源链接与可采用的建议。
 

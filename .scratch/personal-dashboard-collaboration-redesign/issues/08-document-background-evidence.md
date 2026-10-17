@@ -1,5 +1,8 @@
 # 08: 许可文档与背景更新保留可核验的修改
 
+> Canonical tracker: [PDCR-08 · GitHub #85](https://github.com/absurdwall/personal-dashboard/issues/85). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 已有固定操作不足时，Agent 可在许可 Vault 范围窄改普通文档，或
 通过既有 managed 操作更新用户背景；回复、读回和 evidence 能说明实际改了什么。
 

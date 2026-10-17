@@ -1,5 +1,8 @@
 # 21: Today 时间轴与安排交互
 
+> Canonical tracker: [PDEX-21 · GitHub #110](https://github.com/absurdwall/personal-dashboard/issues/110). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 在Today落实紧凑日间概览、精细放大、完整lived-day入口、就近Task浮窗和点击不跳；卡片适配及重叠可选。精确和可靠绑定的宽泛安排都可拖动，原“下午”不被默认anchor改写，主动拖动后保存近似时刻，当前安排编辑/取消保留早间基准。
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口

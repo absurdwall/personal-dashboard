@@ -1,5 +1,8 @@
 # 26: 整合与真实 App 验收
 
+> Canonical tracker: [PDEX-26 · GitHub #115](https://github.com/absurdwall/personal-dashboard/issues/115). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 把已验证功能整合为源码commit绑定的实际App候选，验证跨功能、保存重开、真实拖动、升级兼容与宽窄窗口；对照基线检查未要求区域保留，形成可审阅的自动/界面验收结果、限制和本地Git交接。安装与父spec关闭保持独立。
 
 **Blocked by:** 20 — Task 父子关系与清单文件夹; 21 — Today 时间轴与安排交互; 22 — Calendar 新增、详情与节日; 23 — Collaboration 空间与输入体验; 25 — Habit 详情、历史统计与停用恢复

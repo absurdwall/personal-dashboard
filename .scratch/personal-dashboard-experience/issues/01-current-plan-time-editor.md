@@ -1,5 +1,8 @@
 # 01: 在白天手动编辑具体计划并可靠保存
 
+> Canonical tracker: [PDEX-01 · GitHub #90](https://github.com/absurdwall/personal-dashboard/issues/90). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户点击 Current arrangement 的具体时间项目，使用时间编辑改变时点、起止或结束时间；保存到对应 Daily Record 后界面读回一致，重开仍正确。普通修改只更新当前安排和白天修订。
 
 **Blocked by:** None

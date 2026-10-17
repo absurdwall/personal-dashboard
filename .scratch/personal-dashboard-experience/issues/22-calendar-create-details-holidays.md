@@ -1,5 +1,8 @@
 # 22: Calendar 新增、详情与节日
 
+> Canonical tracker: [PDEX-22 · GitHub #111](https://github.com/absurdwall/personal-dashboard/issues/111). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 保留原月历、右侧日期回顾和下方当日任务，在顶部加号新建Task并带入所选日期，点Task浮窗编辑、背景不跳；同时用本地可关闭设置提供中国/美国节日轻量标注，不扩大月历占地或产生业务记录。
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口

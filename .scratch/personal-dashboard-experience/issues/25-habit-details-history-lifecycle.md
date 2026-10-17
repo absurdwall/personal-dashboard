@@ -1,5 +1,8 @@
 # 25: Habit 详情、历史统计与停用恢复
 
+> Canonical tracker: [PDEX-25 · GitHub #114](https://github.com/absurdwall/personal-dashboard/issues/114). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 点左侧Habit才在右侧显示单项详情并可回到原今日列表，展示本月/累计达标天、当前/最高连续、历史记录和已有编辑入口；一起提供停用、查看停用与恢复，保留历史和目标，连续统计正确处理活动间隔与来源覆盖。
 
 **Blocked by:** 24 — Habit 新增、编辑与目标设置

@@ -1,5 +1,8 @@
 # 01: 用统一 usage skill 完成并核验一条白天记录
 
+> Canonical tracker: [PDCR-01 · GitHub #78](https://github.com/absurdwall/personal-dashboard/issues/78). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户自然描述白天发生的事实，Agent 从统一 skill 获得实际可用能力，
 使用既有业务操作保存到正确 Daily Record，并如实报告结果。
 

@@ -1,5 +1,8 @@
 # 23: Collaboration 空间与输入体验
 
+> Canonical tracker: [PDEX-23 · GitHub #112](https://github.com/absurdwall/personal-dashboard/issues/112). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 一起改善消息、输入、背景和语音的空间配合：保留A/C认可的聊天空间，context采用限高独立滚动的浮层并可就地收起；语音在输入下方预览、停止后进可编辑草稿；slash只落实多候选上下选择，其他输入和真实执行语义保持。
 
 **Blocked by:** None

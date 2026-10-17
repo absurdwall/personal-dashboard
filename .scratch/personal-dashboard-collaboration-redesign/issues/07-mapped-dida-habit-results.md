@@ -1,5 +1,8 @@
 # 07: 映射 Dida Habit 与 snapshot 的独立结果
 
+> Canonical tracker: [PDCR-07 · GitHub #84](https://github.com/absurdwall/personal-dashboard/issues/84). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 现有映射 Habit 可按既有默认 scope 分别处理本地与 Dida completion；
 一端失败、未知或刷新失败时，另一端成功仍清楚成立。
 

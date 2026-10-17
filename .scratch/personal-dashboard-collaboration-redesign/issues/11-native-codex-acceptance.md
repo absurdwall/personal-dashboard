@@ -1,5 +1,8 @@
 # 11: 真实 Codex 与 app 内完整交互验收
 
+> Canonical tracker: [PDCR-11 · GitHub #88](https://github.com/absurdwall/personal-dashboard/issues/88). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 对完整候选 app 进行可回看的本地/packaged 验收，证明真实 Codex 的
 工作、保存、页面、reopen、两个 retro 与现有输入功能一致。
 

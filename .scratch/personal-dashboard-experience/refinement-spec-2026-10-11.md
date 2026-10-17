@@ -1,5 +1,8 @@
 # Personal Dashboard — 本轮体验改善与任务、习惯能力补齐
 
+> Canonical tracker: [PDEX-SPEC-02 · GitHub #77](https://github.com/absurdwall/personal-dashboard/issues/77). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-SPEC-02
 Type: spec
 Triage: ready-for-agent

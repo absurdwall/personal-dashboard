@@ -1,0 +1,305 @@
+{
+  "date": "2026-10-17",
+  "stage": "Verified archives and issue migration; final product merge/branch cleanup follows native PR 69 state",
+  "productPRs": [
+    {
+      "number": 67,
+      "url": "https://github.com/absurdwall/personal-dashboard/pull/67",
+      "mergeCommit": "3baa97185487913e82dbbbd56f9595d9c1626ca8"
+    },
+    {
+      "number": 68,
+      "url": "https://github.com/absurdwall/personal-dashboard/pull/68",
+      "mergeCommit": "c52c256cd5c15ef9309a5ff492baa33cecd2101a"
+    },
+    {
+      "number": 69,
+      "url": "https://github.com/absurdwall/personal-dashboard/pull/69",
+      "finalMergeState": "Read native GitHub PR state; this receipt is committed before its merge."
+    }
+  ],
+  "archives": {
+    "remoteTagsVerified": 39,
+    "annotatedBranchTags": 38,
+    "existingPrototypeTagType": "lightweight; original identity retained",
+    "freshBareFetchVerified": true,
+    "branchTipsRecoverable": 39
+  },
+  "archivedBranches": [
+    {
+      "branch": "codex/dashboard-experience-integration",
+      "sha": "8a0dba083c4cbcb2707e97661a0a23ff82c4f920",
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-integration",
+      "accepted": true
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement",
+      "sha": "e6bdb514c6733a98949012e1d42a9cda3b0e3eec",
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement",
+      "accepted": false
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-integration",
+      "sha": "cd961839a063ed3aec86afdef2a23b7b94b2cfc8",
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-integration",
+      "accepted": false
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-reimplementation",
+      "sha": "e2102da84792bfe1f36d30cac467cc176c229fb6",
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-reimplementation",
+      "accepted": true
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-restart-20261014",
+      "sha": "6caa665b331bdd1928a4b391f9e189021a21e7d1",
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-restart-20261014",
+      "accepted": false
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-review-fixes",
+      "sha": "485c9c8e97cd1ec5aaf08c390ad0c346283f2678",
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-review-fixes",
+      "accepted": false
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-spec",
+      "sha": "918e7e0d9c4b2c524c429bfd309482e328bc4c91",
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-spec",
+      "accepted": true
+    },
+    {
+      "branch": "codex/frontend-regression-66-20261017",
+      "sha": "6135e046b2ce539b94535262ee6c0fae96da2a38",
+      "archiveTag": "archive/remote-return-20261017/codex/frontend-regression-66-20261017",
+      "accepted": true
+    },
+    {
+      "branch": "codex/initial-plan-contract-repair-20261017",
+      "sha": "1bbdd1f2d726abeeb5252d237418f3c6248b17cd",
+      "archiveTag": "archive/remote-return-20261017/codex/initial-plan-contract-repair-20261017",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-19-refinement",
+      "sha": "162067f1169bfc6bfcf2a537eacc850f8ced275a",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-19-refinement",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-19-refinement-reimplementation",
+      "sha": "60fc6d93d2a1cc556e1b259f6bef1e4c5ddfcdf2",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-19-refinement-reimplementation",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-19-restart",
+      "sha": "2c4ed69beaa24040488ff8b641d595112be641f5",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-19-restart",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-20-refinement",
+      "sha": "51ba75ff3d0640cc7fa2036b6aaffa777caddcf8",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-20-refinement",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-20-refinement-reimplementation",
+      "sha": "d25ab0c0d11d568c5d73c4a6c6e438098120f7fe",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-20-refinement-reimplementation",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-20-restart",
+      "sha": "5a842c5910793cda8ce1ca54da354ca2bcc07ee4",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-20-restart",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-21-refinement",
+      "sha": "6b6814dd7f1702ca276db7f17f6f09cc3abcc1a1",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-21-refinement",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-21-refinement-reimplementation",
+      "sha": "784aafb2b94d9cd3295311673b86e343b33b6617",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-21-refinement-reimplementation",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-21-restart",
+      "sha": "d733c4a71cb8648e43bf0bf25dc58452f1c7ad9a",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-21-restart",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-22-refinement",
+      "sha": "380d160a6cb6d80e5afd5294e318f53edb10636d",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-22-refinement",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-22-refinement-reimplementation",
+      "sha": "cd49d52315e825538da690992d495b05af86a97b",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-22-refinement-reimplementation",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-22-restart",
+      "sha": "29ea637e932876e377ae37c8402d01240ba2c1b2",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-22-restart",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-23-refinement",
+      "sha": "2aa96b4d3ea1ce6f7847a44a978ba8d53eee254b",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-23-refinement",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-23-refinement-reimplementation",
+      "sha": "00e518d7e2c2f4b92333b863f7a54fb364c98bd8",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-23-refinement-reimplementation",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-23-restart",
+      "sha": "2457a2d7a622d539129e9331e536cb066a3d2c82",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-23-restart",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-24-refinement",
+      "sha": "d5632592765a189dc69f02b607b9a05b6b5e2131",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-24-refinement",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-24-refinement-reimplementation",
+      "sha": "fdc401c58e1ba094dca5b47721ef74333dd34613",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-24-refinement-reimplementation",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-24-restart",
+      "sha": "01cf3192a99b231b924877c979a8db88cc40df15",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-24-restart",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-25-refinement",
+      "sha": "f645827632044c9df1dab64cce8d4c0905eef417",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-25-refinement",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-25-refinement-reimplementation",
+      "sha": "1ef70ccb388a804e776a5746b607ddcc3ea4f0da",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-25-refinement-reimplementation",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-25-restart",
+      "sha": "b254d0b7f47ad34c83514d816692e14775ae75c9",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-25-restart",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-26-refinement",
+      "sha": "8c03b9c2dad735c3273d881d45e4e04ab13da43b",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-26-refinement",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-26-restart",
+      "sha": "36c85f8a414b566059cbb995034bf08bdf50054c",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-26-restart",
+      "accepted": false
+    },
+    {
+      "branch": "codex/pdex-collaboration-workflow-repair-20261014",
+      "sha": "58f283cac763a0f4f833f1b60bab70fd3dc969ff",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-collaboration-workflow-repair-20261014",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-review-repairs",
+      "sha": "9bb8e14953b52034a02c29ad9b04aabe5b346333",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-review-repairs",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex-visual-acceptance-repairs-20261014",
+      "sha": "b8c34b2f9172643142eeb874e9531c1373287356",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-visual-acceptance-repairs-20261014",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex19-row-refinement-followup-20261014",
+      "sha": "19b530e154868a90345dfc19ebbe02fc97301019",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex19-row-refinement-followup-20261014",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex20-tree-collapse-followup-20261014",
+      "sha": "19b530e154868a90345dfc19ebbe02fc97301019",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex20-tree-collapse-followup-20261014",
+      "accepted": true
+    },
+    {
+      "branch": "codex/pdex21-review-followup-20261014",
+      "sha": "19b530e154868a90345dfc19ebbe02fc97301019",
+      "archiveTag": "archive/remote-return-20261017/codex/pdex21-review-followup-20261014",
+      "accepted": true
+    },
+    {
+      "branch": "main",
+      "sha": "a4594a151126465cc3d76038364dd696461778ec",
+      "archiveTag": null,
+      "accepted": true
+    }
+  ],
+  "privateBackup": {
+    "relativeToHome": "~/.codex/backups.noindex/personal-dashboard/github-return-20261017-134304",
+    "allRefBundleVerified": true,
+    "ignoredScratchFilesPreserved": 95,
+    "stashAndCodexRecoveryRefs": "private only; excluded from public push"
+  },
+  "publicHistoryReview": {
+    "textBlobsScanned": 2198,
+    "historicalImageBlobsReviewed": 49,
+    "credentialCandidateDisposition": "Two historical blobs matched substrings of synthetic task-tag identifiers; no credential candidate remained."
+  },
+  "issue66": {
+    "number": 66,
+    "state": "closed",
+    "stateReason": "completed",
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/66",
+    "bodyVerified": true
+  },
+  "historicalMigration": {
+    "records": 46,
+    "specs": 8,
+    "tickets": 38,
+    "parentsVerified": 38,
+    "blockingEdgesVerified": 35,
+    "completedReason": 43,
+    "notPlannedReason": 3,
+    "mapping": "issue-migration-manifest.json"
+  },
+  "validation": {
+    "productSource": "047f877a8a1c3d02c8ea8b980c592286dc1fc3c8",
+    "frontend": {
+      "pass": 537,
+      "fail": 0,
+      "skip": 0
+    },
+    "build": "passed",
+    "independentStandardsFindings": 0,
+    "independentSpecFindings": 0,
+    "subsequentChanges": "publication records only"
+  },
+  "remainingBoundary": "Existing older open issues, installed App and personal Vault/profile are unchanged by this publication."
+}

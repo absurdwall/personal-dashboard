@@ -1,5 +1,5 @@
 {
-  "status": "inventory only; no tags created or pushed",
+  "status": "Original planning inventory retained; actual expanded publication inventory and fresh-fetch verification are in publication-receipt.json",
   "snapshotHead": "f9e194edf6cc354ba1d3d0e0e40b79c635b99427",
   "rule": "Preserve the inventoried tips. Refresh this manifest if any branch advances; the publication preparation commit itself is additionally retained by PR 3 and its final archive checkpoint.",
   "branches": [
@@ -237,5 +237,6 @@
     "existing stash",
     "Codex snapshot/turn-diff refs",
     "ignored private evidence and runtime exports"
-  ]
+  ],
+  "publicationReceipt": "publication-receipt.json"
 }

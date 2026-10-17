@@ -1,5 +1,8 @@
 # 03: 保持早间文字与可读的统一白天时间轴
 
+> Canonical tracker: [PDEX-03 · GitHub #92](https://github.com/absurdwall/personal-dashboard/issues/92). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** Morning 是文字安排；Daytime 的计划、定时 Task 与事实使用一条刻度，冲突时临时并排，不冲突时整行，在常用和窄窗口里都能阅读、定位和选中。
 
 **Blocked by:** None

@@ -1,5 +1,8 @@
 # PDEX-FOLLOWUP-02: Docked sidebars and compact schedule
 
+> Canonical tracker: [PDEX-FOLLOWUP-02 · GitHub #73](https://github.com/absurdwall/personal-dashboard/issues/73). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-FOLLOWUP-02
 Type: spec
 Status: resolved

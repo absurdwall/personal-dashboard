@@ -3,7 +3,7 @@
 ID: PDCR-MAP
 Type: map
 Date: 2026-10-09
-Canonical: this local tracker, explicitly selected by the user
+Canonical: GitHub Issues; [verified stable-ID mapping](../personal-dashboard-remote-return-2026-10-17/github-issue-mapping.md). This local map is historical supporting evidence.
 Stage: human-accepted delivery closeout
 Implementation: accepted iteration installed; all tickets closed; PDCR-03/12 deferred and PDCR-11 retired by user on 2026-10-17
 Working branch: codex/initial-plan-contract-repair-20261017; historical integration codex/collaboration-redesign-integration
@@ -57,9 +57,9 @@ and authorized installation are recorded [separately](evidence/initial-plan-cont
 
 The user approved the remote-preservation and 46-record migration direction.
 [Remote-return plan](../personal-dashboard-remote-return-2026-10-17/plan.md)
-sets out the next execution steps. Canonical tracking remains local until the
-GitHub migration is actually written and read back. No remote publication,
-main merge or branch deletion is claimed by these local updates.
+sets out the next execution steps. The GitHub migration is now written and verified; the final mapping below
+supersedes the prior local-only boundary. Product integration and cleanup
+follow the native PR #69 state and the publication receipt.
 
 ## Local tracking conventions
 
@@ -116,3 +116,12 @@ main merge or branch deletion is claimed by these local updates.
   gates remain unchanged; previous nine-ticket checkpoint is historical.
 
 - 2026-10-17: User closed PDCR-03/12 as deferred and retired PDCR-11 as unnecessary; [disposition](evidence/ticket-disposition-2026-10-17.md). All thirteen PDCR records now have closed lifecycle.
+
+## Confirmed GitHub handoff — 2026-10-17
+
+All records in this map have verified canonical GitHub Issues, preserved full
+bodies and native parent/blocker relationships. Current states are closed;
+PDCR-03/12 are deferred and PDCR-11 retired, not new passing tests. See the
+[46-record mapping](../personal-dashboard-remote-return-2026-10-17/github-issue-mapping.md).
+Previous local-only and no-remote checkpoints are dated history. GitHub now owns
+subsequent state and claim operations; this map is not an executable queue.

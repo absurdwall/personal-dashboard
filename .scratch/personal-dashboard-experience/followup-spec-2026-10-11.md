@@ -1,5 +1,8 @@
 # Dashboard experience follow-up — Tasks creation and Today unlocated panel
 
+> Canonical tracker: [PDEX-FOLLOWUP-01 · GitHub #72](https://github.com/absurdwall/personal-dashboard/issues/72). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-FOLLOWUP-01
 Type: spec
 Triage: ready-for-agent

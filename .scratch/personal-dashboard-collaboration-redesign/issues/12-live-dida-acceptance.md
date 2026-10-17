@@ -1,5 +1,8 @@
 # 12: 同一候选版本的 live Dida 核验
 
+> Canonical tracker: [PDCR-12 · GitHub #89](https://github.com/absurdwall/personal-dashboard/issues/89). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 对已完成本地 native 验收的同一候选版本，在现有连接与获授权的隔离
 目标上，核验真正的 Dida 写入、读回与 snapshot/source coverage。
 

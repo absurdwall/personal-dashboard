@@ -3,7 +3,7 @@
 ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
-Canonical: this local tracker, explicitly selected by the user
+Canonical: GitHub Issues; [verified stable-ID mapping](../personal-dashboard-remote-return-2026-10-17/github-issue-mapping.md). This local map is historical supporting evidence.
 Stage: complete under the user's 2026-10-14 acceptance; PDEX-SPEC-02 and PDEX-19–26 are resolved/closed, with unrun checks retained in the closeout record
 Implementation: integrated on codex/dashboard-experience-refinement-reimplementation from 918e7e0; merge 526c6a3 preserves accepted source history through 58f283c and the later acceptance record; prior rejected branch and full history are preserved
 Working branch: codex/dashboard-experience-refinement-reimplementation from 918e7e0; integration merge 526c6a3; previous codex/dashboard-experience-refinement-integration retained unchanged
@@ -346,3 +346,12 @@ through 58f283cac763a0f4f833f1b60bab70fd3dc969ff and the primary checkout's
 closeout records. See the
 [final completion record](evidence/final-completion-2026-10-14.md) and the
 [earlier detailed evidence audit](evidence/final-user-acceptance-closeout-2026-10-14.md).
+
+## Confirmed GitHub handoff — 2026-10-17
+
+All records in this map have verified canonical GitHub Issues, preserved full
+bodies and native parent/blocker relationships. Current states are closed;
+PDCR-03/12 are deferred and PDCR-11 retired, not new passing tests. See the
+[46-record mapping](../personal-dashboard-remote-return-2026-10-17/github-issue-mapping.md).
+Previous local-only and no-remote checkpoints are dated history. GitHub now owns
+subsequent state and claim operations; this map is not an executable queue.

@@ -1,5 +1,8 @@
 # 19: Task 编辑、属性与操作入口
 
+> Canonical tracker: [PDEX-19 · GitHub #108](https://github.com/absurdwall/personal-dashboard/issues/108). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 保留紧凑列表和右栏，完成单一可编辑标题、默认 Content 聚焦、更大内容区、紧凑清单与排期、同行 Save/Cancel 及单行快速添加；一起加入优先级、标签、排序/筛选和普通右键/More。取消时间安排保留日期，与删除明确区分。新建/详情编辑可复用于后续 Today 和 Calendar 浮窗。
 
 **Blocked by:** None

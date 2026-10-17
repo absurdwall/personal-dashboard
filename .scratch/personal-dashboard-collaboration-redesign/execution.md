@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 Status: all tickets closed; PDCR-03/12 closed-deferred and PDCR-11 closed-retired by user on 2026-10-17; remote publication pending
-Canonical tracker: [map](map.md)
+Canonical tracker: [GitHub PDCR-SPEC-01](https://github.com/absurdwall/personal-dashboard/issues/70); [historical map](map.md)
 Parent: [PDCR-SPEC-01](spec.md)
 Approved breakdown: [review record](ticket-breakdown-proposal.md)
 

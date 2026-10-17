@@ -1,5 +1,8 @@
 # 20: Task 父子关系与清单文件夹
 
+> Canonical tracker: [PDEX-20 · GitHub #109](https://github.com/absurdwall/personal-dashboard/issues/109). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 在已可用的 Task 编辑、快速添加和统一菜单上，补齐父子关联/解除/换父、嵌套子任务及直属子任务展示；同时提供一层清单文件夹、展开收起、按原清单分组的汇总及明确的添加目标。组织关系保存重开正确，不改变任务身份或状态。
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口

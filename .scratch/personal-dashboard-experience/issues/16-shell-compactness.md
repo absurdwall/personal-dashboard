@@ -1,5 +1,8 @@
 # PDEX-16: Compact, legible workspace shell
 
+> Canonical tracker: [PDEX-16 · GitHub #105](https://github.com/absurdwall/personal-dashboard/issues/105). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-16  
 Type: ticket  
 Parent: [PDEX-FOLLOWUP-03](../followup-spec-2026-10-11-shell-compactness.md)  

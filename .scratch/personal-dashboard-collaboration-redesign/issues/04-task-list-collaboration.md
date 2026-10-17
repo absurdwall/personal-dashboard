@@ -1,5 +1,8 @@
 # 04: Task 与清单协作反映到真实对象和页面
 
+> Canonical tracker: [PDCR-04 · GitHub #81](https://github.com/absurdwall/personal-dashboard/issues/81). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户通过对话维护 Task/list，含新增、修改、改期、完成、放弃、重开、
 归属与已有删除/归档能力；回复和 Tasks/Today/Calendar 显示同一对象。
 

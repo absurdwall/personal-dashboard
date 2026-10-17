@@ -1,5 +1,8 @@
 # 24: Habit 新增、编辑与目标设置
 
+> Canonical tracker: [PDEX-24 · GitHub #113](https://github.com/absurdwall/personal-dashboard/issues/113). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 在原Habits汇总和今日列表上一起提供本地新增与编辑，共用名称/频率目标/开始日期/可选emoji和分组设置，创建后直接打卡。编辑保留身份与历史，目标以有生效日期的revision在下周期生效，真实保存和跨周期重开正确。
 
 **Blocked by:** None

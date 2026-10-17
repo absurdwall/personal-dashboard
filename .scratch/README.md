@@ -2,7 +2,9 @@
 
 本目录保留 Personal Dashboard 的设计讨论、规格和票正文副本、发布回执及交付证据。正式规格、实施状态与依赖以 [GitHub Issues](https://github.com/absurdwall/personal-dashboard/issues) 为准，规则见 [issue-tracker.md](../docs/agents/issue-tracker.md)。
 
-## 本轮本地 tracker 例外
+## 历史本地 tracker 例外与 GitHub 迁移
+
+2026-10-17 已完成两轮本地 tracker 的 46 条记录迁移；当前状态和依赖以 GitHub 为准，见[稳定 ID 对照表](personal-dashboard-remote-return-2026-10-17/github-issue-mapping.md)。以下本地例外说明保留原始历史，不再构成当前执行队列。
 
 2026-10-09 用户明确要求 Collaboration redesign 的 spec、后续 tickets 和执行追踪全部使用本地文件。此轮以 [本地 map](personal-dashboard-collaboration-redesign/map.md) 和它链接的 [spec](personal-dashboard-collaboration-redesign/spec.md) 为正本；其余项目仍遵循默认 GitHub tracker。该例外不把旧目录重新变成执行队列，也不表示已经开始实施。
 

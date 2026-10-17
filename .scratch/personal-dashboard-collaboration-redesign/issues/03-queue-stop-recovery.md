@@ -1,5 +1,8 @@
 # 03: 排队、停止、纠正与未知结果恢复
 
+> Canonical tracker: [PDCR-03 · GitHub #80](https://github.com/absurdwall/personal-dashboard/issues/80). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 执行中普通消息排队；用户停止后队列暂停，发送纠正成为新轮；
 之后可以继续队列并核对未知结果，不重复已经保存的修改。
 
