@@ -1615,6 +1615,58 @@ pub struct HabitCompletionMutationInput {
     pub expected_revision: Option<String>,
 }
 
+/// Bounded, read-only local completion evidence; snapshot facts remain a separate source.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitCompletionHistoryView {
+    pub domain: &'static str,
+    pub from_date: String,
+    pub to_date: String,
+    pub requested_dates: Vec<String>,
+    pub vault_path: Option<String>,
+    pub canonical: serde_json::Value,
+    pub projection: HabitHistoryProjectionView,
+    pub projection_revision: Option<String>,
+    pub coverage: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitHistoryProjectionView {
+    pub state: HabitSnapshotState,
+    pub message: String,
+    pub generated_at: Option<String>,
+    pub range_label: Option<String>,
+    pub display_range_label: Option<String>,
+    pub producer_label: Option<String>,
+    pub habits: Vec<HabitHistoryProjectedHabit>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitHistoryProjectedHabit {
+    pub key: String,
+    pub name: String,
+    pub localized_names: crate::habits::HabitLocalizedNames,
+    pub source_labels: Vec<String>,
+    pub coverage_label: String,
+    pub goal_history: Vec<crate::habits::HabitGoalContextView>,
+    pub history: Vec<crate::habits::HabitCellView>,
+}
+
+impl HabitHistoryProjectionView {
+    fn from_snapshot(view: HabitSnapshotView, dates: &[String]) -> Self {
+        Self { state:view.state, message:view.message, generated_at:view.generated_at,
+            range_label:view.range_label, display_range_label:view.display_range_label, producer_label:view.producer_label,
+            habits:view.habits.into_iter().map(|habit| HabitHistoryProjectedHabit { key:habit.key,name:habit.name,
+                localized_names:habit.localized_names,source_labels:habit.source_labels,coverage_label:habit.coverage_label,
+                goal_history:habit.goal_history.into_iter().filter(|context| dates.iter().any(|date|
+                    CalendarDate::parse(date).is_some_and(|date| date.monday().to_string() == context.week_of))).collect(),
+                history:habit.history.into_iter()
+                    .filter(|cell| dates.binary_search(&cell.date).is_ok()).collect() }).collect() }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum HabitCompletionChangeKind {
@@ -3068,6 +3120,70 @@ where
                     message:format!("Verified {mapped} explicitly mapped external Habits; unmapped source coverage remains partial/unknown. Rebuilt exact/threshold Daily Record evidence. {}",display.map(|v| v.message).unwrap_or_else(|e|e)) }
             }
         }
+    }
+
+    pub fn read_habit_completion_history(&self, dates: &[String]) -> Result<HabitCompletionHistoryView, String> {
+        if dates.is_empty() || dates.len() > 366 || dates.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return Err("Habit history requires an ordered bounded range of at most 366 dates".into());
+        }
+        // Caller supplies the validated inclusive range. Validate all dated source paths too.
+        for date in dates { canonical_record_path(Path::new("history"), date)?; }
+        if dates.windows(2).any(|pair| CalendarDate::parse(&pair[0]).expect("validated date").plus_days(1).to_string() != pair[1]) {
+            return Err("Habit history dates must form one inclusive consecutive range".into());
+        }
+        let vault = self.persistence.load_selected_vault()?;
+        let mut canonical = serde_json::json!({"state":"unconfigured", "revision":null,
+            "targetBinding":null, "records":[], "acceptedNoOpReceipts":[], "unrecordedState":"unknown"});
+        let mut projection = HabitSnapshotView::unconfigured();
+        let mut projection_revision = None;
+        if let Some(root) = vault.as_ref() {
+            let path = canonical_habit_completion_path(root);
+            canonical["targetBinding"] = serde_json::json!(habit_completion_target_binding(&path));
+            canonical["source"] = serde_json::json!("Dashboard local completion store; scope local-only");
+            match self.habit_completion_store.load(&path) {
+                Ok(Some(bytes)) => {
+                    canonical["revision"] = serde_json::json!(document_revision(&bytes));
+                    match parse_habit_completion_document(&bytes, &self.clock.current_timestamp_label()) {
+                        Ok(document) => {
+                            canonical["state"] = serde_json::json!("ready");
+                            canonical["records"] = serde_json::json!(document.completions.into_iter()
+                                .filter(|row| dates.binary_search(&row.lived_date).is_ok())
+                                .map(|row| serde_json::json!({"habitKey":row.habit_key,"livedDate":row.lived_date,
+                                    "state":if row.completed_at.is_some() {"completed"} else {"withdrawn"},
+                                    "recordedCompletedAt":row.completed_at,"modifiedAt":row.modified_at,"changes":row.changes}))
+                                .collect::<Vec<_>>());
+                            canonical["acceptedNoOpReceipts"] = serde_json::json!(document.no_op_receipts.into_iter()
+                                .filter(|row| dates.binary_search(&row.lived_date).is_ok()).collect::<Vec<_>>());
+                        },
+                        Err(error) => { canonical["state"] = serde_json::json!("error"); canonical["errorKind"] = serde_json::json!("damaged"); canonical["message"] = serde_json::json!(error); }
+                    }
+                },
+                Ok(None) => canonical["state"] = serde_json::json!("missing"),
+                Err(error) => { canonical["state"] = serde_json::json!("error"); canonical["errorKind"] = serde_json::json!("unavailable"); canonical["message"] = serde_json::json!(error); }
+            }
+            projection = match load_habit_snapshot_from_vault(&self.habit_snapshot_store, root) {
+                Ok(Some(bytes)) => {
+                    projection_revision = Some(document_revision(&bytes));
+                    match project_snapshot_with_names_at_local_date(&bytes, &self.clock.current_lived_date(),
+                        &self.clock.current_date(), Vec::new(), Vec::new(), &load_habit_names(root)) {
+                        Ok(mut view) => {
+                            for habit in &mut view.habits {
+                                habit.history.retain(|cell| dates.binary_search(&cell.date).is_ok());
+                                habit.recent.retain(|cell| dates.binary_search(&cell.date).is_ok());
+                            }
+                            view
+                        },
+                        Err(error) => HabitSnapshotView::error(error),
+                    }
+                },
+                Ok(None) => HabitSnapshotView::missing(),
+                Err(error) => HabitSnapshotView::error(error),
+            };
+        }
+        Ok(HabitCompletionHistoryView { domain:"habits", from_date:dates[0].clone(),
+            to_date:dates[dates.len()-1].clone(), requested_dates:dates.to_vec(),
+            vault_path:vault.as_ref().map(|root| root.to_string_lossy().into_owned()), canonical, projection:HabitHistoryProjectionView::from_snapshot(projection, dates), projection_revision,
+            coverage:"Only explicit local completed/withdrawn changes establish local state. Unrecorded dates remain unknown. Change timestamps record saves, not activity time. Published snapshot goal thresholds, actual event times and source observations remain distinct; its freshness and coverage do not limit canonical local facts. Dated notes are context, not completion evidence. This read makes no writes or external calls." })
     }
 
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
@@ -6993,7 +7109,10 @@ mod tests {
     use std::fs;
     use std::io::{Seek, SeekFrom, Write};
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
     struct TempDirectory(PathBuf);
 
@@ -7004,8 +7123,9 @@ mod tests {
                 .expect("system clock should be after the epoch")
                 .as_nanos();
             let path = std::env::temp_dir().join(format!(
-                "personal-dashboard-today-store-{}-{nonce}",
-                std::process::id()
+                "personal-dashboard-today-store-{}-{nonce}-{}",
+                std::process::id(),
+                NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
             ));
             fs::create_dir_all(&path).expect("temporary directory should be created");
             Self(path)

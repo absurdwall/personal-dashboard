@@ -3,12 +3,13 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
-import { interfaceCopy, localizeCollaborationDiagnostic } from "../../frontend/interface-language.ts";
+import { appendCollaborationWorkHistory } from "../../frontend/collaboration-work-history.ts";
+import { interfaceCopy, localizeCollaborationDiagnostic, localizeWorkHistoryDiagnostic } from "../../frontend/interface-language.ts";
 const source = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 const start = source.indexOf("function renderCollaborationMessages(");
 const rest = source.slice(start);
 const end = /^}\n/m.exec(rest)!;
-const renderer = stripTypeScriptTypes(rest.slice(0, end.index + 2));
+const renderer = ["collaborationVisibleResults", "collaborationOutcomeSummary", "renderCollaborationOutcomes", "collaborationWorkHistoryLabels"].map(functionSource).join("\n") + stripTypeScriptTypes(rest.slice(0, end.index + 2));
 function element() { return { textContent: "", dataset: {}, addEventListener() {}, setAttribute() {}, children: [] as any[], append(...nodes: any[]) { this.children.push(...nodes); }, replaceChildren() { this.children = []; } }; }
 for (const language of ["zh", "en"] as const) {
   test(`request results retain independent saved/unknown/retained outcomes after reopen in ${language}`, () => {
@@ -23,10 +24,10 @@ for (const language of ["zh", "en"] as const) {
         { id: "refresh-2", source: "Habits page", status: "ready", targetDate: "2026-10-03", message: "Fresh readback confirmed" },
       ] },
     ] };
-    const context = vm.createContext({ document: { createElement: element }, collaborationMessageList: list,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic, t: (key: any, values: any) => interfaceCopy(key, language, values), session });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
-    const first = list.children[0].children.find((node: any) => node.className === "collaboration-action-results");
+    const first = list.children[1].children.find((node: any) => node.className === "collaboration-action-results");
     assert.equal(first.children.length, 4);
     assert.equal(first.children[1].dataset.actionId, "task-1");
     assert.ok(first.children[1].textContent.includes("2026-10-09"));
@@ -35,7 +36,7 @@ for (const language of ["zh", "en"] as const) {
     const previous = first.children.map((node: any) => node.textContent).join("\n");
     context.session = JSON.parse(JSON.stringify(session));
     vm.runInContext("renderCollaborationMessages(session)", context);
-    assert.equal(list.children[0].children.find((node: any) => node.className === "collaboration-action-results").children.map((node: any) => node.textContent).join("\n"), previous);
+    assert.equal(list.children[1].children.find((node: any) => node.className === "collaboration-action-results").children.map((node: any) => node.textContent).join("\n"), previous);
     assert.ok(!previous.includes("Fresh readback confirmed"));
   });
 }
@@ -56,21 +57,20 @@ for (const language of ["zh", "en"] as const) {
       ] },
       { role: "assistant", text: "My factual reply · 请保留原文", messageDate: "2026-10-03", targetDate: "2026-10-03" },
     ] };
-    const context = vm.createContext({ document: { createElement: element }, collaborationMessageList: list, session,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list, session,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       applicationMessage: (value: string) => value, t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(functionSource("collaborationRunStateLabel") + functionSource("collaborationRunProgressLabel") + renderer + "\nrenderCollaborationMessages(session); header = collaborationRunProgressLabel(session);", context);
     assert.equal(context.header, interfaceCopy("collaboration.statusCompleted", language));
     assert.ok(!context.header.includes("unchanged") && !context.header.includes("未更改"));
-    const results = list.children[0].children.find((node: any) => node.className === "collaboration-action-results");
+    const results = list.children[1].children.find((node: any) => node.className === "collaboration-action-results");
     assert.ok(results.children[1].textContent.endsWith(localizeCollaborationDiagnostic(literal, language)));
     assert.ok(results.children[2].textContent.includes(interfaceCopy("collaboration.externalStatusSaved", language)));
     assert.ok(results.children[2].textContent.endsWith(literal), "Source-owned wording remains verbatim even when it matches host grammar");
     assert.ok(results.children[3].textContent.includes(interfaceCopy("collaboration.taskOperationStatus.applied", language)));
     const assistant = list.children[1];
     assert.equal(assistant.children[1].textContent, session.messages[1].text);
-    assert.equal(assistant.children[2].textContent, interfaceCopy("collaboration.messageSavedBoundary", language));
-    assert.ok(!assistant.children[2].textContent.includes("not a saved business change") && !assistant.children[2].textContent.includes("不是已保存"));
+    assert.equal(assistant.children[2].className, "collaboration-action-results");
   });
 }
 
@@ -82,11 +82,11 @@ for (const language of ["zh", "en"] as const) {
       { id: "host", source: "Dida", status: "saved", messageKind: "diagnostic", message: native },
       { id: "literal", source: "Dida", status: "saved", messageKind: "sourceText", message: native },
     ] }] };
-    const context = vm.createContext({ document: { createElement: element }, collaborationMessageList: list, session,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list, session,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
-    const results = list.children[0].children.find((node: any) => node.className === "collaboration-action-results");
+    const results = list.children[1].children.find((node: any) => node.className === "collaboration-action-results");
     assert.ok(results.children[1].textContent.endsWith(localizeCollaborationDiagnostic(native, language)));
     assert.ok(results.children[2].textContent.endsWith(native));
   });
@@ -101,11 +101,11 @@ for (const language of ["zh", "en"] as const) {
       { id: "host", source: "Dashboard", status: "failed", messageKind: "diagnostic", message: literal },
       { id: "literal", source: "Dida", status: "unknown", messageKind: "sourceText", message: literal },
     ] }] };
-    const context = vm.createContext({ document: { createElement: element }, collaborationMessageList: list, session,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list, session,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
-    const results = list.children[0].children.find((node: any) => node.className === "collaboration-action-results");
+    const results = list.children[1].children.find((node: any) => node.className === "collaboration-action-results");
     const expected = language === "zh" ? "该任务已完成，但完成日期或时间不同。请使用明确的完成记录更正操作。" : literal;
     assert.ok(results.children[1].textContent.endsWith(expected));
     assert.ok(results.children[2].textContent.endsWith(literal), "source wording is retained verbatim");
@@ -145,21 +145,21 @@ for (const language of ["zh", "en"] as const) {
     }
   });
 
-  test(`expanded external activity localizes verified host summaries and preserves source/input text in ${language}`, () => {
+  test(`expanded external activity shows compact tool status without raw payloads in ${language}`, () => {
     const literal = "Current Dida readback is unavailable. Preserve any confirmed effects, resolve the source state before retrying, and do not repeat creation while unknown.";
     const list = element();
     const action = { sourceName: "Owned source name", sourceId: "dida365", toolId: "upsert_habit_checkins", status: "unknown", targetScope: "2026-09-26", inputSummary: literal, resultSummary: literal };
     const session = { messages: [{ role: "user", text: "My request", messageDate: "2026-09-27", targetDate: "2026-09-26", externalAppIds: [], externalActions: [
       { ...action, actionId: "host", verification: { checks: [] } }, { ...action, actionId: "source", verification: null },
     ] }] };
-    const context = vm.createContext({ document: { createElement: element }, collaborationMessageList: list, session,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list, session,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
-    const activity = list.children[0].children.find((node: any) => node.className === "collaboration-external-activity");
-    assert.ok(activity.children[1].children[2].textContent.endsWith(literal));
-    assert.ok(activity.children[1].children[3].textContent.endsWith(localizeCollaborationDiagnostic(literal, language)));
-    assert.ok(activity.children[2].children[3].textContent.endsWith(literal));
+    const activity = list.children[1].children.find((node: any) => node.className === "collaboration-external-activity");
+    assert.equal(activity.children.length, 3);
+    assert.ok(activity.children[1].textContent.includes("upsert_habit_checkins"));
+    assert.ok(!activity.children[1].textContent.includes(literal), "activity shows compact status, not source payloads");
   });
 
   test(`operation cards localize host failures and Short/local Habit saved diagnostics in ${language}`, () => {
@@ -201,5 +201,43 @@ for (const language of ["zh", "en"] as const) {
     const text = list.children[0].children.map((node: any) => node.textContent);
     assert.ok(text.includes(localizeCollaborationDiagnostic(literal, language)));
     assert.ok(text.includes(proposal.authorizationQuote) && text.includes(proposal.change));
+  });
+}
+
+for (const language of ["zh", "en"] as const) {
+  test(`saved Task summary uses observed schedule and completion rather than the session date in ${language}`, () => {
+    const receipt = { id: "complete", status: "applied", targetDate: "2026-09-24", operation: { operation: "completeTask", taskId: "stable", completedTime: "15:20" },
+      baseline: { kind: "task", name: "Send report", date: "2026-10-02", time: "09:00" },
+      resultSnapshot: { kind: "task", name: "Send report", date: "2026-10-02", time: "09:00", completion: { completedOn: "2026-09-24", completedTime: "15:20" } } };
+    const result = { id: "complete", status: "applied", message: "Generic save" };
+    const context = vm.createContext({ result, session: { taskOperations: [receipt] }, collaborationDateLabel: (date: string) => date,
+      currentInterfaceLanguage: language, t: (key: any, values: any) => interfaceCopy(key, language, values) });
+    vm.runInContext(functionSource("collaborationOutcomeSummary") + "\nactual = collaborationOutcomeSummary(result, session)", context);
+    assert.ok(context.actual.includes("Send report"));
+    assert.ok(context.actual.includes("2026-09-24") && context.actual.includes("15:20"));
+    assert.ok(context.actual.includes("2026-10-02") && context.actual.includes("09:00"));
+  });
+}
+
+for (const object of ["task", "list"]) {
+  test(`saved ${object} outcome opens its canonical stable identity`, () => {
+    const children: any[] = []; const navigation: unknown[] = [];
+    const domElement = () => ({ textContent: "", dataset: {}, children: [] as any[], listeners: {} as any,
+      append(...nodes: any[]) { this.children.push(...nodes); }, addEventListener(name: string, callback: () => void) { this.listeners[name] = callback; } });
+    const receipt = { id: "saved", taskId: object === "task" ? "task-stable" : null, listId: object === "list" ? "list-stable" : null,
+      operation: { operation: object === "task" ? "deleteTask" : "archiveList" }, baseline: { kind: object, name: "Actual name" }, resultSnapshot: { kind: object, deletedAt: object === "task" ? "timestamp" : null } };
+    const context = vm.createContext({ document: { createElement: domElement }, container: { append(...nodes: any[]) { children.push(...nodes); } },
+      session: { id: "source-session", taskOperations: [receipt] }, request: { actionResults: [{ id: "saved", source: "Dashboard", status: "applied", targetDate: "2026-09-24", message: "Saved" }] },
+      collaborationDateLabel: (date: string) => date, currentInterfaceLanguage: "en", t: (key: any, values: any) => interfaceCopy(key, "en", values),
+      taskReturnToCollaborationSessionId: null, taskFocusRequestId: null, taskScope: "all", taskStateScope: "pending", taskListScopeForId: (id: string) => `list:${id}`,
+      showWorkspaceDestination(...args: unknown[]) { navigation.push(args); } });
+    vm.runInContext(["collaborationVisibleResults", "collaborationOutcomeSummary", "renderCollaborationOutcomes"].map(functionSource).join("\n") + "\nrenderCollaborationOutcomes(container, session, request)", context);
+    const button = children[0].children[1].children[0];
+    button.listeners.click();
+    assert.deepEqual(navigation, [["tasks", true]]);
+    assert.equal(context.taskReturnToCollaborationSessionId, "source-session");
+    assert.equal(context.taskFocusRequestId, object === "task" ? "task-stable" : null);
+    assert.equal(context.taskScope, object === "list" ? "list:list-stable" : "all");
+    assert.equal(context.taskStateScope, object === "task" ? "deleted" : "all");
   });
 }

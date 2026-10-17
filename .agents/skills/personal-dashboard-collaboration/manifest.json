@@ -1,0 +1,19 @@
+{
+  "contractVersion": 1,
+  "skillName": "personal-dashboard-collaboration",
+  "skillVersion": "1.5.0",
+  "toolSetVersion": "1.4.0",
+  "loading": "embedded-at-build",
+  "entrypoint": "SKILL.md",
+  "references": [
+    "references/documents.md",
+    "references/dida-reads.md",
+    "references/dida-writes.md",
+    "references/mapped-habits.md",
+    "references/personal-retro.md",
+    "references/automatic-morning.md",
+    "references/automatic-files.md"
+  ],
+  "toolDescriptions": "tool-descriptions.json",
+  "automaticRequest": "references/automatic-request.txt"
+}

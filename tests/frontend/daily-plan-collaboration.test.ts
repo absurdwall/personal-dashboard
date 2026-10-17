@@ -74,8 +74,8 @@ test("Daily Record and Habit proposals have typed, distinct review cards with ex
   assert.match(copies, /"collaboration\.habitSnapshotWarning":\s*\{[^\n]*zh:[^\n]*en:/);
   assert.match(copies, /"collaboration\.habitLocalState\.unknown":\s*\{[^\n]*zh: "状态未知"[^\n]*en: "unknown"/);
   assert.match(main, /collaboration\.habitLocalState\.\$\{baseline\.localState\.toLowerCase\(\)\}/);
-  assert.match(copies, /"collaboration\.readOnlyBoundary":\s*\{[^\n]*selected Vault[^\n]*External Habit sources[^\n]*settings/);
-  assert.match(html, /data-i18n="collaboration\.readOnlyBoundary">[^<]*Only the exact approved content is written to the selected Vault/);
+  assert.match(copies, /"collaboration\.readOnlyBoundary":\s*\{[^\n]*results in the reply/);
+  assert.match(html, /data-i18n="collaboration\.readOnlyBoundary">[^<]*Requested changes are saved to the selected Vault/);
   assert.match(main, /case "saveEveningReview":[\s\S]*?collaboration\.dailyRecordAction\.reviewAddition/);
   assert.match(main, /case "correctShortRecord"[\s\S]*?collaboration\.dailyRecordAction\.shortRecordCorrection/);
   assert.match(main, /case "setLocalHabitCompletion"[\s\S]*?collaboration\.habitCompletionAction\.add/);
@@ -132,7 +132,7 @@ test("automatic morning planning has an explicit local schedule and external-tas
   assert.match(css, /\.collaboration-automatic-plan-operation\s*\{/);
   assert.match(copies, /"collaboration\.externalScheduleHandoffPending":\s*\{[^\n]*zh:[^\n]*Dashboard[^\n]*scheduled task[^\n]*en:[^\n]*does not inspect or change external scheduled tasks/);
   assert.match(copies, /"collaboration\.externalScheduleHandoffComplete":\s*\{[^\n]*zh:[^\n]*仍未修改外部 scheduled task[^\n]*en:[^\n]*has not changed the external scheduled task/);
-  assert.match(skill, /explicitly marked as an \*\*automatic morning plan\*\*/);
-  assert.match(skill, /only one `initialPlan`/);
-  assert.match(skill, /never inspect or modify an external scheduled task/);
+  assert.match(skill, /user-enabled automatic morning-plan round keeps its existing scope/);
+  assert.match(skill, /one initial plan for the captured current date/);
+  assert.match(skill, /no Task\/Habit\/background\/file mutations/);
 });

@@ -122,12 +122,20 @@ _Avoid_: Translated diary, separate language-specific habit
 ## 5.0 collaboration vocabulary
 
 **Collaboration workspace**:
-An independent Personal Dashboard destination for ongoing work with Codex. It presents saved sessions, conversation, and the current work area while reading and updating the same selected-Vault and Task sources used by the rest of the app.
-_Avoid_: Chat-only page, parallel Task or Daily Record store
+An independent Personal Dashboard destination for ongoing personal-management conversations with Codex. Its primary surface is the saved conversation, with an expandable work history and observed outcomes from the same selected-Vault and Task sources used by the rest of the app.
+_Avoid_: Persistent shared editing workspace, parallel Task or Daily Record store, app-development environment
 
 **Collaboration session**:
 A persisted user-Codex work thread with its own messages, activity dates, target dates, drafts, and operation history. It may continue across lived dates; its history is not current business state.
 _Avoid_: Single-day conversation, Task list
+
+**Collaboration proposal**:
+A concrete proposed change presented for the user's requested review before it is saved. It is distinct from an instruction to apply a change directly.
+_Avoid_: Mandatory authorization step, saved change
+
+**Collaboration outcome**:
+The observed result of a requested change to a Task, Daily Record, Habit, document, background memory, or connected external app. Saving the conversation is a separate result; changes to different sources retain independent outcomes.
+_Avoid_: Saved reply, proposal, combined success
 
 **Collaboration dictation**:
 A user's spoken input captured as editable draft text for a Collaboration session and target date. The user submits that text as a message separately.
@@ -140,3 +148,20 @@ _Avoid_: Current business state, replacement for saved sessions
 **Connected external app**:
 An available external source whose actions retain stable source and object identities with independently verifiable results. External and selected-Vault effects remain separate even when one user instruction authorizes both.
 _Avoid_: Dashboard data source, automatic two-way sync
+
+## Collaboration redesign vocabulary
+
+These terms record the agreed redesign direction; they do not assert that the
+corresponding features have shipped.
+
+**Collaboration work history**:
+The retained, ordered account of a Collaboration turn's visible progress, available reasoning summaries, and attempted actions, including failures followed by recovery. It is distinct from the final reply and from the observed results of data changes.
+_Avoid_: Hidden reasoning transcript, final reply, success-only activity log
+
+**Personal retro**:
+A review of the user's plans, recorded activity, Tasks, and Habit evidence over a chosen period, used to identify patterns and suggest personal adjustments. Missing evidence remains unknown; suggestions are distinct from requested changes to personal data.
+_Avoid_: Workflow retro, automatic replanning, inferred time accounting
+
+**Workflow retro**:
+A developer's review of Collaboration execution evidence, implementation, and checks to identify failed attempts, unnecessary work, incorrect changes, or misleading feedback. It belongs to development work in Codex, separate from personal management in Dashboard.
+_Avoid_: Personal retro, Dashboard app development, automatic self-modification

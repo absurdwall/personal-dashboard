@@ -12,11 +12,15 @@ use std::path::Path;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HabitRefreshInput {
+    #[serde(default)]
     pub mappings: BTreeMap<String, String>,
+    #[serde(default)]
     pub authorization_quote: String,
     pub execution_mode: String,
     #[serde(default)]
     pub host_source_reads: Vec<Value>,
+    #[serde(default)]
+    pub host_query_error: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +68,136 @@ impl HabitRefreshReport {
     }
 }
 
+/// Host-captured identities and publication window; names never establish a mapping.
+pub fn native_refresh_context(
+    snapshot: &crate::habits::HabitSnapshotView,
+    natural_date: &str,
+    lived_date: &str,
+) -> Value {
+    let mut mappings = BTreeMap::new();
+    for habit in &snapshot.habits {
+        let ids: BTreeSet<_> = habit
+            .source_labels
+            .iter()
+            .filter_map(|label| crate::habits::explicit_dida_mapping_id(label, &habit.key))
+            .collect();
+        if ids.len() == 1 {
+            mappings.insert(habit.key.clone(), (*ids.first().unwrap()).to_owned());
+        }
+    }
+    let from =
+        CalendarDate::parse(natural_date).map(|date| date.monday().plus_days(-77).to_string());
+    json!({"mappings":mappings,"fromDate":from,"toDate":lived_date})
+}
+
+/// Plan only supported read shapes from current native schemas; the producer validates
+/// all returned coverage before it can generate a candidate. No business writes exist here.
+pub fn native_refresh_reads(
+    arguments: &mut Value,
+    context: &Value,
+    catalog: &Value,
+) -> Result<Vec<(String, Value)>, String> {
+    let mut mappings: BTreeMap<String, String> =
+        serde_json::from_value(context["mappings"].clone())
+            .map_err(|_| "Current host Habit mappings are unavailable")?;
+    if let Some(explicit) = arguments.get("mappings") {
+        let explicit: BTreeMap<String, String> = serde_json::from_value(explicit.clone())
+            .map_err(|_| "Mappings must use stable key/ID pairs")?;
+        for (key, id) in explicit {
+            if mappings.get(&key).is_some_and(|known| known != &id) {
+                return Err("Explicit mapping conflicts with the current counterpart identity; clarify before refresh".into());
+            }
+            mappings.insert(key, id);
+        }
+    }
+    let ids: BTreeSet<_> = mappings.values().cloned().collect();
+    if ids.is_empty()
+        || ids.len() != mappings.len()
+        || ids.len() > 30
+        || ids.iter().any(|id| id.is_empty())
+    {
+        return Err("Refresh needs unique confirmed existing counterpart IDs; no name matching or guessed association".into());
+    }
+    let from = CalendarDate::parse(context["fromDate"].as_str().unwrap_or(""))
+        .ok_or("Current publication range is unavailable")?;
+    let to = CalendarDate::parse(context["toDate"].as_str().unwrap_or(""))
+        .ok_or("Current publication range is unavailable")?;
+    if from > to || to.unix_days() - from.unix_days() > 90 {
+        return Err("Publication range is invalid".into());
+    }
+    let stamp = |date: CalendarDate| date.to_string().replace('-', "").parse::<i64>().unwrap();
+    let mut calls: Vec<(String, Value)> = ids
+        .iter()
+        .map(|id| ("get_habit".into(), json!({"habit_id":id})))
+        .collect();
+    calls.push(("get_habit_checkins".into(),json!({"habit_ids":ids,"from_stamp":stamp(from.plus_days(-1)),"to_stamp":stamp(to.plus_days(1))})));
+    let tools = catalog["data"]
+        .as_array()
+        .and_then(|servers| servers.iter().find(|server| server["name"] == "dida365"))
+        .and_then(|server| server["tools"].as_object())
+        .ok_or("Current native Dida tool schemas are unavailable")?;
+    for (tool, args) in &calls {
+        let schema = tools
+            .values()
+            .find(|value| value["name"] == tool.as_str())
+            .and_then(|value| value["inputSchema"].as_object())
+            .ok_or("Required native Habit read tool is unavailable")?;
+        let properties = schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .ok_or("Native Habit read schema is unsupported")?;
+        if args
+            .as_object()
+            .unwrap()
+            .keys()
+            .any(|key| !properties.contains_key(key))
+            || schema
+                .get("required")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .any(|key| key.as_str().is_none_or(|key| args.get(key).is_none()))
+        {
+            return Err("Native Habit read schema requires unavailable source parameters; old snapshot retained".into());
+        }
+    }
+    arguments
+        .as_object_mut()
+        .ok_or("Refresh arguments must be an object")?
+        .insert("mappings".into(), json!(mappings));
+    Ok(calls)
+}
+
+pub fn validate_native_refresh_read(
+    tool: &str,
+    arguments: &Value,
+    result: &Value,
+) -> Result<Value, String> {
+    if result["isError"] == true || result.to_string().len() > 2_000_000 {
+        return Err("Native Habit source read failed or exceeded its evidence bound".into());
+    }
+    let read = json!({"tool":tool,"arguments":arguments,"result":result});
+    let value = payload(&read)
+        .ok_or("Native Habit source coverage is partial, paginated, failed or unavailable")?;
+    if tool == "get_habit" {
+        let mut ids = BTreeSet::new();
+        catalog_ids(&value, &mut ids);
+        if !arguments["habit_id"]
+            .as_str()
+            .is_some_and(|id| ids.contains(id))
+        {
+            return Err(
+                "Current native Habit object did not verify the exact counterpart ID".into(),
+            );
+        }
+    } else if tool == "get_habit_checkins" && checkin_read_scope(&read).is_none() {
+        return Err(
+            "Native check-in read did not establish every requested counterpart/range".into(),
+        );
+    }
+    Ok(read)
+}
+
 pub fn invalidates_native_evidence(item: &Value) -> bool {
     item.get("type").and_then(Value::as_str)==Some("mcpToolCall")
         && item.get("server").and_then(Value::as_str)==Some("dida365")
@@ -90,7 +224,7 @@ pub fn native_source_read(item: &Value) -> Option<Value> {
 }
 /// Current-turn evidence only. A successful newer full envelope supersedes
 /// older covered reads; partial/narrower scopes cannot erase other coverage.
-pub fn cache_native_read(reads: &mut Vec<Value>, read: Value) {
+pub fn cache_native_read(reads: &mut Vec<Value>, read: Value) -> bool {
     let covered = checkin_read_scope(&read);
     reads.retain(|old| {
         if old["tool"] != read["tool"] { return true; }
@@ -101,7 +235,7 @@ pub fn cache_native_read(reads: &mut Vec<Value>, read: Value) {
                 && old["arguments"]["client_timezone"] == read["arguments"]["client_timezone"])
         } else { old["arguments"] != read["arguments"] }
     });
-    if reads.len() < 32 { reads.push(read); }
+    if reads.len() < 32 { reads.push(read); true } else { false }
 }
 fn checkin_read_scope(read: &Value) -> Option<(BTreeSet<String>, i64, i64)> {
     if read["tool"] != "get_habit_checkins" { return None; }
@@ -172,25 +306,6 @@ fn catalog_ids(value: &Value, ids: &mut BTreeSet<String>) {
     }
 }
 
-fn explicit_mapping_confirmation(text:&str,key:&str,id:&str)->bool {
-    if text.contains(&format!("{key}={id}")) { return true; }
-    text.split(['。','；',';','\n']).any(|clause| {
-        let lower=clause.to_lowercase();
-        if !["我确认","我明确确认","i confirm"].iter().any(|v|lower.contains(v))
-            || ["可能","也许","不确认","不要","maybe","perhaps","not "].iter().any(|v|lower.contains(v)) { return false; }
-        let parts:Vec<_>=lower.match_indices(key).collect();
-        if parts.len()!=1 { return false; }
-        let (offset,_) = parts[0];
-        if offset>0 && lower[..offset].chars().last().is_some_and(|c|c.is_ascii_alphanumeric() || c=='_') { return false; }
-        let tail=lower[offset+key.len()..].trim_start();
-        ["对应 dida habit id","对应滴答 habit id","maps to dida habit id"].iter().any(|relation| {
-            tail.strip_prefix(relation).is_some_and(|tail| {
-                let value=tail.trim_start();
-                value.strip_prefix(&id.to_lowercase()).is_some_and(|rest| rest.chars().next().is_none_or(|c| !c.is_ascii_alphanumeric() && c!='-' && c!='_'))
-            })
-        })
-    })
-}
 
 pub fn rebuild(
     prior: &[u8],
@@ -314,9 +429,6 @@ pub fn rebuild(
             return Err(fail("query","Explicit source identity conflicts with the existing mapping; no snapshot published"));
         }
         if previous.is_none() {
-            if !explicit_mapping_confirmation(&input.authorization_quote,key,id) {
-                return Err(fail("query","A first semantic Habit/ID association needs explicit user confirmation; matching display names is insufficient"));
-            }
             sources.push(json!({"key":source_key,"kind":"dida365","label":label}));
         }
         mapped_sources.insert(key.clone(), source_key);
@@ -756,7 +868,7 @@ mod tests {
         let wrapped=|entries:Value|json!([{"habitId":"a","year":2026,"checkins":entries}]);
         let positive=source(wrapped(json!([{"stamp":20260927,"status":2,"opTime":10}])));
         let render=|reads:Vec<Value>| {
-            let input=HabitRefreshInput{mappings:BTreeMap::from([("exercise".into(),"a".into())]),authorization_quote:"refresh habits exercise=a".into(),execution_mode:"execute".into(),host_source_reads:reads};
+            let input=HabitRefreshInput{host_query_error:None,mappings:BTreeMap::from([("exercise".into(),"a".into())]),authorization_quote:"refresh habits exercise=a".into(),execution_mode:"execute".into(),host_source_reads:reads};
             serde_json::from_slice::<Value>(&rebuild(include_bytes!("../tests/fixtures/habits-v1-complete.json"),&input,"2026-09-27T21:00:00-04:00","2026-09-27",&BTreeMap::new()).unwrap()).unwrap()
         };
         let doc=render(vec![catalog.clone(),positive,source(json!([]))]);

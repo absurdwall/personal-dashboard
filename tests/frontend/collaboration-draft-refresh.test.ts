@@ -398,3 +398,35 @@ for(const response of ["failure","refresh"] as const)test(`old creation ${respon
   await creation;assert.equal(r.collaborationSessionsStatus.textContent,status);
   assert.equal(r.currentCollaborationSession,null);assert.equal(r.collaborationDrafts.size,0);
 });
+
+
+test("accepted keyboard send stays empty when a late workspace snapshot still carries the consumed draft", async () => {
+  const f=composer(); const {r,first}=f;
+  r.write=async(args:any)=>f.persist(args);
+  const stale=structuredClone(first);
+  r.submit=async()=>{first.draft="";first.draftsByDate[first.targetDate]="";return structuredClone(first);};
+  r.readWorkspace=async()=>({sessions:[stale],context:{vaultName:"Synthetic Vault"},recoveryRequired:false});
+  await r.sendCollaborationMessage();await tick();await tick();
+  assert.equal(r.collaborationMessageDraft.value,"","a stale source response must not restore the submitted text");
+});
+
+test("unconfirmed prior result leaves the production correction composer and dictation available",()=>{
+  const {r}=composer();
+  r.currentCollaborationWorkspace.recoveryRequired=true;
+  r.collaborationSendButton=element();
+  r.collaborationComposerStatus=element();
+  r.renderCollaborationWorkspace();
+  assert.equal(r.collaborationMessageDraft.disabled,false);
+  assert.equal(r.collaborationSendButton.disabled,false);
+  assert.equal(r.collaborationVoiceStartButton.disabled,false);
+  assert.equal(r.collaborationComposerStatus.textContent,"collaboration.composerRecover");
+});
+
+test("current execution owner stays visible while an older result still needs recovery",()=>{
+  const {r}=composer();
+  r.currentCollaborationWorkspace.recoveryRequired=true;
+  r.currentCollaborationWorkspace.activeRun={sessionId:"s2",sessionTitle:"Fresh correction",runState:"thinking"};
+  r.collaborationWorkOwner=element();
+  r.renderCollaborationWorkspace();
+  assert.equal(r.collaborationWorkOwner.dataset.state,"active");
+});

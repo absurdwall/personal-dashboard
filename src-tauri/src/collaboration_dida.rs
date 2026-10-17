@@ -173,6 +173,11 @@ pub(super) fn configure(command: &mut Command, connection: Option<&Value>) {
 }
 
 pub(super) fn thread_config(connection: Option<&Value>, writes_allowed: bool) -> Value {
+    // With no selected transport, an enabled_tools override would itself create
+    // an invalid MCP server section in the native CLI configuration.
+    if connection.is_none() {
+        return json!({});
+    }
     let tools: Vec<_> = connection
         .and_then(|c| c.get("enabled_tools"))
         .and_then(Value::as_array)
@@ -192,6 +197,7 @@ pub(super) fn thread_config(connection: Option<&Value>, writes_allowed: bool) ->
 }
 
 pub(super) fn thread_config_with_habit_writes(connection: Option<&Value>, writes_allowed:bool, habit_writes_allowed:bool) -> Value {
+    if connection.is_none() { return json!({}); }
     let mut config=thread_config(connection,writes_allowed);
     if !habit_writes_allowed {
         if let Some(tools)=config["mcp_servers.dida365.enabled_tools"].as_array_mut() {
@@ -291,10 +297,18 @@ pub(super) fn source_status(catalog: Result<Value, String>) -> Value {
         "coverage":"Tool discovery is not a successful business query. Query the needed current objects and dates; each result establishes only that query's coverage. Reading does not refresh the Habits snapshot."})
 }
 
-pub(super) const READ_GUIDANCE: &str = "The host-selected existing dida365 MCP reads are available as needed in manual and automatic morning turns, including existing sessions; no per-message source selection is required. Use the discovered MCP tool schemas directly for current Task/list, Habit/check-in/history and timezone preference queries. Keep stable external object identities and query date/range/source distinct from local Dashboard Task identities. Use actual query results, not old chat or retained snapshots. Report confirmed empty results separately from failure, authentication-required, partial coverage and unavailable sources. Preserve useful source/date/coverage in replies and morning evidence, without raw dumps or sensitive configuration. Discovery alone does not confirm a query or refresh Habits. External failure does not prevent supported local work. Writes depend on the current round capability; automatic and review-first turns remain read-only. Do not infer local Tasks from external ones.";
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn absent_selected_connection_never_constructs_a_transportless_mcp_override() {
+        for writes in [false,true] {
+            assert_eq!(thread_config(None,writes),json!({}));
+            for habits in [false,true] {
+                assert_eq!(thread_config_with_habit_writes(None,writes,habits),json!({}));
+            }
+        }
+    }
     use super::*;
     #[test]
     fn recovery_requires_confirmed_native_startup_failure_not_auth_or_missing_discovery() {

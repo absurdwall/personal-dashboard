@@ -6,6 +6,7 @@ const html = readFileSync(new URL("../../frontend/index.html", import.meta.url),
 const main = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 const copies = readFileSync(new URL("../../frontend/interface-language.ts", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../../src-tauri/src/collaboration.rs", import.meta.url), "utf8");
+const skill = readFileSync(new URL("../../.agents/skills/personal-dashboard-collaboration/SKILL.md", import.meta.url), "utf8");
 const memory = readFileSync(new URL("../../src-tauri/src/collaboration_memory.rs", import.meta.url), "utf8");
 
 test("the A context pane exposes existing long-term background and a read-only routine reference", () => {
@@ -25,7 +26,7 @@ test("the A context pane exposes existing long-term background and a read-only r
   assert.match(memory, /will not create a second profile/);
 });
 
-test("memory proposals require a user-visible approval card and exact source revision", () => {
+test("requested memory reviews keep a visible card and exact source revision", () => {
   assert.match(html, /id="collaboration-memory-proposals"/);
   assert.match(main, /collaboration_save_long_term_memory/);
   assert.match(main, /collaboration_save_continuity_note/);
@@ -34,7 +35,7 @@ test("memory proposals require a user-visible approval card and exact source rev
   assert.match(main, /expectedVaultBinding: binding/);
   assert.match(main, /proposal\.status === "awaitingApproval"/);
   assert.match(backend, /source_revision: String/);
-  assert.match(backend, /validate_memory_update_authority\(/);
+  assert.doesNotMatch(backend, /validate_memory_update_authority\(/);
   assert.match(backend, /No long-term memory was changed\./);
   assert.match(backend, /build_long_term_memory_update\([\s\S]*?sources\.long_term\.content/);
   assert.doesNotMatch(backend, /proposed_content/);
@@ -59,6 +60,6 @@ test("recent continuity stays Vault-bound, expires independently, and points to 
 test("every turn receives current business facts and selected-Vault memory as separate context", () => {
   assert.match(backend, /read_context\(Some\(vault_key\), target_date\)/);
   assert.match(backend, /"context": request\.context,[\s\S]*?"memory": request\.memory/);
-  assert.match(backend, /pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state/);
-  assert.match(backend, /Never turn a one-day status into long-term background/);
+  assert.match(skill, /Conversation history and `life\/Self.md` provide context/);
+  assert.match(skill, /single-day events belong in dated records/);
 });

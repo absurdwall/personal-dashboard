@@ -1,0 +1,141 @@
+"""Public script boundary: explicit source selectors, privacy and read-only behavior."""
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import tempfile
+import time
+import unittest
+
+READER = Path(__file__).resolve().parents[2] / ".agents/skills/personal-dashboard-workflow-retro/scripts/read_evidence.py"
+
+class ReaderTests(unittest.TestCase):
+    def source(self, root):
+        source = {"schemaVersion": 1, "settings": {"api_key": "PRIVATE_CREDENTIAL_SENTINEL"}, "sessions": [
+            {"id":"selected", "vaultKey":"vault-a", "messages":[
+                {"id":"request-a", "role":"user", "executionId":"a", "messageDate":"2026-10-09", "targetDate":"2026-10-02", "text":"Read synthetic Task A"},
+                {"id":"reply-a", "role":"assistant", "executionId":"a", "text":"Observed source"},
+                {"id":"request-b", "role":"user", "executionId":"b", "messageDate":"2026-10-10", "targetDate":"2026-10-09", "text":"Other day"},
+            ], "workHistory":[{"executionId":"a", "status":"completed", "items":[
+                {"itemId":"summary", "kind":"reasoning", "summary":["Visible summary"], "content":"HIDDEN_REASONING_SENTINEL", "rawResponse":"RAW_RESPONSE_SENTINEL"},
+                {"itemId":"attempt", "kind":"dynamicToolCall", "status":"failed", "diagnostic":"password=PRIVATE_CREDENTIAL_SENTINEL"},
+            ]}]},
+            {"id":"unrelated", "messages":[{"role":"user", "executionId":"foreign", "messageDate":"2026-10-09", "text":"UNRELATED_SESSION_SENTINEL"}]},
+        ]}
+        path = root / "history.json"
+        path.write_text(json.dumps(source))
+        path.chmod(0o600)
+        return path
+
+    def run_reader(self, path, *arguments):
+        return subprocess.run(["python3", str(READER), "--history", str(path), *arguments], capture_output=True, text=True)
+
+    def test_period_uses_captured_request_date_and_reader_does_not_mutate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); path = self.source(root)
+            before = path.read_bytes(); metadata = path.stat(); files = list(root.iterdir())
+            result = self.run_reader(path, "--session", "selected", "--from", "2026-10-09", "--to", "2026-10-09")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            exported = json.loads(result.stdout)
+            self.assertEqual([entry["executionId"] for entry in exported["executions"]], ["a"])
+            self.assertEqual(exported["source"]["sha256"], hashlib.sha256(before).hexdigest())
+            self.assertEqual(exported["executions"][0]["request"]["targetDate"], "2026-10-02")
+            self.assertIn("Visible summary", result.stdout)
+            for sentinel in ["PRIVATE_CREDENTIAL_SENTINEL", "HIDDEN_REASONING_SENTINEL", "RAW_RESPONSE_SENTINEL", "UNRELATED_SESSION_SENTINEL"]:
+                self.assertNotIn(sentinel, result.stdout)
+            self.assertTrue(exported["omissions"])
+            self.assertTrue(exported["executions"][0]["gaps"])
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual((path.stat().st_mode, path.stat().st_mtime_ns), (metadata.st_mode, metadata.st_mtime_ns))
+            self.assertEqual(list(root.iterdir()), files)
+
+    def test_empty_selection_legacy_unknowns_and_explicit_export_bound(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.source(Path(tmp))
+            empty = json.loads(self.run_reader(path, "--execution", "absent").stdout)
+            self.assertEqual(empty["executions"], [])
+            legacy = json.loads(self.run_reader(path, "--execution", "b").stdout)["executions"][0]
+            self.assertIsNone(legacy["history"])
+            self.assertTrue(any("unavailable" in gap for gap in legacy["gaps"]))
+            bounded = json.loads(self.run_reader(path, "--session", "selected", "--max-export-bytes", "1024").stdout)
+            self.assertEqual(bounded["coverage"], "unavailable-export-bound")
+            self.assertEqual(bounded["selectedExecutions"], 2)
+            self.assertTrue(bounded["omissions"])
+
+    def test_damaged_and_unsupported_sources_are_errors_not_empty_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.json"
+            for value in ["{", '{"schemaVersion":2,"sessions":[]}', '{"schemaVersion":1,"sessions":[{"messages":"broken"}]}',
+                          '{"schemaVersion":1,"sessions":[{"messages":[{"role":"user","executionId":"a"}],"workHistory":[{"executionId":"a","items":[{"changes":[null]}]}]}]}']:
+                path.write_text(value)
+                result = self.run_reader(path, "--session", "selected")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("evidence-source-unavailable", result.stderr)
+
+    def test_failed_start_keeps_original_execution_and_scoped_observed_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.source(Path(tmp)); source = json.loads(path.read_text())
+            session = source['sessions'][0]
+            session.update(runId='b', runState='error', progress='thread/start: invalid transport')
+            session['messages'][2]['deliveryState'] = 'error'
+            path.write_text(json.dumps(source))
+            failed = json.loads(self.run_reader(path, '--execution', 'b').stdout)['executions'][0]
+            self.assertEqual(failed['terminal']['status'], 'error')
+            self.assertEqual(failed['terminal']['diagnostic'], 'thread/start: invalid transport')
+            self.assertIsNone(failed['history'])
+            session['runId'] = 'a'; session['progress'] = 'Newer status'
+            path.write_text(json.dumps(source))
+            old = json.loads(self.run_reader(path, '--execution', 'b').stdout)['executions'][0]
+            self.assertNotIn('Newer status', json.dumps(old))
+
+    def test_large_archive_selects_small_execution_with_original_hash_and_reordered_pointers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"history.json"
+            source={"sessions":[{"messages":[{"role":"user","executionId":"old","text":"X"*(33*1024*1024)}],"id":"unrelated"},
+                {"workHistory":[{"items":[{"itemId":"failed","kind":"commandExecution","status":"failed","diagnostic":"Command exited with code 7."}],"status":"completed","executionId":"small-用户"}],
+                 "messages":[{"text":"Original 用户 request","deliveryState":"completed","messageDate":"2026-10-09","executionId":"small-用户","role":"user"},
+                             {"text":"Original reply","executionId":"small-用户","role":"assistant"}],"vaultKey":"owned-vault","id":"selected"}],
+                "runtimeThreadsByExecution":{"small-用户":"original-thread"},"schemaVersion":1}
+            path.write_text(json.dumps(source))
+            before=path.stat()
+            result=self.run_reader(path,"--execution","small-用户")
+            self.assertEqual(result.returncode,0,result.stderr)
+            exported=json.loads(result.stdout)
+            self.assertEqual([item["executionId"] for item in exported["executions"]],["small-用户"])
+            self.assertEqual(exported["source"]["sha256"],hashlib.sha256(path.read_bytes()).hexdigest())
+            for reference in exported["references"].values():
+                value=source
+                for token in reference["pointer"].split("/")[1:]:
+                    token=token.replace("~1","/").replace("~0","~")
+                    value=value[int(token)] if isinstance(value,list) else value[token]
+                self.assertIsNotNone(value)
+            self.assertTrue(any(ref["pointer"]=="/sessions/1/workHistory/0/items/0" for ref in exported["references"].values()))
+            self.assertIn("Command exited with code 7.",result.stdout)
+            self.assertEqual(path.stat().st_mtime_ns,before.st_mtime_ns)
+            self.assertNotIn("unrelated",result.stdout)
+
+    def test_selected_working_overflow_is_explicit_and_keeps_full_source_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"history.json"
+            source={"schemaVersion":1,"sessions":[{"id":"selected","messages":[{"role":"user","executionId":"large-selected","deliveryState":"completed"}],
+                "workHistory":[{"executionId":"large-selected","status":"completed","items":[{"itemId":str(i),"status":"failed","diagnostic":"Observed failure "*1600} for i in range(400)]}]}]}
+            path.write_text(json.dumps(source))
+            result=self.run_reader(path,"--execution","large-selected");self.assertEqual(result.returncode,0,result.stderr)
+            exported=json.loads(result.stdout);self.assertEqual(exported["coverage"],"unavailable-selection-bound")
+            self.assertEqual(exported["executions"],[]);self.assertEqual(exported["references"],{})
+            self.assertEqual(exported["source"]["sha256"],hashlib.sha256(path.read_bytes()).hexdigest())
+            self.assertTrue(any("no failure/receipt/terminal" in omission for omission in exported["omissions"]))
+
+    def test_source_changed_while_reading_never_returns_references(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"history.json"
+            path.write_text(json.dumps({"schemaVersion":1,"sessions":[{"id":"selected","messages":[{"role":"user","executionId":"owned","text":"X"*(33*1024*1024)}]}]}))
+            child=subprocess.Popen(["python3",str(READER),"--history",str(path),"--execution","owned"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+10
+            while child.poll() is None and time.monotonic()<deadline:
+                path.touch();time.sleep(0.002)
+            stdout,stderr=child.communicate(timeout=5)
+            self.assertEqual(child.returncode,2,stderr);self.assertIn("source changed",stderr);self.assertEqual(stdout,"")
+
+if __name__ == "__main__":
+    unittest.main()

@@ -398,6 +398,11 @@ fn collaboration_session(
 }
 
 #[tauri::command]
+fn collaboration_record_refresh(application: State<'_, collaboration::CollaborationApplication>, session_id: String, execution_id: String, observations: Vec<collaboration::CollaborationRefreshInput>) -> Result<(), String> {
+    application.record_refresh_for_selected_vault(&session_id, &execution_id, observations)
+}
+
+#[tauri::command]
 fn collaboration_submit_message(
     application: State<'_, collaboration::CollaborationApplication>,
     session_id: String,
@@ -513,12 +518,23 @@ fn collaboration_resume_not_started(
 }
 
 #[tauri::command]
-fn collaboration_reconcile_run(
+fn collaboration_remove_pending(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String, execution_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.remove_pending_request_for_selected_vault(&session_id, &execution_id)
+}
+
+#[tauri::command]
+async fn collaboration_reconcile_run(
     application: State<'_, collaboration::CollaborationApplication>,
     session_id: String,
     execution_id: String,
 ) -> Result<collaboration::CollaborationSessionView, String> {
-    application.reconcile_run_for_selected_vault(&session_id, &execution_id)
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        application.reconcile_run_for_selected_vault(&session_id, &execution_id)
+    }).await.map_err(|error| format!("Could not check the saved result: {error}"))?
 }
 
 #[tauri::command]
@@ -1007,6 +1023,7 @@ pub fn run() {
             collaboration_create_session,
             collaboration_list_sessions,
             collaboration_session,
+            collaboration_record_refresh,
             collaboration_submit_message,
             collaboration_voice_gate_fixture,
             collaboration_voice_runtime_gate,
@@ -1019,7 +1036,8 @@ pub fn run() {
             collaboration_set_target_date,
             collaboration_stop_run,
             collaboration_resume_not_started,
-            collaboration_reconcile_run,
+            collaboration_remove_pending,
+                collaboration_reconcile_run,
             collaboration_approve_task_operation,
             collaboration_reject_task_operation,
             collaboration_refresh_task_operation,
@@ -1080,6 +1098,7 @@ pub fn run() {
         collaboration_create_session,
         collaboration_list_sessions,
         collaboration_session,
+        collaboration_record_refresh,
         collaboration_submit_message,
         collaboration_voice_gate_fixture,
         collaboration_voice_runtime_gate,
@@ -1092,6 +1111,7 @@ pub fn run() {
         collaboration_set_target_date,
         collaboration_stop_run,
         collaboration_resume_not_started,
+        collaboration_remove_pending,
         collaboration_reconcile_run,
         collaboration_approve_task_operation,
         collaboration_reject_task_operation,
