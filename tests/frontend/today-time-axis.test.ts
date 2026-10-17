@@ -290,7 +290,7 @@ test('confirmed facts have a read-only, independently scrollable axis popover', 
 test('clock ticks update the locator without rebuilding readable timeline entries', () => {
   const source = readFileSync(new URL('../../frontend/main.ts', import.meta.url), 'utf8');
   const refreshStart = source.indexOf('async function refreshTodayClock(): Promise<void>');
-  const refreshEnd = source.indexOf('\nasync function selectTodayVault()', refreshStart);
+  const refreshEnd = source.indexOf('\nasync function selectTodayVault(', refreshStart);
   assert.ok(refreshStart >= 0 && refreshEnd > refreshStart);
   const refresh = source.slice(refreshStart, refreshEnd);
   assert.equal(refresh.includes('renderTodayTimeAxis('), false);

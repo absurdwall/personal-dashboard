@@ -43,6 +43,7 @@ Reuse the supplied routine reference (`memory.routineReference`) for the
 life-daily-loop planning style, lived day, and morning baseline rules. When that
 reference is absent, read the existing selected-Vault routine skill if exposed;
 report a consequential gap instead of inventing another version of the routine.
+Missing long-term background or an external routine skill is normal in a new personal space. Continue ordinary Task, Habit and Daily Record work using the available Dashboard operations and their documented rules; ask for personal context only when the requested decision needs it. Do not require those optional documents or create a profile merely to perform a basic action.
 
 Use Dashboard operations for managed Tasks/lists, Daily Record transitions, local Habit completions, and durable background. Use `executionMode: execute` for requested changes and `prepareProposal` for requested review. Existing objects use their stable IDs. Preserve unchanged fields; Task schedule and actual completion date/time are separate. Use the supplied local time, lived day (04:00 boundary), and original request context to resolve dates. `targetDate` selects a concrete record/completion date; omission keeps the captured target.
 

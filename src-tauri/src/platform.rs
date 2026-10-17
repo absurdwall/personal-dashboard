@@ -618,6 +618,21 @@ impl<R: Runtime> NativeTodayWorkspaceExchange<R> {
 }
 
 impl<R: Runtime> TodayWorkspaceExchange for NativeTodayWorkspaceExchange<R> {
+    fn new_personal_space_destination(
+        &self,
+        interface_language: InterfaceLanguage,
+    ) -> Result<Option<PathBuf>, String> {
+        let title = match interface_language {
+            InterfaceLanguage::Zh => "新建个人空间：选择位置并命名新文件夹",
+            InterfaceLanguage::En => "Create personal space: choose a location and new folder name",
+        };
+        let Some(destination) = self.app.dialog().file()
+            .set_title(title).set_file_name("My Personal Space").blocking_save_file()
+        else { return Ok(None); };
+        destination.into_path().map(Some)
+            .map_err(|_| "The new personal space location is unavailable.".into())
+    }
+
     fn select_vault(&self) -> Result<Option<PathBuf>, String> {
         self.select_vault_in_language(InterfaceLanguage::Zh)
     }
@@ -644,8 +659,8 @@ impl<R: Runtime> TodayWorkspaceExchange for NativeTodayWorkspaceExchange<R> {
 
 fn vault_picker_title(interface_language: InterfaceLanguage) -> &'static str {
     match interface_language {
-        InterfaceLanguage::Zh => "选择 Tortilla Flat Vault",
-        InterfaceLanguage::En => "Select the Tortilla Flat Vault",
+        InterfaceLanguage::Zh => "选择已有兼容 Vault",
+        InterfaceLanguage::En => "Select an existing compatible Vault",
     }
 }
 
@@ -914,11 +929,11 @@ mod tests {
     fn vault_picker_title_follows_the_current_interface_language() {
         assert_eq!(
             vault_picker_title(InterfaceLanguage::Zh),
-            "选择 Tortilla Flat Vault"
+            "选择已有兼容 Vault"
         );
         assert_eq!(
             vault_picker_title(InterfaceLanguage::En),
-            "Select the Tortilla Flat Vault"
+            "Select an existing compatible Vault"
         );
     }
 

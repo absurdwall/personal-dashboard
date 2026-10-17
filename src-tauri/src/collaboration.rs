@@ -1634,6 +1634,9 @@ pub struct DailyPlanAutomationSettings {
     pub time: String,
     #[serde(default)]
     pub external_schedule_handoff_confirmed: bool,
+    // Persisted settings without this field retain the legacy handoff guard.
+    #[serde(default = "legacy_external_schedule_present")]
+    pub external_schedule_present: bool,
 }
 
 impl Default for DailyPlanAutomationSettings {
@@ -1642,9 +1645,12 @@ impl Default for DailyPlanAutomationSettings {
             enabled: false,
             time: default_daily_plan_time(),
             external_schedule_handoff_confirmed: false,
+            external_schedule_present: false,
         }
     }
 }
+
+fn legacy_external_schedule_present() -> bool { true }
 
 fn default_daily_plan_time() -> String {
     "06:00".into()
@@ -2285,7 +2291,7 @@ impl CollaborationApplication {
         settings: DailyPlanAutomationSettings,
     ) -> Result<DailyPlanAutomationView, String> {
         validate_daily_plan_time(&settings.time)?;
-        if settings.enabled && !settings.external_schedule_handoff_confirmed {
+        if settings.enabled && settings.external_schedule_present && !settings.external_schedule_handoff_confirmed {
             return Err("Confirm that the previous morning-plan schedule is disabled before enabling Dashboard automation. This prevents two schedulers from writing the same Daily Record.".into());
         }
         self.update_state(|state| {
@@ -2318,7 +2324,7 @@ impl CollaborationApplication {
     pub fn check_daily_plan_automation(&self) -> Result<DailyPlanAutomationView, String> {
         let view = self.automation_view()?;
         if !view.settings.enabled
-            || !view.settings.external_schedule_handoff_confirmed
+            || (view.settings.external_schedule_present && !view.settings.external_schedule_handoff_confirmed)
             || !daily_plan_schedule_is_due(&view.time, &view.settings.time)?
         {
             return Ok(view);

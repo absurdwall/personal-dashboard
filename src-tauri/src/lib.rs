@@ -968,6 +968,14 @@ fn set_historical_habit_completion(
 }
 
 #[tauri::command]
+async fn create_today_space(
+    application: State<'_, DesktopTodayApplication>,
+    interface_language: InterfaceLanguage,
+) -> Result<VaultSelectionResult, String> {
+    application.create_personal_space_in_language(interface_language)
+}
+
+#[tauri::command]
 async fn select_today_vault(
     application: State<'_, DesktopTodayApplication>,
     interface_language: InterfaceLanguage,
@@ -1244,6 +1252,7 @@ pub fn run() {
             set_local_habit_completion,
             set_historical_habit_completion,
             select_today_vault,
+            create_today_space,
             edit_plan_time,
             append_daytime_update,
             add_dated_note,
@@ -1331,6 +1340,7 @@ pub fn run() {
         set_local_habit_completion,
         set_historical_habit_completion,
         select_today_vault,
+        create_today_space,
         edit_plan_time,
         append_daytime_update,
         add_dated_note,
