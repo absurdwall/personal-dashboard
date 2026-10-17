@@ -406,7 +406,7 @@ impl HabitSnapshotView {
     pub fn unconfigured() -> Self {
         Self::empty(
             HabitSnapshotState::Unconfigured,
-            "请选择 Tortilla Flat vault，以读取 Habits 快照。",
+            "请选择 兼容 Vault，以读取 Habits 快照。",
         )
     }
 

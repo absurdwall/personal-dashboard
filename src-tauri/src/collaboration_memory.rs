@@ -197,13 +197,13 @@ fn unconfigured_sources() -> CollaborationMemorySources {
             source_path: LONG_TERM_CONTEXT_PATH.into(),
             content: String::new(),
             revision: None,
-            message: "Choose the Tortilla Flat Vault to read long-term background.".into(),
+            message: "Choose a personal space or compatible Vault to read long-term background.".into(),
         },
         routine_reference: RoutineMemoryReferenceView {
             state: "unconfigured".into(),
             source_path: ROUTINE_REFERENCE_PATH.into(),
             content: String::new(),
-            message: "Choose the Tortilla Flat Vault to read its daily workflow reference.".into(),
+            message: "Choose a personal space or compatible Vault to read its daily workflow reference.".into(),
         },
     }
 }
@@ -217,7 +217,7 @@ fn read_long_term_document(root: &Path) -> LongTermMemoryDocumentView {
                 source_path: LONG_TERM_CONTEXT_PATH.into(),
                 content: String::new(),
                 revision: None,
-                message: "The existing life/Self.md document was not found. Personal Dashboard will not create a second profile.".into(),
+                message: "No optional long-term background has been added in life/Self.md. Ordinary Task, Habit and Daily Record work remains available. Personal Dashboard will not create a second profile.".into(),
             },
             Err(error) => memory_document_error(error),
         },
@@ -287,7 +287,7 @@ fn read_routine_reference(root: &Path) -> RoutineMemoryReferenceView {
             state: "missing".into(),
             source_path: ROUTINE_REFERENCE_PATH.into(),
             content: String::new(),
-            message: "The existing daily workflow reference was not found.".into(),
+            message: "No optional daily workflow reference is installed. Dashboard operations remain available.".into(),
         },
         Err(error) => RoutineMemoryReferenceView {
             state: "error".into(),

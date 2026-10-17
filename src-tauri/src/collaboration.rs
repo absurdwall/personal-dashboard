@@ -1634,6 +1634,9 @@ pub struct DailyPlanAutomationSettings {
     pub time: String,
     #[serde(default)]
     pub external_schedule_handoff_confirmed: bool,
+    // Persisted settings without this field retain the legacy handoff guard.
+    #[serde(default = "legacy_external_schedule_present")]
+    pub external_schedule_present: bool,
 }
 
 impl Default for DailyPlanAutomationSettings {
@@ -1642,9 +1645,12 @@ impl Default for DailyPlanAutomationSettings {
             enabled: false,
             time: default_daily_plan_time(),
             external_schedule_handoff_confirmed: false,
+            external_schedule_present: false,
         }
     }
 }
+
+fn legacy_external_schedule_present() -> bool { true }
 
 fn default_daily_plan_time() -> String {
     "06:00".into()
@@ -2285,7 +2291,7 @@ impl CollaborationApplication {
         settings: DailyPlanAutomationSettings,
     ) -> Result<DailyPlanAutomationView, String> {
         validate_daily_plan_time(&settings.time)?;
-        if settings.enabled && !settings.external_schedule_handoff_confirmed {
+        if settings.enabled && settings.external_schedule_present && !settings.external_schedule_handoff_confirmed {
             return Err("Confirm that the previous morning-plan schedule is disabled before enabling Dashboard automation. This prevents two schedulers from writing the same Daily Record.".into());
         }
         self.update_state(|state| {
@@ -2318,7 +2324,7 @@ impl CollaborationApplication {
     pub fn check_daily_plan_automation(&self) -> Result<DailyPlanAutomationView, String> {
         let view = self.automation_view()?;
         if !view.settings.enabled
-            || !view.settings.external_schedule_handoff_confirmed
+            || (view.settings.external_schedule_present && !view.settings.external_schedule_handoff_confirmed)
             || !daily_plan_schedule_is_due(&view.time, &view.settings.time)?
         {
             return Ok(view);
@@ -10573,6 +10579,8 @@ pub struct CodexAppServerRuntime {
     shutdown_handle: RuntimeShutdownHandle,
     dictation: Option<ActiveDictationTransport>,
     thread_configurations: HashMap<String, RuntimeThreadConfiguration>,
+    #[cfg(test)]
+    candidate_inventory: Option<Vec<PathBuf>>,
 }
 
 struct ActiveDictationTransport {
@@ -10761,18 +10769,20 @@ fn native_turn_scope(request: &RuntimeTurnRequest) -> Result<(&'static str, Vec<
 // Local version/schema probes are also input-scoped and cancellable; cold
 // setup must not retain the runtime mutex indefinitely before sideband spawn.
 fn local_codex_probe_output(command: &mut Command, cancellation: Option<&RuntimeShutdownHandle>) -> std::io::Result<std::process::Output> {
-    if cancellation.is_none() { return command.output(); }
-    let cancellation = cancellation.expect("checked above");
-    if cancellation.is_requested() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Dictation cancelled"));
+    if cancellation.is_some_and(RuntimeShutdownHandle::is_requested) {
+        return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Codex check cancelled"));
     }
     let mut child = command.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
-        if cancellation.is_requested() || std::time::Instant::now() >= deadline {
+        if cancellation.is_some_and(RuntimeShutdownHandle::is_requested) || std::time::Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Dictation probe ended"));
+            return Err(if cancellation.is_some_and(RuntimeShutdownHandle::is_requested) {
+                std::io::Error::new(std::io::ErrorKind::Interrupted, "Codex check cancelled")
+            } else {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "Codex check timed out; refresh to retry")
+            });
         }
         if child.try_wait()?.is_some() { return child.wait_with_output(); }
         thread::sleep(Duration::from_millis(10));
@@ -11446,7 +11456,17 @@ impl CodexAppServerRuntime {
             shutdown_handle: RuntimeShutdownHandle::default(),
             dictation: None,
             thread_configurations: HashMap::new(),
+            #[cfg(test)]
+            candidate_inventory: None,
         }
+    }
+
+    fn cli_candidates(&self) -> Vec<PathBuf> {
+        #[cfg(test)]
+        if let Some(candidates) = &self.candidate_inventory { return candidates.clone(); }
+        let path = std::env::var_os("PATH");
+        let home = std::env::var_os("HOME");
+        codex_cli_candidates(path.as_deref(), home.as_deref().map(Path::new))
     }
 
     fn inspect_read_only_capability(&mut self, executable: &Path, version: &str) {
@@ -11499,7 +11519,7 @@ impl CodexAppServerRuntime {
         }
         ensure_empty_working_directory(&self.working_directory)?;
         ensure_private_codex_home(&self.codex_home_dir)?;
-        let executable = discover_codex_cli()?;
+        let (executable, _) = self.identity()?;
         let selected_dida_connection = dida::discover(&executable);
         if self.selected_dida_connection != selected_dida_connection {
             self.client = None;
@@ -11509,21 +11529,6 @@ impl CodexAppServerRuntime {
         if self.executable.as_deref() != Some(executable.as_path()) || self.client.is_none() {
             self.client = None;
             self.prepared_dida_status = None;
-            let output = isolated_codex_command(&executable, &self.codex_home_dir)
-                .arg("--version")
-                .output()
-                .map_err(|error| format!("Could not read the Codex CLI version: {error}"))?;
-            if !output.status.success() {
-                return Err("Codex CLI could not report its version. Reinstall or update Codex CLI and retry.".into());
-            }
-            let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-            if version.is_empty() {
-                return Err(
-                    "Codex CLI returned an empty version. Reinstall or update Codex CLI and retry."
-                        .into(),
-                );
-            }
-            self.version = Some(version);
             self.client = Some(StdioJsonlClient::spawn_with_selected_dida(
                 &executable,
                 &self.codex_home_dir,
@@ -11548,26 +11553,78 @@ impl CodexAppServerRuntime {
     fn identity_cancellable(&mut self, cancellation: Option<&RuntimeShutdownHandle>) -> Result<(PathBuf, String), String> {
         ensure_empty_working_directory(&self.working_directory)?;
         ensure_private_codex_home(&self.codex_home_dir)?;
-        let executable = discover_codex_cli()?;
-        if self.executable.as_deref() != Some(executable.as_path()) || self.version.is_none() {
-            self.executable = Some(executable.clone());
-            let mut command = isolated_codex_command(&executable, &self.codex_home_dir);
-            command.arg("--version");
-            let output = local_codex_probe_output(&mut command, cancellation)
-                .map_err(|error| format!("Could not read the Codex CLI version: {error}"))?;
-            if !output.status.success() {
-                return Err("Codex CLI could not report its version. Reinstall or update Codex CLI and retry.".into());
+        if self.client.is_some() {
+            if let (Some(executable), Some(version)) = (&self.executable, &self.version) {
+                return Ok((executable.clone(), version.clone()));
             }
-            let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-            if version.is_empty() {
-                return Err(
-                    "Codex CLI returned an empty version. Reinstall or update Codex CLI and retry."
-                        .into(),
-                );
-            }
-            self.version = Some(version);
         }
-        Ok((executable, self.version.clone().unwrap_or_default()))
+        let mut seen = HashSet::new();
+        let mut last_error = None;
+        for candidate in self.cli_candidates() {
+            if cancellation.is_some_and(RuntimeShutdownHandle::is_requested) {
+                return Err("Codex connection check was cancelled. Refresh to retry.".into());
+            }
+            if !candidate.is_file() { continue; }
+            let executable = match candidate.canonicalize() {
+                Ok(path) if seen.insert(path.clone()) => path,
+                Ok(_) => continue,
+                Err(error) => { last_error = Some(error.to_string()); continue; }
+            };
+            let checked = (|| {
+                let mut command = isolated_codex_command(&executable, &self.codex_home_dir);
+                command.arg("--version");
+                let output = local_codex_probe_output(&mut command, cancellation)
+                    .map_err(|error| format!("Could not run Codex CLI: {error}"))?;
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+                if !output.status.success() || version.is_empty() {
+                    return Err("Codex CLI could not report its version.".to_owned());
+                }
+                let permission = generate_restricted_read_permission_profile_cancellable(
+                    &executable, &self.codex_home_dir, &self.app_data_dir,
+                    &self.working_directory, cancellation,
+                )?.ok_or_else(|| format!("{version} does not advertise the required named permission-profile and runtime-root fields."))?;
+                let shutdown = cancellation.cloned().unwrap_or_else(|| self.shutdown_handle.clone());
+                let mut client = StdioJsonlClient::spawn_with_selected_dida(
+                    &executable, &self.codex_home_dir, shutdown, None,
+                )?;
+                self.shutdown_handle.register_child(Arc::clone(&client.child));
+                let result = client.request_until("initialize", json!({
+                    "clientInfo": {"name":"personal_dashboard", "title":"Personal Dashboard", "version":env!("CARGO_PKG_VERSION")},
+                    "capabilities": {"experimentalApi":true}
+                }), std::time::Instant::now() + Duration::from_secs(5))?;
+                if !result.get("userAgent").and_then(Value::as_str).is_some_and(|value| !value.is_empty()) {
+                    return Err(format!("{version} returned an invalid App Server initialization result."));
+                }
+                client.notify("initialized", json!({}))?;
+                client.initialized = true;
+                Ok((version, permission, client))
+            })();
+            match checked {
+                Ok((version, permission, client)) => {
+                    self.executable = Some(executable.clone());
+                    self.version = Some(version.clone());
+                    self.capability_probe_version = Some((executable.clone(), version.clone()));
+                    self.restricted_read_permission_profile = Some(permission);
+                    self.text_turn_unavailable_reason = None;
+                    self.prepared_dida_status = None;
+                    self.selected_dida_connection = None;
+                    // An input-scoped cancellation must not own the formal
+                    // Collaboration client after the microphone input ends.
+                    self.client = cancellation.is_none().then_some(client);
+                    return Ok((executable, version));
+                }
+                Err(error) => last_error = Some(error),
+            }
+        }
+        self.executable = None;
+        self.version = None;
+        self.restricted_read_permission_profile = None;
+        let message = match last_error {
+            Some(error) => format!("No compatible Codex CLI could start. Install or update the documented standalone Codex CLI, then refresh. Last check: {}", bounded_string(&error, 500)),
+            None => "Codex CLI was not found. Install the documented standalone Codex CLI, then refresh the connection. Local features remain available.".into(),
+        };
+        self.text_turn_unavailable_reason = Some(message.clone());
+        Err(message)
     }
 }
 
@@ -12543,6 +12600,7 @@ fn chatgpt_cli_from_path_entry(directory: &Path) -> Option<PathBuf> {
     Some(codex_cli_directory.join("bin/codex"))
 }
 
+#[cfg(test)]
 fn resolve_codex_cli(candidates: impl IntoIterator<Item = PathBuf>) -> Result<PathBuf, String> {
     for candidate in candidates {
         if candidate.is_file() {
@@ -12557,13 +12615,12 @@ fn resolve_codex_cli(candidates: impl IntoIterator<Item = PathBuf>) -> Result<Pa
     Err("Codex CLI was not found. Install Codex CLI or add its `codex` executable to PATH, then refresh the connection.".into())
 }
 
+
+#[cfg(test)]
 fn discover_codex_cli() -> Result<PathBuf, String> {
     let path = std::env::var_os("PATH");
     let home = std::env::var_os("HOME");
-    resolve_codex_cli(codex_cli_candidates(
-        path.as_deref(),
-        home.as_deref().map(Path::new),
-    ))
+    resolve_codex_cli(codex_cli_candidates(path.as_deref(), home.as_deref().map(Path::new)))
 }
 
 #[cfg(all(test, target_os = "macos"))]
@@ -12584,6 +12641,68 @@ mod codex_cli_discovery_tests {
             "personal-dashboard-codex-discovery-{label}-{}-{nonce}",
             std::process::id()
         ))
+    }
+
+    // The agreed seam is the public runtime status: a stale PATH candidate
+    // must not hide a usable standalone install after Finder starts the app.
+    #[test]
+    fn runtime_status_skips_unusable_candidates_and_reports_initialized_standalone_cli() {
+        let root = test_root("runtime-fallback");
+        let home = root.join("home");
+        let stale = root.join("old/bin/codex");
+        make_fake_cli(&stale);
+        let broken = root.join("broken/bin/codex");
+        fs::create_dir_all(broken.parent().unwrap()).unwrap();
+        fs::write(&broken, "#!/bin/sh\nexit 1\n").unwrap();
+        fs::set_permissions(&broken, fs::Permissions::from_mode(0o700)).unwrap();
+        let executable = home.join(".local/bin/codex");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        let script = r##"#!/bin/sh
+case "$*" in
+  *--version*) printf 'codex-cli synthetic-compatible\n'; exit 0;;
+  *generate-json-schema*)
+    while [ "$1" != "--out" ]; do shift; done
+    shift
+    /bin/mkdir -p "$1/v2"
+    for schema in ThreadStartParams ThreadResumeParams TurnStartParams; do
+      printf '%s' '{"properties":{"permissions":{"type":["string","null"]},"runtimeWorkspaceRoots":{"items":{"$ref":"#/$defs/AbsolutePathBuf"}}},"$defs":{"AbsolutePathBuf":{"type":"string"}}}' > "$1/v2/$schema.json"
+    done
+    exit 0;;
+esac
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*) printf '{"id":1,"result":{"userAgent":"synthetic"}}\n';;
+    *'"method":"config/read"'*) printf '{"id":2,"result":{"config":{"mcp_servers":{}}}}\n';;
+    *'"method":"account/read"'*) printf '{"id":3,"result":{"account":null}}\n';;
+    *'"method":"model/list"'*) printf '{"id":4,"result":{"data":[]}}\n';;
+  esac
+done
+"##;
+        fs::write(&executable, script).unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let schema_old = root.join("schema-old/bin/codex");
+        fs::create_dir_all(schema_old.parent().unwrap()).unwrap();
+        fs::write(&schema_old, "#!/bin/sh\ncase \"$*\" in *--version*) printf 'codex-cli old\\n';; *) exit 0;; esac\n").unwrap();
+        fs::set_permissions(&schema_old, fs::Permissions::from_mode(0o700)).unwrap();
+        let handshake_bad = root.join("handshake-bad/bin/codex");
+        fs::create_dir_all(handshake_bad.parent().unwrap()).unwrap();
+        fs::write(&handshake_bad, script.replace(
+            r#"{"id":1,"result":{"userAgent":"synthetic"}}"#,
+            r#"{"id":1,"error":{"message":"unsupported"}}"#,
+        )).unwrap();
+        fs::set_permissions(&handshake_bad, fs::Permissions::from_mode(0o700)).unwrap();
+        let minimal_path = std::env::join_paths([
+            root.join("old/bin"), root.join("broken/bin"), root.join("schema-old/bin"), root.join("handshake-bad/bin"),
+        ]).unwrap();
+        let mut runtime = CodexAppServerRuntime::new(root.join("app-data"));
+        runtime.candidate_inventory = Some(codex_cli_candidates(Some(&minimal_path), Some(&home)));
+        let status = runtime.inspect().unwrap();
+        assert_eq!(status.executable_path, Some(executable.canonicalize().unwrap().to_string_lossy().into_owned()));
+        assert_eq!(status.version.as_deref(), Some("codex-cli synthetic-compatible"));
+        assert!(status.read_only_text_turns_available);
+        assert!(!status.authenticated, "runtime compatibility is separate from account login");
+        drop(runtime);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -13381,6 +13500,8 @@ fn secure_existing_history_file(path: &Path) -> Result<(), String> {
 
 fn isolated_codex_command(executable: &Path, codex_home_dir: &Path) -> Command {
     let mut command = Command::new(executable);
+    // Never inherit the launcher working directory for runtime/config probes.
+    command.current_dir(codex_home_dir);
     command.env_clear();
     for name in [
         "PATH",
