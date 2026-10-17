@@ -66,10 +66,13 @@ Status: local preparation; remote execution has not started.
    increments are 112 / 218 / 118 commits, before these preparation records.
    Run required checks on the appropriate isolated source; do not replay the
    retired PDCR-11 acceptance matrix. The InitialPlan record reports 40 full
-   frontend failures (496 passes); only four failures were individually
-   reproduced on untouched `e2102da`. Recheck/classify the remaining failures
-   before claiming green verification or merge readiness. Keep repairs scoped
-   rather than silently turning publication into a new product iteration.
+   frontend failures (496 passes). The subsequent [failure investigation](frontend-failure-audit.md)
+   identifies 19 incomplete test harnesses, 12 obsolete UI paths, six obsolete
+   or invalid assertions and three layout scenarios needing current-page
+   review. Relevant frontend/test inputs are identical to pre-repair `e2102da`.
+   Maintain the tests, review those three layouts and rerun before claiming
+   green verification or merge readiness. Keep repairs scoped rather than
+   silently turning publication into a new product iteration.
 4. **Migrate the 46 records.** Deduplicate against GitHub, publish full bodies
    in parent/blocker order, resolve all local references, and record returned
    numbers/URLs immediately. Preserve authored history and original unrun

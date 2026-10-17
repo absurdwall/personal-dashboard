@@ -114,3 +114,13 @@ Temporary, archived and build bundles were unregistered from Launch Services.
 The relevant registration and Spotlight bundle-identifier query both returned
 only `/Applications/Personal Dashboard.app`. No main merge, remote publication,
 push or personal planning retry was performed.
+
+## Subsequent frontend-failure investigation · 2026-10-17
+
+The user requested an explanation and investigation of the recorded 40 failures.
+[Current diagnosis and publication action](../../personal-dashboard-remote-return-2026-10-17/frontend-failure-audit.md)
+supersedes the earlier limited four-case baseline investigation without changing
+the historical 496-pass/40-fail result. Relevant frontend/test/build inputs are
+identical to pre-repair `e2102da`. The diagnosis separates test maintenance from
+three layout scenarios still requiring current-page review; no product or test
+fix, new full-suite pass or additional installed acceptance is claimed.
