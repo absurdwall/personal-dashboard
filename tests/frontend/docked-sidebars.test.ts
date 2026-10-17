@@ -206,10 +206,14 @@ test('Tasks quick schedule shows its current date and time with readable entry a
     await new Promise(resolve=>setTimeout(resolve,30));
     date.value='2026-08-10';date.dispatchEvent(new Event('change',{bubbles:true}));time.value='09:30';time.dispatchEvent(new Event('change',{bubbles:true}));
     const nodes=[name,button,submit];
-    const rects=nodes.map(node=>{const r=node.getBoundingClientRect();return {top:r.top,height:r.height,width:r.width}}),label=button.querySelector('.task-schedule-label');
-    return JSON.stringify({hidden:form.hidden,text:label?.textContent?.trim(),labelFontSize:parseFloat(getComputedStyle(label).fontSize),labelClientWidth:label.clientWidth,labelScrollWidth:label.scrollWidth,title:button.title,aria:button.getAttribute('aria-label'),width:rects[1].width,rects,overflow:document.documentElement.scrollWidth>innerWidth,calls});
+    const scheduleSnapshot=()=>{const rects=nodes.map(node=>{const r=node.getBoundingClientRect();return {top:r.top,height:r.height,width:r.width}}),label=button.querySelector('.task-schedule-label');
+      return {hidden:form.hidden,text:label?.textContent?.trim(),labelFontSize:parseFloat(getComputedStyle(label).fontSize),labelClientWidth:label.clientWidth,labelScrollWidth:label.scrollWidth,title:button.title,aria:button.getAttribute('aria-label'),width:rects[1].width,rects,overflow:document.documentElement.scrollWidth>innerWidth,calls};};
+    const today=scheduleSnapshot();
+    date.value='2026-08-13';date.dispatchEvent(new Event('change',{bubbles:true}));
+    return JSON.stringify({today,future:scheduleSnapshot()});
   `);
-  assertQuickSchedulePresentation(result,[/09:30/,/Today|Aug 10/],/Aug 10.*09:30/);
+  assertQuickSchedulePresentation(result.today,'Today · 09:30',/Aug 10.*09:30/);
+  assertQuickSchedulePresentation(result.future,[/Aug 13/,/09:30/],/Aug 13.*09:30/);
 });
 
 test('Today zero untimed count keeps the default docked sidebar and an icon-only accessible control', {skip:process.platform!=='darwin'},()=>{
