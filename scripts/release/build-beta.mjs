@@ -40,6 +40,9 @@ const remaps=[
   [homedir(),'/user'],
 ];
 const env={...process.env,CARGO_ENCODED_RUSTFLAGS:remaps.map(([from,to])=>`--remap-path-prefix=${from}=${to}`).join('\x1f'),PERSONAL_DASHBOARD_SOURCE_COMMIT:sourceCommit};
+// This local candidate must not inherit distribution signing/notarization credentials.
+for(const key of ['APPLE_ID','APPLE_PASSWORD','APPLE_TEAM_ID','APPLE_API_KEY','APPLE_API_ISSUER','APPLE_API_KEY_PATH','APPLE_CERTIFICATE','APPLE_CERTIFICATE_PASSWORD']) delete env[key];
+env.APPLE_SIGNING_IDENTITY='-';
 const log=await import('node:fs').then(fs=>fs.openSync(join(output,'build.log'),'wx'));
 console.log(`Building ${release.displayVersion} (${release.build}) from ${sourceCommit}`);
 await new Promise((resolve_,reject)=>{
