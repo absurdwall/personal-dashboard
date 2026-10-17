@@ -28,8 +28,10 @@ The user's explicit diagnosis-and-fix request resumes the bounded InitialPlan
 reliability follow-up. [Repair evidence](evidence/initial-plan-contract-2026-10-17.md)
 records the code-mode description gap, automatic schema mismatch, field-level
 recovery repair and real Luna automatic/manual saves in synthetic Vaults.
-Installed-app replacement and recovery of the personal day's plan remain separate
-from these checks. Other deferred work and the closed parent retain their status.
+The user subsequently authorized local App replacement and commits without push;
+the same evidence records verified installation and preserved personal sources.
+Recovery of the personal day's plan remains separate from these checks. Other
+deferred work and the closed parent retain their status.
 
 ## October 10 follow-up design exploration
 
