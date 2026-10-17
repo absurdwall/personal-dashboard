@@ -1,5 +1,15 @@
 # Issue tracker: GitHub
 
+## Write pacing
+
+Within this project's GitHub publication or update batch, leave at least two
+seconds between successive write requests, including issue/PR creation,
+comments, edits, closures and relationship changes. Read-only verification may
+run between writes. Follow GitHub's retry instructions if rate limited.
+
+This is a per-project pacing convention; it does not require a cross-project
+queue or a local hourly write counter.
+
 ## Scoped local tracker: dashboard experience improvements
 
 On 2026-10-10 the user explicitly chose local-only publication, tickets and

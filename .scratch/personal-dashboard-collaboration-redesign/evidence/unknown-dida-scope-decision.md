@@ -1,5 +1,10 @@
 # Unknown native Dida effects: unresolved scope decision
 
+Current disposition (2026-10-17): the user closed PDCR-03 and deferred further
+Dida work. The existing restriction remains; the alternatives below are
+historical investigation, not a pending decision or active task. See
+[ticket disposition](ticket-disposition-2026-10-17.md).
+
 ## Requirement and measured constraint
 
 Spec section 5 requires unknown effects to be reconciled from their original

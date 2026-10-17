@@ -1,0 +1,671 @@
+{
+  "status": "prepared; not published",
+  "repository": "absurdwall/personal-dashboard",
+  "date": "2026-10-17",
+  "specCount": 8,
+  "ticketCount": 38,
+  "minimumWriteIntervalSeconds": 2,
+  "rules": [
+    "Publish complete body; merge same-ID spec index and current disposition into one issue, never publish an index as a second issue.",
+    "Preserve body history, acceptance checkboxes, comments/answers and source-bound evidence. Rewrite relative document links to verified published GitHub locations.",
+    "Resolve parent and blocker local IDs to native GitHub relationships; original graph is historical, not an active execution queue.",
+    "Record and reread the issue number, URL, full body, state, labels and relationships before handoff.",
+    "Reuse matching existing issues; do not duplicate after an uncertain write.",
+    "Switch canonical tracking only after all intended records and the explicit ID mapping are verified."
+  ],
+  "records": [
+    {
+      "localId": "PDCR-SPEC-01",
+      "kind": "spec",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/spec.md",
+      "indexPath": null,
+      "parentId": null,
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-SPEC-01",
+      "kind": "spec",
+      "bodyPath": ".scratch/personal-dashboard-experience/spec.md",
+      "indexPath": ".scratch/personal-dashboard-experience/issues/00-spec.md",
+      "parentId": null,
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-FOLLOWUP-01",
+      "kind": "spec",
+      "bodyPath": ".scratch/personal-dashboard-experience/followup-spec-2026-10-11.md",
+      "indexPath": ".scratch/personal-dashboard-experience/issues/00-followup-spec.md",
+      "parentId": null,
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-FOLLOWUP-02",
+      "kind": "spec",
+      "bodyPath": ".scratch/personal-dashboard-experience/sidebar-schedule-spec-2026-10-11.md",
+      "indexPath": ".scratch/personal-dashboard-experience/issues/00-sidebar-schedule-spec.md",
+      "parentId": null,
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-FOLLOWUP-03",
+      "kind": "spec",
+      "bodyPath": ".scratch/personal-dashboard-experience/followup-spec-2026-10-11-shell-compactness.md",
+      "indexPath": ".scratch/personal-dashboard-experience/issues/00-followup-spec-03.md",
+      "parentId": null,
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-FOLLOWUP-04",
+      "kind": "spec",
+      "bodyPath": ".scratch/personal-dashboard-experience/followup-spec-2026-10-11-collaboration-layout.md",
+      "indexPath": ".scratch/personal-dashboard-experience/issues/00-followup-spec-04.md",
+      "parentId": null,
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-FOLLOWUP-05",
+      "kind": "spec",
+      "bodyPath": ".scratch/personal-dashboard-experience/followup-spec-2026-10-11-dashboard-shell-repair.md",
+      "indexPath": ".scratch/personal-dashboard-experience/issues/00-followup-spec-05.md",
+      "parentId": null,
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-SPEC-02",
+      "kind": "spec",
+      "bodyPath": ".scratch/personal-dashboard-experience/refinement-spec-2026-10-11.md",
+      "indexPath": ".scratch/personal-dashboard-experience/issues/00-spec-02.md",
+      "parentId": null,
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-01",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/01-skill-daytime-record.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-02",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/02-observable-work-history.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-01"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-03",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/03-queue-stop-recovery.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-02"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "not_planned",
+      "disposition": "deferred; no current Dida work scheduled",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-04",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/04-task-list-collaboration.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-02"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-05",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/05-daily-record-collaboration.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-02"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-06",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/06-local-habit-history.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-02"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-07",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/07-mapped-dida-habit-results.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-06"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-08",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/08-document-background-evidence.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-02"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-09",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/09-workflow-retro.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-08"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-10",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/10-personal-retro.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-04",
+        "PDCR-05",
+        "PDCR-06"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-11",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/11-native-codex-acceptance.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-03",
+        "PDCR-07",
+        "PDCR-09",
+        "PDCR-10"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "not_planned",
+      "disposition": "retired; remaining acceptance no longer required",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDCR-12",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-collaboration-redesign/issues/12-live-dida-acceptance.md",
+      "indexPath": null,
+      "parentId": "PDCR-SPEC-01",
+      "blockedBy": [
+        "PDCR-11"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "not_planned",
+      "disposition": "deferred; no current Dida work scheduled",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-01",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/01-current-plan-time-editor.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-02",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/02-approximate-plan-times.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [
+        "PDEX-01"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-03",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/03-unified-readable-today.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-04",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/04-plan-drag-and-resize.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [
+        "PDEX-02"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-05",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/05-task-list-details.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-06",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/06-task-execution-intervals.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-07",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/07-task-timeline-create-move.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [
+        "PDEX-06"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-08",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/08-compact-calendar.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-09",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/09-collaboration-command-completion.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-10",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/10-evening-review-entry.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-11",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/11-packaged-daily-flow-acceptance.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-01",
+      "blockedBy": [
+        "PDEX-03",
+        "PDEX-04",
+        "PDEX-05",
+        "PDEX-07",
+        "PDEX-08",
+        "PDEX-09",
+        "PDEX-10"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-12",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/12-lightweight-task-create.md",
+      "indexPath": null,
+      "parentId": "PDEX-FOLLOWUP-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-13",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/13-today-unlocated-drawer.md",
+      "indexPath": null,
+      "parentId": "PDEX-FOLLOWUP-01",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-14",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/14-docked-sidebar-toggles.md",
+      "indexPath": null,
+      "parentId": "PDEX-FOLLOWUP-02",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-15",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/15-compact-task-schedule.md",
+      "indexPath": null,
+      "parentId": "PDEX-FOLLOWUP-02",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-16",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/16-shell-compactness.md",
+      "indexPath": null,
+      "parentId": "PDEX-FOLLOWUP-03",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-17",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/17-collaboration-layout-recovery.md",
+      "indexPath": null,
+      "parentId": "PDEX-FOLLOWUP-04",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-18",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/18-dashboard-shell-and-collaboration-repair.md",
+      "indexPath": null,
+      "parentId": "PDEX-FOLLOWUP-05",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-19",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/19-task-editing-properties-actions.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-02",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-20",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/20-task-parents-list-folders.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-02",
+      "blockedBy": [
+        "PDEX-19"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-21",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/21-today-axis-arrangement-interaction.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-02",
+      "blockedBy": [
+        "PDEX-19"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-22",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/22-calendar-create-details-holidays.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-02",
+      "blockedBy": [
+        "PDEX-19"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-23",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/23-collaboration-context-input.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-02",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-24",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/24-habit-create-edit-goal-cycles.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-02",
+      "blockedBy": [],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-25",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/25-habit-details-history-lifecycle.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-02",
+      "blockedBy": [
+        "PDEX-24"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    },
+    {
+      "localId": "PDEX-26",
+      "kind": "ticket",
+      "bodyPath": ".scratch/personal-dashboard-experience/issues/26-refinement-integration-packaged-acceptance.md",
+      "indexPath": null,
+      "parentId": "PDEX-SPEC-02",
+      "blockedBy": [
+        "PDEX-20",
+        "PDEX-21",
+        "PDEX-22",
+        "PDEX-23",
+        "PDEX-25"
+      ],
+      "targetState": "closed",
+      "targetStateReason": "completed",
+      "disposition": "accepted with original evidence qualifications",
+      "githubNumber": null,
+      "githubUrl": null
+    }
+  ]
+}

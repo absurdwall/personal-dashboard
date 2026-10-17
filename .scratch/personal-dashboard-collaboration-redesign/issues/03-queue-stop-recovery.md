@@ -5,16 +5,25 @@
 
 **Blocked by:** [PDCR-02: 显示并保存真实工作过程与最终回复](02-observable-work-history.md)
 
-**Status:** ready-for-human
+**Status:** wontfix
 
 **ID:** PDCR-03
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** blocked
-**Iteration scope:** deferred by user acceptance on 2026-10-10; [remaining scope](../deferred-follow-ups.md)
+**Lifecycle:** closed
+**Iteration scope:** closed-deferred; remaining Dida object-scope work deferred by user on 2026-10-17; [decision](../evidence/ticket-disposition-2026-10-17.md)
 **Implementation:** partial; native object-scope criterion unmet
-**Assignee:** Codex review-fix implementer; root coordinates scope decision
+**Assignee:** unassigned; no current execution
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
+
+## Current answer — 2026-10-17
+
+Closed and deferred by the user; remaining Dida work is not scheduled.
+
+[Disposition and GitHub migration contract](../evidence/ticket-disposition-2026-10-17.md).
+Historical implementation and test evidence below retain their original source
+qualification. Unchecked criteria are not new passes. Migrate as closed with
+reason `not_planned`; previous blocked/open statements below are dated history.
 
 ## Acceptance criteria
 
@@ -61,3 +70,5 @@
   [native hook probe](../evidence/native-hook-probe.md) fails open on timeout or
   malformed output. No answer has been received and no native policy was
   changed. Preserving the current mask is not acceptance of this criterion.
+
+- 2026-10-17: User-authorized local closure; see [current disposition](../evidence/ticket-disposition-2026-10-17.md). No product change or additional acceptance run.

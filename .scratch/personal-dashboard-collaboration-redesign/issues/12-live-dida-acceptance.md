@@ -5,16 +5,25 @@
 
 **Blocked by:** [PDCR-11: 真实 Codex 与 app 内完整交互验收](11-native-codex-acceptance.md)
 
-**Status:** ready-for-agent
+**Status:** wontfix
 
 **ID:** PDCR-12
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** open
-**Iteration scope:** deferred by user acceptance on 2026-10-10; [remaining scope](../deferred-follow-ups.md)
+**Lifecycle:** closed
+**Iteration scope:** closed-deferred; dedicated live Dida acceptance deferred by user on 2026-10-17; [decision](../evidence/ticket-disposition-2026-10-17.md)
 **Implementation:** not-started
 **Assignee:** unassigned
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
+
+## Current answer — 2026-10-17
+
+Closed and deferred by the user; the dedicated live Dida acceptance is not scheduled.
+
+[Disposition and GitHub migration contract](../evidence/ticket-disposition-2026-10-17.md).
+Historical implementation and test evidence below retain their original source
+qualification. Unchecked criteria are not new passes. Migrate as closed with
+reason `not_planned`; previous blocked/open statements below are dated history.
 
 ## Acceptance criteria
 
@@ -40,3 +49,5 @@
 ## Acceptance prerequisite
 
 - 2026-10-09: User confirmed no isolated Dida test objects have been prepared. Live mutation/readback is not authorized against personal objects. PDCR-12 remains open/unclaimed behind PDCR-11; this is an unmet live acceptance prerequisite, not a fixture success.
+
+- 2026-10-17: User-authorized local closure; see [current disposition](../evidence/ticket-disposition-2026-10-17.md). No product change or additional acceptance run.

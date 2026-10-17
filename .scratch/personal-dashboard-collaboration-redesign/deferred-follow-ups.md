@@ -1,5 +1,16 @@
 # Deferred work after human acceptance of this iteration
 
+## Current disposition — 2026-10-17
+
+PDCR-03/12 are closed-deferred because Dida work is not urgent and its future
+role may change. PDCR-11 is closed-retired: the remaining old acceptance work
+is no longer required and will not be scheduled under this ticket. The
+[explicit decision](evidence/ticket-disposition-2026-10-17.md) supersedes the
+older blocked/open states below. InitialPlan reliability was separately
+repaired and locally installed on October 17. No unrun check became a pass.
+
+## Historical deferral — 2026-10-10
+
 2026-10-10. The user accepts the current overall Collaboration interaction and
 requests parent-spec closure after typography review and local installation.
 These items are expressly outside that accepted closeout scope. They retain

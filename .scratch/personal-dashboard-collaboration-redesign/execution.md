@@ -1,7 +1,7 @@
 # Collaboration redesign — local execution tracking
 
 Date: 2026-10-09
-Status: user-accepted iteration closed and installed; remaining PDCR-03/11/12 scope explicitly deferred; remote publication pending
+Status: all tickets closed; PDCR-03/12 closed-deferred and PDCR-11 closed-retired by user on 2026-10-17; remote publication pending
 Canonical tracker: [map](map.md)
 Parent: [PDCR-SPEC-01](spec.md)
 Approved breakdown: [review record](ticket-breakdown-proposal.md)
@@ -53,7 +53,8 @@ role, not an assertion that every blocker has completed or that work is running.
   unmet; if a criterion proves unnecessary or changes, record the reason and
   obtain the applicable scope decision rather than silently deleting it.
 - Record results, evidence location and candidate/revision/runtime identities;
-  mark the ticket closed only when its acceptance is satisfied. Update its map
+  close completed work against acceptance evidence, or record an explicit user
+  decision to defer/retire remaining scope without changing unrun checks. Update its map
   row and commit both together. Then recompute the frontier from actual state.
 - Code/tests, native app acceptance, external source acceptance and release are
   different states. Tickets 11 and 12 retain their real-environment requirements.
@@ -189,3 +190,9 @@ role, not an assertion that every blocker has completed or that work is running.
   is resolved; accepted parent/deferred scope persists. Owned resources/worktree/
   branch are cleaned; [latest evidence and handoff](remote-handoff.md) retain
   current source, backup, exact limits and future protected-main publication.
+
+## User-directed remaining-ticket closure — 2026-10-17
+
+PDCR-03/12 are closed-deferred and PDCR-11 is closed-retired as unnecessary.
+[Decision and migration state](evidence/ticket-disposition-2026-10-17.md).
+No acceptance runs or product changes are part of this local record update.
