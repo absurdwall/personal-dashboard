@@ -1,0 +1,453 @@
+{
+  "baseCommit": "1bbdd1f2d726abeeb5252d237418f3c6248b17cd",
+  "validatedCommit": "047f877a8a1c3d02c8ea8b980c592286dc1fc3c8",
+  "boundary": "macOS WebKit, complete current page/controller/CSS; only Tauri IPC replaced with synthetic data. No installed App or personal source access.",
+  "collaboration640x756": {
+    "before": {
+      "chat": {
+        "width": 411,
+        "height": 160.40625,
+        "left": 176,
+        "right": 587,
+        "top": 595.59375,
+        "bottom": 756
+      },
+      "composer": {
+        "width": 391.40625,
+        "height": 155.421875,
+        "left": 185.796875,
+        "right": 577.203125,
+        "top": 719.1875,
+        "bottom": 874.609375
+      },
+      "after": {
+        "width": 391.40625,
+        "height": 155.421875,
+        "left": 185.796875,
+        "right": 577.203125,
+        "top": 719.1875,
+        "bottom": 874.609375
+      },
+      "history": {
+        "width": 384,
+        "height": 62.59375,
+        "left": 195,
+        "right": 579,
+        "top": 655.1875,
+        "bottom": 717.78125,
+        "hidden": false,
+        "position": "absolute",
+        "scrollHeight": 510,
+        "clientHeight": 61
+      },
+      "targets": [
+        {
+          "id": "collaboration-message-draft",
+          "rect": {
+            "width": 389.40625,
+            "height": 68.03125,
+            "left": 186.796875,
+            "right": 576.203125,
+            "top": 744.25,
+            "bottom": 812.28125
+          },
+          "hit": false
+        },
+        {
+          "id": "collaboration-voice-start",
+          "rect": {
+            "width": 42.78125,
+            "height": 36,
+            "left": 464.078125,
+            "right": 506.859375,
+            "top": 818.421875,
+            "bottom": 854.421875
+          },
+          "hit": false
+        },
+        {
+          "id": "collaboration-send-message",
+          "rect": {
+            "width": 58.15625,
+            "height": 36,
+            "left": 513.25,
+            "right": 571.40625,
+            "top": 818.421875,
+            "bottom": 854.421875
+          },
+          "hit": false
+        }
+      ],
+      "messageHeight": 64,
+      "messageScroll": 3061,
+      "draft": "Retained synthetic draft",
+      "errors": [],
+      "calls": [
+        {
+          "command": "application_identity"
+        },
+        {
+          "command": "interface_language_preferences"
+        },
+        {
+          "command": "today_view"
+        },
+        {
+          "command": "appearance_preferences"
+        },
+        {
+          "command": "today_clock"
+        },
+        {
+          "command": "collaboration_connection"
+        },
+        {
+          "command": "collaboration_workspace",
+          "args": {
+            "date": "2026-10-11"
+          }
+        }
+      ]
+    },
+    "after": {
+      "chat": {
+        "width": 411,
+        "height": 418.171875,
+        "left": 176,
+        "right": 587,
+        "top": 337.828125,
+        "bottom": 756
+      },
+      "composer": {
+        "width": 391.40625,
+        "height": 155.421875,
+        "left": 185.796875,
+        "right": 577.203125,
+        "top": 590.78125,
+        "bottom": 746.203125
+      },
+      "after": {
+        "width": 391.40625,
+        "height": 155.421875,
+        "left": 185.796875,
+        "right": 577.203125,
+        "top": 590.78125,
+        "bottom": 746.203125
+      },
+      "history": {
+        "width": 384,
+        "height": 192.1875,
+        "left": 195,
+        "right": 579,
+        "top": 397.421875,
+        "bottom": 589.609375,
+        "hidden": false,
+        "position": "absolute",
+        "scrollHeight": 510,
+        "clientHeight": 190
+      },
+      "targets": [
+        {
+          "id": "collaboration-message-draft",
+          "rect": {
+            "width": 389.40625,
+            "height": 68.03125,
+            "left": 186.796875,
+            "right": 576.203125,
+            "top": 615.84375,
+            "bottom": 683.875
+          },
+          "hit": true
+        },
+        {
+          "id": "collaboration-voice-start",
+          "rect": {
+            "width": 42.78125,
+            "height": 36,
+            "left": 464.078125,
+            "right": 506.859375,
+            "top": 690.015625,
+            "bottom": 726.015625
+          },
+          "hit": true
+        },
+        {
+          "id": "collaboration-send-message",
+          "rect": {
+            "width": 58.15625,
+            "height": 36,
+            "left": 513.25,
+            "right": 571.40625,
+            "top": 690.015625,
+            "bottom": 726.015625
+          },
+          "hit": true
+        }
+      ],
+      "messageHeight": 178,
+      "messageScroll": 2947,
+      "draft": "Retained synthetic draft",
+      "errors": [],
+      "calls": [
+        {
+          "command": "application_identity"
+        },
+        {
+          "command": "interface_language_preferences"
+        },
+        {
+          "command": "today_view"
+        },
+        {
+          "command": "appearance_preferences"
+        },
+        {
+          "command": "today_clock"
+        },
+        {
+          "command": "collaboration_connection"
+        },
+        {
+          "command": "collaboration_workspace",
+          "args": {
+            "date": "2026-10-11"
+          }
+        }
+      ]
+    }
+  },
+  "quickSchedule640": {
+    "before": {
+      "today": {
+        "hidden": false,
+        "text": "Today · 09:30",
+        "labelFontSize": 10.88,
+        "labelClientWidth": 76,
+        "labelScrollWidth": 76,
+        "title": "Schedule date and time · Mon, Aug 10 · 09:30",
+        "aria": "Schedule date and time · Mon, Aug 10 · 09:30",
+        "width": 126,
+        "rects": [
+          {
+            "top": 1335.359375,
+            "height": 21,
+            "width": 14
+          },
+          {
+            "top": 1329.859375,
+            "height": 32,
+            "width": 126
+          },
+          {
+            "top": 1329.859375,
+            "height": 32,
+            "width": 38.265625
+          }
+        ],
+        "overflow": false,
+        "calls": [
+          {
+            "command": "application_identity"
+          },
+          {
+            "command": "interface_language_preferences"
+          },
+          {
+            "command": "today_view"
+          },
+          {
+            "command": "appearance_preferences"
+          }
+        ]
+      },
+      "tasks": {
+        "hidden": false,
+        "text": "Today · 09:30",
+        "labelFontSize": 10.88,
+        "labelClientWidth": 64,
+        "labelScrollWidth": 75,
+        "title": "Schedule date and time · Mon, Aug 10 · 09:30",
+        "aria": "Schedule date and time · Mon, Aug 10 · 09:30",
+        "width": 100.1875,
+        "rects": [
+          {
+            "top": 1029.4375,
+            "height": 34,
+            "width": 180.046875
+          },
+          {
+            "top": 1029.4375,
+            "height": 34,
+            "width": 100.1875
+          },
+          {
+            "top": 1029.4375,
+            "height": 34,
+            "width": 38.265625
+          }
+        ],
+        "overflow": false,
+        "calls": [
+          {
+            "command": "application_identity"
+          },
+          {
+            "command": "interface_language_preferences"
+          },
+          {
+            "command": "today_view"
+          },
+          {
+            "command": "appearance_preferences"
+          },
+          {
+            "command": "tasks_view"
+          },
+          {
+            "command": "today_clock"
+          }
+        ]
+      }
+    },
+    "after": {
+      "today": {
+        "hidden": false,
+        "text": "Today · 09:30",
+        "labelFontSize": 10.88,
+        "labelClientWidth": 76,
+        "labelScrollWidth": 76,
+        "title": "Schedule date and time · Mon, Aug 10 · 09:30",
+        "aria": "Schedule date and time · Mon, Aug 10 · 09:30",
+        "width": 126,
+        "rects": [
+          {
+            "top": 1359.859375,
+            "height": 32,
+            "width": 167
+          },
+          {
+            "top": 1398.25,
+            "height": 32,
+            "width": 126
+          },
+          {
+            "top": 1398.25,
+            "height": 32,
+            "width": 38.265625
+          }
+        ],
+        "overflow": false,
+        "calls": [
+          {
+            "command": "application_identity"
+          },
+          {
+            "command": "interface_language_preferences"
+          },
+          {
+            "command": "today_view"
+          },
+          {
+            "command": "appearance_preferences"
+          }
+        ]
+      },
+      "tasksToday": {
+        "hidden": false,
+        "text": "Today · 09:30",
+        "labelFontSize": 10.88,
+        "labelClientWidth": 76,
+        "labelScrollWidth": 76,
+        "title": "Schedule date and time · Mon, Aug 10 · 09:30",
+        "aria": "Schedule date and time · Mon, Aug 10 · 09:30",
+        "width": 126,
+        "rects": [
+          {
+            "top": 1029.4375,
+            "height": 34,
+            "width": 154.234375
+          },
+          {
+            "top": 1029.4375,
+            "height": 34,
+            "width": 126
+          },
+          {
+            "top": 1029.4375,
+            "height": 34,
+            "width": 38.265625
+          }
+        ],
+        "overflow": false,
+        "calls": [
+          {
+            "command": "application_identity"
+          },
+          {
+            "command": "interface_language_preferences"
+          },
+          {
+            "command": "today_view"
+          },
+          {
+            "command": "appearance_preferences"
+          },
+          {
+            "command": "tasks_view"
+          },
+          {
+            "command": "today_clock"
+          }
+        ]
+      },
+      "tasksFuture": {
+        "hidden": false,
+        "text": "Thu, Aug 13 · 09:30",
+        "labelFontSize": 10.88,
+        "labelClientWidth": 108,
+        "labelScrollWidth": 108,
+        "title": "Schedule date and time · Thu, Aug 13 · 09:30",
+        "aria": "Schedule date and time · Thu, Aug 13 · 09:30",
+        "width": 143.6875,
+        "rects": [
+          {
+            "top": 1029.4375,
+            "height": 34,
+            "width": 136.546875
+          },
+          {
+            "top": 1029.4375,
+            "height": 34,
+            "width": 143.6875
+          },
+          {
+            "top": 1029.4375,
+            "height": 34,
+            "width": 38.265625
+          }
+        ],
+        "overflow": false,
+        "calls": [
+          {
+            "command": "application_identity"
+          },
+          {
+            "command": "interface_language_preferences"
+          },
+          {
+            "command": "today_view"
+          },
+          {
+            "command": "appearance_preferences"
+          },
+          {
+            "command": "tasks_view"
+          },
+          {
+            "command": "today_clock"
+          }
+        ]
+      }
+    }
+  }
+}
