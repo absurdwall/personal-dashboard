@@ -42,8 +42,7 @@ output directory under `.noindex`, and an external `.noindex` Cargo cache:
 
 ```sh
 CARGO_TARGET_DIR=/absolute/cache.noindex/target npm run build:beta -- \
-  --output /absolute/candidates.noindex/build-5.0.1 \
-  --license-supplements /absolute/license-evidence.noindex/supplements
+  --output /absolute/candidates.noindex/build-5.0.1
 ```
 
 The wrapper refuses an existing output, an uncommitted source tree or a cache
@@ -58,7 +57,8 @@ The license collector uses target-filtered Cargo metadata and follows only
 normal runtime edges, excluding build-only, dev-only and proc-macro packages.
 It preserves actual upstream copyright/license/NOTICE documents. Some published
 crates omit full license bodies, so the checked build uses exact-version
-supplements tied to their Cargo VCS commits and source hashes. The collector
+supplements tied to their Cargo VCS commits and source hashes, retained in
+`release/license-supplements/` and selected by default. The collector
 fails for a missing obligation instead of inventing a license. The completed
 App includes `THIRD_PARTY_LICENSES/ACKNOWLEDGMENTS.md`, its dependency/source
 inventory and full license documents. These grants cover dependencies; this

@@ -27,7 +27,7 @@ const manifest={schemaVersion:1,release,sourceCommit,sourceTree:run('git',['rev-
 writeFileSync(join(staging,'release-manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 const supplementsIndex=args.indexOf('--license-supplements');
 const licenseArguments=['scripts/release/collect-runtime-licenses.mjs','--manifest',join(root,'src-tauri/Cargo.toml'),'--output',join(staging,'THIRD_PARTY_LICENSES')];
-if(supplementsIndex>=0) licenseArguments.push('--supplements',resolve(args[supplementsIndex+1]));
+licenseArguments.push('--supplements',supplementsIndex>=0?resolve(args[supplementsIndex+1]):join(root,'release/license-supplements'));
 run(process.execPath,licenseArguments,{stdio:'inherit'});
 const config={bundle:{targets:['app','dmg'],macOS:{files:{'Resources/release-manifest.json':join(staging,'release-manifest.json'),'Resources/THIRD_PARTY_LICENSES':join(staging,'THIRD_PARTY_LICENSES')}}}};
 const configPath=join(output,'build-config.json');writeFileSync(configPath,JSON.stringify(config,null,2)+'\n');

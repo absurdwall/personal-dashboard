@@ -1,0 +1,21 @@
+{
+  "name": "selectors",
+  "version": "0.36.1",
+  "license": "MPL-2.0",
+  "commit": "635e1a19d02960588a00e189bd4bd5bdb150ec3d",
+  "documents": [
+    {
+      "file": "selectors__lib.rs",
+      "sourcePath": "selectors/lib.rs",
+      "url": "https://raw.githubusercontent.com/servo/stylo/635e1a19d02960588a00e189bd4bd5bdb150ec3d/selectors/lib.rs",
+      "sha256": "d54c6e13e9e952dac17d209171df8657e3cae93beaddace4906150cdec8d02e9"
+    },
+    {
+      "file": "LICENSE-MPL-2.0.txt",
+      "sourcePath": "LICENSE-MPL-2.0.txt",
+      "url": "https://www.mozilla.org/media/MPL/2.0/index.txt",
+      "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+      "declaredBy": "https://raw.githubusercontent.com/servo/stylo/635e1a19d02960588a00e189bd4bd5bdb150ec3d/selectors/lib.rs"
+    }
+  ]
+}
