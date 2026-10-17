@@ -1,5 +1,8 @@
 # PDEX-17: Readable Collaboration layout and shared page-heading hierarchy
 
+> Canonical tracker: [PDEX-17 · GitHub #106](https://github.com/absurdwall/personal-dashboard/issues/106). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-17  
 Type: ticket  
 Parent: [PDEX-FOLLOWUP-04](../followup-spec-2026-10-11-collaboration-layout.md)  

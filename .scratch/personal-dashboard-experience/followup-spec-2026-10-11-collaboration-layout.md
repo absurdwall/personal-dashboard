@@ -1,5 +1,8 @@
 # Collaboration layout recovery and page-heading consistency
 
+> Canonical tracker: [PDEX-FOLLOWUP-04 · GitHub #75](https://github.com/absurdwall/personal-dashboard/issues/75). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-FOLLOWUP-04  
 Type: spec  
 Status: resolved

@@ -331,8 +331,8 @@
                       <button id="collaboration-toggle-history" type="button" class="sidebar-toggle collaboration-sidebar-toggle" aria-controls="collaboration-history-panel" aria-expanded="true" data-i18n-aria-label="collaboration.toggleHistorySidebar" data-i18n-title="collaboration.toggleHistorySidebar" aria-label="Toggle sessions sidebar" title="Toggle sessions sidebar">
                         <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M8 3v14"/></svg>
                       </button>
-                      <button id="collaboration-toggle-context" type="button" class="sidebar-toggle collaboration-sidebar-toggle" aria-controls="collaboration-work-panel" aria-expanded="false" data-i18n-aria-label="collaboration.toggleContextSidebar" data-i18n-title="collaboration.toggleContextSidebar" aria-label="Toggle current work sidebar" title="Toggle current work sidebar">
-                        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M12 3v14"/></svg>
+                      <button id="collaboration-toggle-context" type="button" class="sidebar-toggle collaboration-sidebar-toggle collaboration-context-toggle" aria-controls="collaboration-work-panel" aria-expanded="false" data-i18n-aria-label="collaboration.contextToggle" data-i18n-title="collaboration.contextToggle" aria-label="Context" title="Context">
+                        <span data-i18n="collaboration.contextToggle">Context</span>
                       </button>
                       <span id="collaboration-chat-date" class="collaboration-target-date"></span>
                       <button id="collaboration-stop-run" type="button" class="secondary-button" data-i18n="collaboration.stop" hidden>Stop</button>
@@ -373,13 +373,13 @@
                   </form>
                 </section>
                 </div>
-                <div id="collaboration-context-resizer" class="collaboration-panel-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="collaboration-work-panel" aria-label="Resize current work" data-i18n-aria-label="collaboration.resizeContext"></div>
                 <aside class="collaboration-context-pane" id="collaboration-work-panel" aria-labelledby="collaboration-context-heading" hidden>
                   <header class="collaboration-pane-heading">
                     <div>
                       <p class="section-label" data-i18n="collaboration.currentWorkLabel">CURRENT WORK</p>
                       <h3 id="collaboration-context-heading" data-i18n="collaboration.contextHeading">Current context</h3>
                     </div>
+                    <button id="collaboration-close-context" type="button" class="sidebar-toggle collaboration-sidebar-toggle collaboration-context-close" aria-label="Close current work context" title="Close current work context" data-i18n-aria-label="collaboration.closeContextPane" data-i18n-title="collaboration.closeContextPane">×</button>
                   </header>
                   <label for="collaboration-target-date" data-i18n="collaboration.targetDate">Target record date</label>
                   <input id="collaboration-target-date" type="date" aria-label="Target record date" data-i18n-aria-label="collaboration.targetDate" />
@@ -492,6 +492,13 @@
                       </label>
                       <button id="task-list-create-submit" type="submit" data-i18n="tasks.createList">新建清单</button>
                     </form>
+                    <form id="task-folder-create-form" class="task-folder-create-form" hidden>
+                      <label>
+                        <span data-i18n="tasks.newFolderName">新文件夹名称</span>
+                        <input id="task-folder-create-name" type="text" maxlength="80" required placeholder="例如：生活安排" data-i18n-placeholder="tasks.folderNamePlaceholder" />
+                      </label>
+                      <button id="task-folder-create-submit" type="submit" class="secondary-button" data-i18n="tasks.createFolder">新建文件夹</button>
+                    </form>
                     <div id="tasks-lists-management" class="tasks-lists-management" aria-live="polite"></div>
                   </section>
                 </aside>
@@ -513,10 +520,37 @@
                           <option value="deleted" data-i18n="tasks.stateDeleted">已删除</option>
                         </select>
                       </label>
+                      <label class="tasks-filter">
+                        <span class="visually-hidden" data-i18n="tasks.priorityFilter">按优先级筛选</span>
+                        <select id="task-priority-filter" aria-label="按优先级筛选" data-i18n-aria-label="tasks.priorityFilter">
+                          <option value="all" data-i18n="tasks.priorityAll">所有优先级</option>
+                          <option value="high" data-i18n="tasks.priorityHigh">高</option>
+                          <option value="medium" data-i18n="tasks.priorityMedium">中</option>
+                          <option value="low" data-i18n="tasks.priorityLow">低</option>
+                          <option value="none" data-i18n="tasks.priorityNone">无优先级</option>
+                        </select>
+                      </label>
+                      <label class="tasks-filter">
+                        <span class="visually-hidden" data-i18n="tasks.sort">任务排序</span>
+                        <select id="task-priority-sort" aria-label="任务排序" data-i18n-aria-label="tasks.sort">
+                          <option value="default" data-i18n="tasks.sortDefault">默认顺序</option>
+                          <option value="priority" data-i18n="tasks.sortPriority">优先级</option>
+                        </select>
+                      </label>
+                      <label class="tasks-filter">
+                        <span class="visually-hidden" data-i18n="tasks.tagFilter">按标签筛选</span>
+                        <select id="task-tag-filter" aria-label="按标签筛选" data-i18n-aria-label="tasks.tagFilter">
+                          <option value="all" data-i18n="tasks.tagAll">所有标签</option>
+                        </select>
+                      </label>
                     </div>
                   </div>
                   <form id="task-quick-form" class="task-quick-form" hidden>
-                    <input id="task-quick-name" type="text" maxlength="160" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" />
+                    <input id="task-quick-name" type="text" maxlength="160" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" data-task-name />
+                    <label id="task-quick-folder-target" class="task-quick-folder-target" hidden>
+                      <span data-i18n="tasks.folderTargetList">目标清单</span>
+                      <select id="task-quick-folder-list" data-task-list data-folder-quick-list></select>
+                    </label>
 <div class="task-schedule-wrap">
                       <button id="task-quick-schedule" type="button" class="task-schedule-toggle" aria-expanded="false" aria-controls="task-quick-schedule-picker" data-i18n-aria-label="tasks.schedule" data-i18n-title="tasks.schedule" aria-label="安排日期与时刻" title="安排日期与时刻"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4m8-4v4M4 10h16M8 14h3m-3 3h6"/></svg><span class="task-schedule-label" aria-hidden="true"></span></button>
                       <div id="task-quick-schedule-picker" class="task-schedule-picker" hidden>
@@ -526,8 +560,26 @@
                         <div class="task-schedule-actions"><button id="task-quick-schedule-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button><button id="task-quick-schedule-apply" type="button" data-i18n="tasks.scheduleApply">应用</button></div>
                       </div>
                     </div>
+                    <details class="task-quick-properties">
+                      <summary data-i18n="tasks.properties">属性</summary>
+                      <div class="task-quick-properties-panel">
+                        <label><span data-i18n="tasks.list">清单</span><select id="task-quick-list" data-task-list></select></label>
+                        <label><span data-i18n="tasks.priority">优先级</span><select id="task-quick-priority" data-task-priority>
+                          <option value="" data-i18n="tasks.priorityNone">无优先级</option>
+                          <option value="high" data-i18n="tasks.priorityHigh">高</option>
+                          <option value="medium" data-i18n="tasks.priorityMedium">中</option>
+                          <option value="low" data-i18n="tasks.priorityLow">低</option>
+                        </select></label>
+                        <fieldset class="task-tag-choice-set" id="task-quick-tag-choices" data-task-tag-collection>
+                          <legend data-i18n="tasks.tags">标签</legend>
+                          <p class="task-tag-empty" data-i18n="tasks.noTags">尚无标签</p>
+                        </fieldset>
+                        <label><span data-i18n="tasks.parentTask">父任务</span><select id="task-quick-parent" data-task-parent></select></label>
+                      </div>
+                    </details>
                     <button id="task-quick-submit" type="submit" data-i18n="tasks.quickAdd">添加</button>
                   </form>
+                  <p id="task-quick-folder-empty" class="task-meta task-folder-empty-note" data-i18n="tasks.folderNeedsList" hidden></p>
                   <div id="task-quick-recovery" class="task-create-recovery" hidden>
                     <button id="task-quick-recheck" type="button" class="secondary-button" data-i18n="tasks.refresh">刷新 Tasks</button>
                     <button id="task-quick-retry" type="button" data-i18n="tasks.retryOriginal" disabled>重试原任务</button>
@@ -551,6 +603,23 @@
                       <label class="task-form-wide">
                         <span data-i18n="tasks.content">内容（可选）</span>
                         <textarea id="task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder" data-task-content></textarea>
+                      </label>
+                      <label>
+                        <span data-i18n="tasks.priority">优先级</span>
+                        <select id="task-create-priority" data-task-priority>
+                          <option value="" data-i18n="tasks.priorityNone">无优先级</option>
+                          <option value="high" data-i18n="tasks.priorityHigh">高</option>
+                          <option value="medium" data-i18n="tasks.priorityMedium">中</option>
+                          <option value="low" data-i18n="tasks.priorityLow">低</option>
+                        </select>
+                      </label>
+                      <fieldset class="task-tag-choice-set task-form-wide" id="task-create-tag-choices" data-task-tag-collection>
+                        <legend data-i18n="tasks.tags">标签</legend>
+                        <p class="task-tag-empty" data-i18n="tasks.noTags">尚无标签</p>
+                      </fieldset>
+                      <label class="task-form-wide">
+                        <span data-i18n="tasks.parentTask">父任务</span>
+                        <select id="task-create-parent" data-task-parent></select>
                       </label>
                       <label>
                         <span data-i18n="tasks.list">清单</span>
@@ -626,6 +695,21 @@
                   </label>
                   <button id="calendar-next-month" type="button" class="calendar-step" aria-label="下个月" data-i18n-aria-label="calendar.nextMonth">→</button>
                   <button id="calendar-today" type="button" class="secondary-button" data-i18n="calendar.today">今天</button>
+                  <button id="calendar-add-task" type="button" class="secondary-button calendar-add-task" aria-label="在选中日期新建任务" data-i18n-aria-label="calendar.addTask" data-i18n="calendar.addTaskShort" disabled>＋ 任务</button>
+                  <details id="calendar-holiday-settings" class="calendar-holiday-settings">
+                    <summary data-i18n="calendar.holidaySettings">节日</summary>
+                    <div class="calendar-holiday-settings-popover">
+                      <label class="calendar-holiday-toggle">
+                        <input id="calendar-holidays-enabled" type="checkbox" checked>
+                        <span data-i18n="calendar.holidaysEnabled">显示节日</span>
+                      </label>
+                      <div class="calendar-holiday-regions">
+                        <label><input id="calendar-holidays-china" type="checkbox" checked><span data-i18n="calendar.chinaHolidays">中国节日</span></label>
+                        <label><input id="calendar-holidays-united-states" type="checkbox" checked><span data-i18n="calendar.usHolidays">美国联邦假日</span></label>
+                      </div>
+                      <p id="calendar-holiday-coverage" class="calendar-holiday-coverage" role="status" aria-live="polite"></p>
+                    </div>
+                  </details>
                 </div>
               </header>
               <p id="calendar-status" class="today-status" role="status" aria-live="polite"></p>
@@ -678,38 +762,50 @@
                   <p id="calendar-task-empty" class="task-empty" hidden data-i18n="calendar.taskEmpty">
                     这一天还没有任务。
                   </p>
-                  <form id="calendar-task-create-form" class="task-form task-create-form calendar-task-create-form" data-task-surface="calendar" hidden>
-                    <div class="task-form-heading">
-                      <h4 data-i18n="tasks.addHeading">新建任务</h4>
-                      <small data-i18n="calendar.taskCreateDefault">默认日期为选中日期，清单为收集箱。</small>
-                    </div>
-                    <div class="task-form-grid">
-                      <label class="task-form-wide">
-                        <span data-i18n="tasks.name">名称</span>
-                        <input id="calendar-task-create-name" type="text" maxlength="160" required placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" data-task-name />
-                      </label>
-                      <label class="task-form-wide">
-                        <span data-i18n="tasks.content">内容（可选）</span>
-                        <textarea id="calendar-task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder" data-task-content></textarea>
-                      </label>
-                      <label>
-                        <span data-i18n="tasks.list">清单</span>
-                        <select id="calendar-task-create-list" data-task-list></select>
-                      </label>
-                      <label>
-                        <span data-i18n="tasks.date">日期（可选）</span>
-                        <input id="calendar-task-create-date" type="date" data-task-date />
-                      </label>
-                      <label>
-                        <span data-i18n="tasks.time">时刻（需要日期）</span>
-                        <input id="calendar-task-create-time" type="time" data-task-time />
-                      </label>
-                    </div>
-                    <p class="task-form-boundary" data-i18n="calendar.taskBoundary">
-                      任务保存到独立正本；浏览 Calendar 不会创建或修改 Daily Record。
-                    </p>
-                    <button id="calendar-task-create-submit" type="submit" data-i18n="tasks.add">加入收集箱</button>
-                  </form>
+                  <dialog id="calendar-task-create-dialog" class="tasks-create-dialog calendar-task-create-dialog" aria-labelledby="calendar-task-create-heading">
+                    <form id="calendar-task-create-form" class="task-form task-create-form calendar-task-create-form" data-task-surface="calendar">
+                      <div class="calendar-task-create-heading">
+                        <div>
+                          <h3 id="calendar-task-create-heading" data-i18n="calendar.createTask">新建任务</h3>
+                          <small data-i18n="calendar.taskCreateDefault">默认日期为选中日期，清单为收集箱。</small>
+                        </div>
+                        <button id="calendar-task-create-close" type="button" class="text-button" aria-label="关闭" data-i18n-aria-label="tasks.cancel">×</button>
+                      </div>
+                      <div class="task-form-grid calendar-task-create-grid">
+                        <label class="task-form-wide">
+                          <span data-i18n="tasks.name">名称</span>
+                          <input id="calendar-task-create-name" type="text" maxlength="160" required placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" data-task-name />
+                        </label>
+                        <label>
+                          <span data-i18n="tasks.date">日期（可选）</span>
+                          <input id="calendar-task-create-date" type="date" data-task-date />
+                        </label>
+                        <label>
+                          <span data-i18n="tasks.time">时刻（需要日期）</span>
+                          <input id="calendar-task-create-time" type="time" data-task-time />
+                        </label>
+                        <label>
+                          <span data-i18n="tasks.list">清单</span>
+                          <select id="calendar-task-create-list" data-task-list></select>
+                        </label>
+                        <label class="task-form-wide">
+                          <span data-i18n="tasks.content">内容（可选）</span>
+                          <textarea id="calendar-task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder" data-task-content></textarea>
+                        </label>
+                      </div>
+                      <p id="calendar-task-create-status" class="calendar-task-create-status" role="status" aria-live="polite"></p>
+                      <p class="task-form-boundary" data-i18n="calendar.taskBoundary">任务保存到独立正本；浏览 Calendar 不会创建或修改 Daily Record。</p>
+                      <div class="task-form-actions calendar-task-create-actions">
+                        <button id="calendar-task-create-recheck" type="button" class="secondary-button" data-i18n="tasks.refresh" hidden>重新读取核对</button>
+                        <button id="calendar-task-create-retry" type="button" data-i18n="tasks.retryOriginal" hidden disabled>重试原任务</button>
+                        <button id="calendar-task-create-end-attempt" type="button" class="secondary-button" data-i18n="tasks.endSubmission" hidden disabled>结束原提交</button>
+                        <button id="calendar-task-create-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button>
+                        <button id="calendar-task-create-submit" type="submit" data-i18n="tasks.add">加入收集箱</button>
+                      </div>
+                      <div id="calendar-task-create-ended-attempts" class="task-create-ended-attempts" hidden></div>
+                    </form>
+                  </dialog>
+                  <aside id="calendar-task-editor-dialog-root" class="calendar-selected-detail" aria-label="Task details" data-i18n-aria-label="tasks.details" hidden></aside>
                 </section>
               </div>
             </section>
@@ -786,12 +882,11 @@
                     >
                       <div class="today-region-heading">
                         <div>
-                          <p class="section-label" data-i18n="today.morningSection">早间 · Daily Record 早间基准</p>
-                          <h3 id="today-timeline-heading" data-i18n="today.initialArrangement">当天的初始安排</h3>
+                          <p class="section-label" data-i18n="today.morningSection">早间 · 当天当前计划</p>
+                          <h3 id="today-timeline-heading" data-i18n="today.initialArrangement">当前安排</h3>
                         </div>
                         <span id="today-block-count" class="today-count"></span>
                       </div>
-                      <p id="today-baseline-status" class="today-baseline-status"></p>
                       <ol
                         id="today-baseline-timeline"
                         class="today-timeline"
@@ -800,7 +895,7 @@
                         data-i18n-aria-label="today.morningTimeline"
                       ></ol>
                       <p id="today-plan-empty" class="today-plan-empty" data-i18n="today.noBaseline" hidden>
-                        这份 Daily Record 尚未独立保存早间基准。
+                        当天还没有当前计划安排。
                       </p>
                     </section>
 
@@ -850,9 +945,12 @@
                           <p class="today-time-axis-boundary" data-i18n="today.axisNote">
                             时间轴只整理明确事实和当前安排；没有记录的活动继续保持未知。
                           </p>
+                          <div class="today-axis-zoom-controls" role="group" aria-label="时间轴缩放" data-i18n-aria-label="today.axisZoomControls">
+                            <button id="today-axis-zoom-out" type="button" aria-label="缩小时间轴" data-i18n-aria-label="today.axisZoomOut" title="缩小时间轴" data-i18n-title="today.axisZoomOut" disabled>−</button>
+                            <button id="today-axis-zoom-in" type="button" aria-label="放大时间轴" data-i18n-aria-label="today.axisZoomIn" title="放大时间轴" data-i18n-title="today.axisZoomIn">+</button>
+                          </div>
                         </div>
                         <div id="today-axis-scroll-surface" class="today-axis-scroll-surface" role="region" aria-label="today axis scroll region" data-i18n-aria-label="today.axisScrollRegion" tabindex="0">
-                          <button id="today-expand-early" type="button" class="today-axis-disclosure" aria-expanded="false" aria-controls="today-axis-plot" data-i18n="today.expandEarlyCollapsed">04:00–06:00 · 展开</button>
                           <div id="today-continuous-axis" class="today-continuous-axis" role="group" aria-labelledby="today-daytime-heading">
                             <div id="today-hour-scale" class="today-hour-scale" aria-label="00:00–24:00" data-i18n-aria-label="today.fullDayScale">
                               <span class="today-axis-heading-spacer" aria-hidden="true"></span>
@@ -869,7 +967,6 @@
                                   <ol id="today-timed-events" class="today-axis-markers" aria-label="当天安排和已确认事实" data-i18n-aria-label="today.timelineItemsHeading"></ol>
                                   <div id="today-timed-duration" class="today-axis-durations" aria-hidden="true"></div>
                                 </div>
-                                <button id="today-expand-late" type="button" class="today-axis-disclosure" aria-expanded="false" aria-controls="today-axis-plot" data-i18n="today.expandLateCollapsed">次日 00:00–04:00 · 展开</button>
                               </div>
                               <p id="today-timed-empty" class="today-axis-empty" data-i18n="today.noTimedItems" hidden>
                                 这份 Daily Record 尚无带明确时刻的安排或事实。
@@ -1048,6 +1145,21 @@
                       <p class="day-task-boundary" data-i18n="today.tasksBoundary">
                         未勾选表示尚未确认；无日期任务不会自动塞入今天，归档清单不进入日常待办。
                       </p>
+                      <dialog id="today-axis-task-popup" class="today-axis-task-popup" aria-labelledby="today-axis-task-popup-heading">
+                        <header class="today-axis-task-popup-heading">
+                          <h3 id="today-axis-task-popup-heading" data-i18n="today.axisTaskPopupHeading">任务详情</h3>
+                          <button id="today-axis-task-popup-close" type="button" class="text-button" aria-label="关闭任务详情" data-i18n-aria-label="today.axisTaskPopupClose" title="关闭任务详情" data-i18n-title="today.axisTaskPopupClose">×</button>
+                        </header>
+                        <p id="today-axis-task-popup-status" class="day-task-status" role="status" aria-live="polite"></p>
+                        <div id="today-axis-task-popup-content"></div>
+                      </dialog>
+                      <dialog id="today-axis-fact-popup" class="today-axis-fact-popup" aria-labelledby="today-axis-fact-popup-heading">
+                        <header class="today-axis-fact-popup-heading">
+                          <h3 id="today-axis-fact-popup-heading" data-i18n="today.axisFactPopupHeading">事实详情</h3>
+                          <button id="today-axis-fact-popup-close" type="button" class="text-button" aria-label="关闭事实详情" data-i18n-aria-label="today.axisFactPopupClose" title="关闭事实详情" data-i18n-title="today.axisFactPopupClose">×</button>
+                        </header>
+                        <div id="today-axis-fact-popup-content" class="today-axis-fact-popup-content"></div>
+                      </dialog>
                     </section>
 
                     <section id="today-legacy-task-history" class="today-legacy-task-history" aria-labelledby="today-legacy-task-heading" hidden>
@@ -1172,7 +1284,10 @@
                   <h2 id="habits-heading" class="destination-heading" data-i18n="habits.weekly">本周习惯</h2>
                   <p id="habits-range" data-i18n="habits.loadingOnDemand">正在读取按需快照…</p>
                 </div>
-                <button id="refresh-habits" type="button" data-i18n="habits.refresh">刷新快照</button>
+                <div class="habits-header-actions">
+                  <button id="new-habit" type="button" class="secondary-button"><span aria-hidden="true">+</span><span data-i18n="habits.add">添加习惯</span></button>
+                  <button id="refresh-habits" type="button" data-i18n="habits.refresh">刷新快照</button>
+                </div>
               </header>
               <p id="habits-status" class="today-status" role="status" aria-live="polite">
                 <span data-i18n="habits.loading">正在读取 Habits 快照…</span>
@@ -1204,20 +1319,31 @@
                       <h3 id="habits-today-heading" data-i18n="habits.knownUnknown">已知与未知并列</h3>
                     </div>
                     <small id="habits-today-date">—</small>
+                    <button id="habits-inactive-toggle" type="button" class="secondary-button habit-inactive-toggle" data-i18n="habits.viewInactive">查看停用</button>
                   </div>
-                  <section class="habits-target-section" aria-labelledby="habits-daily-heading">
-                    <div class="habits-target-heading">
-                      <h4 id="habits-daily-heading" data-i18n="habits.dailyAnchors">每日锚点</h4>
-                      <small data-i18n="habits.targetActual">目标 / 明确实际</small>
+                  <div id="habits-current-today-view">
+                    <section class="habits-target-section" aria-labelledby="habits-daily-heading">
+                      <div class="habits-target-heading">
+                        <h4 id="habits-daily-heading" data-i18n="habits.dailyAnchors">每日锚点</h4>
+                        <small data-i18n="habits.targetActual">目标 / 明确实际</small>
+                      </div>
+                      <div id="habits-daily-list"></div>
+                    </section>
+                    <section class="habits-target-section" aria-labelledby="habits-weekly-heading">
+                      <div class="habits-target-heading">
+                        <h4 id="habits-weekly-heading" data-i18n="habits.weekToday">本周习惯在今天</h4>
+                        <small data-i18n="habits.countToday">周次数 · 今日状态</small>
+                      </div>
+                      <div id="habits-weekly-list"></div>
+                    </section>
+                  </div>
+                  <section id="habit-detail-panel" class="habit-detail-panel" aria-labelledby="habit-detail-heading" hidden>
+                    <div class="habit-detail-heading">
+                      <button id="habit-detail-back" type="button" class="secondary-button" data-i18n="habits.backToToday">回到今日习惯</button>
+                      <h3 id="habit-detail-heading"></h3>
                     </div>
-                    <div id="habits-daily-list"></div>
-                  </section>
-                  <section class="habits-target-section" aria-labelledby="habits-weekly-heading">
-                    <div class="habits-target-heading">
-                      <h4 id="habits-weekly-heading" data-i18n="habits.weekToday">本周习惯在今天</h4>
-                      <small data-i18n="habits.countToday">周次数 · 今日状态</small>
-                    </div>
-                    <div id="habits-weekly-list"></div>
+                    <p id="habit-detail-status" class="habit-detail-status" role="status" aria-live="polite"></p>
+                    <div id="habit-detail-content"></div>
                   </section>
                 </section>
               </div>
@@ -1226,6 +1352,65 @@
                 <h3 id="habits-empty-heading" data-i18n="habits.noSnapshot">尚无可显示的快照。</h3>
                 <p id="habits-empty-copy" data-i18n="habits.noProducer">Dashboard 不会自行生成或连接 Dida365。</p>
               </section>
+              <dialog id="habit-definition-dialog" class="habit-definition-dialog" aria-labelledby="habit-definition-heading">
+                <form id="habit-definition-form" class="task-form habit-definition-form">
+                  <div class="task-form-heading">
+                    <h3 id="habit-definition-heading" data-i18n="habits.addHeading">新建习惯</h3>
+                    <small id="habit-definition-mode"></small>
+                  </div>
+                  <div class="task-form-grid habit-definition-grid">
+                    <label class="task-form-wide">
+                      <span data-i18n="habits.name">名称</span>
+                      <input id="habit-definition-name" type="text" maxlength="200" required autocomplete="off" />
+                    </label>
+                    <label>
+                      <span data-i18n="habits.goalType">频率与目标</span>
+                      <select id="habit-definition-goal-kind">
+                        <option value="daily-completion" data-i18n="habits.goalDaily">每日完成</option>
+                        <option value="weekly-count" data-i18n="habits.goalWeekly">每周达标天数</option>
+                        <option value="daily-time" data-i18n="habits.goalTime">每日时间阈值</option>
+                        <option id="habit-definition-keep-source-option" value="keep-source" data-i18n="habits.keepSourceGoal" hidden>沿用来源目标</option>
+                      </select>
+                    </label>
+                    <label id="habit-weekly-target-field" hidden>
+                      <span data-i18n="habits.weeklyTarget">每周天数</span>
+                      <input id="habit-definition-weekly-target" type="number" min="1" max="7" step="1" value="3" />
+                    </label>
+                    <label id="habit-time-target-field" hidden>
+                      <span data-i18n="habits.timeTarget">目标时刻</span>
+                      <input id="habit-definition-time-target" type="time" />
+                    </label>
+                    <label id="habit-day-relation-field" hidden>
+                      <span data-i18n="habits.dayRelation">日期归属</span>
+                      <select id="habit-definition-day-relation">
+                        <option value="same-day" data-i18n="habits.sameDay">当日</option>
+                        <option value="next-day" data-i18n="habits.nextDay">次日（入睡）</option>
+                        <option value="unresolved" data-i18n="habits.unresolved">沿用来源解释</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span data-i18n="habits.startDate">开始日期</span>
+                      <input id="habit-definition-start-date" type="date" required />
+                    </label>
+                    <label>
+                      <span data-i18n="habits.emojiOptional">图标（可选）</span>
+                      <input id="habit-definition-emoji" type="text" maxlength="24" autocomplete="off" />
+                    </label>
+                    <label class="task-form-wide">
+                      <span data-i18n="habits.groupOptional">分组（可选）</span>
+                      <input id="habit-definition-group" type="text" maxlength="80" autocomplete="off" />
+                    </label>
+                  </div>
+                  <p id="habit-definition-goal-note" class="task-form-boundary" data-i18n="habits.keepSourceGoalNote" hidden>本次只保存其他字段，不更改来源目标或解释。</p>
+                  <p class="task-form-boundary" data-i18n="habits.localDefinitionBoundary">定义和本地完成保存在所选 Vault；不会创建或修改外部 Habit。</p>
+                  <p id="habit-definition-status" role="status" aria-live="polite"></p>
+                  <div class="task-form-actions">
+                    <button id="habit-definition-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button>
+                    <button id="habit-definition-refresh" type="button" class="secondary-button" data-i18n="habits.refreshDefinition" hidden>刷新后继续编辑</button>
+                    <button id="habit-definition-submit" type="submit" data-i18n="habits.save">保存习惯</button>
+                  </div>
+                </form>
+              </dialog>
             </section>
 
           </section>

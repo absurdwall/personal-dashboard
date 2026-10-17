@@ -12,8 +12,10 @@ pub mod collaboration;
 pub mod collaboration_memory;
 pub mod cutover;
 pub mod exercise;
-pub mod habits;
+pub mod habit_catalog;
 pub mod habit_producer;
+mod habit_statistics;
+pub mod habits;
 pub mod interface_language;
 pub mod migration;
 pub mod move_profile;
@@ -208,9 +210,15 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
     // Raw timing numbers are accepted only for an explicitly configured synthetic fixture.
     // Reconstruct every row from three known numeric fields; never copy a payload object.
     if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE").is_some()
-        && result.get("syntheticOnly").and_then(serde_json::Value::as_bool) == Some(true)
+        && result
+            .get("syntheticOnly")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
     {
-        for (key, limit) in [("syntheticPreviewTimingRows", 64), ("syntheticFinalTimingRows", 32)] {
+        for (key, limit) in [
+            ("syntheticPreviewTimingRows", 64),
+            ("syntheticFinalTimingRows", 32),
+        ] {
             if let Some(rows) = result.get(key).and_then(serde_json::Value::as_array) {
                 let safe_rows: Vec<serde_json::Value> = rows.iter().take(limit).filter_map(|row| {
                     let start = row.get("startMs")?.as_f64()?;
@@ -249,6 +257,10 @@ use cutover::{
 use interface_language::{
     InterfaceLanguage, InterfaceLanguageApplication, InterfaceLanguagePreferences,
 };
+use habit_catalog::{
+    HabitDefinitionMutationInput, HabitDefinitionSaveResult, HabitLifecycleMutationInput,
+    HabitLifecycleSaveResult,
+};
 use platform::{
     appearance_background_directory_for, appearance_file_for, application_data_directory_for,
     interface_language_file_for, legacy_exercise_directory_for, profile_file_for,
@@ -257,13 +269,16 @@ use platform::{
 };
 use tasks::{
     FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
-    TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
-    TaskListRestoreInput, TaskRestoreInput, TaskStateInput, TaskUpdateInput, TasksView,
+    TaskCreateWithPropertiesInput, TaskDeleteInput, TaskFolderCreateInput, TaskFolderDeleteInput,
+    TaskFolderRenameInput, TaskListArchiveInput, TaskListCreateInput, TaskListFolderInput,
+    TaskListRenameInput, TaskListRestoreInput, TaskRestoreInput, TaskStateInput,
+    TaskTagCreateInput, TaskTagDeleteInput, TaskTagRenameInput, TaskUpdateInput,
+    TaskUpdateWithPropertiesInput, TasksView,
 };
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
-    EveningUpdateInput, HabitCompletionMutationInput, HabitSnapshotView,
+    EveningUpdateInput, HabitCompletionMutationInput, HabitDetailHistoryView, HabitSnapshotView,
     PlanTimeEditInput, PlanTimeEditResult, PlanningDayTaskContextView, TodayApplication,
     TodayClockView, TodayView, VaultSelectionResult,
 };
@@ -417,7 +432,12 @@ fn collaboration_session(
 }
 
 #[tauri::command]
-fn collaboration_record_refresh(application: State<'_, collaboration::CollaborationApplication>, session_id: String, execution_id: String, observations: Vec<collaboration::CollaborationRefreshInput>) -> Result<(), String> {
+fn collaboration_record_refresh(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    execution_id: String,
+    observations: Vec<collaboration::CollaborationRefreshInput>,
+) -> Result<(), String> {
     application.record_refresh_for_selected_vault(&session_id, &execution_id, observations)
 }
 
@@ -474,16 +494,25 @@ struct DictationExitHandoff {
 #[tauri::command]
 fn collaboration_dictation_close_ready(state: State<'_, DictationExitHandoff>) {
     if let Ok(mut ready) = state.ready.lock() {
-        if let Some(sender) = ready.take() { let _ = sender.send(()); }
+        if let Some(sender) = ready.take() {
+            let _ = sender.send(());
+        }
     }
 }
 
 fn request_dictation_exit(app: &tauri::AppHandle, api: &tauri::ExitRequestApi) {
     let handoff = app.state::<DictationExitHandoff>();
-    if handoff.exiting.swap(true, std::sync::atomic::Ordering::SeqCst) { return; }
+    if handoff
+        .exiting
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+        return;
+    }
     api.prevent_exit();
     let (sender, receiver) = std::sync::mpsc::channel();
-    if let Ok(mut ready) = handoff.ready.lock() { *ready = Some(sender); }
+    if let Ok(mut ready) = handoff.ready.lock() {
+        *ready = Some(sender);
+    }
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.eval("window.dispatchEvent(new CustomEvent('personal-dashboard-closing', {detail:{quitting:true}}))");
     }
@@ -493,8 +522,11 @@ fn request_dictation_exit(app: &tauri::AppHandle, api: &tauri::ExitRequestApi) {
     // Hung/absent frontend still exits; this is best-effort persistence only.
     std::thread::spawn(move || {
         let _ = receiver.recv_timeout(std::time::Duration::from_millis(1_000));
-        let _ = app.state::<collaboration::CollaborationApplication>().shutdown();
-        app.state::<collaboration::DictationApplication>().shutdown();
+        let _ = app
+            .state::<collaboration::CollaborationApplication>()
+            .shutdown();
+        app.state::<collaboration::DictationApplication>()
+            .shutdown();
         app.exit(0);
     });
 }
@@ -539,7 +571,8 @@ fn collaboration_resume_not_started(
 #[tauri::command]
 fn collaboration_remove_pending(
     application: State<'_, collaboration::CollaborationApplication>,
-    session_id: String, execution_id: String,
+    session_id: String,
+    execution_id: String,
 ) -> Result<collaboration::CollaborationSessionView, String> {
     application.remove_pending_request_for_selected_vault(&session_id, &execution_id)
 }
@@ -553,7 +586,9 @@ async fn collaboration_reconcile_run(
     let application = application.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         application.reconcile_run_for_selected_vault(&session_id, &execution_id)
-    }).await.map_err(|error| format!("Could not check the saved result: {error}"))?
+    })
+    .await
+    .map_err(|error| format!("Could not check the saved result: {error}"))?
 }
 
 #[tauri::command]
@@ -736,6 +771,30 @@ fn habit_snapshot(
 }
 
 #[tauri::command]
+fn save_habit_definition(
+    application: State<'_, DesktopTodayApplication>,
+    input: HabitDefinitionMutationInput,
+) -> Result<HabitDefinitionSaveResult, String> {
+    application.save_habit_definition(input)
+}
+
+#[tauri::command]
+fn habit_detail_history(
+    application: State<'_, DesktopTodayApplication>,
+    habit_key: String,
+) -> Result<HabitDetailHistoryView, String> {
+    application.habit_detail_history(&habit_key)
+}
+
+#[tauri::command]
+fn set_habit_active(
+    application: State<'_, DesktopTodayApplication>,
+    input: HabitLifecycleMutationInput,
+) -> Result<HabitLifecycleSaveResult, String> {
+    application.set_habit_active(input)
+}
+
+#[tauri::command]
 fn tasks_view(application: State<'_, DesktopTaskApplication>) -> Result<TasksView, String> {
     application.read()
 }
@@ -746,6 +805,38 @@ fn create_task(
     input: TaskCreateInput,
 ) -> Result<TasksView, String> {
     application.create(input)
+}
+
+#[tauri::command]
+fn create_task_with_properties(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskCreateWithPropertiesInput,
+) -> Result<TasksView, String> {
+    application.create_with_properties(input)
+}
+
+#[tauri::command]
+fn create_task_tag(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskTagCreateInput,
+) -> Result<TasksView, String> {
+    application.create_tag(input)
+}
+
+#[tauri::command]
+fn rename_task_tag(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskTagRenameInput,
+) -> Result<TasksView, String> {
+    application.rename_tag(input)
+}
+
+#[tauri::command]
+fn delete_task_tag(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskTagDeleteInput,
+) -> Result<TasksView, String> {
+    application.delete_tag(input)
 }
 
 #[tauri::command]
@@ -781,11 +872,51 @@ fn restore_task_list(
 }
 
 #[tauri::command]
+fn create_task_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskFolderCreateInput,
+) -> Result<TasksView, String> {
+    application.create_folder(input)
+}
+
+#[tauri::command]
+fn rename_task_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskFolderRenameInput,
+) -> Result<TasksView, String> {
+    application.rename_folder(input)
+}
+
+#[tauri::command]
+fn delete_task_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskFolderDeleteInput,
+) -> Result<TasksView, String> {
+    application.delete_folder(input)
+}
+
+#[tauri::command]
+fn set_task_list_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListFolderInput,
+) -> Result<TasksView, String> {
+    application.set_list_folder(input)
+}
+
+#[tauri::command]
 fn update_task(
     application: State<'_, DesktopTaskApplication>,
     input: TaskUpdateInput,
 ) -> Result<TasksView, String> {
     application.update(input)
+}
+
+#[tauri::command]
+fn update_task_with_properties(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskUpdateWithPropertiesInput,
+) -> Result<TasksView, String> {
+    application.update_with_properties(input)
 }
 
 #[tauri::command]
@@ -1087,13 +1218,25 @@ pub fn run() {
             read_daily_view,
             calendar_month,
             habit_snapshot,
+            save_habit_definition,
+            habit_detail_history,
+            set_habit_active,
             tasks_view,
             create_task,
+            create_task_with_properties,
+            create_task_tag,
+            rename_task_tag,
+            delete_task_tag,
             create_task_list,
             rename_task_list,
             archive_task_list,
             restore_task_list,
+            create_task_folder,
+            rename_task_folder,
+            delete_task_folder,
+            set_task_list_folder,
             update_task,
+            update_task_with_properties,
             set_task_state,
             delete_task,
             restore_task,
@@ -1164,13 +1307,23 @@ pub fn run() {
         read_daily_view,
         calendar_month,
         habit_snapshot,
+        save_habit_definition,
         tasks_view,
         create_task,
+        create_task_with_properties,
+        create_task_tag,
+        rename_task_tag,
+        delete_task_tag,
         create_task_list,
         rename_task_list,
         archive_task_list,
         restore_task_list,
+        create_task_folder,
+        rename_task_folder,
+        delete_task_folder,
+        set_task_list_folder,
         update_task,
+        update_task_with_properties,
         set_task_state,
         delete_task,
         restore_task,

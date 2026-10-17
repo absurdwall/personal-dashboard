@@ -1,5 +1,8 @@
 # 12: Tasks 顶部快捷创建与就地 New Task 浮窗
 
+> Canonical tracker: [PDEX-12 · GitHub #101](https://github.com/absurdwall/personal-dashboard/issues/101). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **ID:** PDEX-12
 **Type:** ticket
 **Parent:** [PDEX-FOLLOWUP-01](../followup-spec-2026-10-11.md)

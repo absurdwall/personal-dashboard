@@ -1,5 +1,8 @@
 # PDEX-18: Visible shell controls and Collaboration recovery
 
+> Canonical tracker: [PDEX-18 · GitHub #107](https://github.com/absurdwall/personal-dashboard/issues/107). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-18  
 Type: ticket  
 Parent: [PDEX-FOLLOWUP-05](../followup-spec-2026-10-11-dashboard-shell-repair.md)  

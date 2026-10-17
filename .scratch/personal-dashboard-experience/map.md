@@ -3,16 +3,25 @@
 ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
-Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-01 and PDEX-01–11 remain closed; PDEX-FOLLOWUP-01–05 and PDEX-12–18 closed after human acceptance of installed d518332
-Implementation: installed checkpoint d518332 accepted by the user with qualifications; residual feedback is recorded separately and is not a current blocker
-Working branch: codex/dashboard-experience-integration
+Canonical: GitHub Issues; [verified stable-ID mapping](../personal-dashboard-remote-return-2026-10-17/github-issue-mapping.md). This local map is historical supporting evidence.
+Stage: complete under the user's 2026-10-14 acceptance; PDEX-SPEC-02 and PDEX-19–26 are resolved/closed, with unrun checks retained in the closeout record
+Implementation: integrated on codex/dashboard-experience-refinement-reimplementation from 918e7e0; merge 526c6a3 preserves accepted source history through 58f283c and the later acceptance record; prior rejected branch and full history are preserved
+Working branch: codex/dashboard-experience-refinement-reimplementation from 918e7e0; integration merge 526c6a3; previous codex/dashboard-experience-refinement-integration retained unchanged
 Management source: source-personal-dashboard-experience
 
 ## Records
 
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
+| PDEX-SPEC-02 | spec | [Complete refinement specification](refinement-spec-2026-10-11.md) / [same-identity index](issues/00-spec-02.md) | ready-for-agent | closed | none | [four confirmed clarifications](requirements-clarifications-2026-10-11.md), [prototype review and preservation boundary](prototype-review-and-scope-2026-10-11.md), [local publication](refinement-publication-2026-10-11.md), [acceptance audit](evidence/final-user-acceptance-closeout-2026-10-14.md), [authorized final completion](evidence/final-completion-2026-10-14.md) |
+| PDEX-19 | ticket | [Task 编辑、属性与操作入口](issues/19-task-editing-properties-actions.md) | ready-for-agent | closed | none | Integrated from codex/pdex-19-refinement-reimplementation at 5603d7ced3fa7325f1ea7c2bc83f9c475de938eb; [implementation evidence](evidence/pdex-19-reimplementation-2026-10-13.md); [review repair provenance](evidence/pdex02-review-repairs-2026-10-14.md); display follow-up branch codex/pdex19-row-refinement-followup-20261014 commits 9da8545, 8b166b4, integrated at f20f61d; [follow-up evidence](evidence/pdex02-display-followup-2026-10-14.md); remaining packaged combinations in [final completion](evidence/final-completion-2026-10-14.md) |
+| PDEX-20 | ticket | [Task 父子关系与清单文件夹](issues/20-task-parents-list-folders.md) | ready-for-agent | closed | PDEX-19 | Claimed on codex/pdex-20-refinement-reimplementation, start ad697e01cf5a51a619fb97bbad174ebb50161d91; native claim pdex-20-reimplementation-claim-2026-10-13; display follow-up branch codex/pdex20-tree-collapse-followup-20261014 commits f3a7715, c3c5c93, f2b0e27, integrated at 7305dc2 and 708e74d; [restart record](refinement-reimplementation-2026-10-13.md); [follow-up evidence](evidence/pdex02-display-followup-2026-10-14.md); final resolution in [completion record](evidence/final-completion-2026-10-14.md) |
+| PDEX-21 | ticket | [Today 时间轴与安排交互](issues/21-today-axis-arrangement-interaction.md) | ready-for-agent | closed | PDEX-19 | Claimed on codex/pdex-21-refinement-reimplementation, start ad697e01cf5a51a619fb97bbad174ebb50161d91; native claim pdex-21-reimplementation-claim-2026-10-13; display follow-up branch codex/pdex21-review-followup-20261014 commits 68acb96, 598e64c, ccbacef and 30aa5b9 follow-ups; integrated at 58d9dec, 364c35c, ccbacef, and 30aa5b9; see [restart record](refinement-reimplementation-2026-10-13.md), [scoped review repair](evidence/pdex02-review-repairs-2026-10-14.md), and [display follow-up evidence](evidence/pdex02-display-followup-2026-10-14.md); resolution in [final completion](evidence/final-completion-2026-10-14.md) |
+| PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | closed | PDEX-19 | Claimed on codex/pdex-22-refinement-reimplementation, start ad697e01cf5a51a619fb97bbad174ebb50161d91; native claim pdex-22-reimplementation-claim-2026-10-13; Calendar preview source repair at a5f8b04 / checkpoint 927dad6; [restart record](refinement-reimplementation-2026-10-13.md), [repair evidence](evidence/pdex02-review-repairs-2026-10-14.md), and [display follow-up evidence](evidence/pdex02-display-followup-2026-10-14.md); resolution in [final completion](evidence/final-completion-2026-10-14.md) |
+| PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | closed | none | Integrated from codex/pdex-23-refinement-reimplementation tip 00e518d7e2c2f4b92333b863f7a54fb364c98bd8 by no-ff merge 968746ad4a3b2ab9722befe7bc160bfee07c15a9; [integration evidence](evidence/pdex-23-reimplementation-2026-10-13.md); separate Workflow repair commits 5192cf4 and 58f283c are retained in merge 526c6a3; three real-account rounds and untested hardware/IME checks in [final completion](evidence/final-completion-2026-10-14.md) |
+| PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | closed | none | Integrated from codex/pdex-24-refinement-reimplementation tip fdc401c58e1ba094dca5b47721ef74333dd34613 by no-ff merge 36a13077a3d58dbe90bcf38a0c9230d0b27d6efb; [implementation evidence](evidence/pdex-24-reimplementation-2026-10-13.md); source/synthetic checks and final packaged limit in [final completion](evidence/final-completion-2026-10-14.md) |
+| PDEX-25 | ticket | [Habit 详情、历史统计与停用恢复](issues/25-habit-details-history-lifecycle.md) | ready-for-agent | closed | PDEX-24 | Claimed on codex/pdex-25-refinement-reimplementation, start ad697e01cf5a51a619fb97bbad174ebb50161d91; native claim pdex-25-reimplementation-claim-2026-10-13; see [restart record](refinement-reimplementation-2026-10-13.md); rolling 12-week sourced-history limit and unrun fixture matrix in [final completion](evidence/final-completion-2026-10-14.md) |
+| PDEX-26 | ticket | [整合与真实 App 验收](issues/26-refinement-integration-packaged-acceptance.md) | ready-for-agent | closed | PDEX-20, PDEX-21, PDEX-22, PDEX-23, PDEX-25 | Integrated locally by merge 526c6a3; concrete packaged cases, full-matrix gaps and limitations in [acceptance audit](evidence/final-user-acceptance-closeout-2026-10-14.md) and [final completion](evidence/final-completion-2026-10-14.md) |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | closed | none | [local human acceptance](evidence/human-acceptance-2026-10-11.md), [retained publication](publication.md) |
 | PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
 | PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | closed | PDEX-01 | [component resolution + final checks](evidence/pdex-11.md) |
@@ -41,7 +50,41 @@ Current claim and implementation states are recorded per row and ticket. The Wor
 this full body and the same PDEX-SPEC-01 identity; it is not an implementation
 ticket or a second specification. Do not renumber existing PDEX records.
 
-## Frontier and execution boundary
+## New refinement frontier — 2026-10-11
+
+PDEX-SPEC-02 is published as a complete seven-section specification with 91
+user stories. The user confirmed the testing boundary: reuse application
+workflow tests and verify persistence, dragging and preservation in the packaged
+App; the prototype is design evidence only. Today A and Tasks B are selected;
+Habits and Calendar retain the actual App host structure. Collaboration retains
+the preferred A/C chat space; this spec chooses a bounded context overlay to
+avoid the observed context-plus-voice clipping, recording it as an implementation
+decision rather than a separate human C selection.
+
+The user approved the revised eight-ticket breakdown with “同意” after asking
+to consolidate the earlier seventeen-ticket proposal. PDEX-19–26 now have one
+complete local body each, with 109 unchecked acceptance criteria and nine direct
+blocking edges. Initial eligible ticket frontier: PDEX-19, PDEX-23 and PDEX-24;
+five later tickets are dependency-gated. There are no cycles or redundant
+transitive edges. Eligibility is not a claim or implementation authorization.
+
+At publication time all eight tickets were unassigned/not started. Current
+claims and lifecycle are recorded in the Records table and the
+[reimplementation record](refinement-reimplementation-2026-10-13.md).
+[Approved proposal](refinement-ticket-breakdown-proposal-2026-10-11.md),
+[ticket publication/commit receipt](refinement-ticket-publication-2026-10-11.md)
+and [new execution record](refinement-execution-2026-10-11.md) retain the complete
+scope, graph and branch/commit convention. The parent full spec and its index
+remain unchanged; their original publication-stage text is a historical snapshot,
+and this map owns the current child-ticket state. Earlier accepted rounds remain
+closed. [Spec publication and handoff](refinement-publication-2026-10-11.md) retains
+the base/prototype lineage.
+
+No unrequested App restyling is authorized. Only changes with an explicit
+requirement in PDEX-SPEC-02 may be implemented; the scope record identifies
+prototype details which must not be copied into production.
+
+## Historical first-round frontier and execution boundary
 
 The initial eligible frontier is PDEX-01, PDEX-03, PDEX-05, PDEX-06,
 PDEX-08, PDEX-09 and PDEX-10. PDEX-02/04/07/11 are gated by the declared
@@ -67,8 +110,11 @@ remain separate boundaries.
 
 ## Local tracking conventions
 
-- The spec ID is PDEX-SPEC-01. Allocate PDEX-01, PDEX-02, etc. only when actual
-  implementation tickets are requested and created. Never reuse or renumber IDs.
+- PDEX-SPEC-01 retains the closed first-round body; PDEX-SPEC-02 is the active
+  refinement specification, with approved PDEX-19–26 published. Allocate future
+  IDs after PDEX-26 only when additional tickets are requested and created.
+  Never reuse or renumber published IDs. The original seventeen IDs were only
+  a draft and did not create Work Items.
 - Each ticket retains its full body, parent spec, direct blockers, triage,
   lifecycle, owner, working branch, acceptance criteria and evidence links.
 - Use the five-role triage vocabulary. Track open/in-progress/blocked/closed
@@ -280,3 +326,32 @@ There is no active follow-up blocker. Three items are retained for future user-d
 Root cleanup completed without touching the installed App, profile, Vault or rollback copies. Only `main` and `codex/dashboard-experience-integration` remain as branches; unique prototype history is protected by tag `archive/collaboration-execution-prototype-20261011` and private bundle `~/Library/Application Support/Personal Dashboard Backups.noindex/closeout-20261011-173514/personal-dashboard-before-cleanup.bundle`. No main merge, remote push or PR occurred. The 3.7 GB `src-tauri/target` and obsolete private test bundle were removed; the sole `/Applications/Personal Dashboard.app` and all personal data/rollback backups were left unchanged. See the private cleanup receipt at `~/Library/Application Support/Personal Dashboard Backups.noindex/closeout-20261011-173514/cleanup-receipt.json`.
 
 Management readback confirmed all five parent indexes plus PDEX-12–18 as `resolved`, with the experience source `current` and no malformed references. The existing Project summary is confirmed at Registry `62cd2aa2a06ef622` / summary `4c7a24b9686e312b`; it records the user acceptance and feedback, remains partial with the unrelated Collaboration Markdown/GitHub gaps, and has no active blocker or next-work entry. [Readback receipt](evidence/management-human-closeout-2026-10-11.json).
+
+## Installed production checkpoint — 2026-10-14
+
+The normal `/Applications/Personal Dashboard.app` was installed from integration source `886ceea82155b697bd629913f4cffccfb778a336`. The independent reviewer confirmed the scoped Tasks and Calendar footer spacing and Cancel behavior on the installed app, with no Vault changes and no semantic Profile changes. Final user inspection and broader packaged save/readback acceptance remain pending; PDEX-SPEC-02 and PDEX-26 remain open. See [production install evidence](evidence/pdex02-display-followup-2026-10-14.md).
+
+
+## Final user-authorized closeout — 2026-10-14
+
+The user accepted the complete PDEX-SPEC-02 round and explicitly authorized
+closing the parent and all eight tickets. The Records table is the current
+lifecycle source: PDEX-SPEC-02 and PDEX-19–26 are resolved/closed. Original
+acceptance checkboxes and the exact unrun evidence remain unchanged; closure
+does not represent those checks as passes.
+
+The canonical integration branch starts at 918e7e0d9c4b2c524c429bfd309482e328bc4c91.
+Merge 526c6a3d67ea5de47f76d80469a8c4f1beba5435 retains accepted history
+through 58f283cac763a0f4f833f1b60bab70fd3dc969ff and the primary checkout's
+closeout records. See the
+[final completion record](evidence/final-completion-2026-10-14.md) and the
+[earlier detailed evidence audit](evidence/final-user-acceptance-closeout-2026-10-14.md).
+
+## Confirmed GitHub handoff — 2026-10-17
+
+All records in this map have verified canonical GitHub Issues, preserved full
+bodies and native parent/blocker relationships. Current states are closed;
+PDCR-03/12 are deferred and PDCR-11 retired, not new passing tests. See the
+[46-record mapping](../personal-dashboard-remote-return-2026-10-17/github-issue-mapping.md).
+Previous local-only and no-remote checkpoints are dated history. GitHub now owns
+subsequent state and claim operations; this map is not an executable queue.

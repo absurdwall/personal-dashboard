@@ -66,9 +66,10 @@ test("a delayed canonical read preserves the explicitly selected record phase", 
     todayOperationCount: 0, taskOperationCount: 0, todayPresentationFresh: false, todayStatus: null,
     todayPresentationRequests: new LatestRequest(), refreshTodayPresentation,
     pendingWrites: { async wait() {} }, window: { __TAURI__: { core: { invoke() { return response; } } } },
+    closeTodayAxisFactPopup() {}, closeTodayAxisTaskPopup() {},
     updateTodayOperationState() {}, hasTodayEditingTarget: () => false,
     renderToday() { shown.push(context.currentTodayPhase); },
-    todayUnlocatedTimeRegion: null, todayUnlocatedTimeShortcut: null, todayUnlocatedOverride: null,
+    todaySideRegion: null, todayUnlocatedTimeRegion: null, todayUnlocatedTimeShortcut: null, todayUnlocatedOverride: null,
     todayReady: null, todayPhaseButtons: [], todayPhasePanels: [], todayEvidenceRegion: null, workspaceInformation: null,
     document: { querySelector: () => null }, renderTodayEvidence() {} });
   vm.runInContext(refresh + production("updateTodayUnlocatedPresentation") + production("showTodayPhase") + "\npending = refreshToday('2026-09-24', true); showTodayPhase('morning');", context);

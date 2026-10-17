@@ -13,15 +13,35 @@ life/.personal-dashboard/tasks/v1/tasks.json
 ```
 
 Ticket 01 first wrote schema version `1`; the current document is schema
-version `2` and still contains `lists` and `tasks` at the same stable path.
-The reader accepts a legacy schema-1 document, supplies the new optional
-fields in memory, and the next successful write upgrades it to schema 2.
+version `4` and still contains `lists` and `tasks` at the same stable path.
+The reader accepts schema-1, schema-2 and schema-3 documents, supplies absent optional
+fields in memory, and the next successful write upgrades them to schema 4.
 Every document has a permanent, unarchived system list with id `inbox`. Ticket
 03 adds user-owned, single-level lists in the same document. A list has a
 stable id, a display name, and an `archived` flag; renaming never changes the
 id stored on its tasks. Inbox accepts dated and undated tasks. A new task in a
 user list defaults to that list without a date, while global and Inbox entry
-points default to Inbox. There is no nested folder or list-delete operation.
+points default to Inbox. Lists may belong to a single-level folder; there is no nested folder or list-delete operation.
+
+Schema 3 adds an optional priority (`high`, `medium`, or `low`) and a stable
+`tagIds` array to each Task, plus a Vault-wide tag catalog. A missing priority
+means `none`; missing tag catalogs or task tag arrays read as empty. Old create
+and update commands retain their existing behavior. The additive property
+commands accept creation properties and patch updates: omitted priority or tag
+fields retain their saved values, explicit priority `null` clears it, and an
+explicit tag array replaces the assignments (including an empty array to clear
+them). Tag ids are stable across renames and across lists. Names are trimmed,
+nonempty and unique without case; deleting a tag only unlinks it from tasks.
+Change history records priority and assignment edits. Priority sorting is
+stable within each priority; priority and tag filters can be combined without
+changing list or task state.
+
+Schema 4 adds a folder catalog, optional `folderId` on lists, and optional
+`parentTaskId` on Tasks. Missing catalogs and relationships read as empty.
+Folders group lists without moving or copying Tasks. Parent relationships keep
+Task identity, list, schedule and completion independent; self-parenting and
+cycles are rejected. Deleting a parent retains its children and their relation
+for history and recovery.
 
 Each Task has a stable `id`, required `name`, optional `content`, optional
 `date` and `time`, `listId`, `source`, `state`, creation and modification

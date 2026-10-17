@@ -1,5 +1,8 @@
 # 04: 拖动计划并调整结束时间
 
+> Canonical tracker: [PDEX-04 · GitHub #93](https://github.com/absurdwall/personal-dashboard/issues/93). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户直接拖动白天计划或具体区间的结束边界，时间预览与实际保存一致；近似计划移动后保持近似，长拖动能从上午移到下午或晚间。
 
 **Blocked by:** 02 — 将模糊计划定位并编辑时间精度

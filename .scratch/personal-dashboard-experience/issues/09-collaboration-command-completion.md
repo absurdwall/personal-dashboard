@@ -1,5 +1,8 @@
 # 09: Collaboration 减负与 slash 命令补全
 
+> Canonical tracker: [PDEX-09 · GitHub #98](https://github.com/absurdwall/personal-dashboard/issues/98). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户在更简洁的持续会话界面输入 slash，发现并补全真正可用的命令，编辑后自行发送；现有协作输入与执行能力保持。
 
 **Blocked by:** None

@@ -1,5 +1,8 @@
 # 02: 显示并保存真实工作过程与最终回复
 
+> Canonical tracker: [PDCR-02 · GitHub #79](https://github.com/absurdwall/personal-dashboard/issues/79). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 同一条记录执行时能看到实际过程说明、可用思考摘要和工具活动；
 完成后工作过程折叠，最终回复可读，重新打开仍能回看。
 

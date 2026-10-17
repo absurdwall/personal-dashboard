@@ -5057,7 +5057,7 @@ impl CollaborationApplication {
                 .then(|| operation.result_message.clone())?
         }) {
             return RuntimeDynamicToolResult {
-                success: true,
+                success: false,
                 text: message,
             };
         }
@@ -5095,7 +5095,7 @@ impl CollaborationApplication {
                         },
                         Some(item) => RuntimeDynamicToolResult {
                             text: item.result_message.clone().unwrap_or_else(|| format!("The Dashboard change was not saved (status: {}).", item.status)),
-                            success: true,
+                            success: false,
                         },
                         None => RuntimeDynamicToolResult {
                             text: "The Dashboard change result is missing from collaboration history. Check the saved result before retrying.".into(),
@@ -9890,13 +9890,24 @@ fn collaboration_task_tool_spec(
     if daily_plan_operations_available {
         let block = json!({
             "type": "object",
-            "properties": {"period": string, "title": string, "detail": nullable_string},
+            "properties": {
+                "period": {"type":"string", "description":"Required time or period label for this block."},
+                "title": {"type":"string", "description":"Required concise description of this planned block."},
+                "detail": {"type":["string", "null"], "description":"Optional supporting detail; use null when there is none."}
+            },
             "required": ["period", "title", "detail"],
             "additionalProperties": false
         });
         let evidence = json!({
             "type": "object",
-            "properties": {"label": string, "items": {"type": "array", "items": string}},
+            "properties": {
+                "label": {"type":"string", "description":"Required source or evidence-group name."},
+                "items": {
+                    "type": "array",
+                    "items": {"type":"string"},
+                    "description":"Provide 1–20 concise evidence items for this group."
+                }
+            },
             "required": ["label", "items"],
             "additionalProperties": false
         });
@@ -9908,17 +9919,25 @@ fn collaboration_task_tool_spec(
                     "enum": ["initialPlan", "morningCalibration", "daytimeEvent", "daytimeReplan", "morningBaselineCorrection"],
                     "description": usage::description("dailyRecord.transition")
                 },
-                "arrangement": {"type": "array", "items": block},
-                "evidence": {"type": "array", "items": evidence},
-                "calibrationNote": nullable_string,
-                "baselineCorrectionReason": nullable_string,
+                "arrangement": {
+                    "type": "array",
+                    "items": block,
+                    "description": "For plan transitions, provide 1–24 blocks for the complete current-day arrangement. A daytimeReplan retains every existing block, including earlier blocks, unless the user explicitly asks to remove one. Use an empty array for daytimeEvent."
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": evidence,
+                    "description": "For plan transitions, provide 1–16 evidence groups; each group has 1–20 items. Use an empty array for daytimeEvent."
+                },
+                "calibrationNote": {"type":["string", "null"], "description":"Required nonempty explanation for morningCalibration; otherwise null or omit."},
+                "baselineCorrectionReason": {"type":["string", "null"], "description":"Required nonempty reason for morningBaselineCorrection; otherwise null or omit."},
                 "event": {
                     "type": ["string", "null"],
                     "description": usage::description("dailyRecord.event")
                 },
-                "originalIntent": nullable_string,
-                "changeReason": nullable_string,
-                "revisedDirection": nullable_string
+                "originalIntent": {"type":["string", "null"], "description":"Optional scalar string describing the prior intent; otherwise null or omit."},
+                "changeReason": {"type":["string", "null"], "description":"Optional scalar string explaining this replan; this field is named changeReason (singular), not changeReasons."},
+                "revisedDirection": {"type":["string", "null"], "description":"Required nonempty scalar string for daytimeReplan describing the new direction; otherwise null or omit."}
             }),
             &["transition"],
         ));
@@ -9960,6 +9979,10 @@ fn collaboration_task_tool_spec(
             variant["properties"]["operation"]["description"] = json!(usage::description("tool.automaticInitialPlan"));
             variant["properties"]["transition"]["enum"] = json!(["initialPlan"]);
             variant["properties"]["transition"]["description"] = json!(usage::description("tool.automaticInitialPlan"));
+            variant["properties"].as_object_mut().expect("operation properties").retain(|name, _| {
+                matches!(name.as_str(), "operation" | "transition" | "arrangement" | "evidence")
+            });
+            variant["required"] = json!(["operation", "transition", "arrangement", "evidence"]);
         }
     }
     let alternatives = defs;
@@ -9967,6 +9990,25 @@ fn collaboration_task_tool_spec(
         usage::description("tool.taskOperation")
     } else {
         usage::description("tool.automaticInitialPlan")
+    };
+    // oneOf tools may be rendered as args: unknown in code-mode clients.
+    // Keep the initial-plan contract and an executable example discoverable
+    // in the top-level description as well as in the parameter schema.
+    let description = if daily_plan_operations_available {
+        let mut example = json!({
+            "operation":"saveDailyPlan", "transition":"initialPlan",
+            "arrangement":[
+                {"period":"later today", "title":"Review one pending task", "detail":null},
+                {"period":"evening", "title":"Brief review and rest", "detail":null}
+            ],
+            "evidence":[{"label":"Current sources", "items":["No activity confirmed; Habit completion remains unknown"]}]
+        });
+        if include_manual_fields {
+            example["executionMode"] = json!("execute");
+        }
+        format!("{description}\n\n{} Minimal valid InitialPlan payload: {example}", usage::description("dailyRecord.initialPlan"))
+    } else {
+        description.to_owned()
     };
     json!({
         "name": COLLABORATION_TASK_TOOL,
@@ -10332,18 +10374,7 @@ fn daily_record_pane(view: &TodayView) -> ContextPaneView {
             "Record availability: {}",
             serialized_state(&view.daily_record_availability)
         ),
-        format!("Morning baseline: {}", view.baseline.message),
     ];
-    items.extend(
-        view.baseline.timeline
-            .iter()
-            .map(|block| match block.detail.as_deref() {
-                Some(detail) if !detail.is_empty() => {
-                    format!("Morning · {} · {} · {detail}", block.period, block.title)
-                }
-                _ => format!("Morning · {} · {}", block.period, block.title),
-            }),
-    );
     items.extend(view.time_axis.current_arrangement.iter().map(|entry| {
         format!(
             "Current arrangement · {} · {}",
@@ -11197,12 +11228,17 @@ mod capability_tests {
         let snapshot = HabitSnapshotView {
             state: HabitSnapshotState::Stale,
             message: "fixture source snapshot is stale".into(),
+            lived_date: None,
             generated_at: Some("2026-09-27T12:00:00Z".into()),
             display_range_label: None,
             range_label: None,
             producer_label: None,
             completion_revision: Some("revision-1".into()),
             completion_target_binding: Some("vault-binding".into()),
+            catalog_revision: None,
+            catalog_target_binding: None,
+            catalog_error: None,
+            completion_error: None,
             names_configuration_state: HabitNamesConfigurationState::Missing,
             summary: HabitSummaryView::default(),
             habits: Vec::new(),

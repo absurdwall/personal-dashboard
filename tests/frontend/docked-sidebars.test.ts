@@ -1,49 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync,mkdtempSync,writeFileSync,rmSync,readdirSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
-import {execFileSync} from 'node:child_process';
-
-// Production macOS WebKit DOM/layout with only the public Tauri boundary substituted.
-function probe(width:number, scenario:string, withUntimed=true, height=758) {
-  const directory=mkdtempSync(join(tmpdir(),'pdex14-webkit-'));
-  try {
-    const root=new URL('../..',import.meta.url).pathname;
-    execFileSync(join(root,'node_modules/.bin/tsc'),['--module','commonjs','--outDir',directory],{cwd:root});
-    const modules=Object.fromEntries(readdirSync(directory).filter(n=>n.endsWith('.js')).map(n=>['./'+n,readFileSync(join(directory,n),'utf8')]));
-    const view=JSON.parse(readFileSync(new URL('./fixtures/plan-time-views.json',import.meta.url),'utf8')).loaded;
-    const base=view.timeAxis.currentArrangement[0];
-    view.timeAxis.unlocatedCurrentArrangement=withUntimed ? [{...base,startMinute:null,endMinute:null,planPrecision:'unlocated',text:'Synthetic untimed plan original',period:'择机'}] : [];
-    view.timeAxis.unlocatedConfirmedFacts=withUntimed ? [{...base,startMinute:null,endMinute:null,planId:null,timeEditable:false,text:'Synthetic untimed confirmed fact original',period:''}] : [];
-    writeFileSync(join(directory,'index.html'),readFileSync(new URL('../../frontend/index.html',import.meta.url),'utf8').replace(/<script[^>]*src="main.js"[^>]*><\/script>/,''));
-    writeFileSync(join(directory,'styles.css'),readFileSync(new URL('../../frontend/styles.css',import.meta.url),'utf8'));
-    writeFileSync(join(directory,'check.js'),`
-      const modules=${JSON.stringify(modules)},cache={};
-      function require(n){if(cache[n])return cache[n];const e={};cache[n]=e;new Function('exports','require',modules[n])(e,require);return e;}
-      const view=${JSON.stringify(view)},month=${readFileSync(new URL('./fixtures/compact-calendar-view.json',import.meta.url),'utf8')}.month,calls=[];
-      window.__TAURI__={core:{invoke:async(command,args)=>{calls.push({command,args});
-        if(['today_view','read_daily_view'].includes(command))return structuredClone(view);
-        if(command==='calendar_month')return structuredClone(month);
-        if(command==='tasks_view')return structuredClone(view.tasks);
-        if(command==='application_identity')return {productName:'Synthetic Dashboard'};
-        if(command==='interface_language_preferences')return {interfaceLanguage:'en'};
-        if(command==='appearance_preferences')return {accent:'green',fontSize:'normal'};
-        throw Error('Unexpected public command '+command);
-      }}};
-      require('./main.js');
-      async function until(f){for(let n=0;n<200;n++){if(f())return;await new Promise(r=>setTimeout(r,2));}throw Error('DOM condition timed out '+f);}
-      await until(()=>document.querySelector('#runtime-status').dataset.state==='ready'&&document.documentElement.lang==='en');
-      document.querySelector('[data-today-phase="daytime"]').click();
-      const region=document.querySelector('#today-unlocated-time-region'),trigger=document.querySelector('#today-unlocated-time-shortcut');
-      const rect=n=>{const r=n.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom};};
-      const side=document.querySelector('.today-side-region');
-      const snapshot=()=>({side:rect(side),sideHidden:side.hidden,viewport:innerWidth,layoutWidth:rect(document.querySelector('.today-layout')).width,axis:rect(document.querySelector('#today-axis-scroll-surface')),nav:rect(document.querySelector('.workspace-sidebar')),region:rect(region),hidden:region.hidden,expanded:trigger.getAttribute('aria-expanded'),label:trigger.getAttribute('aria-label'),visibleText:trigger.textContent,badge:trigger.querySelector('.sidebar-toggle-count')?.textContent??null,content:region.textContent});
-      ${scenario}
-    `);
-    return JSON.parse(execFileSync('swift',[new URL('./helpers/rendered-today-unlocated.swift',import.meta.url).pathname,join(directory,'index.html'),join(directory,'check.js'),String(width),String(height)],{encoding:'utf8',timeout:60000}));
-  } finally {rmSync(directory,{recursive:true,force:true});}
-}
+import { probe } from './helpers/complete-page.ts';
 
 type QuickScheduleProbe = {
   hidden:boolean;
@@ -60,13 +17,16 @@ type QuickScheduleProbe = {
 };
 
 function assertQuickSchedulePresentation(result:QuickScheduleProbe,expectedText:string|Array<string|RegExp>,expectedTitle:RegExp) {
+  console.log('Current quick schedule geometry:',JSON.stringify(result));
   assert.equal(result.hidden,false);
   if(typeof expectedText==='string')assert.equal(result.text,expectedText);
   else for(const pattern of expectedText)typeof pattern==='string'?assert.equal(result.text,pattern):assert.match(result.text,pattern);
   assert.equal(result.title,result.aria);assert.match(result.title,expectedTitle);
   assert.ok(result.width>=124,JSON.stringify(result));assert.ok(result.labelFontSize>=10,JSON.stringify(result));
-  assert.ok(result.labelClientWidth>=64&&result.labelScrollWidth<=result.labelClientWidth,JSON.stringify(result));assert.ok(result.rects[0].width>=39,JSON.stringify(result));
-  assert.ok(Math.max(...result.rects.map(r=>r.top+r.height/2))-Math.min(...result.rects.map(r=>r.top+r.height/2))<=2,JSON.stringify(result.rects));
+  assert.ok(result.labelClientWidth>=64&&result.labelScrollWidth<=result.labelClientWidth,JSON.stringify(result));assert.ok(result.rects[0].width>=120,JSON.stringify(result));
+  assert.ok(Math.abs((result.rects[1].top+result.rects[1].height/2)-(result.rects[2].top+result.rects[2].height/2))<=2,JSON.stringify(result.rects));
+  const [name,schedule]=result.rects;
+  assert.ok(name.top+name.height<=schedule.top || Math.abs(name.top+name.height/2-schedule.top-schedule.height/2)<=2,JSON.stringify(result.rects));
   assert.equal(result.overflow,false);assert.deepEqual(result.calls.filter(c=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
 }
 
@@ -225,7 +185,7 @@ for (const width of [640, 681, 700]) {
   });
 }
 
-test('Today quick schedule shows its current date and time within the existing row', {skip:process.platform!=='darwin'},()=>{
+test('Today quick schedule shows its current date and time with readable entry and action targets', {skip:process.platform!=='darwin'},()=>{
   const result=probe(640,`
     const date=document.querySelector('#today-task-create-date'),time=document.querySelector('#today-task-create-time'),button=document.querySelector('#today-task-create-schedule'),form=document.querySelector('#today-task-create-form');
     if(trigger.getAttribute('aria-expanded')!=='true')trigger.click();
@@ -237,18 +197,23 @@ test('Today quick schedule shows its current date and time within the existing r
   assertQuickSchedulePresentation(result,['Today · 09:30'],/Aug 10.*09:30/);
 });
 
-test('Tasks quick schedule shows its current date and time within the existing row', {skip:process.platform!=='darwin'},()=>{
+test('Tasks quick schedule shows its current date and time with readable entry and action targets', {skip:process.platform!=='darwin'},()=>{
   const result=probe(640,`
     document.querySelector('[data-workspace-destination="tasks"].destination-button').click();
     const date=document.querySelector('#task-quick-date'),time=document.querySelector('#task-quick-time'),button=document.querySelector('#task-quick-schedule'),form=document.querySelector('#task-quick-form');
     const name=document.querySelector('#task-quick-name'),submit=document.querySelector('#task-quick-submit');
-    form.hidden=false;date.disabled=false;time.disabled=false;button.disabled=false;name.disabled=false;submit.disabled=false;
+    await until(()=>!form.hidden&&!name.disabled&&!button.disabled&&!submit.disabled);
+    await new Promise(resolve=>setTimeout(resolve,30));
     date.value='2026-08-10';date.dispatchEvent(new Event('change',{bubbles:true}));time.value='09:30';time.dispatchEvent(new Event('change',{bubbles:true}));
     const nodes=[name,button,submit];
-    const rects=nodes.map(node=>{const r=node.getBoundingClientRect();return {top:r.top,height:r.height,width:r.width}}),label=button.querySelector('.task-schedule-label');
-    return JSON.stringify({hidden:form.hidden,text:label?.textContent?.trim(),labelFontSize:parseFloat(getComputedStyle(label).fontSize),labelClientWidth:label.clientWidth,labelScrollWidth:label.scrollWidth,title:button.title,aria:button.getAttribute('aria-label'),width:rects[1].width,rects,overflow:document.documentElement.scrollWidth>innerWidth,calls});
+    const scheduleSnapshot=()=>{const rects=nodes.map(node=>{const r=node.getBoundingClientRect();return {top:r.top,height:r.height,width:r.width}}),label=button.querySelector('.task-schedule-label');
+      return {hidden:form.hidden,text:label?.textContent?.trim(),labelFontSize:parseFloat(getComputedStyle(label).fontSize),labelClientWidth:label.clientWidth,labelScrollWidth:label.scrollWidth,title:button.title,aria:button.getAttribute('aria-label'),width:rects[1].width,rects,overflow:document.documentElement.scrollWidth>innerWidth,calls};};
+    const today=scheduleSnapshot();
+    date.value='2026-08-13';date.dispatchEvent(new Event('change',{bubbles:true}));
+    return JSON.stringify({today,future:scheduleSnapshot()});
   `);
-  assertQuickSchedulePresentation(result,[/09:30/,/Today|Aug 10/],/Aug 10.*09:30/);
+  assertQuickSchedulePresentation(result.today,'Today · 09:30',/Aug 10.*09:30/);
+  assertQuickSchedulePresentation(result.future,[/Aug 13/,/09:30/],/Aug 13.*09:30/);
 });
 
 test('Today zero untimed count keeps the default docked sidebar and an icon-only accessible control', {skip:process.platform!=='darwin'},()=>{

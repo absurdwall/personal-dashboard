@@ -227,12 +227,60 @@ pub struct HabitLocalRecordView {
     pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HabitGoalContextView {
     pub week_of: String,
     pub label: String,
     pub goal_label: String,
+    #[serde(default)]
+    pub target: Option<HabitGoalTarget>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub enum HabitGoalTarget {
+    DailyCompletion,
+    WeeklyCount { standard: u8 },
+    DailyTime {
+        standard: String,
+        day_relation: DayRelation,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitDefinitionView {
+    pub origin: String,
+    pub emoji: Option<String>,
+    pub group: Option<String>,
+    pub start_date: Option<String>,
+    pub lifecycle_active: bool,
+    pub lifecycle_history: Vec<HabitLifecycleChangeView>,
+    pub goal_revisions: Vec<HabitGoalRevisionView>,
+    pub current_goal: Option<HabitGoalTarget>,
+    pub current_goal_effective_from: Option<String>,
+    pub pending_goal: Option<HabitGoalTarget>,
+    pub pending_goal_effective_from: Option<String>,
+    pub partial_goal_cycle: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitLifecycleChangeView {
+    pub operation_id: String,
+    pub active: bool,
+    pub effective_from: String,
+    pub changed_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitGoalRevisionView {
+    pub id: String,
+    pub effective_from: String,
+    pub target: HabitGoalTarget,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -244,6 +292,8 @@ pub struct HabitView {
     pub active: bool,
     pub goal_kind: String,
     pub goal_label: String,
+    pub goal_target: Option<HabitGoalTarget>,
+    pub definition: Option<HabitDefinitionView>,
     pub weekly_target: Option<u32>,
     pub completed_count: Option<u32>,
     pub can_record_completion: bool,
@@ -275,12 +325,17 @@ pub struct HabitSummaryView {
 pub struct HabitSnapshotView {
     pub state: HabitSnapshotState,
     pub message: String,
+    pub lived_date: Option<String>,
     pub generated_at: Option<String>,
     pub display_range_label: Option<String>,
     pub range_label: Option<String>,
     pub producer_label: Option<String>,
     pub completion_revision: Option<String>,
     pub completion_target_binding: Option<String>,
+    pub catalog_revision: Option<String>,
+    pub catalog_target_binding: Option<String>,
+    pub catalog_error: Option<String>,
+    pub completion_error: Option<String>,
     pub names_configuration_state: HabitNamesConfigurationState,
     pub summary: HabitSummaryView,
     pub habits: Vec<HabitView>,
@@ -370,12 +425,17 @@ impl HabitSnapshotView {
         Self {
             state,
             message: message.into(),
+            lived_date: None,
             generated_at: None,
             display_range_label: None,
             range_label: None,
             producer_label: None,
             completion_revision: None,
             completion_target_binding: None,
+            catalog_revision: None,
+            catalog_target_binding: None,
+            catalog_error: None,
+            completion_error: None,
             names_configuration_state: HabitNamesConfigurationState::Missing,
             summary: HabitSummaryView::default(),
             habits: Vec::new(),
@@ -756,6 +816,8 @@ pub fn project_snapshot_with_names_at_local_date(
             active: habit.active,
             goal_kind,
             goal_label: current_goal_label,
+            goal_target: habit.goal.as_ref().map(goal_target),
+            definition: None,
             weekly_target: match habit.goal {
                 Some(Goal::WeeklyCount { standard }) => Some(standard),
                 _ => None,
@@ -774,6 +836,7 @@ pub fn project_snapshot_with_names_at_local_date(
                     week_of: context.week_of.clone(),
                     label: context.label.clone(),
                     goal_label: goal_label(&context.goal),
+                    target: Some(goal_target(&context.goal)),
                 })
                 .collect(),
             today: today_cell,
@@ -802,6 +865,7 @@ pub fn project_snapshot_with_names_at_local_date(
     Ok(HabitSnapshotView {
         state,
         message,
+        lived_date: None,
         generated_at: Some(snapshot.generated_at.clone()),
         display_range_label: Some(format!("{history_start} — {history_end}")),
         range_label: Some(format!("{} — {}", snapshot.range.from, snapshot.range.to)),
@@ -811,6 +875,10 @@ pub fn project_snapshot_with_names_at_local_date(
         )),
         completion_revision: None,
         completion_target_binding: None,
+        catalog_revision: None,
+        catalog_target_binding: None,
+        catalog_error: None,
+        completion_error: None,
         names_configuration_state: names_configuration.state,
         summary,
         habits: projected,
@@ -1511,6 +1579,21 @@ fn goal_label(goal: &Goal) -> String {
             DayRelation::SameDay => format!("每日 {standard}"),
             DayRelation::NextDay => format!("每日 次日 {standard}"),
             DayRelation::Unresolved => format!("每日 {standard} · 日期归属待解释"),
+        },
+    }
+}
+
+fn goal_target(goal: &Goal) -> HabitGoalTarget {
+    match goal {
+        Goal::WeeklyCount { standard } => HabitGoalTarget::WeeklyCount {
+            standard: (*standard).try_into().unwrap_or(7),
+        },
+        Goal::DailyTime {
+            standard,
+            day_relation,
+        } => HabitGoalTarget::DailyTime {
+            standard: standard.clone(),
+            day_relation: *day_relation,
         },
     }
 }

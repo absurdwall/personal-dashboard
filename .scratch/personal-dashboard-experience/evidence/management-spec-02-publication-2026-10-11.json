@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-11",
+  "projectId": "product-personal-dashboard",
+  "sourceId": "source-personal-dashboard-experience",
+  "operationId": "pdex-spec-02-local-publication-summary-20261011-v2",
+  "outcome": "confirmed",
+  "specId": "PDEX-SPEC-02",
+  "specPublicationCommit": "10cbdb72504aa277137e5417d03bba8d28eb2e4b",
+  "workingBranch": "codex/dashboard-experience-refinement-spec",
+  "registryRevisionBefore": "62cd2aa2a06ef622",
+  "registryRevisionAfter": "11411e94710a79eb",
+  "summaryRevisionBefore": "4c7a24b9686e312b",
+  "summaryRevisionAfter": "72cf4708d3302d1e",
+  "sourceRevision": "9e0e6c1931add7a6",
+  "sourceState": "current",
+  "malformedReferences": [],
+  "specWorkItem": {
+    "sourceReference": "00-spec-02.md",
+    "nativeState": "ready-for-agent",
+    "lifecycle": "active",
+    "queueState": "ready",
+    "revision": "807b75c524044854",
+    "assignee": null,
+    "blockers": []
+  },
+  "previousResolvedRecords": 24,
+  "summaryVerifiedAt": "2026-10-12T02:58:56.973594+00:00",
+  "uncoveredSources": [
+    {
+      "sourceId": "source-personal-dashboard-codex-collaboration",
+      "reason": "既有 Markdown 来源存在格式问题，未在本轮修复，不声称完整覆盖。"
+    },
+    {
+      "sourceId": "source-personal-dashboard-github",
+      "reason": "本轮 local-only；helper PATH 排除 GitHub CLI，没有远程查询。"
+    }
+  ],
+  "userOwnedProjectFieldsUnchanged": true,
+  "githubOperations": false,
+  "implementationStarted": false,
+  "publicationCommitReceiptFollowup": "This receipt and Markdown-only formatting correction are retained by a separate docs commit; no history is amended.",
+  "earlierAttempt": {
+    "operationId": "pdex-spec-02-local-publication-summary-20261011",
+    "outcome": "partial",
+    "reason": "Available local sources required revisions rather than uncovered declarations; no Registry change occurred.",
+    "resolution": "Freshly inspected all local sources with GitHub CLI excluded; v2 included their revisions and canonical summary readback confirmed."
+  },
+  "pendingRecoveryAuditIds": [
+    "pdex-spec-02-local-publication-summary-20261011"
+  ]
+}

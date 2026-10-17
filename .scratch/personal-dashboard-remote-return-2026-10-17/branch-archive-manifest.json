@@ -1,0 +1,242 @@
+{
+  "status": "Original planning inventory retained; actual expanded publication inventory and fresh-fetch verification are in publication-receipt.json",
+  "snapshotHead": "f9e194edf6cc354ba1d3d0e0e40b79c635b99427",
+  "rule": "Preserve the inventoried tips. Refresh this manifest if any branch advances; the publication preparation commit itself is additionally retained by PR 3 and its final archive checkpoint.",
+  "branches": [
+    {
+      "branch": "codex/dashboard-experience-integration",
+      "snapshotCommit": "8a0dba083c4cbcb2707e97661a0a23ff82c4f920",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-integration"
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement",
+      "snapshotCommit": "e6bdb514c6733a98949012e1d42a9cda3b0e3eec",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement"
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-integration",
+      "snapshotCommit": "cd961839a063ed3aec86afdef2a23b7b94b2cfc8",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-integration"
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-reimplementation",
+      "snapshotCommit": "e2102da84792bfe1f36d30cac467cc176c229fb6",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-reimplementation"
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-restart-20261014",
+      "snapshotCommit": "6caa665b331bdd1928a4b391f9e189021a21e7d1",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-restart-20261014"
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-review-fixes",
+      "snapshotCommit": "485c9c8e97cd1ec5aaf08c390ad0c346283f2678",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-review-fixes"
+    },
+    {
+      "branch": "codex/dashboard-experience-refinement-spec",
+      "snapshotCommit": "918e7e0d9c4b2c524c429bfd309482e328bc4c91",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/dashboard-experience-refinement-spec"
+    },
+    {
+      "branch": "codex/initial-plan-contract-repair-20261017",
+      "snapshotCommit": "f9e194edf6cc354ba1d3d0e0e40b79c635b99427",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/initial-plan-contract-repair-20261017"
+    },
+    {
+      "branch": "codex/pdex-19-refinement",
+      "snapshotCommit": "162067f1169bfc6bfcf2a537eacc850f8ced275a",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-19-refinement"
+    },
+    {
+      "branch": "codex/pdex-19-refinement-reimplementation",
+      "snapshotCommit": "60fc6d93d2a1cc556e1b259f6bef1e4c5ddfcdf2",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-19-refinement-reimplementation"
+    },
+    {
+      "branch": "codex/pdex-19-restart",
+      "snapshotCommit": "2c4ed69beaa24040488ff8b641d595112be641f5",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-19-restart"
+    },
+    {
+      "branch": "codex/pdex-20-refinement",
+      "snapshotCommit": "51ba75ff3d0640cc7fa2036b6aaffa777caddcf8",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-20-refinement"
+    },
+    {
+      "branch": "codex/pdex-20-refinement-reimplementation",
+      "snapshotCommit": "d25ab0c0d11d568c5d73c4a6c6e438098120f7fe",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-20-refinement-reimplementation"
+    },
+    {
+      "branch": "codex/pdex-20-restart",
+      "snapshotCommit": "5a842c5910793cda8ce1ca54da354ca2bcc07ee4",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-20-restart"
+    },
+    {
+      "branch": "codex/pdex-21-refinement",
+      "snapshotCommit": "6b6814dd7f1702ca276db7f17f6f09cc3abcc1a1",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-21-refinement"
+    },
+    {
+      "branch": "codex/pdex-21-refinement-reimplementation",
+      "snapshotCommit": "784aafb2b94d9cd3295311673b86e343b33b6617",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-21-refinement-reimplementation"
+    },
+    {
+      "branch": "codex/pdex-21-restart",
+      "snapshotCommit": "d733c4a71cb8648e43bf0bf25dc58452f1c7ad9a",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-21-restart"
+    },
+    {
+      "branch": "codex/pdex-22-refinement",
+      "snapshotCommit": "380d160a6cb6d80e5afd5294e318f53edb10636d",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-22-refinement"
+    },
+    {
+      "branch": "codex/pdex-22-refinement-reimplementation",
+      "snapshotCommit": "cd49d52315e825538da690992d495b05af86a97b",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-22-refinement-reimplementation"
+    },
+    {
+      "branch": "codex/pdex-22-restart",
+      "snapshotCommit": "29ea637e932876e377ae37c8402d01240ba2c1b2",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-22-restart"
+    },
+    {
+      "branch": "codex/pdex-23-refinement",
+      "snapshotCommit": "2aa96b4d3ea1ce6f7847a44a978ba8d53eee254b",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-23-refinement"
+    },
+    {
+      "branch": "codex/pdex-23-refinement-reimplementation",
+      "snapshotCommit": "00e518d7e2c2f4b92333b863f7a54fb364c98bd8",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-23-refinement-reimplementation"
+    },
+    {
+      "branch": "codex/pdex-23-restart",
+      "snapshotCommit": "2457a2d7a622d539129e9331e536cb066a3d2c82",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-23-restart"
+    },
+    {
+      "branch": "codex/pdex-24-refinement",
+      "snapshotCommit": "d5632592765a189dc69f02b607b9a05b6b5e2131",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-24-refinement"
+    },
+    {
+      "branch": "codex/pdex-24-refinement-reimplementation",
+      "snapshotCommit": "fdc401c58e1ba094dca5b47721ef74333dd34613",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-24-refinement-reimplementation"
+    },
+    {
+      "branch": "codex/pdex-24-restart",
+      "snapshotCommit": "01cf3192a99b231b924877c979a8db88cc40df15",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-24-restart"
+    },
+    {
+      "branch": "codex/pdex-25-refinement",
+      "snapshotCommit": "f645827632044c9df1dab64cce8d4c0905eef417",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-25-refinement"
+    },
+    {
+      "branch": "codex/pdex-25-refinement-reimplementation",
+      "snapshotCommit": "1ef70ccb388a804e776a5746b607ddcc3ea4f0da",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-25-refinement-reimplementation"
+    },
+    {
+      "branch": "codex/pdex-25-restart",
+      "snapshotCommit": "b254d0b7f47ad34c83514d816692e14775ae75c9",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-25-restart"
+    },
+    {
+      "branch": "codex/pdex-26-refinement",
+      "snapshotCommit": "8c03b9c2dad735c3273d881d45e4e04ab13da43b",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-26-refinement"
+    },
+    {
+      "branch": "codex/pdex-26-restart",
+      "snapshotCommit": "36c85f8a414b566059cbb995034bf08bdf50054c",
+      "coveredByCurrentIntegration": false,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-26-restart"
+    },
+    {
+      "branch": "codex/pdex-collaboration-workflow-repair-20261014",
+      "snapshotCommit": "58f283cac763a0f4f833f1b60bab70fd3dc969ff",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-collaboration-workflow-repair-20261014"
+    },
+    {
+      "branch": "codex/pdex-review-repairs",
+      "snapshotCommit": "9bb8e14953b52034a02c29ad9b04aabe5b346333",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-review-repairs"
+    },
+    {
+      "branch": "codex/pdex-visual-acceptance-repairs-20261014",
+      "snapshotCommit": "b8c34b2f9172643142eeb874e9531c1373287356",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex-visual-acceptance-repairs-20261014"
+    },
+    {
+      "branch": "codex/pdex19-row-refinement-followup-20261014",
+      "snapshotCommit": "19b530e154868a90345dfc19ebbe02fc97301019",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex19-row-refinement-followup-20261014"
+    },
+    {
+      "branch": "codex/pdex20-tree-collapse-followup-20261014",
+      "snapshotCommit": "19b530e154868a90345dfc19ebbe02fc97301019",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex20-tree-collapse-followup-20261014"
+    },
+    {
+      "branch": "codex/pdex21-review-followup-20261014",
+      "snapshotCommit": "19b530e154868a90345dfc19ebbe02fc97301019",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": "archive/remote-return-20261017/codex/pdex21-review-followup-20261014"
+    },
+    {
+      "branch": "main",
+      "snapshotCommit": "a4594a151126465cc3d76038364dd696461778ec",
+      "coveredByCurrentIntegration": true,
+      "archiveTag": null
+    }
+  ],
+  "additionalLocalArchiveTag": "archive/collaboration-execution-prototype-20261011",
+  "privateOnly": [
+    "existing stash",
+    "Codex snapshot/turn-diff refs",
+    "ignored private evidence and runtime exports"
+  ],
+  "publicationReceipt": "publication-receipt.json"
+}

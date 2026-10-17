@@ -1,5 +1,8 @@
 # 06: 本地 Habit 补记、撤回与历史查询
 
+> Canonical tracker: [PDCR-06 · GitHub #83](https://github.com/absurdwall/personal-dashboard/issues/83). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户指定 local-only 后可补记或撤回今天/历史 Habit completion，
 相关页面准确显示本地证据，回复可以打开相应 Habit/date。
 

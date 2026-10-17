@@ -8,6 +8,9 @@ import {
   normalizeTaskSchedule,
   taskListMutationConfirmed,
   taskListScopeForId,
+  taskFolderScopeForId,
+  taskFolderIdFromScope,
+  taskParentCandidates,
   taskEditOperationKey,
   taskListDisplayName,
   taskListCount,
@@ -20,6 +23,7 @@ import {
   todayTaskGroups,
   todayTaskTimeAxisEntries,
   taskVisibleInScope,
+  taskPropertiesPresentation,
 } from "../../frontend/task-presentation.ts";
 
 test("system task lists use the localized Inbox display while user list names stay unchanged", () => {
@@ -64,6 +68,34 @@ test("clearing a task date also clears its time and disables the time control", 
     time: "09:30",
     timeDisabled: false,
   });
+});
+
+test("Task priority sorting is stable and priority and tag filters compose without changing default order", () => {
+  const tasks = [
+    { id: "none-first", priority: null, tagIds: ["home"] },
+    { id: "low", priority: "low" as const, tagIds: ["work"] },
+    { id: "high-first", priority: "high" as const, tagIds: ["home", "work"] },
+    { id: "medium", priority: "medium" as const, tagIds: ["home"] },
+    { id: "high-second", priority: "high" as const, tagIds: ["home"] },
+    { id: "none-second", priority: undefined, tagIds: ["home"] },
+  ];
+
+  assert.deepEqual(
+    taskPropertiesPresentation(tasks, "all", null, "default").map((task) => task.id),
+    ["none-first", "low", "high-first", "medium", "high-second", "none-second"],
+  );
+  assert.deepEqual(
+    taskPropertiesPresentation(tasks, "all", "home", "priority").map((task) => task.id),
+    ["high-first", "high-second", "medium", "none-first", "none-second"],
+  );
+  assert.deepEqual(
+    taskPropertiesPresentation(tasks, "low", "home", "default").map((task) => task.id),
+    [],
+  );
+  assert.deepEqual(
+    taskPropertiesPresentation(tasks, "high", "work", "default").map((task) => task.id),
+    ["high-first"],
+  );
 });
 
 test("Today projects dated timed shared tasks as identity-preserving points on its existing axis", () => {
@@ -332,6 +364,44 @@ test("task list scopes keep archived work out of active views and expose it for 
   assert.equal(taskVisibleInScope(archived, "all", "completed"), false);
   assert.equal(taskVisibleInScope(archived, "archived", "completed"), true);
   assert.equal(taskVisibleInScope(archived, taskListScopeForId("planning"), "completed"), false);
+});
+
+test("folder scopes aggregate only their assigned active lists and leave fixed scopes intact", () => {
+  const folderScope = taskFolderScopeForId("planning-folder");
+  const folderIdsByList = new Map([ ["work", "planning-folder"], ["home", "planning-folder"] ]);
+  const archivedLists = new Set(["home"]);
+  const tasks = [
+    {listId: "work", state: "pending" as const, deletedAt: null, date: null, overdue: false},
+    {listId: "home", state: "pending" as const, deletedAt: null, date: null, overdue: false},
+    {listId: "other", state: "pending" as const, deletedAt: null, date: null, overdue: false},
+  ];
+
+  assert.equal(taskFolderIdFromScope(folderScope), "planning-folder");
+  assert.deepEqual(
+    tasks.filter((task) => taskVisibleInScope({
+      ...task,
+      listArchived: archivedLists.has(task.listId),
+      listFolderId: folderIdsByList.get(task.listId),
+    }, folderScope, "pending")).map((task) => task.listId),
+    ["work"],
+  );
+  assert.equal(taskVisibleInScope(tasks[0], "all", "pending"), true);
+  assert.equal(taskVisibleInScope(tasks[0], "inbox", "pending"), false);
+  assert.equal(taskScopeCount(tasks, folderScope, "pending", null, archivedLists, folderIdsByList), 1);
+});
+
+test("parent candidates hide the Task and its full descendant chain", () => {
+  const tasks = [
+    {id: "root", parentTaskId: null, deletedAt: null},
+    {id: "child", parentTaskId: "root", deletedAt: null},
+    {id: "grandchild", parentTaskId: "child", deletedAt: null},
+    {id: "sibling", parentTaskId: "root", deletedAt: null},
+    {id: "other", parentTaskId: null, deletedAt: null},
+    {id: "deleted", parentTaskId: null, deletedAt: "2026-10-12T10:00-04:00"},
+  ];
+
+  assert.deepEqual(taskParentCandidates(tasks, "child").map((task) => task.id), ["root", "sibling", "other"]);
+  assert.deepEqual(taskParentCandidates(tasks).map((task) => task.id), ["root", "child", "grandchild", "sibling", "other"]);
 });
 
 test("scope counts follow the active state filter without changing membership semantics", () => {
@@ -616,4 +686,80 @@ test("interval edits retain distinct retry identities and require confirmed end 
     invoke: async () => ({ state: "ready", targetBinding: "binding", tasks: [{ ...edit, id: edit.taskId, executionEnd: null }] }),
   });
   assert.equal(result.confirmed, false, "unchanged end must not be reported as a saved interval");
+});
+
+test("Task property patches distinguish omitted values from explicitly cleared values", async () => {
+  const requests = new LatestRequest();
+  const identities = new TaskOperationIdentityStore();
+  const base = taskUpdateEdit("Keep legacy caller");
+  const legacy = await performTaskUpdateRequest(base, {
+    expectedRevision: "r1", requests, identities, createChangeId: () => "legacy-change",
+    isCurrent: () => true,
+    invoke: async (input) => {
+      assert.equal("priority" in input, false);
+      assert.equal("tagIds" in input, false);
+      return taskUpdateView(input.name);
+    },
+  });
+  assert.equal(legacy.confirmed, true, "old callers can omit new fields");
+
+  const clear = { ...base, name: "Clear properties", priority: null, tagIds: [] as readonly string[] };
+  assert.notEqual(taskEditOperationKey(base), taskEditOperationKey(clear));
+  const cleared = await performTaskUpdateRequest(clear, {
+    expectedRevision: "r2", requests, identities, createChangeId: () => "clear-change",
+    isCurrent: () => true,
+    invoke: async (input) => {
+      assert.equal(input.priority, null);
+      assert.deepEqual(input.tagIds, []);
+      return {
+        state: "ready",
+        targetBinding: "vault-a",
+        tasks: [{ ...input, id: input.taskId, priority: null, tagIds: [] }],
+      };
+    },
+  });
+  assert.equal(cleared.confirmed, true, "explicit clear is only confirmed after readback");
+
+  const mismatched = await performTaskUpdateRequest({ ...clear, priority: "high", tagIds: ["work"] }, {
+    expectedRevision: "r3", requests, identities, createChangeId: () => "mismatch-change",
+    isCurrent: () => true,
+    invoke: async (input) => ({
+      state: "ready",
+      targetBinding: "vault-a",
+      tasks: [{ ...input, id: input.taskId, priority: null, tagIds: [] }],
+    }),
+  });
+  assert.equal(mismatched.confirmed, false, "different saved properties are not reported as successful");
+});
+
+test("parent changes use distinct retry identities and require relation readback", async () => {
+  const requests = new LatestRequest();
+  const identities = new TaskOperationIdentityStore();
+  const base = taskUpdateEdit("Parented child");
+  const linked = { ...base, parentTaskId: "parent-a" };
+  const unlinked = { ...base, parentTaskId: null };
+  assert.notEqual(taskEditOperationKey(base), taskEditOperationKey(linked));
+  assert.notEqual(taskEditOperationKey(linked), taskEditOperationKey(unlinked));
+
+  const saved = await performTaskUpdateRequest(linked, {
+    expectedRevision: "r1", requests, identities, createChangeId: () => "link-parent",
+    isCurrent: () => true,
+    invoke: async (input) => ({
+      state: "ready",
+      targetBinding: "vault-a",
+      tasks: [{ ...input, id: input.taskId, parentTaskId: "parent-a" }],
+    }),
+  });
+  assert.equal(saved.confirmed, true);
+
+  const mismatch = await performTaskUpdateRequest(unlinked, {
+    expectedRevision: "r2", requests, identities, createChangeId: () => "unlink-parent",
+    isCurrent: () => true,
+    invoke: async (input) => ({
+      state: "ready",
+      targetBinding: "vault-a",
+      tasks: [{ ...input, id: input.taskId, parentTaskId: "parent-a" }],
+    }),
+  });
+  assert.equal(mismatch.confirmed, false, "an unchanged parent relation is not a confirmed unlink");
 });

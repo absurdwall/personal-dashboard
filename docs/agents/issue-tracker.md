@@ -1,12 +1,40 @@
 # Issue tracker: GitHub
 
+## Write pacing
+
+Within this project's GitHub publication or update batch, leave at least two
+seconds between successive write requests, including issue/PR creation,
+comments, edits, closures and relationship changes. Read-only verification may
+run between writes. Follow GitHub's retry instructions if rate limited.
+
+This is a per-project pacing convention; it does not require a cross-project
+queue or a local hourly write counter.
+
+## Current tracker after the 2026-10-17 migration
+
+GitHub Issues now owns live state for both the Dashboard experience and
+Collaboration redesign initiatives. Their 46 original records were imported
+with full bodies, stable IDs, original dates, native parent/blocker links and
+verified closeout dispositions. See the [canonical ID mapping](../../.scratch/personal-dashboard-remote-return-2026-10-17/github-issue-mapping.md).
+
+The two scoped local-only sections below retain historical authorization and
+preservation rules. Their local-only mode has ended; they no longer prohibit
+GitHub operations. Existing Markdown remains supporting history, not a second
+executable queue. PDCR-03/12 are closed-deferred and PDCR-11 closed-retired as
+unnecessary under the user's October 17 decision; no unrun check became a pass.
+
 ## Scoped local tracker: dashboard experience improvements
 
 On 2026-10-10 the user explicitly chose local-only publication, tickets and
 subsequent implementation tracking for the accepted Dashboard experience
 prototype while GitHub is unavailable. For this initiative,
-`.scratch/personal-dashboard-experience/map.md` is the canonical tracker and
-its linked `spec.md` is the canonical specification. This scoped exception
+`.scratch/personal-dashboard-experience/map.md` is the canonical tracker.
+Its linked `spec.md` retains the closed PDEX-SPEC-01; the new PDEX-SPEC-02
+full body is `refinement-spec-2026-10-11.md`. On 2026-10-11 the user explicitly
+reaffirmed local Git publication, subsequent tickets and implementation for
+the new refinement round, with branch and commit lineage retained for later
+push. Each stable spec ID has one full body and a linked Work Item index;
+new rounds do not overwrite or reopen closed records. This scoped exception
 takes precedence over the default GitHub operations below.
 
 - Publish and read the complete spec locally; use stable PDEX IDs, preserve

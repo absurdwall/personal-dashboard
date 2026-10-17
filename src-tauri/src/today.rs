@@ -5,6 +5,10 @@ use crate::habits::{
     HabitSnapshotStore, LocalHabitCompletion, LocalHabitRecord, LEGACY_SNAPSHOT_RELATIVE_PATH,
     SNAPSHOT_RELATIVE_PATH,
 };
+use crate::habit_catalog::{
+    self, FileHabitCatalogStore, HabitDefinitionMutationInput, HabitDefinitionSaveResult,
+    HabitLifecycleMutationInput, HabitLifecycleSaveResult,
+};
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
 };
@@ -187,6 +191,7 @@ pub(crate) enum StorageDocumentKind {
     DailyRecord,
     DayTasks,
     HabitCompletions,
+    HabitCatalog,
     Tasks,
 }
 
@@ -196,6 +201,7 @@ impl StorageDocumentKind {
             Self::DailyRecord => daily_record,
             Self::DayTasks => day_tasks,
             Self::HabitCompletions => habit_completions,
+            Self::HabitCatalog => "本地 Habit 定义正本操作失败。",
             Self::Tasks => "任务正本操作失败。",
         }
         .into()
@@ -214,6 +220,7 @@ impl StorageDocumentKind {
                 Self::DailyRecord => daily_record,
                 Self::DayTasks => day_tasks,
                 Self::HabitCompletions => habit_completions,
+                Self::HabitCatalog => "本地 Habit 定义正本操作失败：",
                 Self::Tasks => "任务正本操作失败：",
             },
             error
@@ -376,6 +383,7 @@ pub(crate) fn create_new_file(
                 StorageDocumentKind::DailyRecord => format!("{error}; the complete new Daily Record is present at {} and can be verified by refreshing", path.display()),
                 StorageDocumentKind::DayTasks => format!("{error}; the complete new day-task document is present at {} and can be verified by refreshing", path.display()),
                 StorageDocumentKind::HabitCompletions => format!("{error}; the complete new local habit-completion document is present at {} and can be verified by refreshing", path.display()),
+                StorageDocumentKind::HabitCatalog => format!("{error}; the complete local Habit definition document is present at {} and can be verified by refreshing Habits", path.display()),
                 StorageDocumentKind::Tasks => format!("{error}; the complete task document is present at {} and can be verified by refreshing", path.display()),
             }
         })?;
@@ -384,6 +392,7 @@ pub(crate) fn create_new_file(
                 StorageDocumentKind::DailyRecord => format!("The new Daily Record is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::DayTasks => format!("The new day-task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::HabitCompletions => format!("The new local habit-completion document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
+                StorageDocumentKind::HabitCatalog => format!("The new local Habit definition document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::Tasks => format!("The new task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
             }
         })?;
@@ -466,12 +475,13 @@ where
                     StorageDocumentKind::DailyRecord => format!("{preservation_error}; activation was rolled back and the rejected Dashboard candidate remains at {}", temporary.display()),
                     StorageDocumentKind::DayTasks => format!("{preservation_error}; activation was rolled back and the rejected day-task candidate remains at {}", temporary.display()),
                     StorageDocumentKind::HabitCompletions => format!("{preservation_error}; activation was rolled back and the rejected local habit-completion candidate remains at {}", temporary.display()),
+                    StorageDocumentKind::HabitCatalog => format!("{preservation_error}; activation was rolled back and the rejected local Habit definition candidate remains at {}", temporary.display()),
                     StorageDocumentKind::Tasks => format!("{preservation_error}; activation was rolled back and the rejected task candidate remains at {}", temporary.display()),
                 })
             }
             Err(rollback_error) => Err(format!(
                 "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced {} inode remains linked at {}",
-                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document", StorageDocumentKind::Tasks => "task document" }, temporary.display()
+                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document", StorageDocumentKind::HabitCatalog => "local Habit definition document", StorageDocumentKind::Tasks => "task document" }, temporary.display()
             )),
         }
     })?;
@@ -480,6 +490,7 @@ where
             StorageDocumentKind::DailyRecord => format!("Could not verify the displaced daily record after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::DayTasks => format!("Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::HabitCompletions => format!("Could not verify the displaced local habit-completion document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
+            StorageDocumentKind::HabitCatalog => format!("Could not verify the displaced local Habit definition document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::Tasks => format!("Could not verify the displaced task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
         }
     })?;
@@ -489,6 +500,7 @@ where
                     StorageDocumentKind::DailyRecord => format!("Could not verify today's daily record after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::DayTasks => format!("Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::HabitCompletions => format!("Could not verify the local habit-completion document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
+                    StorageDocumentKind::HabitCatalog => format!("Could not verify the local Habit definition document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::Tasks => format!("Could not verify the task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                 }
             })?;
@@ -521,6 +533,7 @@ where
                 StorageDocumentKind::DailyRecord => "record",
                 StorageDocumentKind::DayTasks => "day-task document",
                 StorageDocumentKind::HabitCompletions => "local habit-completion document",
+                StorageDocumentKind::HabitCatalog => "local Habit definition document",
                 StorageDocumentKind::Tasks => "task document",
             },
             temporary.display()
@@ -598,6 +611,7 @@ fn preserve_displaced_inode(
             StorageDocumentKind::DailyRecord => "daily-record",
             StorageDocumentKind::DayTasks => "day-tasks",
             StorageDocumentKind::HabitCompletions => "habit-completions",
+            StorageDocumentKind::HabitCatalog => "habit-definitions",
             StorageDocumentKind::Tasks => "tasks",
         });
     for attempt in 0..32u8 {
@@ -659,6 +673,7 @@ fn create_temporary_file(
                 StorageDocumentKind::DailyRecord => "md",
                 StorageDocumentKind::DayTasks => "json",
                 StorageDocumentKind::HabitCompletions => "json",
+                StorageDocumentKind::HabitCatalog => "json",
                 StorageDocumentKind::Tasks => "json",
             },
             std::process::id()
@@ -692,10 +707,12 @@ fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -
         (Some(path), StorageDocumentKind::DailyRecord) => format!("今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。", path.display()),
         (Some(path), StorageDocumentKind::DayTasks) => format!("当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新当天任务。", path.display()),
         (Some(path), StorageDocumentKind::HabitCompletions) => format!("本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
+        (Some(path), StorageDocumentKind::HabitCatalog) => format!("本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 {}；请刷新 Habits 后重试。", path.display()),
         (Some(path), StorageDocumentKind::Tasks) => format!("任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请刷新 Tasks 后重试。", path.display()),
         (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::HabitCompletions) => "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
+        (None, StorageDocumentKind::HabitCatalog) => "本地 Habit 定义已在其他位置发生变化。请刷新 Habits 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::Tasks) => "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。".into(),
     }
 }
@@ -733,6 +750,7 @@ fn preserve_conflict_snapshot(
                 StorageDocumentKind::DailyRecord => "daily-record",
                 StorageDocumentKind::DayTasks => "day-tasks",
                 StorageDocumentKind::HabitCompletions => "habit-completions",
+            StorageDocumentKind::HabitCatalog => "habit-definitions",
                 StorageDocumentKind::Tasks => "tasks",
             });
         let recovery = recovery_directory.join(format!(
@@ -975,13 +993,15 @@ impl DailyPlanWriteInput {
 
         match self.transition {
             DailyPlanTransition::InitialPlan | DailyPlanTransition::MorningCalibration => {
-                if self.event.is_some()
-                    || self.baseline_correction_reason.is_some()
-                    || self.original_intent.is_some()
-                    || self.change_reason.is_some()
-                    || self.revised_direction.is_some()
-                {
-                    return Err("所选计划操作包含不适用的事实或重排字段。".into());
+                let inapplicable: Vec<&str> = [
+                    ("event", &self.event),
+                    ("baselineCorrectionReason", &self.baseline_correction_reason),
+                    ("originalIntent", &self.original_intent),
+                    ("changeReason", &self.change_reason),
+                    ("revisedDirection", &self.revised_direction),
+                ].into_iter().filter_map(|(name, value)| value.is_some().then_some(name)).collect();
+                if !inapplicable.is_empty() {
+                    return Err(format!("所选计划操作包含不适用字段：{}。将这些字段省略或设为 null；保留有效的 arrangement 和 evidence。", inapplicable.join(", ")));
                 }
                 if self.transition == DailyPlanTransition::InitialPlan
                     && self.calibration_note.is_some()
@@ -1632,6 +1652,39 @@ pub struct HabitCompletionHistoryView {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct HabitDetailHistoryView {
+    pub habit: crate::habits::HabitView,
+    pub(crate) statistics: crate::habit_statistics::HabitDetailStatistics,
+    pub canonical_state: String,
+    pub canonical_revision: Option<String>,
+    pub canonical_target_binding: Option<String>,
+    pub canonical_error: Option<String>,
+    pub local_completions: Vec<HabitCanonicalCompletionView>,
+    pub snapshot_state: HabitSnapshotState,
+    pub snapshot_generated_at: Option<String>,
+    pub snapshot_range: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitCanonicalCompletionView {
+    pub lived_date: String,
+    pub state: HabitLocalCompletionState,
+    pub completed_at: Option<String>,
+    pub modified_at: String,
+    pub changes: Vec<HabitCanonicalCompletionChangeView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitCanonicalCompletionChangeView {
+    pub id: String,
+    pub kind: String,
+    pub changed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HabitHistoryProjectionView {
     pub state: HabitSnapshotState,
     pub message: String,
@@ -1836,6 +1889,8 @@ pub struct TimeAxisEntryView {
     pub time_editable: bool,
     pub period: Option<String>,
     pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub source_date: String,
     pub start_minute: Option<u16>,
     pub end_minute: Option<u16>,
@@ -1866,6 +1921,7 @@ pub struct TodayApplication<
     habit_snapshot_store: H,
     day_task_store: D,
     habit_completion_store: L,
+    habit_catalog_store: FileHabitCatalogStore,
     habit_cache: Mutex<HashMap<PathBuf, HabitSnapshotView>>,
     habit_correction_cache: Mutex<HashMap<(PathBuf, String), HabitCorrectionView>>,
 }
@@ -1894,6 +1950,7 @@ where
             habit_snapshot_store: FileHabitSnapshotStore,
             day_task_store: FileDayTaskStore,
             habit_completion_store: FileHabitCompletionStore,
+            habit_catalog_store: FileHabitCatalogStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -1917,6 +1974,7 @@ where
             habit_snapshot_store: FileHabitSnapshotStore,
             day_task_store: FileDayTaskStore,
             habit_completion_store: FileHabitCompletionStore,
+            habit_catalog_store: FileHabitCatalogStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -1946,6 +2004,7 @@ where
             habit_snapshot_store,
             day_task_store: FileDayTaskStore,
             habit_completion_store: FileHabitCompletionStore,
+            habit_catalog_store: FileHabitCatalogStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -1977,6 +2036,7 @@ where
             habit_snapshot_store,
             day_task_store,
             habit_completion_store: FileHabitCompletionStore,
+            habit_catalog_store: FileHabitCatalogStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -2010,6 +2070,7 @@ where
             habit_snapshot_store,
             day_task_store,
             habit_completion_store,
+            habit_catalog_store: FileHabitCatalogStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -2691,16 +2752,32 @@ where
         let has_verifiable_catalog = matches!(
             catalog.state,
             HabitSnapshotState::Ready | HabitSnapshotState::Stale
-        );
-        if has_verifiable_catalog {
-            let habit = catalog.habit(&input.habit_key).ok_or_else(|| {
-                "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".to_string()
-            })?;
+        ) || catalog.catalog_revision.is_some() && catalog.catalog_error.is_none();
+        if let Some(habit) = catalog.habit(&input.habit_key) {
             if !habit.can_record_completion {
                 return Err(
                     "该习惯不是 completion 型；时刻和阈值证据不能用本地完成框记录。".into(),
                 );
             }
+            if !allow_existing_without_catalog && !habit.active {
+                return Err("该 Habit 已停用；请先恢复后再记录今日完成。".into());
+            }
+        } else if has_verifiable_catalog || !allow_existing_without_catalog {
+            return Err("Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".into());
+        }
+        if let Some(start_date) = catalog
+            .habit(&input.habit_key)
+            .and_then(|habit| habit.definition.as_ref())
+            .and_then(|definition| definition.start_date.as_deref())
+        {
+            if CalendarDate::parse(&input.lived_date).is_some_and(|date| {
+                CalendarDate::parse(start_date).is_some_and(|start| date < start)
+            }) {
+                return Err("Habit 开始日期之前不能记录本地完成；现有历史事实未更改。".into());
+            }
+        }
+        if let Some(error) = catalog.completion_error {
+            return Err(format!("本地习惯完成正本无法读取：{error}"));
         }
 
         let vault = self
@@ -3226,6 +3303,62 @@ where
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
         };
+        let mut view = self.sourced_habits_for(&vault)?;
+        view.lived_date = Some(self.clock.current_lived_date());
+        let catalog_path = habit_catalog::canonical_path(&vault);
+        view.catalog_target_binding = Some(habit_catalog::target_binding(&catalog_path));
+        let catalog_bytes = match self.habit_catalog_store.load(&catalog_path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                view.catalog_error = Some(error);
+                None
+            }
+        };
+        let catalog_document = match catalog_bytes.as_deref() {
+            Some(bytes) => {
+                view.catalog_revision = Some(habit_catalog::revision(bytes));
+                match habit_catalog::parse_document(bytes) {
+                    Ok(document) => Some(document),
+                    Err(error) => {
+                        view.catalog_error = Some(error);
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+
+        let completion_path = canonical_habit_completion_path(&vault);
+        view.completion_target_binding = Some(habit_completion_target_binding(&completion_path));
+        let mut local_completions = Vec::new();
+        match self.habit_completion_store.load(&completion_path) {
+            Ok(Some(bytes)) => match parse_habit_completion_document(
+                &bytes,
+                &self.clock.current_timestamp_label(),
+            ) {
+                Ok(document) => {
+                    view.completion_revision = Some(document_revision(&bytes));
+                    local_completions = document
+                        .completions
+                        .into_iter()
+                        .map(local_habit_completion)
+                        .collect();
+                }
+                Err(error) => view.completion_error = Some(error),
+            },
+            Ok(None) => view.completion_revision = None,
+            Err(error) => view.completion_error = Some(error),
+        }
+        habit_catalog::merge_catalog_view(
+            &mut view,
+            catalog_document.as_ref(),
+            &local_completions,
+            &self.clock.current_lived_date(),
+        )?;
+        Ok(view)
+    }
+
+    fn sourced_habits_for(&self, vault: &Path) -> Result<HabitSnapshotView, String> {
         let path = vault.join(SNAPSHOT_RELATIVE_PATH);
         let document = match load_habit_snapshot_from_vault(&self.habit_snapshot_store, &vault) {
             Ok(Some(document)) => document,
@@ -3311,11 +3444,305 @@ where
                 self.habit_cache
                     .lock()
                     .map_err(|_| "Habits 快照缓存不可用。".to_string())?
-                    .insert(path, view.clone());
+                .insert(path, view.clone());
                 Ok(view)
             }
             Err(error) => Ok(self.retained_or_error(&path, error)?),
         }
+    }
+
+    pub fn save_habit_definition(
+        &self,
+        input: HabitDefinitionMutationInput,
+    ) -> Result<HabitDefinitionSaveResult, String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Vault，再保存 Habit。".to_string())?;
+        validate_compatible_vault(&vault)
+            .map_err(|error| format!("{error}；Habit 修改仍可重试，未写入任何内容。"))?;
+        let catalog_path = habit_catalog::canonical_path(&vault);
+        if habit_catalog::target_binding(&catalog_path) != input.target_binding {
+            return Err("所选 Vault 已改变。请刷新 Habits 后重新编辑；没有写入任何内容。".into());
+        }
+
+        let current_view = self.habits()?;
+        if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+            return Err("保存过程中所选 Vault 已改变。请刷新 Habits 后重新编辑；没有开始写入。".into());
+        }
+        if current_view.catalog_error.is_some() {
+            return Err(current_view.catalog_error.unwrap_or_default());
+        }
+        let existing_bytes = self.habit_catalog_store.load(&catalog_path)?;
+        let existing_revision = existing_bytes
+            .as_deref()
+            .map(habit_catalog::revision);
+        let existing_document = match existing_bytes.as_deref() {
+            Some(bytes) => Some(habit_catalog::parse_document(bytes)?),
+            None => None,
+        };
+        let mutation = habit_catalog::apply_mutation(
+            existing_document,
+            existing_revision.as_deref(),
+            &input,
+            &current_view,
+            &self.clock.current_lived_date(),
+            &self.clock.current_timestamp_label(),
+        )?;
+        let updated_bytes = if mutation.changed {
+            let encoded = habit_catalog::encode_document(&mutation.document)?;
+            if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+                return Err("保存过程中所选 Vault 已改变。请刷新 Habits 后重新编辑；没有开始写入。".into());
+            }
+            match existing_bytes.as_deref() {
+                Some(expected) => self.habit_catalog_store.save_if_unchanged(
+                    &catalog_path,
+                    expected,
+                    &encoded,
+                )?,
+                None => self.habit_catalog_store.create_new(&catalog_path, &encoded)?,
+            }
+            encoded
+        } else {
+            existing_bytes.clone().ok_or_else(|| {
+                "Habit 操作重试找不到已保存的定义；请刷新后再操作。".to_string()
+            })?
+        };
+        let readback_bytes = self
+            .habit_catalog_store
+            .load(&catalog_path)?
+            .ok_or_else(|| "Habit 定义已提交，但无法从所选 Vault 重新读回；结果未确认。".to_string())?;
+        if readback_bytes != updated_bytes {
+            return Err("Habit 定义保存后读回的修订已变化；结果未确认。请刷新 Habits 后检查。".into());
+        }
+        let readback_document = habit_catalog::parse_document(&readback_bytes)?;
+        if !habit_catalog::operation_applied(
+            &readback_document,
+            &input.operation_id,
+            &mutation.habit_key,
+        ) {
+            return Err("Habit 定义保存后未能核对操作身份；结果未确认。请刷新 Habits 后检查。".into());
+        }
+        if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+            return Err("保存后所选 Vault 已改变。原 Vault 的 Habit 写入已保留，但当前结果未确认；请刷新后检查。".into());
+        }
+        let snapshot = self.habits()?;
+        let habit = snapshot.habit(&mutation.habit_key).ok_or_else(|| {
+            "Habit 定义已保存，但新实例式读回未能找到该 Habit；结果未确认。请刷新 Habits 后检查。".to_string()
+        })?;
+        if habit.definition.is_none() {
+            return Err("Habit 定义已保存，但读回未能确认其设置；结果未确认。".into());
+        }
+        let revision = habit_catalog::revision(&readback_bytes);
+        if snapshot.catalog_revision.as_deref() != Some(revision.as_str()) {
+            return Err("Habit 定义已保存，但界面读回的修订与正本不同；结果未确认。".into());
+        }
+        Ok(HabitDefinitionSaveResult {
+            outcome: mutation.outcome,
+            operation_id: input.operation_id,
+            habit_key: mutation.habit_key,
+            revision,
+            snapshot,
+        })
+    }
+
+    pub fn set_habit_active(
+        &self,
+        input: HabitLifecycleMutationInput,
+    ) -> Result<HabitLifecycleSaveResult, String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Vault，再更改 Habit 生命周期。".to_string())?;
+        validate_compatible_vault(&vault)
+            .map_err(|error| format!("{error}；Habit 生命周期修改仍可重试，未写入任何内容。"))?;
+        let catalog_path = habit_catalog::canonical_path(&vault);
+        if habit_catalog::target_binding(&catalog_path) != input.target_binding {
+            return Err("所选 Vault 已改变。请刷新 Habits 后重试；没有写入任何内容。".into());
+        }
+
+        let current_view = self.habits()?;
+        if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+            return Err("保存过程中所选 Vault 已改变；没有开始写入。请刷新 Habits 后重试。".into());
+        }
+        if current_view.catalog_error.is_some() {
+            return Err(current_view.catalog_error.unwrap_or_default());
+        }
+        let existing_bytes = self.habit_catalog_store.load(&catalog_path)?;
+        let existing_revision = existing_bytes.as_deref().map(habit_catalog::revision);
+        let existing_document = match existing_bytes.as_deref() {
+            Some(bytes) => Some(habit_catalog::parse_document(bytes)?),
+            None => None,
+        };
+        let mutation = habit_catalog::apply_lifecycle_mutation(
+            existing_document,
+            existing_revision.as_deref(),
+            &input,
+            &current_view,
+            &self.clock.current_lived_date(),
+            &self.clock.current_timestamp_label(),
+        )?;
+        let updated_bytes = if mutation.changed {
+            let encoded = habit_catalog::encode_document(&mutation.document)?;
+            if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+                return Err("保存过程中所选 Vault 已改变；没有开始写入。请刷新 Habits 后重试。".into());
+            }
+            match existing_bytes.as_deref() {
+                Some(expected) => self.habit_catalog_store.save_if_unchanged(
+                    &catalog_path,
+                    expected,
+                    &encoded,
+                )?,
+                None => self.habit_catalog_store.create_new(&catalog_path, &encoded)?,
+            }
+            encoded
+        } else {
+            existing_bytes.clone().ok_or_else(|| {
+                "Habit 生命周期重试找不到已保存的定义；请刷新 Habits 后检查。".to_string()
+            })?
+        };
+        let readback_bytes = self
+            .habit_catalog_store
+            .load(&catalog_path)?
+            .ok_or_else(|| "Habit 生命周期已提交，但无法重新读回；结果未确认。".to_string())?;
+        if readback_bytes != updated_bytes {
+            return Err("Habit 生命周期保存后读回的修订已变化；结果未确认。请刷新后检查。".into());
+        }
+        let readback_document = habit_catalog::parse_document(&readback_bytes)?;
+        if !habit_catalog::operation_applied(
+            &readback_document,
+            &input.operation_id,
+            &input.habit_key,
+        ) {
+            return Err("Habit 生命周期保存后未能核对操作身份；结果未确认。请刷新后检查。".into());
+        }
+        if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+            return Err("保存后所选 Vault 已改变。原 Vault 的 Habit 修改已保留，但当前结果未确认；请刷新后检查。".into());
+        }
+        let snapshot = self.habits()?;
+        let habit = snapshot.habit(&input.habit_key).ok_or_else(|| {
+            "Habit 生命周期已保存，但新实例式读回未能找到该 Habit；结果未确认。".to_string()
+        })?;
+        let active = habit
+            .definition
+            .as_ref()
+            .map(|definition| definition.lifecycle_active)
+            .ok_or_else(|| "Habit 生命周期已保存，但读回未能确认定义；结果未确认。".to_string())?;
+        if mutation.changed && active != input.active {
+            return Err("Habit 生命周期已保存，但读回状态与请求不同；结果未确认。".into());
+        }
+        let revision = habit_catalog::revision(&readback_bytes);
+        if snapshot.catalog_revision.as_deref() != Some(revision.as_str()) {
+            return Err("Habit 生命周期已保存，但界面读回的修订与正本不同；结果未确认。".into());
+        }
+        Ok(HabitLifecycleSaveResult {
+            operation_id: input.operation_id,
+            habit_key: input.habit_key,
+            active,
+            revision,
+            snapshot,
+        })
+    }
+
+    pub fn habit_detail_history(&self, habit_key: &str) -> Result<HabitDetailHistoryView, String> {
+        validate_habit_key(habit_key)?;
+        let snapshot = self.habits()?;
+        let habit = snapshot
+            .habit(habit_key)
+            .cloned()
+            .ok_or_else(|| "Habits 中没有所选的稳定 key；请刷新后重试。".to_string())?;
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "Habit 历史需要先选择 Vault。".to_string())?;
+        let path = canonical_habit_completion_path(&vault);
+        let target_binding = habit_completion_target_binding(&path);
+        if snapshot.completion_target_binding.as_deref() != Some(target_binding.as_str()) {
+            return Err("所选 Vault 已改变；请刷新 Habits 后重新读取历史。".into());
+        }
+        let mut canonical_state = "missing".to_string();
+        let mut canonical_revision = None;
+        let mut canonical_error = None;
+        let mut local_completions = Vec::new();
+        match self.habit_completion_store.load(&path) {
+            Ok(Some(bytes)) => {
+                canonical_revision = Some(document_revision(&bytes));
+                match parse_habit_completion_document(&bytes, &self.clock.current_timestamp_label()) {
+                    Ok(document) => {
+                        canonical_state = "ready".into();
+                        local_completions = document
+                            .completions
+                            .into_iter()
+                            .filter(|record| record.habit_key == habit_key)
+                            .map(|record| HabitCanonicalCompletionView {
+                                lived_date: record.lived_date,
+                                state: if record.completed_at.is_some() {
+                                    HabitLocalCompletionState::Completed
+                                } else {
+                                    HabitLocalCompletionState::Withdrawn
+                                },
+                                completed_at: record.completed_at,
+                                modified_at: record.modified_at,
+                                changes: record
+                                    .changes
+                                    .into_iter()
+                                    .map(|change| HabitCanonicalCompletionChangeView {
+                                        id: change.id,
+                                        kind: match change.kind {
+                                            HabitCompletionChangeKind::Completed => "completed",
+                                            HabitCompletionChangeKind::Withdrawn => "withdrawn",
+                                        }
+                                        .into(),
+                                        changed_at: change.changed_at,
+                                    })
+                                    .collect(),
+                            })
+                            .collect();
+                        local_completions.sort_by(|left, right| left.lived_date.cmp(&right.lived_date));
+                    }
+                    Err(error) => {
+                        canonical_state = "error".into();
+                        canonical_error = Some(error);
+                    }
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                canonical_state = "error".into();
+                canonical_error = Some(error);
+            }
+        }
+        if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
+            return Err("所选 Vault 在历史读取期间发生变化；请刷新 Habits 后重新读取。".into());
+        }
+        let today = snapshot
+            .lived_date
+            .clone()
+            .unwrap_or_else(|| self.clock.current_lived_date());
+        let statistics_completions: Vec<(String, HabitLocalCompletionState)> = local_completions
+            .iter()
+            .map(|completion| (completion.lived_date.clone(), completion.state))
+            .collect();
+        let statistics = crate::habit_statistics::calculate(
+            &habit,
+            &statistics_completions,
+            &today,
+            &canonical_state,
+            snapshot.generated_at.as_deref(),
+            snapshot.state,
+        );
+        Ok(HabitDetailHistoryView {
+            habit,
+            statistics,
+            canonical_state,
+            canonical_revision,
+            canonical_target_binding: Some(target_binding),
+            canonical_error,
+            local_completions,
+            snapshot_state: snapshot.state,
+            snapshot_generated_at: snapshot.generated_at,
+            snapshot_range: snapshot.range_label,
+        })
     }
 
     fn retained_or_error(&self, path: &Path, error: String) -> Result<HabitSnapshotView, String> {
@@ -4462,7 +4889,24 @@ where
         let revision = document_revision(document.as_bytes());
 
         match parse_daily_record(&document, &date) {
-            Ok((baseline, timeline, evidence, mut daytime, mut evening)) => {
+            Ok((baseline, current_timeline, current_evidence, mut daytime, mut evening)) => {
+                // Older Daily Records may have a saved morning baseline but no
+                // canonical current-arrangement section yet. In that case the
+                // original plan is the one current arrangement to display. A
+                // present-but-empty current section remains empty; do not
+                // resurrect entries the user removed.
+                let has_current_arrangement =
+                    section_body(&document, "今天的大致安排").is_some();
+                let timeline = if has_current_arrangement {
+                    current_timeline
+                } else {
+                    baseline.timeline.clone()
+                };
+                let evidence = if has_current_arrangement {
+                    current_evidence
+                } else {
+                    baseline.evidence.clone()
+                };
                 let short_records = parse_short_records(&document, &date)?;
                 daytime.short_records = short_records.clone();
                 evening.has_later_record_revision = short_records.iter().any(|record| {
@@ -4470,17 +4914,9 @@ where
                 });
                 evening.record_supplements = short_records;
                 let message = if timeline.is_empty() {
-                    "这份 Daily Record 有效，但当前安排尚未写入。"
+                    "这份 Daily Record 有效，但当天当前计划尚无安排。"
                 } else {
-                    match baseline.availability {
-                        BaselineAvailability::Missing => {
-                            "已读取当前安排；这份 Daily Record 未独立保存早间基准。"
-                        }
-                        BaselineAvailability::Empty => {
-                            "已读取当前安排；早间基准章节存在但内容为空。"
-                        }
-                        BaselineAvailability::Saved => "已读取独立早间基准和当前安排。",
-                    }
+                    "已读取当天当前计划。"
                 };
                 let mut time_axis = project_time_axis(&timeline, &daytime, &date, &self.clock);
                 bind_plan_time_sources(&document, &mut time_axis);
@@ -5384,13 +5820,44 @@ fn ensure_replaceable_plan_section(
     };
     let (_, body_start) = markdown_line(document, section_start)
         .ok_or_else(|| "Daily Record 的计划章节无法安全解析；未写入任何内容。".to_string())?;
-    let existing = document[body_start..section_end].replace("\r\n", "\n");
+    let existing = normalize_plan_prefix_colon_format(&document[body_start..section_end]);
     if existing.trim() != expected_canonical_body.trim() {
         return Err(format!(
             "Daily Record 的“{heading}”章节包含无法确认由当前计划结构管理的内容。请先检查或修复该章节；未写入任何内容。"
         ));
     }
     Ok(())
+}
+
+fn normalize_plan_prefix_colon_format(body: &str) -> String {
+    let body = body.replace("\r\n", "\n");
+    let mut normalized = String::with_capacity(body.len());
+    for line in body.split_inclusive('\n') {
+        let (content, newline) = line
+            .strip_suffix('\n')
+            .map_or((line, ""), |content| (content, "\n"));
+        if let Some(rest) = content.strip_prefix("- **") {
+            if let Some(close) = rest.find("**") {
+                let period = &rest[..close];
+                let suffix = &rest[close + 2..];
+                if suffix.starts_with(' ') {
+                    let period = period
+                        .strip_suffix('：')
+                        .or_else(|| period.strip_suffix(':'))
+                        .unwrap_or(period);
+                    normalized.push_str("- **");
+                    normalized.push_str(period);
+                    normalized.push_str("：**");
+                    normalized.push_str(suffix);
+                    normalized.push_str(newline);
+                    continue;
+                }
+            }
+        }
+        normalized.push_str(content);
+        normalized.push_str(newline);
+    }
+    normalized
 }
 
 fn replace_canonical_section_body(
@@ -6402,6 +6869,7 @@ fn project_time_axis<C: TodayClock>(
         for entry in axis.current_arrangement[located_start..].iter_mut()
             .chain(axis.unlocated_current_arrangement[unlocated_start..].iter_mut()) {
             entry.plan_precision = Some(precision);
+            entry.title = Some(block.title.clone());
         }
     }
     for fact in daytime
@@ -6472,6 +6940,7 @@ fn project_axis_item<C: TodayClock>(
                 time_editable: false,
                 period,
                 text: text.to_owned(),
+                title: None,
                 source_date: source_date.to_owned(),
                 start_minute: Some(projected as u16),
                 end_minute: None,
@@ -6541,6 +7010,7 @@ fn project_axis_item<C: TodayClock>(
                 time_editable: false,
                 period,
                 text: text.to_owned(),
+                title: None,
                 source_date: source_date.to_owned(),
                 start_minute: Some(start),
                 end_minute: Some(end),
@@ -6562,6 +7032,7 @@ fn unlocated_axis_entry(
         time_editable: false,
         period,
         text: text.to_owned(),
+        title: None,
         source_date: source_date.to_owned(),
         start_minute: None,
         end_minute: None,
@@ -7586,7 +8057,10 @@ fn clean_inline_markdown(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{save_file_if_unchanged, StorageDocumentKind};
+    use super::{
+        bind_plan_time_sources, project_time_axis, save_file_if_unchanged, DaytimeUpdateView,
+        DaytimeView, MorningBlockView, StorageDocumentKind, TodayClock,
+    };
     use std::cell::RefCell;
     use std::fs;
     use std::io::{Seek, SeekFrom, Write};
@@ -7595,6 +8069,22 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    struct FixedClock;
+
+    impl TodayClock for FixedClock {
+        fn current_date(&self) -> String {
+            "2026-10-14".into()
+        }
+
+        fn current_time_label(&self) -> String {
+            "12:00".into()
+        }
+
+        fn current_timestamp_label(&self) -> String {
+            "2026-10-14T12:00:00".into()
+        }
+    }
 
     struct TempDirectory(PathBuf);
 
@@ -7625,6 +8115,93 @@ mod tests {
         fs::create_dir_all(path.parent().expect("record should have a parent"))
             .expect("record directory should be created");
         path
+    }
+
+    #[test]
+    fn time_axis_titles_preserve_full_text_and_bind_same_title_plans_by_full_source() {
+        let timeline = vec![
+            MorningBlockView {
+                period: "09:15".into(),
+                title: "同名安排".into(),
+                detail: Some("完整来源 A".into()),
+            },
+            MorningBlockView {
+                period: "10:15".into(),
+                title: "同名安排".into(),
+                detail: Some("完整来源 B".into()),
+            },
+        ];
+        let document = "---\ntype: daily-record\ndate: 2026-10-14\n---\n# Daily Record\n## 今天的大致安排\n- **09:15** 同名安排；完整来源 A\n- **10:15** 同名安排；完整来源 B\n";
+        let mut axis = project_time_axis(
+            &timeline,
+            &DaytimeView::default(),
+            "2026-10-14",
+            &FixedClock,
+        );
+        bind_plan_time_sources(document, &mut axis);
+
+        assert_eq!(axis.current_arrangement.len(), 2);
+        assert_eq!(
+            axis.current_arrangement[0].title.as_deref(),
+            Some("同名安排")
+        );
+        assert_eq!(
+            axis.current_arrangement[1].title.as_deref(),
+            Some("同名安排")
+        );
+        assert_eq!(axis.current_arrangement[0].text, "同名安排 完整来源 A");
+        assert_eq!(axis.current_arrangement[1].text, "同名安排 完整来源 B");
+        assert!(axis.current_arrangement[0].plan_id.is_some());
+        assert!(axis.current_arrangement[1].plan_id.is_some());
+        assert_ne!(axis.current_arrangement[0].plan_id, axis.current_arrangement[1].plan_id);
+    }
+
+    #[test]
+    fn time_axis_titles_cover_unlocated_and_next_day_entries_without_guessing_fact_titles() {
+        let timeline = vec![
+            MorningBlockView {
+                period: "2026-10-14 23:30–2026-10-15 01:30".into(),
+                title: "跨日安排".into(),
+                detail: Some("保留完整说明".into()),
+            },
+            MorningBlockView {
+                period: "稍后".into(),
+                title: "未定位安排".into(),
+                detail: Some("保留未定位说明".into()),
+            },
+        ];
+        let daytime = DaytimeView {
+            updates: vec![DaytimeUpdateView {
+                title: "事实更新".into(),
+                context: Vec::new(),
+                neutral: Vec::new(),
+                observed_facts: vec!["2026-10-14 10:00 已确认事实；完整事实说明".into()],
+                original_intent: Vec::new(),
+                change_reasons: Vec::new(),
+                revised_direction: Vec::new(),
+            }],
+            short_records: Vec::new(),
+        };
+        let axis = project_time_axis(&timeline, &daytime, "2026-10-14", &FixedClock);
+
+        assert_eq!(axis.current_arrangement.len(), 1);
+        assert_eq!(
+            axis.current_arrangement[0].title.as_deref(),
+            Some("跨日安排")
+        );
+        assert_eq!(axis.current_arrangement[0].text, "跨日安排 保留完整说明");
+        assert_eq!(axis.unlocated_current_arrangement.len(), 1);
+        assert_eq!(
+            axis.unlocated_current_arrangement[0].title.as_deref(),
+            Some("未定位安排")
+        );
+        assert_eq!(
+            axis.unlocated_current_arrangement[0].text,
+            "未定位安排 保留未定位说明"
+        );
+        assert_eq!(axis.confirmed_facts.len(), 1);
+        assert_eq!(axis.confirmed_facts[0].title, None);
+        assert_eq!(axis.confirmed_facts[0].text, "2026-10-14 10:00 已确认事实；完整事实说明");
     }
 
     #[test]

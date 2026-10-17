@@ -14,6 +14,8 @@ export class Element {
   value = "";
   open = false;
   textContent = "";
+  id = "";
+  style = { setProperty(_name: string, _value: string) {} };
   listeners = new Map<string, Function>();
   tagName: string;
   constructor(tagName = "div") { this.tagName = tagName; }
@@ -33,16 +35,21 @@ export function renderer() {
     todayPresentationFresh: true, document: { createElement: (tag: string) => new Element(tag) },
     CSS: { escape: (value: string) => value }, tasksList: new Element(), tasksCount: new Element(), taskScope: "all", taskStateScope: "all",
     taskOperationCount: 0, currentTaskLivedDate: null, taskCreateOpen: false, taskListManagementOpen: false,
+    taskHistoryFocusDisclosureRequest: null, closeTodayAxisTaskPopup() {}, closeTodayAxisFactPopup() {},
     taskFocusRequestId: null, selectedTaskDetailId: null, selectedTaskDetailBinding: null, taskEditorDialogRoot: null, taskReturnToCollaborationSessionId: null,
     taskCreateDrafts: new Map(), taskCreateAttempts: new Map(), taskListCreateDrafts: new Map(),
     setCopy: (element: any, key: string, params: any) => { element.copyKey = key; element.params = params; },
-    taskEditor: (task: any) => ({ tagName: "task", id: task.id }),
+    taskEditor: (task: any) => Object.assign(new Element("task"), {id: task.id}),
+    taskQuickPropertyDrafts: new Map(), taskQuickDrafts: new Map(),
+    taskFolderIdsByList: () => new Map(), taskPrioritySort: false, collapsedTaskTreeNodesByBinding: new Map(),
+    taskPriorityFilter: "all", taskTagFilter: null, renderTaskListSelect() {}, taskCreateListDefault: () => "inbox",
+    renderTaskTagChoices() {}, renderTaskParentSelect() {}, renderTaskPropertyFilters() {},
     taskListForId: () => undefined, renderTaskListScopeButtons: () => {},
     renderTaskListManagement: () => {}, clearTaskEditorDialogs: () => {},
     updateTaskCreationControls: () => {},
   };
   for (const name of ["taskListScopes", "taskFilter", "tasksStatus", "tasksEmpty", "taskListsManagementPanel",
-    "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton", "taskQuickForm", "taskQuickName", "taskQuickSubmit"]) context[name] = null;
+    "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton", "taskQuickForm", "taskQuickName", "taskQuickSubmit", "taskQuickList", "taskQuickFolderList", "taskQuickFolderTarget", "taskQuickFolderEmpty", "taskQuickPriority", "taskQuickTagChoices", "taskQuickParent", "taskFolderCreateForm"]) context[name] = null;
   for (const name of ["todayTaskStatus", "todayTaskEmpty", "todayTaskOverdueSection", "todayTaskOverdueEmpty",
     "todayTaskCreateForm", "todayTaskCreateName", "todayTaskCreateContent", "todayTaskCreateDate", "todayTaskCreateTime", "todayTaskCreateSubmit"]) context[name] = null;
   context.todayTaskScheduled = new Element();
@@ -82,7 +89,7 @@ export function editingRenderer() {
     "saveDatedNote", "refreshTodayClock"].map(sourceFunction).join("\n");
   for (const name of functions.match(/\btoday[A-Z]\w*/g) ?? []) if (!(name in r)) r[name] = null;
   for (const name of ["renderWorkspaceRailContext", "renderVaultSettings", "renderLegacyDayTasks",
-    "renderHistoricalHabitCorrections", "renderTodayTimeAxis", "showTodayPhase", "renderReadingList",
+    "renderHistoricalHabitCorrections", "renderTodayTimeline", "renderTodayTimeAxis", "showTodayPhase", "renderReadingList",
     "renderReadingParagraphs", "scheduleTodayAxisFollowScroll", "updateTodayTimeAxisClock"]) r[name] = () => {};
   Object.assign(r, {
     submitDatedNote, DatedNoteTargetChangedError, clockResultMatchesSession, clockTickDecision,

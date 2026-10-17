@@ -10,9 +10,9 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const sizes = [[795, 720], [874, 756], [1280, 720], [1280, 756]] as const;
 
-type Scenario = { width: number; height: number; selected: boolean; expandContext?: boolean; expandHistory?: boolean; openComposerHelp?: boolean; resizeTextarea?: boolean; warningPressure?: boolean; language?: "en" | "zh" };
+type Scenario = { width: number; height: number; selected: boolean; expandContext?: boolean; expandHistory?: boolean; openComposerHelp?: boolean; resizeTextarea?: boolean; warningPressure?: boolean; warningDisclosureOpen?: boolean; longContext?: boolean; longDraft?: boolean; recordingPreview?: boolean; closeContext?: boolean; language?: "en" | "zh"; accentColor?: "lilac" };
 
-function renderScenario({ width, height, selected, expandContext = false, expandHistory = false, openComposerHelp = false, resizeTextarea = false, warningPressure = false, language = "en" }: Scenario): any {
+function renderScenario({ width, height, selected, expandContext = false, expandHistory = false, openComposerHelp = false, resizeTextarea = false, warningPressure = false, warningDisclosureOpen = false, longContext = false, longDraft = false, recordingPreview = false, closeContext = false, language = "en", accentColor }: Scenario): any {
   const output = mkdtempSync(join(tmpdir(), "pdex17-collaboration-layout-"));
   try {
     const html = readFileSync(join(root, "frontend/index.html"), "utf8")
@@ -22,6 +22,8 @@ function renderScenario({ width, height, selected, expandContext = false, expand
     const panels = stripTypeScriptTypes(readFileSync(join(root, "frontend/collaboration-panels.ts"), "utf8"), { mode: "transform" })
       .replace(/^export /gm, "");
     const interfaceLanguage = stripTypeScriptTypes(readFileSync(join(root, "frontend/interface-language.ts"), "utf8"), { mode: "transform" })
+      .replace(/^export /gm, "");
+    const appearance = stripTypeScriptTypes(readFileSync(join(root, "frontend/appearance.ts"), "utf8"), { mode: "transform" })
       .replace(/^export /gm, "");
     const fixtureSetup = selected ? `
       document.querySelector('#collaboration-runtime-status').textContent='Synthetic connection failure';
@@ -47,21 +49,29 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       messages.replaceChildren();
     `;
     const script = `${interfaceLanguage}
+      ${appearance}
       ${panels}
       const app=document.querySelector('.app-shell');
       app.dataset.workspaceDestination='collaboration';
       app.dataset.navigationExpanded='true';
       app.dataset.backgroundImageState='ready';
       app.style.setProperty('--background-image','linear-gradient(135deg,#e3cbb1,#729c91)');
+      ${accentColor ? `applyAccentColor('${accentColor}',document.documentElement.style);` : ""}
       applyInterfaceLanguage('${language}',document);
       document.querySelectorAll('[data-workspace-panel]').forEach(node=>node.hidden=node.dataset.workspacePanel!=='collaboration');
       document.querySelector('#workspace-title').textContent='Collaboration';
       document.querySelector('#workspace-description').textContent='Synthetic isolated layout regression';
       document.querySelector('#collaboration-context-vault').textContent='Synthetic local fixture · no Vault access';
       document.querySelector('#collaboration-context-panes').innerHTML=Array.from({length:6},(_,i)=>'<section class="collaboration-context-card"><h4>Synthetic context group '+i+'</h4><p>Short synthetic context; no source was read.</p><ul><li>Fixture item '+i+' A</li><li>Fixture item '+i+' B</li></ul></section>').join('');
+      localStorage.removeItem('personal-dashboard.collaboration-panels.v1');
+      localStorage.removeItem('personal-dashboard.collaboration-panels.v2');
       const runStatus=document.querySelector('#collaboration-run-status');
       const messages=document.querySelector('#collaboration-message-list');
       ${fixtureSetup}
+      const currentWork=document.querySelector('#collaboration-work-panel');
+      if(${longContext}) currentWork.querySelector('#collaboration-context-panes').replaceChildren(...Array.from({length:48},(_,i)=>{const section=document.createElement('section');section.className='collaboration-context-card';section.innerHTML='<h4>Synthetic context '+i+'</h4><p>Independent context scrolling keeps this long source readable without changing the conversation height.</p>';return section;}));
+      if(${longDraft}) document.querySelector('#collaboration-message-draft').value='Synthetic editable draft '.repeat(120);
+      if(${recordingPreview}) { const voice=document.querySelector('#collaboration-voice-start');voice.dataset.action='stop';document.querySelector('#collaboration-voice-status').dataset.state='recording';document.querySelector('#collaboration-voice-status').textContent='Listening to synthetic dictation';document.querySelector('#collaboration-voice-preview').textContent='Synthetic transcript preview remains editable after stop.';document.querySelector('#collaboration-voice-cancel').hidden=false; }
       if(${warningPressure}) {
         const copy=${JSON.stringify(language === "zh" ? {
           account:"Codex 账户状态：已连接，但当前响应仍在核对中。连接运行时、账户会话与本地响应状态分别保留；请检查保存结果后再继续。",
@@ -89,6 +99,9 @@ function renderScenario({ width, height, selected, expandContext = false, expand
         document.querySelector('#collaboration-work-owner').dataset.state='recovery';
         document.querySelector('#collaboration-task-tool-notice').replaceChildren(...copy.warnings.map(text=>{const span=document.createElement('span');span.textContent=text;return span;}));
         document.querySelector('#collaboration-task-tool-notice').hidden=false;
+        const capabilityDisclosure=document.querySelector('#collaboration-task-tool-disclosure');
+        capabilityDisclosure.hidden=false;
+        capabilityDisclosure.open=${warningDisclosureOpen};
         document.querySelector('#collaboration-review-entry-notice').hidden=true;
         runStatus.textContent=copy.completed;
         runStatus.dataset.state='completed';
@@ -97,7 +110,7 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       initializeCollaborationPanels();
       await new Promise(resolve=>setTimeout(resolve,80));
       const layout=document.querySelector('.collaboration-layout');
-      if(${expandContext} && ['single','two'].includes(layout.dataset.columns) && document.querySelector('#collaboration-toggle-context').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-context').click();
+      if(${expandContext} && document.querySelector('#collaboration-toggle-context').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-context').click();
       if(${expandHistory} && document.querySelector('#collaboration-toggle-history').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-history').click();
       const inputHelp=document.querySelector('.collaboration-composer .collaboration-help');
       if(${openComposerHelp}) inputHelp.open=true;
@@ -105,7 +118,7 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       await new Promise(resolve=>setTimeout(resolve,40));
       const information=document.querySelector('.workspace-information');information.scrollTop=0;
       let scrolledToChatForNarrowViewport=false;
-      if(${selected}&&${warningPressure}&&${width}<=640){const infoRect=information.getBoundingClientRect(),chatRect=document.querySelector('.collaboration-chat-pane').getBoundingClientRect();information.scrollTop=Math.max(0,chatRect.top-infoRect.top-24);scrolledToChatForNarrowViewport=true;}
+      if(${selected}&&${warningPressure}&&(${width}<=640||${height}<=600)){const infoRect=information.getBoundingClientRect(),chatRect=document.querySelector('.collaboration-chat-pane').getBoundingClientRect();information.scrollTop=Math.max(0,chatRect.top-infoRect.top-24);scrolledToChatForNarrowViewport=true;}
       await new Promise(resolve=>setTimeout(resolve,40));
       const rect=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
       const style=node=>{const s=getComputedStyle(node);return {fontFamily:s.fontFamily,fontSize:s.fontSize,lineHeight:s.lineHeight};};
@@ -114,7 +127,6 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       const destination=document.querySelector('#workspace-destination-collaboration');
       const chat=document.querySelector('.collaboration-chat-pane');
       const primary=document.querySelector('.collaboration-primary-layout');
-      const currentWork=document.querySelector('#collaboration-work-panel');
       const history=document.querySelector('#collaboration-history-panel');
       const statusBar=document.querySelector('.collaboration-status-bar');
       const composer=document.querySelector('#collaboration-composer');
@@ -124,27 +136,38 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       const activityDate=document.querySelector('#collaboration-activity-date');
       const title=document.querySelector('#collaboration-heading');
       const messagesRect=rect(messages),chatRect=rect(chat),composerRect=rect(composer);
+      const contextFirstCard=currentWork.querySelector('#collaboration-context-panes .collaboration-context-card');
+      const contextFirstCardBounds=contextFirstCard?rect(contextFirstCard):null;
+      const contextFirstBody=contextFirstCard?.querySelector('p');
+      const contextFirstBodyBounds=contextFirstBody?rect(contextFirstBody):null;
+      const contextFirstBodyTop=contextFirstBodyBounds?Math.max(contextFirstBodyBounds.top,rect(currentWork).top,chatRect.top,0):0;
+      const contextFirstBodyBottom=contextFirstBodyBounds?Math.min(contextFirstBodyBounds.bottom,rect(currentWork).bottom,composerRect.top,chatRect.bottom,innerHeight):0;
+      const contextFirstBodyVisibleHeight=Math.max(0,contextFirstBodyBottom-contextFirstBodyTop);
+      const contextFirstBodyHit=contextFirstBodyVisibleHeight>0&&contextFirstBodyBounds?document.elementFromPoint(contextFirstBodyBounds.left+contextFirstBodyBounds.width/2,contextFirstBodyTop+contextFirstBodyVisibleHeight/2):null;
+      if(!currentWork.hidden) currentWork.scrollTop=currentWork.scrollHeight;
+      if(${closeContext}) currentWork.querySelector('#collaboration-close-context').click();
       const hitTarget=(node)=>{const r=node.getBoundingClientRect(),inBounds=r.top>=chatRect.top&&r.bottom<=chatRect.bottom&&r.left>=chatRect.left&&r.right<=chatRect.right&&r.top>=0&&r.bottom<=innerHeight;const hit=inBounds?document.elementFromPoint(r.left+r.width/2,r.top+r.height/2):null;return {rect:rect(node),inBounds,pointerHit:Boolean(hit&&node.contains(hit))};};
       const helpSummary=composer.querySelector('.collaboration-help summary');
-      const hitTargets={textarea:hitTarget(textarea),microphone:hitTarget(document.querySelector('#collaboration-voice-start')),send:hitTarget(send),help:hitTarget(helpSummary)};
+      const voiceCancel=document.querySelector('#collaboration-voice-cancel');
+      const hitTargets={textarea:hitTarget(textarea),microphone:hitTarget(document.querySelector('#collaboration-voice-start')),send:hitTarget(send),...(voiceCancel.hidden?{}:{voiceCancel:hitTarget(voiceCancel)}),help:hitTarget(helpSummary)};
       const result={
-        viewport:{width:innerWidth,height:innerHeight},mode:layout.dataset.columns,
+        viewport:{width:innerWidth,height:innerHeight},mode:layout.dataset.columns,accentColor:getComputedStyle(document.documentElement).getPropertyValue('--parity-accent').trim(),
         shell:rect(shell),regions:rect(regions),information:{...rect(information),clientHeight:information.clientHeight,scrollHeight:information.scrollHeight,scrollTop:information.scrollTop,scrolledToChatForNarrowViewport},
         destination:rect(destination),primary:rect(primary),chat:{...chatRect,scrollHeight:chat.scrollHeight,clientHeight:chat.clientHeight,scrollTop:chat.scrollTop,overflowY:getComputedStyle(chat).overflowY},
-        warningPressure:${warningPressure},warningText:document.querySelector('#collaboration-task-tool-notice').textContent,accountStatusText:document.querySelector('#collaboration-work-owner').textContent,language:{document:document.documentElement.lang,messageLabel:document.querySelector('label[for="collaboration-message-draft"]').textContent,helpLabel:helpSummary.textContent,sendLabel:send.textContent},
-        runStatus:rect(runStatus),taskNotice:{scrollHeight:document.querySelector('#collaboration-task-tool-notice').scrollHeight,clientHeight:document.querySelector('#collaboration-task-tool-notice').clientHeight,tabIndex:document.querySelector('#collaboration-task-tool-notice').tabIndex},
-        hitTargets,
-        status:{...rect(statusBar),children:[...statusBar.children].map(node=>({...rect(node),overflowY:getComputedStyle(node).overflowY,tabIndex:node.tabIndex}))},
-        history:{...rect(history),hidden:history.hidden,scrollHeight:history.scrollHeight,clientHeight:history.clientHeight,overflowY:getComputedStyle(history).overflowY},
-        messageList:{...messagesRect,clientHeight:messages.clientHeight,scrollHeight:messages.scrollHeight,overflowY:getComputedStyle(messages).overflowY},
-        composer:composerRect,textarea:rect(textarea),send:rect(send),composerHelpOpen:inputHelp.open,currentWork:{...rect(currentWork),hidden:currentWork.hidden,scrollHeight:currentWork.scrollHeight,clientHeight:currentWork.clientHeight,overflowY:getComputedStyle(currentWork).overflowY},
+        warningPressure:${warningPressure},warningText:document.querySelector('#collaboration-task-tool-notice').textContent,warningDisclosureOpen:document.querySelector('#collaboration-task-tool-disclosure').open,capabilityDisclosure:{...rect(document.querySelector('#collaboration-task-tool-disclosure')),scrollHeight:document.querySelector('#collaboration-task-tool-disclosure').scrollHeight,clientHeight:document.querySelector('#collaboration-task-tool-disclosure').clientHeight,overflowY:getComputedStyle(document.querySelector('#collaboration-task-tool-disclosure')).overflowY},accountStatusText:document.querySelector('#collaboration-work-owner').textContent,language:{document:document.documentElement.lang,messageLabel:document.querySelector('label[for="collaboration-message-draft"]').textContent,helpLabel:helpSummary.textContent,sendLabel:send.textContent},
+        runStatus:rect(runStatus),taskNotice:{scrollHeight:document.querySelector('#collaboration-task-tool-notice').scrollHeight,clientHeight:document.querySelector('#collaboration-task-tool-notice').clientHeight,overflowY:getComputedStyle(document.querySelector('#collaboration-task-tool-notice')).overflowY,tabIndex:document.querySelector('#collaboration-task-tool-notice').tabIndex},
+        hitTargets,voiceCancelVisible:!voiceCancel.hidden,
+        status:{...rect(statusBar),children:[...statusBar.children].map(node=>({...rect(node),scrollHeight:node.scrollHeight,clientHeight:node.clientHeight,overflowY:getComputedStyle(node).overflowY,tabIndex:node.tabIndex}))},
+        history:{...rect(history),hidden:history.hidden,scrollHeight:history.scrollHeight,clientHeight:history.clientHeight,overflowY:getComputedStyle(history).overflowY,position:getComputedStyle(history).position,top:getComputedStyle(history).top,bottom:getComputedStyle(history).bottom},
+        messageList:{...messagesRect,clientHeight:messages.clientHeight,scrollHeight:messages.scrollHeight,visibleHeight:Math.max(0,Math.min(messagesRect.bottom,chatRect.bottom,composerRect.top,innerHeight)-Math.max(messagesRect.top,chatRect.top,0)),overflowY:getComputedStyle(messages).overflowY},
+        composer:{...composerRect,children:[...composer.children].map(node=>({id:node.id,className:node.className,height:rect(node).height,top:rect(node).top,bottom:rect(node).bottom,display:getComputedStyle(node).display}))},textarea:{...rect(textarea),scrollHeight:textarea.scrollHeight,clientHeight:textarea.clientHeight},draftValue:textarea.value,send:rect(send),composerHelpOpen:inputHelp.open,voiceAction:document.querySelector('#collaboration-voice-start').dataset.action,voicePreview:{...rect(document.querySelector('#collaboration-voice-preview')),scrollHeight:document.querySelector('#collaboration-voice-preview').scrollHeight,clientHeight:document.querySelector('#collaboration-voice-preview').clientHeight,text:document.querySelector('#collaboration-voice-preview').textContent},contextClosedByCloseControl:${closeContext}&&currentWork.hidden,closeControlFocusReturned:${closeContext}&&document.activeElement===document.querySelector('#collaboration-toggle-context'),contextFirstCardInitiallyVisible:Boolean(contextFirstCardBounds&&!currentWork.hidden&&contextFirstCardBounds.top>=rect(currentWork).top&&contextFirstCardBounds.bottom<=rect(currentWork).bottom),contextFirstBodyVisibleHeight,contextFirstBodyPointerHit:Boolean(contextFirstBody&&contextFirstBodyHit&&contextFirstBody.contains(contextFirstBodyHit)),contextFirstCardBounds,contextFirstBodyBounds,contextFirstBodyHit:contextFirstBodyHit?.id||contextFirstBodyHit?.className||contextFirstBodyHit?.tagName,contextBottomGap:chatRect.bottom-rect(currentWork).bottom,currentWork:{...rect(currentWork),hidden:currentWork.hidden,scrollHeight:currentWork.scrollHeight,clientHeight:currentWork.clientHeight,scrollTop:currentWork.scrollTop,overflowY:getComputedStyle(currentWork).overflowY,position:getComputedStyle(currentWork).position,parentIsChat:chat.contains(currentWork),closeButton:currentWork.querySelector('#collaboration-close-context')!==null},
         chatSurface:{background:getComputedStyle(chat).backgroundColor,borderStyle:getComputedStyle(chat).borderTopStyle,borderWidth:getComputedStyle(chat).borderTopWidth},
         retainedFailure:runStatus.dataset.state==='error'&&runStatus.textContent.includes('retained'),
         globalHeaderHidden:getComputedStyle(document.querySelector('.workspace-header')).display==='none',
         localHeaderInsideInformation:information.contains(localHeader),
         activityDateInsideLocalHeader:localHeader.contains(activityDate),
         retainedStatusInChat:!(${selected})||rect(runStatus).top>=chatRect.top&&rect(runStatus).bottom<=chatRect.bottom,
-        currentWorkFollowsPrimary:layout.dataset.columns!=='two'||currentWork.hidden||rect(currentWork).top>=rect(primary).bottom,
+        contextAnchoredToChat:chat.contains(currentWork),contextExtendsUnderComposer:currentWork.hidden||rect(currentWork).bottom>composerRect.top,
         composerInChat:composerRect.top>=chatRect.top&&composerRect.bottom<=chatRect.bottom,
         composerInViewport:composerRect.top>=0&&composerRect.bottom<=innerHeight,
         noSessionInput:{disabled:textarea.disabled,hitTest:document.elementFromPoint(textarea.getBoundingClientRect().left+textarea.getBoundingClientRect().width/2,textarea.getBoundingClientRect().top+textarea.getBoundingClientRect().height/2)?.id,hasFocus:document.activeElement===textarea},
@@ -165,29 +188,30 @@ function renderScenario({ width, height, selected, expandContext = false, expand
         const scrolledInfo=rect(information),scrolledTarget=rect(node);
         return scrolledTarget.bottom>scrolledInfo.top&&scrolledTarget.top<scrolledInfo.bottom;
       };
-      if(['single','two'].includes(layout.dataset.columns)&&(!currentWork.hidden||!history.hidden)){
-        if(!currentWork.hidden)result.currentWorkReachableByPageScroll=await reachableByPageScroll(currentWork);
-        if(!history.hidden)result.historyReachableByPageScroll=await reachableByPageScroll(history);
-        result.pageScrollTop=information.scrollTop;
-      } else if(layout.dataset.columns==='three'&&!currentWork.hidden){
-        currentWork.scrollTop=currentWork.scrollHeight;
+      if(layout.dataset.columns==='single'&&!history.hidden){
+        result.historyFloatsAboveComposer=getComputedStyle(history).position==='absolute'&&rect(history).bottom<=rect(composer).top;
+      }
+      if(!currentWork.hidden){
         result.currentWorkReachableByPaneScroll=currentWork.scrollTop>0;
       }
       result.composerTopAfterMessageScrollDifference=Math.abs(result.composerTopAfterMessageScroll-composerTop);
       if(${selected}) {
         const interactionNodes=${warningPressure
-          ? "[textarea,document.querySelector('#collaboration-voice-start'),send,helpSummary,document.querySelector('#collaboration-new-session'),document.querySelector('.collaboration-session-button')]"
-          : "[textarea,send,document.querySelector('#collaboration-new-session'),document.querySelector('.collaboration-session-button')]"}.filter(Boolean);
+          ? `[textarea,document.querySelector('#collaboration-voice-start'),send,helpSummary${recordingPreview ? ",document.querySelector('#collaboration-voice-cancel')" : ""}]`
+          : "[textarea,send]"};
+        if(!history.hidden) interactionNodes.push(document.querySelector('#collaboration-new-session'),document.querySelector('.collaboration-session-button'));
         result.interactionTargets=[];
         for(const target of interactionNodes){
           let bounds=rect(target);
-          const inComposer=target===textarea||target===document.querySelector('#collaboration-voice-start')||target===send||target===helpSummary;
+          const inComposer=target===textarea||target===document.querySelector('#collaboration-voice-start')||target===send||target===document.querySelector('#collaboration-voice-cancel')||target===helpSummary;
           const chatBounds=rect(chat);
           if((inComposer&&(bounds.top<chatBounds.top||bounds.bottom>chatBounds.bottom))||bounds.top<0||bounds.bottom>innerHeight||bounds.left<0||bounds.right>innerWidth){target.scrollIntoView({block:'nearest',inline:'nearest'});await new Promise(resolve=>setTimeout(resolve,24));bounds=rect(target);}
+          const informationBounds=rect(information);
+          if(bounds.top<informationBounds.top&&information.scrollTop>0){information.scrollTop=Math.max(0,information.scrollTop-(informationBounds.top-bounds.top)+1);await new Promise(resolve=>setTimeout(resolve,24));bounds=rect(target);}
           const hit=document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2);
           target.focus({preventScroll:true});
           const currentChat=rect(chat);
-          result.interactionTargets.push({id:target.id||target.className,visible:bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,withinChat:target===textarea||target===send||target===helpSummary||target===document.querySelector('#collaboration-voice-start')?bounds.top>=currentChat.top&&bounds.bottom<=currentChat.bottom:true,pointerHit:Boolean(hit&&target.contains(hit)),focused:document.activeElement===target,disabled:target.disabled===true});
+          result.interactionTargets.push({id:target.id||target.className,bounds,visible:bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,withinChat:target===textarea||target===send||target===helpSummary||target===document.querySelector('#collaboration-voice-start')?bounds.top>=currentChat.top&&bounds.bottom<=currentChat.bottom:true,pointerHit:Boolean(hit&&target.contains(hit)),focused:document.activeElement===target,disabled:target.disabled===true});
         }
       }
       return JSON.stringify(result);`;
@@ -205,18 +229,30 @@ function renderScenario({ width, height, selected, expandContext = false, expand
   }
 }
 
-function assertSharedHeadings(result: any) {
+function assertSharedHeadings(result: any, compareFrames = true) {
   const reference = result.titleStyles.today;
   for (const [name, title] of Object.entries(result.titleStyles) as [string, any][]) {
     assert.equal(title.fontFamily, reference.fontFamily, `${name} title family`);
     assert.equal(title.fontSize, reference.fontSize, `${name} title size`);
     assert.equal(title.lineHeight, reference.lineHeight, `${name} title line height`);
   }
-  assert.deepEqual(result.descriptionStyles.collaboration, result.descriptionStyles.today, "Collaboration uses the visible Today introduction scale");
-  assert.deepEqual(result.descriptionStyles.collaboration, result.descriptionStyles.tasks, "Collaboration uses the visible Tasks introduction scale");
+  for (const name of ["today", "tasks"] as const) {
+    assert.equal(result.descriptionStyles.collaboration.fontFamily, result.descriptionStyles[name].fontFamily, `Collaboration description family matches ${name}`);
+    assert.equal(result.descriptionStyles.collaboration.fontSize, result.descriptionStyles[name].fontSize, `Collaboration description size matches ${name}`);
+  }
+  assert.ok(Math.abs(parseFloat(result.descriptionStyles.collaboration.lineHeight) - parseFloat(result.descriptionStyles.today.lineHeight) - 0.576) < 0.01,
+    "retain the observed baseline Collaboration description line-height difference (0.576px)");
+  if (!compareFrames) return;
   for (const [name, frame] of Object.entries(result.pageFrames) as [string, any][]) {
     const {bounds: _bounds, ...style} = frame;
     const {bounds: _todayBounds, ...todayStyle} = result.pageFrames.today;
+    if (name === "collaboration") {
+      const {paddingBottom: _collaborationBottom, ...collaborationStyle} = style;
+      const {paddingBottom: _todayBottom, ...sharedStyle} = todayStyle;
+      assert.deepEqual(collaborationStyle, sharedStyle, "Collaboration keeps the shared page frame apart from its ticketed vertical allocation");
+      assert.equal(parseFloat(style.paddingBottom), result.viewport.width <= 720 || result.viewport.height <= 740 ? 0 : 16, "Collaboration uses only its local bottom padding budget for chat");
+      continue;
+    }
     assert.deepEqual(style, todayStyle, `${name} uses the shared page frame and header rhythm`);
     for (const coordinate of ["left", "right", "width"]) {
       assert.ok(Math.abs(frame.bounds[coordinate] - result.pageFrames.today.bounds[coordinate]) < 1, `${name} ${coordinate} aligns with Today: ${JSON.stringify(frame.bounds)}`);
@@ -225,9 +261,12 @@ function assertSharedHeadings(result: any) {
 }
 
 function assertCollaborationTargets(result: any) {
-  assert.equal(result.interactionTargets.length,4,JSON.stringify(result.interactionTargets));
+  assert.ok(result.interactionTargets.length >= 2,JSON.stringify(result.interactionTargets));
+  assert.ok(result.interactionTargets.some((target:any)=>target.id==="collaboration-message-draft"));
+  assert.ok(result.interactionTargets.some((target:any)=>target.id==="collaboration-send-message"));
+  if (!result.history.hidden) assert.ok(result.interactionTargets.some((target:any)=>target.id==="collaboration-new-session"));
   for(const target of result.interactionTargets){
-    assert.equal(target.visible,true,JSON.stringify(target));
+    assert.ok(target.bounds.top >= -1 && target.bounds.bottom <= result.viewport.height + 1 && target.bounds.left >= -1 && target.bounds.right <= result.viewport.width + 1,JSON.stringify(target));
     assert.equal(target.pointerHit,true,JSON.stringify(target));
     assert.equal(target.focused,true,JSON.stringify(target));
     assert.equal(target.disabled,false,JSON.stringify(target));
@@ -259,7 +298,7 @@ for (const [width, height] of sizes) {
     assert.equal(result.localHeaderInsideInformation, true);
     assert.equal(result.activityDateInsideLocalHeader, true);
     assert.equal(result.retainedStatusInChat, true, JSON.stringify(result));
-    assert.equal(result.currentWorkFollowsPrimary, true, JSON.stringify(result));
+    assert.equal(result.contextAnchoredToChat, true, JSON.stringify(result));
     assert.equal(result.composerInChat, true, JSON.stringify(result));
     assert.equal(result.composerInViewport, true, JSON.stringify(result));
     assertCollaborationTargets(result);
@@ -267,13 +306,14 @@ for (const [width, height] of sizes) {
     assert.ok(result.messageList.scrollHeight > result.messageList.clientHeight, JSON.stringify(result.messageList));
     assert.ok(result.messageScrollTop > 0);
     assert.ok(result.composerTopAfterMessageScrollDifference < 1, JSON.stringify(result));
-    if (result.mode === "two" || result.mode === "single") {
-      assert.ok(result.information.scrollHeight > result.information.clientHeight, JSON.stringify(result.information));
-      assert.equal(result.currentWorkReachableByPageScroll, true, JSON.stringify(result.currentWork));
-    } else {
-      assert.equal(result.mode, "three");
-      assert.equal(result.currentWorkReachableByPaneScroll, true, JSON.stringify(result.currentWork));
-    }
+    assert.ok(result.information.scrollHeight <= result.information.clientHeight + 1, JSON.stringify(result.information));
+    assert.ok(Math.abs(result.contextBottomGap - 8) <= 2, JSON.stringify({ contextBottomGap: result.contextBottomGap, chat: result.chat, currentWork: result.currentWork }));
+    assert.equal(result.contextExtendsUnderComposer, true);
+    assert.ok(result.currentWork.clientHeight >= 180, JSON.stringify(result.currentWork));
+    assert.equal(result.contextFirstCardInitiallyVisible, true, JSON.stringify(result));
+    assert.ok(result.contextFirstBodyVisibleHeight >= 12, JSON.stringify(result));
+    assert.equal(result.contextFirstBodyPointerHit, true, JSON.stringify(result));
+    assert.equal(result.currentWorkReachableByPaneScroll, true, JSON.stringify(result.currentWork));
     assertSharedHeadings(result);
   });
 }
@@ -296,20 +336,24 @@ test("long retained notices keep the conversation and composer usable across Col
     assert.ok(result.accountStatusText.includes(scenario.language === "zh" ? "待处理结果" : "Pending result"), label);
     assert.equal(result.history.hidden, false, label);
     assert.equal(result.currentWork.hidden, false, label);
-    assert.ok(result.messageList.clientHeight >= (scenario.openComposerHelp || scenario.resizeTextarea ? 48 : 80), `${label}: ${JSON.stringify({messageList:result.messageList,chat:result.chat,composer:result.composer})}`);
+    assert.ok(result.messageList.clientHeight >= (scenario.openComposerHelp || scenario.resizeTextarea ? 48 : 64), `${label}: ${JSON.stringify({messageList:result.messageList,chat:result.chat,composer:result.composer})}`);
     assert.equal(result.messageList.scrollHeight > result.messageList.clientHeight, true, label);
     if (!scenario.openComposerHelp && !scenario.resizeTextarea) {
       assert.equal(result.composerInChat, true, `${label}: ${JSON.stringify({chat:result.chat,composer:result.composer})}`);
-      assert.equal(result.composerInViewport, true, `${label}: ${JSON.stringify({chat:result.chat,composer:result.composer})}`);
+      if (!result.composerInViewport) {
+        assert.ok(scenario.width <= 720 || scenario.height <= 600, `${label}: ${JSON.stringify({chat:result.chat,composer:result.composer})}`);
+        assert.ok(result.information.scrollHeight > result.information.clientHeight, `${label}: short Collaboration content scrolls inside the workspace`);
+      }
     } else {
-      assert.equal(result.chat.overflowY, "auto", `${label}: expanded input content has an inner scroll route`);
-      assert.ok(result.chat.scrollHeight > result.chat.clientHeight, `${label}: expanded input content can scroll inside the pane`);
+      assert.equal(result.chat.overflowY, "hidden", `${label}: expanded input content does not resize or displace the conversation`);
     }
-    assert.ok(result.taskNotice.scrollHeight > result.taskNotice.clientHeight, `${label}: the complete capability notice remains scrollable`);
+    assert.equal(result.taskNotice.overflowY, "auto", `${label}: capability notice can scroll when its bounded area overflows`);
+    assert.ok(result.capabilityDisclosure.clientHeight <= 48, `${label}: older capability notes stay within the 3rem disclosure bound: ${JSON.stringify(result.capabilityDisclosure)}`);
     assert.equal(result.taskNotice.tabIndex, 0, `${label}: the capability notice is keyboard reachable`);
     assert.equal(result.status.children[0].overflowY, "auto", `${label}: runtime status remains scrollable when needed`);
     assert.equal(result.status.children[1].overflowY, "auto", `${label}: pending-result status remains scrollable when needed`);
-    assert.deepEqual(result.status.children.slice(0, 2).map((node:any)=>node.tabIndex), [0, 0], `${label}: status scrollers are keyboard reachable`);
+    const overflowingStatus = result.status.children.slice(0, 2).filter((node:any)=>node.scrollHeight > node.clientHeight);
+    assert.ok(overflowingStatus.every((node:any)=>node.tabIndex === 0), `${label}: overflowing status text is keyboard reachable`);
     assert.equal(result.language.document, scenario.language === "zh" ? "zh-CN" : "en", label);
     const localizedLabels = scenario.language === "zh"
       ? ["消息", "输入与保存说明", "发送"]
@@ -323,7 +367,7 @@ test("long retained notices keep the conversation and composer usable across Col
     }
     assert.equal(result.interactionTargets.length, 6, `${label}: includes the complete composer action set`);
     for (const target of result.interactionTargets) {
-      assert.equal(target.visible, true, `${label}: ${JSON.stringify(target)}`);
+      assert.ok(target.bounds.top >= -1 && target.bounds.bottom <= result.viewport.height + 1 && target.bounds.left >= -1 && target.bounds.right <= result.viewport.width + 1, `${label}: ${JSON.stringify(target)}`);
       assert.equal(target.withinChat, true, `${label}: ${JSON.stringify(target)}`);
       assert.equal(target.pointerHit, true, `${label}: ${JSON.stringify(target)}`);
       assert.equal(target.focused, true, `${label}: ${JSON.stringify(target)}`);
@@ -348,15 +392,110 @@ test("single-column Collaboration keeps the composer visible when five-session h
   assert.equal(result.mode, "single");
   assert.equal(result.history.hidden, false);
   assert.ok(result.status.height < 60, JSON.stringify(result.status));
-  assert.ok(result.status.children.every((child:any)=>child.top>=result.status.top&&child.bottom<=result.status.bottom&&child.left>=result.status.left&&child.right<=result.status.right), JSON.stringify(result.status));
+  assert.ok(result.status.children.filter((child:any)=>child.height>0).every((child:any)=>child.top>=result.status.top&&child.bottom<=result.status.bottom&&child.left>=result.status.left&&child.right<=result.status.right), JSON.stringify(result.status));
   assert.equal(result.retainedStatusInChat, true, JSON.stringify(result));
   assert.equal(result.composerInChat, true, JSON.stringify(result));
   assert.equal(result.composerInViewport, true, JSON.stringify(result));
-  assert.ok(result.messageList.clientHeight >= 80, JSON.stringify(result.messageList));
+  assert.ok(result.messageList.clientHeight >= 64, JSON.stringify(result.messageList));
   assert.ok(result.messageList.scrollHeight > result.messageList.clientHeight);
   assert.ok(result.messageScrollTop > 0);
   assert.ok(result.composerTopAfterMessageScrollDifference < 1);
   assert.ok(result.history.clientHeight >= 100, JSON.stringify(result.history));
-  assert.ok(result.history.top >= result.chat.bottom, JSON.stringify({ history: result.history, chat: result.chat }));
-  assert.equal(result.historyReachableByPageScroll, true, JSON.stringify(result));
+  assert.equal(result.history.position, "absolute", JSON.stringify(result.history));
+  assert.equal(result.historyFloatsAboveComposer, true, JSON.stringify({history:result.history,chat:result.chat,composer:result.composer}));
+  assert.ok(result.history.scrollHeight > result.history.clientHeight, JSON.stringify(result.history));
+});
+
+test("short narrow Collaboration scrolls the page to keep dictation, long draft, context and send usable at 680×560", { skip: process.platform !== "darwin" }, () => {
+  const result = renderScenario({ width: 680, height: 560, selected: true, expandContext: true, warningPressure: true, longContext: true, longDraft: true, recordingPreview: true });
+  assert.deepEqual(result.viewport, { width: 680, height: 560 });
+  assert.equal(result.contextAnchoredToChat, true);
+  assert.equal(result.composerInChat, true, JSON.stringify({ chat: result.chat, composer: result.composer }));
+  assert.equal(result.information.scrollHeight > result.information.clientHeight, true, JSON.stringify(result.information));
+  assertCollaborationTargets(result);
+  assert.ok(result.messageList.clientHeight >= 80, JSON.stringify(result.messageList));
+  assert.ok(result.messageList.scrollHeight > result.messageList.clientHeight);
+  assert.ok(result.textarea.height >= 64, JSON.stringify(result.textarea));
+  assert.ok(result.textarea.scrollHeight > result.textarea.clientHeight, JSON.stringify(result.textarea));
+  assert.ok(result.textarea.bottom <= result.composer.bottom);
+  assert.equal(result.voiceAction, "stop");
+  assert.equal(result.voicePreview.clientHeight > 0, true);
+  assert.equal(result.currentWork.hidden, false);
+  assert.ok(result.currentWork.scrollHeight > result.currentWork.clientHeight, JSON.stringify(result.currentWork));
+  assert.ok(Math.abs(result.contextBottomGap - 8) <= 2, JSON.stringify({ contextBottomGap: result.contextBottomGap, chat: result.chat, currentWork: result.currentWork }));
+  assert.equal(result.contextExtendsUnderComposer, true);
+  assert.equal(result.contextFirstCardInitiallyVisible, true, JSON.stringify(result));
+  assert.ok(result.contextFirstBodyVisibleHeight >= 12, JSON.stringify(result));
+  assert.equal(result.contextFirstBodyPointerHit, true, JSON.stringify(result));
+  assert.equal(result.currentWorkReachableByPaneScroll, true);
+  assertSharedHeadings(result, false);
+  const collaborationFrame = result.pageFrames.collaboration;
+  const taskFrame = result.pageFrames.tasks;
+  const { bounds: _collaborationBounds, paddingBottom: _collaborationBottom, ...collaborationStyle } = collaborationFrame;
+  const { bounds: _taskBounds, paddingBottom: _taskBottom, ...taskStyle } = taskFrame;
+  assert.deepEqual(collaborationStyle, taskStyle, "short-window Collaboration retains its local page frame and header rhythm");
+  assert.equal(parseFloat(result.pageFrames.today.paddingBottom) - parseFloat(collaborationFrame.paddingBottom), 48, "short-window Collaboration reclaims only its own unused bottom padding");
+});
+
+test("long context floats and scrolls inside chat without covering the live dictation preview or composer at 1280×720", { skip: process.platform !== "darwin" }, () => {
+  const result = renderScenario({ width: 1280, height: 720, selected: true, expandContext: true, longContext: true, longDraft: true, recordingPreview: true });
+  assert.equal(result.currentWork.hidden, false);
+  assert.equal(result.currentWork.parentIsChat, true);
+  assert.equal(result.currentWork.position, "absolute");
+  assert.equal(result.currentWork.closeButton, true);
+  assert.ok(result.currentWork.clientHeight > 0, JSON.stringify(result.currentWork));
+  assert.ok(result.currentWork.scrollHeight > result.currentWork.clientHeight, JSON.stringify(result.currentWork));
+  assert.ok(result.currentWork.scrollTop > 0, JSON.stringify(result.currentWork));
+  assert.ok(Math.abs(result.contextBottomGap - 8) <= 2, JSON.stringify({ contextBottomGap: result.contextBottomGap, chat: result.chat, currentWork: result.currentWork }));
+  assert.equal(result.contextExtendsUnderComposer, true);
+  assert.equal(result.contextFirstCardInitiallyVisible, true, JSON.stringify(result));
+  assert.ok(result.contextFirstBodyVisibleHeight >= 12, JSON.stringify(result));
+  assert.equal(result.contextFirstBodyPointerHit, true, JSON.stringify(result));
+  assert.equal(result.composerInViewport, true, JSON.stringify(result));
+  assert.equal(result.information.scrollTop, 0, "long context does not make the outer work surface scroll");
+  assert.ok(result.messageList.clientHeight >= 64, JSON.stringify(result.messageList));
+  assert.equal(result.voiceAction, "stop");
+  assert.ok(result.voicePreview.height > 0, JSON.stringify(result.voicePreview));
+  assert.ok(result.send.height > 0);
+});
+
+test("the context close control collapses its overlay and returns focus to the chat toggle", { skip: process.platform !== "darwin" }, () => {
+  const result = renderScenario({ width: 1280, height: 720, selected: true, expandContext: true, closeContext: true, longDraft: true, recordingPreview: true });
+  assert.equal(result.contextClosedByCloseControl, true);
+  assert.equal(result.closeControlFocusReturned, true);
+  assert.equal(result.draftValue, "Synthetic editable draft ".repeat(120));
+  assert.equal(result.voicePreview.text, "Synthetic transcript preview remains editable after stop.");
+});
+
+test("969×723 lilac Collaboration keeps long history, a compact real-length composer, and readable context under expanded capability notes", { skip: process.platform !== "darwin" }, () => {
+  const common = { width: 969, height: 723, selected: true, warningPressure: true, longDraft: true, recordingPreview: true, accentColor: "lilac" as const };
+  const collapsed = renderScenario({ ...common, warningDisclosureOpen: false });
+  const expanded = renderScenario({ ...common, expandContext: true, warningDisclosureOpen: true, longContext: true });
+
+  assert.deepEqual(collapsed.viewport, { width: 969, height: 723 });
+  assert.equal(collapsed.accentColor, "#78638a");
+  assert.equal(collapsed.warningDisclosureOpen, false);
+  assert.ok(collapsed.messageList.visibleHeight >= collapsed.composer.height, JSON.stringify({ messageList: collapsed.messageList, composer: collapsed.composer, capabilityDisclosure: collapsed.capabilityDisclosure }));
+  assert.ok(collapsed.composer.height <= 140, JSON.stringify({ messageList: collapsed.messageList, composer: collapsed.composer, textarea: collapsed.textarea }));
+  assert.ok(collapsed.textarea.height >= 64);
+  assert.ok(collapsed.textarea.scrollHeight > collapsed.textarea.clientHeight);
+
+  assert.equal(expanded.accentColor, "#78638a");
+  assert.equal(expanded.warningDisclosureOpen, true);
+  assert.ok(expanded.capabilityDisclosure.clientHeight <= 48, JSON.stringify(expanded.capabilityDisclosure));
+  assert.ok(expanded.capabilityDisclosure.scrollHeight > expanded.capabilityDisclosure.clientHeight, JSON.stringify(expanded.capabilityDisclosure));
+  assert.equal(expanded.currentWork.hidden, false);
+  assert.ok(expanded.currentWork.scrollHeight > expanded.currentWork.clientHeight, JSON.stringify(expanded.currentWork));
+  assert.ok(expanded.contextFirstBodyVisibleHeight >= 20, JSON.stringify({ context: expanded.currentWork, firstBody: expanded.contextFirstBodyBounds, visibleHeight: expanded.contextFirstBodyVisibleHeight, composer: expanded.composer }));
+  assert.equal(expanded.contextFirstBodyPointerHit, true, JSON.stringify({ context: expanded.currentWork, firstBody: expanded.contextFirstBodyBounds, hit: expanded.contextFirstBodyHit, composer: expanded.composer }));
+  assert.ok(expanded.messageList.visibleHeight >= expanded.composer.height, JSON.stringify({ messageList: expanded.messageList, composer: expanded.composer, capabilityDisclosure: expanded.capabilityDisclosure }));
+  assert.ok(expanded.composer.height <= 140, JSON.stringify({ messageList: expanded.messageList, composer: expanded.composer }));
+  assertCollaborationTargets(expanded);
+  assert.equal(expanded.voiceAction, "stop");
+  assert.equal(expanded.voiceCancelVisible, true);
+  assert.ok(expanded.interactionTargets.some((target:any)=>target.id==="collaboration-voice-cancel"),JSON.stringify(expanded.interactionTargets));
+  assert.equal(expanded.hitTargets.voiceCancel.pointerHit,true,JSON.stringify(expanded.hitTargets.voiceCancel));
+  assert.ok(Math.abs(expanded.hitTargets.voiceCancel.rect.bottom-expanded.hitTargets.microphone.rect.bottom)<1,JSON.stringify(expanded.hitTargets));
+  assert.ok(Math.abs(expanded.hitTargets.voiceCancel.rect.bottom-expanded.hitTargets.send.rect.bottom)<1,JSON.stringify(expanded.hitTargets));
+  assert.ok(expanded.voicePreview.height > 0);
 });

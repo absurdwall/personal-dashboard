@@ -1,4 +1,7 @@
 export type TaskExecutionEnd = Readonly<{ date: string; time: string }>;
+export type TaskPriority = "high" | "medium" | "low";
+export type TaskPriorityFilter = "all" | TaskPriority | "none";
+export type TaskPrioritySort = "default" | "priority";
 
 export type TaskSchedulePresentation = Readonly<{
   date: string | null;
@@ -16,10 +19,14 @@ type TodayTaskCandidate = Readonly<{
   overdue: boolean;
 }>;
 
-export type TaskListScope = "all" | "today" | "inbox" | "archived" | `list:${string}`;
+export type TaskListScope = "all" | "today" | "inbox" | "archived" | `list:${string}` | `folder:${string}`;
 
 export function taskListScopeForId(listId: string): TaskListScope {
   return `list:${listId}`;
+}
+
+export function taskFolderScopeForId(folderId: string): TaskListScope {
+  return `folder:${folderId}`;
 }
 
 export function taskListDisplayName(
@@ -50,6 +57,67 @@ export function taskListIdFromScope(scope: TaskListScope): string | null {
   return scope.startsWith("list:") ? scope.slice("list:".length) : null;
 }
 
+export function taskFolderIdFromScope(scope: TaskListScope): string | null {
+  return scope.startsWith("folder:") ? scope.slice("folder:".length) : null;
+}
+
+export function taskParentCandidates<T extends Readonly<{
+  id: string;
+  parentTaskId?: string | null;
+  deletedAt: string | null;
+}>>(tasks: readonly T[], taskId: string | null = null): readonly T[] {
+  const excluded = new Set<string>();
+  if (taskId) {
+    excluded.add(taskId);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const task of tasks) {
+        if (task.parentTaskId && excluded.has(task.parentTaskId) && !excluded.has(task.id)) {
+          excluded.add(task.id);
+          changed = true;
+        }
+      }
+    }
+  }
+  return tasks.filter((task) => task.deletedAt === null && !excluded.has(task.id));
+}
+
+/** Filters are presentation-only. Priority sorting keeps incoming order inside each tier. */
+export function taskPropertiesPresentation<T extends Readonly<{
+  priority?: TaskPriority | null;
+  tagIds?: readonly string[];
+}>>(
+  tasks: readonly T[],
+  priorityFilter: TaskPriorityFilter,
+  tagId: string | null,
+  sort: TaskPrioritySort,
+): readonly T[] {
+  const filtered = tasks.filter((task) => {
+    const priority = task.priority ?? null;
+    const matchesPriority = priorityFilter === "all"
+      ? true
+      : priorityFilter === "none"
+        ? priority === null
+        : priority === priorityFilter;
+    return matchesPriority && (tagId === null || task.tagIds?.includes(tagId) === true);
+  });
+  if (sort === "default") return filtered;
+  const rank: Record<TaskPriority | "none", number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+    none: 3,
+  };
+  return filtered
+    .map((task, index) => ({ task, index }))
+    .sort((left, right) =>
+      rank[left.task.priority ?? "none"] - rank[right.task.priority ?? "none"] ||
+      left.index - right.index,
+    )
+    .map(({ task }) => task);
+}
+
 export function taskEditOperationKey(
   edit: Readonly<{
     targetBinding: string;
@@ -60,6 +128,9 @@ export function taskEditOperationKey(
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    priority?: TaskPriority | null;
+    tagIds?: readonly string[];
+    parentTaskId?: string | null;
   }>,
 ): string {
   return JSON.stringify([
@@ -72,6 +143,9 @@ export function taskEditOperationKey(
     edit.time,
     edit.listId,
     edit.executionEnd === undefined ? "preserve" : edit.executionEnd,
+    edit.priority === undefined ? "preserve" : edit.priority,
+    edit.tagIds === undefined ? "preserve" : edit.tagIds,
+    edit.parentTaskId === undefined ? "preserve" : edit.parentTaskId,
   ]);
 }
 
@@ -160,6 +234,9 @@ export type TaskUpdateEdit = Readonly<{
   time: string | null;
   listId: string;
   executionEnd?: TaskExecutionEnd | null;
+  priority?: TaskPriority | null;
+  tagIds?: readonly string[];
+  parentTaskId?: string | null;
 }>;
 
 export type TaskUpdateInput = TaskUpdateEdit &
@@ -179,6 +256,9 @@ export type TaskUpdateView = Readonly<{
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    priority?: TaskPriority | null;
+    tagIds?: readonly string[];
+    parentTaskId?: string | null;
   }>[];
 }>;
 
@@ -225,7 +305,12 @@ export async function performTaskUpdateRequest<View extends TaskUpdateView>(
       candidate.listId === edit.listId &&
       (edit.executionEnd === undefined ||
         (candidate.executionEnd?.date === edit.executionEnd?.date &&
-         candidate.executionEnd?.time === edit.executionEnd?.time)),
+         candidate.executionEnd?.time === edit.executionEnd?.time)) &&
+      (edit.priority === undefined || candidate.priority === edit.priority) &&
+      (edit.tagIds === undefined ||
+        JSON.stringify(candidate.tagIds ?? []) === JSON.stringify(edit.tagIds)) &&
+      (edit.parentTaskId === undefined ||
+        (candidate.parentTaskId ?? null) === edit.parentTaskId),
   );
   const confirmed = taskMutationConfirmed(
     responseIsCurrent,
@@ -255,6 +340,7 @@ export function taskVisibleInScope(
   task: Readonly<{
     listId: string;
     listArchived?: boolean;
+    listFolderId?: string | null;
     state: Exclude<TaskStateFilter, "all" | "deleted">;
     deletedAt: string | null;
   }>,
@@ -269,7 +355,9 @@ export function taskVisibleInScope(
         ? task.listArchived !== true
         : listScope === "inbox"
           ? task.listId === "inbox" && task.listArchived !== true
-          : task.listId === taskListIdFromScope(listScope) && task.listArchived !== true;
+          : listScope.startsWith("folder:")
+            ? task.listFolderId === taskFolderIdFromScope(listScope) && task.listArchived !== true
+            : task.listId === taskListIdFromScope(listScope) && task.listArchived !== true;
   if (!listMatches) return false;
   if (stateScope === "deleted") return task.deletedAt !== null;
   return (
@@ -284,6 +372,7 @@ export function taskScopeCount<T extends TodayTaskCandidate>(
   stateScope: TaskStateFilter,
   currentDate: string | null,
   archivedListIds: ReadonlySet<string>,
+  folderIdsByList: ReadonlyMap<string, string> = new Map(),
 ): number {
   if (listScope === "today") {
     if (!currentDate) return 0;
@@ -294,7 +383,11 @@ export function taskScopeCount<T extends TodayTaskCandidate>(
   }
   return tasks.filter((task) =>
     taskVisibleInScope(
-      { ...task, listArchived: archivedListIds.has(task.listId) },
+      {
+        ...task,
+        listArchived: archivedListIds.has(task.listId),
+        listFolderId: folderIdsByList.get(task.listId) ?? null,
+      },
       listScope,
       stateScope,
     ),

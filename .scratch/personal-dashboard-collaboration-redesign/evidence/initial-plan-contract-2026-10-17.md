@@ -1,0 +1,126 @@
+# InitialPlan contract repair · 2026-10-17
+
+The user requested a workflow retro of a failed automatic plan and a bounded
+repair. This resumes only the deferred InitialPlan reliability follow-up.
+The closed parent iteration and other deferred tickets retain their status.
+
+Base: `e2102da`; working branch:
+`codex/initial-plan-contract-repair-20261017`.
+Private source exports and runtime transcripts remain outside Git.
+
+## Diagnosis
+
+The selected automatic execution rejected three calls carrying `originalIntent`,
+a field reserved for replanning, and one call without required evidence.
+Its final reply undercounted the rejected field attempts. A later human retry
+sent Markdown strings where structured arrangement/evidence objects were needed.
+Neither execution has a successful plan-save receipt. The human retry read the
+canonical source and observed the Daily Record still missing.
+
+The recorded package was app 4.0.7, usage 1.5.0 / tools 1.4.0. No source build
+revision was embedded, so historical package-to-commit identity is unavailable.
+The selected runtime transcript independently showed code-mode discovery with
+`args: unknown`: the top-level tool description lacked an InitialPlan example.
+Current source also exposed replan-only fields in the automatic schema and
+made arrangement/evidence optional despite the writer requiring them.
+Generic rejection text did not identify the offending field.
+
+## Repair
+
+- Include the object shapes, evidence rules, transition-specific field rules,
+  and a valid InitialPlan JSON example in the discoverable tool description.
+  Manual examples include execute; automatic examples use the captured target
+  without conversational execution fields.
+- Advertise only operation, transition, arrangement and evidence for automatic
+  planning, requiring both arrays. Existing write authority stays unchanged.
+- Identify rejected fields explicitly and direct recovery to retain valid
+  arrangement and evidence. Backend rejection remains strict.
+- Advance embedded usage/tools to 1.5.1 / 1.4.1 so existing runtime threads rotate
+  through the normal package/schema fingerprint mechanism.
+
+## Verification
+
+Three focused regressions failed before the repair: absent code-mode contract
+in automatic/manual execution, and an unhelpful field rejection. All three now
+pass through the actual dispatcher/writer and fresh canonical readback.
+
+`cargo test --test collaboration_task_operations --test daily_plan_workflow`:
+109 Collaboration tests and 17 Daily Plan tests pass; the opt-in live probe is
+excluded from the default run.
+
+The opt-in live probe passed automatic and manual saves through the real Codex
+App Server using disposable synthetic Vaults and profiles. Each retained one
+applied InitialPlan, matched the fresh canonical arrangement/basis and preserved
+Task bytes. The runtime independently reported `gpt-6-luna`; medium was requested
+but effective reasoning effort remained unavailable. This is adapter/runtime
+evidence, separate from packaged UI acceptance and personal-source recovery.
+
+`cargo test --lib collaboration`: 74 pass, 6 intentionally ignored.
+The 48 focused frontend checks for Daily Plan, action results, work history and
+refresh scope pass. `npm run build` and the signed arm64 release build pass.
+
+The full frontend suite is **not green**: 496 pass and 40 fail. An untouched
+`e2102da` archive independently reproduces the three note/editor fixture failures
+(`folderTarget.querySelector`) and one production-plan WebKit timeout. Other
+failing tests were not individually replayed on the baseline. No frontend source
+or frontend test changes were made by this repair. This bounded backend/tool
+repair does not close those broader UI failures.
+
+Management helper 1.0.3 confirmed the registered project and canonical workspace.
+Read-only reconciliation still reports `summary-needs-reconciliation` and an
+existing malformed Collaboration source; no Registry or summary was fabricated.
+
+The release candidate embeds source revision `5ad3a43`. The signed release bundle was launched from an
+unindexed private temporary directory with a synthetic Vault/profile. Its real
+Luna automatic turn used exactly one successful dynamic tool call. The canonical
+Daily Record contained every submitted arrangement title and evidence item;
+the business receipt retained an observed result snapshot and revision. After
+terminating and relaunching that same bundle/profile, the source bytes were
+unchanged and only one applied operation remained. No Task file was created.
+The canonical synthetic record SHA256 was
+`542ddd3260c2148a4eb0028af8d8404da974ab7dd7ab6d3c3d2ddf5a021eb927`.
+The runtime again confirmed Luna; effective effort was unavailable. This checks
+packaged execution, canonical readback and restart idempotence, without claiming
+visual rendering acceptance. The candidate was stopped and unregistered from
+Launch Services, and its copied login credential removed. No personal plan was generated by this repair, no running
+installation was replaced, and no remote publication or main merge occurred.
+
+## Authorized local installation · 2026-10-17
+
+The user subsequently explicitly requested App replacement and local commits,
+with no push. This supersedes the candidate checkpoint's no-install statement.
+
+`/Applications/Personal Dashboard.app` now exactly matches the verified release
+candidate built from `5ad3a43`. Strict deep signature verification passed;
+executable SHA256 is
+`05f87a556482ee3b8c2b3402e4a1abccc938a631ee70d49c9d193fb6997adc63`.
+The complete bundle file manifest matched before and after replacement.
+
+The previous bundle and complete stopped profile were copied and hash-verified
+in private mode-0700 storage under
+`~/Library/Application Support/Personal Dashboard Backups.noindex/initial-plan-20261017-113956`.
+The old original bundle was also retained there. These private backups are
+outside Git; rolling back the bundle does not require overwriting newer profile
+data.
+
+The installed app quit normally before the swap, then launched from its normal
+Applications path without any `PERSONAL_DASHBOARD_` environment override.
+Native UI observation confirmed the normal Today page and selected Vault.
+All 54 canonical life Markdown/JSON files, preferences, authentication hash and
+the complete decoded Collaboration state were unchanged after launch.
+The personal day's missing Daily Record was not backfilled by installation.
+
+Temporary, archived and build bundles were unregistered from Launch Services.
+The relevant registration and Spotlight bundle-identifier query both returned
+only `/Applications/Personal Dashboard.app`. No main merge, remote publication,
+push or personal planning retry was performed.
+
+## Subsequent frontend-failure investigation · 2026-10-17
+
+The user requested an explanation and investigation of the recorded 40 failures.
+[Current diagnosis and publication action](../../personal-dashboard-remote-return-2026-10-17/frontend-failure-audit.md)
+supersedes the earlier limited four-case baseline investigation without changing
+the historical 496-pass/40-fail result. Relevant frontend/test/build inputs are
+identical to pre-repair `e2102da`. The diagnosis separates test maintenance from
+three layout scenarios still requiring current-page review; no product or test
+fix, new full-suite pass or additional installed acceptance is claimed.

@@ -1,0 +1,18 @@
+{
+  "number": 66,
+  "title": "前端回归维护：修复 40 个失败并核查三个布局场景",
+  "state": "OPEN",
+  "labels": [
+    {
+      "id": "LA_kwDOT2gMFM8AAAAC4sWcug",
+      "name": "ready-for-agent",
+      "description": "Fully specified and ready for an agent",
+      "color": "0E8A16"
+    }
+  ],
+  "url": "https://github.com/absurdwall/personal-dashboard/issues/66",
+  "repository": "absurdwall/personal-dashboard",
+  "bodySha256": "8b0bbe7765cdb394e2c03444caa39f79511365330c13633f570a5a1e9ab55579",
+  "canonicalTracker": "GitHub issue; local body is a supporting copy",
+  "verification": "body, state, label and URL read back exactly"
+}

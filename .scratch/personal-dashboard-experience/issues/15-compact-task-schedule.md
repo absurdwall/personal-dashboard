@@ -1,5 +1,8 @@
 # PDEX-15: Compact Task schedule row
 
+> Canonical tracker: [PDEX-15 · GitHub #104](https://github.com/absurdwall/personal-dashboard/issues/104). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-15
 Type: ticket
 Parent: [PDEX-FOLLOWUP-02](../sidebar-schedule-spec-2026-10-11.md)

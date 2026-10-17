@@ -560,7 +560,41 @@ impl AppServerTransport for DynamicRuntime {
         }
         // Controlled resolver output exercises the date protocol and persisted
         // results without claiming these fixtures test model language quality.
-        let (call_id, tool, mut arguments) = if request.user_text.contains("refresh habits") || (request.user_text.contains("生成发布习惯快照") || request.user_text.contains("生成习惯快照") || request.user_text.contains("刷新习惯")) {
+        let (call_id, tool, mut arguments) = if request.user_text == "execute replan with a user-authored section" {
+            (
+                "failed-replan-call",
+                "dashboard_task_operation",
+                json!({
+                    "operation":"saveDailyPlan",
+                    "transition":"daytimeReplan",
+                    "executionMode":"execute",
+                    "arrangement":[{"period":"上午","title":"Updated synthetic appointment","detail":null}],
+                    "evidence":[{"label":"Synthetic user update","items":["Retain the existing plan context"]}],
+                    "calibrationNote":null,
+                    "baselineCorrectionReason":null,
+                    "event":null,
+                    "originalIntent":"Keep the synthetic appointment",
+                    "changeReason":"Synthetic schedule adjustment",
+                    "revisedDirection":"Retain the complete synthetic plan"
+                }),
+            )
+        } else if request.user_text == "apply description initial plan example" {
+            (
+                "description-initial-plan-call",
+                "dashboard_task_operation",
+                initial_plan_description_example(&self.registered_tools.lock().unwrap())?,
+            )
+        } else if request.user_text == "apply schema replan example" {
+            let tools = self
+                .registered_tools
+                .lock()
+                .map_err(|_| "tool lock poisoned")?;
+            (
+                "schema-replan-example-call",
+                "dashboard_task_operation",
+                daily_plan_replan_example(&tools)?,
+            )
+        } else if request.user_text.contains("refresh habits") || (request.user_text.contains("生成发布习惯快照") || request.user_text.contains("生成习惯快照") || request.user_text.contains("刷新习惯")) {
             ("habit-refresh-call", "dashboard_refresh_habits", habit_refresh_fixture(&request.user_text))
         } else if let Some(arguments) = natural_daily_fixture(&request.user_text) {
             ("natural-daily-call", "dashboard_task_operation", arguments)
@@ -636,7 +670,13 @@ impl AppServerTransport for DynamicRuntime {
                     "revisedDirection": null
                 }),
             )
-        } else if request.user_text == "save daily plan" || automatic_plan {
+        } else if automatic_plan {
+            (
+                "reused-turn-scoped-call-id",
+                "dashboard_task_operation",
+                initial_plan_description_example(&self.registered_tools.lock().unwrap())?,
+            )
+        } else if request.user_text == "save daily plan" {
             (
                 "reused-turn-scoped-call-id",
                 "dashboard_task_operation",
@@ -1051,6 +1091,42 @@ fn habit_refresh_fixture(text: &str) -> Value {
     json!({"mappings":{"exercise":"synthetic-habit"},"executionMode":"execute","authorizationQuote":quote,"hostSourceReads":reads})
 }
 
+fn initial_plan_description_example(registered_tools: &[Value]) -> Result<Value, String> {
+    // Code-mode discovery can expose args: unknown for the oneOf schema. Use
+    // only the top-level description, exactly as that client sees it.
+    let description = registered_tools.iter()
+        .find(|tool| tool["name"] == "dashboard_task_operation")
+        .and_then(|tool| tool["description"].as_str())
+        .ok_or("Dashboard tool description is missing")?;
+    let (_, example) = description.split_once("Minimal valid InitialPlan payload:")
+        .ok_or("code-mode description does not provide the InitialPlan contract")?;
+    serde_json::from_str(example.trim()).map_err(|error| error.to_string())
+}
+
+fn daily_plan_replan_example(registered_tools: &[Value]) -> Result<Value, String> {
+    let tool = registered_tools
+        .iter()
+        .find(|tool| tool["name"] == "dashboard_task_operation")
+        .ok_or("daily plan operation tool was not registered")?;
+    let variants = tool["inputSchema"]["oneOf"]
+        .as_array()
+        .ok_or("daily plan operation schema has no variants")?;
+    let daily_plan = variants
+        .iter()
+        .find(|variant| variant["properties"]["operation"]["const"] == "saveDailyPlan")
+        .ok_or("daily plan operation schema is missing")?;
+    let description = daily_plan["properties"]["transition"]["description"]
+        .as_str()
+        .ok_or("daily plan transition description is missing")?;
+    let example = description
+        .split_once("Minimal valid synthetic payload:")
+        .map(|(_, example)| example.trim())
+        .ok_or("minimal replan example is missing")?;
+    let example = example.strip_suffix('.').unwrap_or(example).trim();
+    serde_json::from_str(example)
+        .map_err(|error| format!("minimal replan example is not valid JSON: {error}"))
+}
+
 fn natural_daily_fixture(text: &str) -> Option<Value> {
     let plan = |transition: &str, title: &str, event: Option<&str>| json!({
         "operation":"saveDailyPlan", "transition":transition,
@@ -1168,8 +1244,8 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.5.0");
-    assert_eq!(binding["toolSetVersion"], "1.4.0");
+    assert_eq!(binding["skillVersion"], "1.5.1");
+    assert_eq!(binding["toolSetVersion"], "1.4.1");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));
@@ -1208,6 +1284,118 @@ fn automatic_usage_advertises_only_the_existing_initial_plan_capability() {
     let variants = tool["inputSchema"]["oneOf"].as_array().unwrap();
     assert_eq!(variants.len(), 1);
     assert_eq!(variants[0]["properties"]["transition"]["enum"], json!(["initialPlan"]));
+    let properties = variants[0]["properties"].as_object().unwrap();
+    assert_eq!(properties.len(), 4, "automatic schema exposes only operation, transition, arrangement and evidence");
+    let required = variants[0]["required"].as_array().unwrap();
+    assert!(required.contains(&json!("arrangement")));
+    assert!(required.contains(&json!("evidence")));
+}
+
+#[test]
+fn initial_plan_code_mode_description_saves_and_reopens_canonical_record() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("initial-description");
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-27", "11:21");
+    let (app, tools, results, _) = new_automatic_application(
+        &directory, &vault, MutableContext::new("vault-a"), clock.clone(), None,
+    );
+    let chat = app.create_session("2026-09-27").unwrap();
+    app.submit_message("vault-a", &chat.id, "2026-09-27", "apply description initial plan example").unwrap();
+    wait_for_finish(&app, &chat.id, "vault-a");
+    let result = results.lock().unwrap().last().cloned();
+    assert!(result.as_ref().is_some_and(|result| result.success), "InitialPlan description did not produce a saved result: {result:?}");
+    let arguments = initial_plan_description_example(&tools.lock().unwrap()).unwrap();
+    assert_eq!(arguments["executionMode"], "execute");
+    let saved = TodayApplication::new(vault.clone(), NoVaultPicker, clock).read_date("2026-09-27").unwrap();
+    assert_eq!(saved.state, TodayState::Ready);
+    assert_eq!(saved.timeline[0].title, arguments["arrangement"][0]["title"].as_str().unwrap());
+    assert_eq!(saved.baseline.timeline, saved.timeline);
+    assert!(saved.time_axis.confirmed_facts.is_empty());
+    assert!(TaskApplication::new(vault, ManualClock::new("2026-09-27", "11:21"), FileTaskStore).read().unwrap().tasks.is_empty());
+}
+
+#[test]
+fn initial_plan_rejection_identifies_the_inapplicable_field_for_recovery() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("initial-recovery");
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-27", "11:21");
+    let (app, _, results, _) = new_automatic_application(
+        &directory, &vault, MutableContext::new("vault-a"), clock.clone(), None,
+    );
+    let chat = app.create_session("2026-09-27").unwrap();
+    let arguments = json!({"operation":"saveDailyPlan", "transition":"initialPlan", "executionMode":"execute",
+        "arrangement":[{"period":"afternoon","title":"Synthetic plan","detail":null}],
+        "evidence":[{"label":"Current sources","items":["Activity remains unknown"]}],
+        "originalIntent":"Generate a first draft"});
+    app.submit_message("vault-a", &chat.id, "2026-09-27", &format!("single-date-fixture:{arguments}")).unwrap();
+    wait_for_finish(&app, &chat.id, "vault-a");
+    let result = results.lock().unwrap().last().unwrap().clone();
+    assert!(!result.success);
+    assert!(result.text.contains("originalIntent"), "recovery must identify the offending field: {}", result.text);
+    assert!(result.text.contains("evidence"), "recovery must preserve valid evidence: {}", result.text);
+    assert_eq!(TodayApplication::new(vault, NoVaultPicker, clock).read_date("2026-09-27").unwrap().state, TodayState::Missing);
+}
+
+#[test]
+#[ignore = "requires explicit PERSONAL_DASHBOARD_LIVE_CODEX_AUTH and makes real Luna Medium calls"]
+fn live_initial_plan_contract_saves_automatic_and_manual_without_task_changes() {
+    let auth = std::env::var_os("PERSONAL_DASHBOARD_LIVE_CODEX_AUTH")
+        .expect("provide an explicit existing Codex auth.json path for this opt-in probe");
+    let directory = IsolatedDirectory::new();
+    for mode in ["automatic", "manual"] {
+        let path = directory.vault(mode);
+        fs::write(path.join("life/Self.md"), "# Synthetic background\nPlan a short reading block and a brief evening review. All activity is unknown.\n").unwrap();
+        let data = directory.path().join(format!("{mode}-profile"));
+        fs::create_dir_all(data.join("codex-profile")).unwrap();
+        fs::copy(&auth, data.join("codex-profile/auth.json")).unwrap();
+        let workspace = data.join("today-workspace.json");
+        fs::write(&workspace, serde_json::to_vec(&json!({"schemaVersion":1,"selectedVault":path})).unwrap()).unwrap();
+        let mut hasher = DefaultHasher::new();
+        path.canonicalize().unwrap().hash(&mut hasher);
+        let key = format!("vault-{:016x}", hasher.finish());
+        let task_path = path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH);
+        let task_before = fs::read(&task_path).ok();
+        let app = CollaborationApplication::new_local(data, workspace.clone());
+        app.select_model(Some("gpt-6-luna")).unwrap();
+        app.select_reasoning_effort(Some("medium")).unwrap();
+        let chat = app.create_default_session().unwrap();
+        let date = chat.target_date.clone();
+        let session_id = if mode == "automatic" {
+            app.update_daily_plan_automation(enabled_automation("04:00")).unwrap()
+                .current_run.unwrap().session_id.unwrap()
+        } else {
+            app.submit_message(&key, &chat.id, &date, "Save today's first draft plan using current context and the supplied background. Do not create or change Tasks or habits. Plan only the remaining day. Preserve unknown activity as unknown.").unwrap();
+            chat.id
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(180);
+        let session = loop {
+            let session = app.session(&key, &session_id).unwrap();
+            if matches!(session.run_state.as_str(), "completed" | "error" | "interrupted") { break session; }
+            if std::time::Instant::now() > deadline {
+                app.shutdown().unwrap();
+                panic!("{mode} live plan timed out: {}", session.progress);
+            }
+            thread::sleep(Duration::from_millis(250));
+        };
+        app.shutdown().unwrap();
+        assert_eq!(session.run_state, "completed", "{mode}: {}", session.progress);
+        assert_eq!(session.task_operations.len(), 1, "{mode}: expected one canonical save: {:?}", session.messages.last());
+        assert_eq!(session.task_operations[0].status, "applied", "{mode}: {:?}", session.task_operations[0].result_message);
+        let fresh = TodayApplication::new(MutableVault::new(&path), NoVaultPicker, ManualClock::new(&date, "12:00"))
+            .read_date(&date).unwrap();
+        assert_eq!(fresh.state, TodayState::Ready);
+        assert!(!fresh.timeline.is_empty());
+        assert!(!fresh.evidence.is_empty());
+        assert_eq!(fresh.baseline.timeline, fresh.timeline);
+        assert!(fresh.time_axis.confirmed_facts.is_empty());
+        assert_eq!(fs::read(task_path).ok(), task_before);
+        let configuration = session.usage_bindings[0].configuration.as_ref().unwrap();
+        assert_eq!(configuration.effective_model.as_deref(), Some("gpt-6-luna"));
+        assert_eq!(configuration.requested_reasoning_effort.as_deref(), Some("medium"));
+        eprintln!("{mode}: one applied InitialPlan; fresh canonical readback; Tasks unchanged; model gpt-6-luna, requested medium, observed effort {:?}", configuration.effective_reasoning_effort);
+    }
 }
 
 
@@ -1579,6 +1767,37 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
             && transition_guidance.contains("arrangement"),
         "{transition_guidance}"
     );
+    assert!(
+        transition_guidance.contains("complete current-day arrangement")
+            && transition_guidance.contains("Minimal valid synthetic payload")
+            && transition_guidance.contains("revisedDirection")
+            && transition_guidance.contains("changeReason"),
+        "{transition_guidance}"
+    );
+    let arrangement_guidance = daily_plan["properties"]["arrangement"]["description"]
+        .as_str()
+        .expect("the runtime schema describes complete-day plan blocks");
+    assert!(
+        arrangement_guidance.contains("1–24 blocks")
+            && arrangement_guidance.contains("complete current-day arrangement")
+            && arrangement_guidance.contains("earlier blocks"),
+        "{arrangement_guidance}"
+    );
+    let revised_direction_guidance = daily_plan["properties"]["revisedDirection"]["description"]
+        .as_str()
+        .expect("the runtime schema describes the required replan direction");
+    assert!(
+        revised_direction_guidance.contains("Required nonempty scalar string"),
+        "{revised_direction_guidance}"
+    );
+    let change_reason_guidance = daily_plan["properties"]["changeReason"]["description"]
+        .as_str()
+        .expect("the runtime schema describes the singular optional reason field");
+    assert!(
+        change_reason_guidance.contains("scalar string explaining")
+            && change_reason_guidance.contains("changeReason (singular)"),
+        "{change_reason_guidance}"
+    );
     let daytime_event_guidance = daily_plan["properties"]["event"]["description"]
         .as_str()
         .expect("the runtime schema routes daytime facts to the daytime event field");
@@ -1728,6 +1947,148 @@ fn exact_current_user_instruction_executes_task_without_a_second_approval() {
     .unwrap();
     assert_eq!(saved.tasks.len(), 1);
     assert_eq!(saved.tasks[0].name, "Synthetic report");
+}
+
+#[test]
+fn minimal_schema_replan_example_executes_through_dashboard_writer() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("schema-example-vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "09:15");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    let baseline = initial_fixture_plan(
+        &today,
+        "schema-example-baseline",
+        "Synthetic existing appointment",
+    );
+    let (application, registered_tools, results, _) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "apply schema replan example",
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let result = results.lock().unwrap().last().unwrap().clone();
+    assert!(result.success, "{}", result.text);
+    let completed = application.session("vault-a", &session.id).unwrap();
+    assert_eq!(completed.task_operations.len(), 1);
+    assert_eq!(completed.task_operations[0].status, "applied");
+    match &completed.task_operations[0].operation {
+        CollaborationTaskOperation::SaveDailyPlan {
+            transition: DailyPlanTransition::DaytimeReplan,
+            arrangement,
+            evidence,
+            revised_direction,
+            ..
+        } => {
+            assert_eq!(arrangement.len(), 2);
+            assert_eq!(evidence.len(), 1);
+            assert_eq!(
+                revised_direction.as_deref(),
+                Some("Keep both blocks and move the review")
+            );
+        }
+        other => panic!("expected DaytimeReplan, got {other:?}"),
+    }
+
+    let saved = today.read_date("2026-09-27").unwrap();
+    assert_eq!(saved.timeline.len(), 2);
+    assert_eq!(saved.timeline[0].title, "Keep the appointment");
+    assert_eq!(saved.timeline[1].title, "Review the draft");
+    assert_eq!(saved.baseline.timeline, baseline.baseline.timeline);
+    let registered = registered_tools.lock().unwrap();
+    let arguments = daily_plan_replan_example(&registered).unwrap();
+    assert_eq!(arguments["arrangement"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn failed_daily_plan_business_effect_returns_failed_tool_result() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("failed-operation-vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "09:15");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    initial_fixture_plan(
+        &today,
+        "failed-operation-baseline",
+        "Synthetic existing appointment",
+    );
+    let path = record_path(&vault_path);
+    let source = fs::read_to_string(&path).unwrap();
+    let current_block = "- **上午：** Synthetic existing appointment；Synthetic fixture plan";
+    let section_start = source.find("## 今天的大致安排").unwrap();
+    let section_end = source[section_start..]
+        .find("## 计划依据")
+        .map(|offset| section_start + offset)
+        .unwrap();
+    let section = &source[section_start..section_end];
+    assert!(section.contains(current_block));
+    let current_block_end = source[section_start..]
+        .find(current_block)
+        .map(|offset| section_start + offset + current_block.len())
+        .unwrap();
+    let source = format!(
+        "{}\n\n<!-- user-authored comment -->{}",
+        &source[..current_block_end],
+        &source[current_block_end..]
+    );
+    fs::write(&path, source).unwrap();
+    let before_failed_write = fs::read(&path).unwrap();
+
+    let (application, _, results, _) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "execute replan with a user-authored section",
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let result = results.lock().unwrap().last().unwrap().clone();
+    let completed = application.session("vault-a", &session.id).unwrap();
+    assert_eq!(completed.task_operations.len(), 1);
+    assert_eq!(completed.task_operations[0].status, "failed");
+    assert!(
+        completed.task_operations[0]
+            .result_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("未写入任何内容"),
+        "{:?}",
+        completed.task_operations[0]
+    );
+    assert!(
+        !result.success,
+        "a failed Daily Record write must not be returned as a successful tool result: {}",
+        result.text
+    );
+    assert_eq!(fs::read(&path).unwrap(), before_failed_write);
+    let readback = today.read_date("2026-09-27").unwrap();
+    assert_eq!(readback.timeline[0].title, "Synthetic existing appointment");
+    assert_eq!(
+        readback.baseline.timeline[0].title,
+        "Synthetic existing appointment"
+    );
 }
 
 
@@ -4041,7 +4402,7 @@ fn valid_empty_daily_record_can_receive_the_single_automatic_initial_plan() {
         .unwrap();
     assert_eq!(saved.state, TodayState::Ready);
     assert_eq!(saved.timeline.len(), 2);
-    assert!(saved.evidence.iter().any(|group| group.label == "Tasks"));
+    assert!(saved.evidence.iter().any(|group| group.label == "Current sources"));
 }
 
 #[test]
@@ -7585,7 +7946,7 @@ fn personal_retro_reads_three_real_histories_for_complete_lived_days_without_bus
     assert_eq!(explicit.usage_bindings.len(),2);
     for binding in &explicit.usage_bindings {
         assert_eq!(binding.skill_name,"personal-dashboard-collaboration");
-        assert_eq!(binding.skill_version,"1.5.0");
+        assert_eq!(binding.skill_version,"1.5.1");
         assert_eq!(binding.registered_tools.iter().filter(|tool|*tool=="dashboard_read_history").count(),1);
     }
     if let Ok(destination)=std::env::var("PDCR_RETRO_EVIDENCE_DIR") {

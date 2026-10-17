@@ -5,6 +5,46 @@ Canonical tracker: [local map](map.md)
 Specification: PDEX-SPEC-01
 Working branch: codex/dashboard-experience-integration
 
+## New refinement specification — 2026-10-11
+
+### Approved eight-ticket publication
+
+The user approved the consolidated eight-ticket breakdown. PDEX-19–26 are now
+complete local records with nine direct dependencies; initial frontier is
+PDEX-19/23/24. Publication is on `codex/dashboard-experience-refinement-spec`
+from exact base `d91d636b395d8c42c0c516827db37ca2565260a4`.
+[Ticket publication receipt](refinement-ticket-publication-2026-10-11.md) records
+publication commit `52f30a24282b5acf8b8411ba3b0d797d14a10d19` and confirmed
+Management readback; [execution boundary](refinement-execution-2026-10-11.md)
+defines how future authorized claims, branches and coherent commits are retained.
+The parent specification and its Work Item index remain unchanged, not closed.
+No ticket is assigned, claimed or implemented by this publication.
+
+### Retained specification publication snapshot
+
+PDEX-SPEC-02 is the new, locally published refinement round, on
+`codex/dashboard-experience-refinement-spec`, starting from exact docs-only
+base `8a0dba083c4cbcb2707e97661a0a23ff82c4f920`. The earlier product lineage,
+closed spec/tickets and installed `d518332` acceptance remain retained.
+
+Prototype evidence remains on `codex/dashboard-experience-refinement` at
+`e6bdb514c6733a98949012e1d42a9cda3b0e3eec`; it is not a production merge.
+The complete specification is [refinement-spec](refinement-spec-2026-10-11.md),
+with [publication/commit receipt](refinement-publication-2026-10-11.md) and
+[same-identity index](issues/00-spec-02.md). The initial publication commit is
+`10cbdb72504aa277137e5417d03bba8d28eb2e4b`; a subsequent docs commit preserves
+its exact receipt, Management readback and a Markdown-only formatting correction.
+Resolve the final spec snapshot from the receipt file's last Git commit.
+
+The user reaffirmed local spec, later tickets and implementation tracking while
+GitHub is unavailable. No new tickets, claim or implementation are part of this
+publication. Preserve separate spec/ticket/implementation/review/acceptance
+commits and branch identities for later authorized push and protected-main PR.
+Do not automatically copy web prototype styling or reopen closed records.
+
+The sections below retain the first round's dated history; their then-current
+states do not override the new specification's current local index.
+
 ## Retained identities
 
 - Product/source base before prototype work: 45dceaef.

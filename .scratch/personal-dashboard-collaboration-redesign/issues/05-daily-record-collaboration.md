@@ -1,5 +1,8 @@
 # 05: 计划、晚间复盘与历史记录协作
 
+> Canonical tracker: [PDCR-05 · GitHub #82](https://github.com/absurdwall/personal-dashboard/issues/82). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 早间计划、白天重排、晚间复盘、short record 和历史纠正均通过对话
 落到原 Daily Record，并可由回复打开指定日期/phase。
 

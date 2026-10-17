@@ -1,5 +1,8 @@
 # 09: 在 Codex 完成一次有证据的 workflow retro
 
+> Canonical tracker: [PDCR-09 · GitHub #86](https://github.com/absurdwall/personal-dashboard/issues/86). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 开发者在 Codex 选 session、期间或执行身份，读取本地真实执行与变更
 证据，生成可核查的 workflow retro，并联系现有代码提出改进。
 

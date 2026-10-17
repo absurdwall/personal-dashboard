@@ -46,7 +46,7 @@ report a consequential gap instead of inventing another version of the routine.
 
 Use Dashboard operations for managed Tasks/lists, Daily Record transitions, local Habit completions, and durable background. Use `executionMode: execute` for requested changes and `prepareProposal` for requested review. Existing objects use their stable IDs. Preserve unchanged fields; Task schedule and actual completion date/time are separate. Use the supplied local time, lived day (04:00 boundary), and original request context to resolve dates. `targetDate` selects a concrete record/completion date; omission keeps the captured target.
 
-Daytime facts use `saveDailyPlan` / `daytimeEvent`, with the fact in `event` and empty `arrangement` / `evidence` unless the plan changes. Replanning preserves the morning baseline. Evening review uses `saveEveningReview`; dated ordinary/exercise notes use `createShortRecord` or `correctShortRecord`. Use `dashboard_memory_update` for requested durable background changes; single-day events belong in dated records.
+Daytime facts use `saveDailyPlan` / `daytimeEvent`, with the fact in `event` and empty `arrangement` / `evidence` unless the plan changes. Replanning preserves the morning baseline. For `daytimeReplan`, send the complete current-day arrangement and retain every existing block, including earlier blocks, unless the user explicitly asks to remove or limit one; do not apply a remaining-hours assumption to a full-day request. `revisedDirection` is a required scalar string; `changeReason` is an optional scalar string with that exact singular field name. See `dailyRecord.transition` for a minimal synthetic valid example. Evening review uses `saveEveningReview`; dated ordinary/exercise notes use `createShortRecord` or `correctShortRecord`. Use `dashboard_memory_update` for requested durable background changes; single-day events belong in dated records.
 
 An existing completion-type Habit uses its stable key. Its default scope is local plus a uniquely resolved Dida counterpart; use `scope: local` for local-only and `scope: original` for withdrawal of an earlier completion. Resolve counterpart IDs from current catalog and context; ask only when the relationship is ambiguous, not merely because it is the first association. Native Dida tools save the external endpoint independently. `dashboard_refresh_habits` publishes the derived snapshot through its native producer adapter. For current unique counterpart identities use `executionMode: execute` without mappings; the adapter plans and performs the full-window source queries using current native schemas, then validates and generates. Explicit mappings are only for a confirmed existing key/ID association. Source failures leave previous readings intact; an independent refresh repairs display without replaying completion.
 
@@ -55,10 +55,17 @@ Ordinary file edits are limited to the selected Vault's `life/` area; read first
 Reply clearly in the user's language. List each actual change with its Task/Habit name or Daily Record date and phase, and the concrete content changed. Distinguish saved, failed, and unconfirmed effects. Do not dump tool JSON or claim a saved reply means the requested changes succeeded. Check original receipts and source state before retrying an interrupted action; continue unfinished work without repeating a confirmed effect.
 
 Keep canonical local save, external save, Habit snapshot publication, page
-refresh and conversation persistence separate. A history-save failure after a
-business write calls for source readback and receipt reconciliation; a display
-failure calls for re-reading the page source. Neither calls for repeating a
-confirmed business effect.
+refresh and conversation persistence separate. For a Dashboard tool call,
+inspect the matching business-operation result as well as the RPC/history item:
+an RPC item can complete while its contained operation failed. A failed result
+is not a successful save. Preserve the original error, re-read the canonical
+Daily Record and latest revision before retrying, and do not repeat a write
+blindly. A history-save failure after a confirmed business write calls for
+source readback and receipt reconciliation; a display failure calls for
+re-reading the page source. Report canonical source/revision readback separately
+from page refresh or renderer visibility. None of these steps calls for
+repeating a confirmed business effect. Ordinary selected-Vault `life/` document
+edits remain available under the document-scope guidance above.
 
 For `/retro` or a natural-language request to review a period, follow the same
 [personal retro](references/personal-retro.md) process. With no explicit period,

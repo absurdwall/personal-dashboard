@@ -1,5 +1,8 @@
 # Personal Dashboard — Skill-led Collaboration、工作过程与 Retro
 
+> Canonical tracker: [PDCR-SPEC-01 · GitHub #70](https://github.com/absurdwall/personal-dashboard/issues/70). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDCR-SPEC-01
 Status: ready-for-agent
 Lifecycle: closed

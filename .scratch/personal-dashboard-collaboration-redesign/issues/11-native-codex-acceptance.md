@@ -1,20 +1,32 @@
 # 11: 真实 Codex 与 app 内完整交互验收
 
+> Canonical tracker: [PDCR-11 · GitHub #88](https://github.com/absurdwall/personal-dashboard/issues/88). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 对完整候选 app 进行可回看的本地/packaged 验收，证明真实 Codex 的
 工作、保存、页面、reopen、两个 retro 与现有输入功能一致。
 
 **Blocked by:** [PDCR-03: 排队、停止、纠正与未知结果恢复](03-queue-stop-recovery.md); [PDCR-07: 映射 Dida Habit 与 snapshot 的独立结果](07-mapped-dida-habit-results.md); [PDCR-09: 在 Codex 完成一次有证据的 workflow retro](09-workflow-retro.md); [PDCR-10: 在 Dashboard 完成 personal retro](10-personal-retro.md)
 
-**Status:** ready-for-human
+**Status:** wontfix
 
 **ID:** PDCR-11
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** blocked
-**Iteration scope:** deferred by user acceptance on 2026-10-10; [remaining scope](../deferred-follow-ups.md)
+**Lifecycle:** closed
+**Iteration scope:** closed-retired; remaining acceptance no longer required by user on 2026-10-17; [decision](../evidence/ticket-disposition-2026-10-17.md)
 **Implementation:** code integrated; native acceptance partial
-**Assignee:** Codex acceptance; root coordinates human gates
+**Assignee:** unassigned; no current execution
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
+
+## Current answer — 2026-10-17
+
+Closed and retired by the user because the remaining acceptance is no longer required; this ticket is not deferred.
+
+[Disposition and GitHub migration contract](../evidence/ticket-disposition-2026-10-17.md).
+Historical implementation and test evidence below retain their original source
+qualification. Unchecked criteria are not new passes. Migrate as closed with
+reason `not_planned`; previous blocked/open statements below are dated history.
 
 ## Acceptance criteria
 
@@ -74,3 +86,5 @@ natural long delay remain explicitly qualified.
   `7b3dc8` / `c5be634`, not erased or relabeled. Application/file/stdio/renderer
   checks and independent source review pass but are not packaged acceptance.
   Human spoken transcript and PDCR-03 remain unmet; lifecycle stays blocked.
+
+- 2026-10-17: User-authorized local closure; see [current disposition](../evidence/ticket-disposition-2026-10-17.md). No product change or additional acceptance run.

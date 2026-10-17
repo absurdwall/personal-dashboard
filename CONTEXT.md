@@ -181,3 +181,84 @@ _Avoid_: Observed activity interval, completion record
 **Task execution interval**:
 An optional planned start and end for executing a Task, retained across rescheduling. It describes intended time allocation, not a deadline, actual activity duration or completion evidence; a Task with only a time point remains valid.
 _Avoid_: Deadline, actual work interval, completed activity
+
+## Experience refinement vocabulary · 2026-10-11
+
+These terms record user-confirmed requirements for the next refinement. They do
+not assert that the corresponding behavior has shipped.
+
+**Cancel Task time arrangement**:
+Remove a Task's assigned time and execution interval while retaining its date,
+identity and completion state. The Task remains dated work without a timed
+position on the timeline.
+_Avoid_: Delete Task, clear Task date, abandon Task
+
+**Broad plan period**:
+A stated period such as afternoon or evening. A default timeline position helps
+display it without replacing the stated period with an approximate clock time.
+_Avoid_: Exact start, user-selected approximate clock time
+
+**Approximate plan point**:
+A stated approximate clock time, such as about 16:00. Explicitly dragging a broad
+plan period to a clock position chooses an approximate plan point; it does not
+establish an exact interval or observed activity.
+_Avoid_: Default display position, exact time range, activity evidence
+
+**Habit attained day**:
+A lived day on which a Habit meets its applicable goal. Multiple completion
+actions for the same Habit and lived day count as one attained day; local and
+mapped external evidence do not create additional attained days.
+_Avoid_: Completion action count, exercise-session count
+
+**Weekly Habit day target**:
+The number of distinct attained days required within a week, such as three days
+per week. Multiple completions on one lived day do not satisfy multiple days.
+_Avoid_: Three exercise sessions, unrestricted weekly occurrence count
+
+**Habit goal cycle**:
+The period evaluated against a Habit goal: one lived day for a daily goal or one
+week for a weekly goal. A changed goal takes effect at the next cycle; the current
+cycle and earlier attainment retain the goals applicable to those periods.
+_Avoid_: Immediate retroactive goal change, rewritten historical attainment
+
+**Parent Task**:
+A Task referenced as the direct parent of another Task. The relation organizes
+actions without inheriting their dates, lists or completion states.
+_Avoid_: Automatically completed container, shared child state
+
+**Subtask**:
+An ordinary Task with one optional parent Task, which may itself have children.
+Its own identity, date, content and completion history remain independent.
+_Avoid_: Checklist item without Task identity, copied parent action
+
+**Task list folder**:
+A named grouping of Task lists. Selecting it presents Tasks grouped by their
+existing lists; grouping does not change Task ownership or identity.
+_Avoid_: Task list, parent Task, duplicated Task collection
+
+**Task priority**:
+The user's high, medium, low or unspecified ordering preference for a Task. It
+does not separately establish importance, urgency or a deadline.
+_Avoid_: Eisenhower quadrant, inferred urgency
+
+**Task tag**:
+A user-defined label that can associate Tasks across lists without replacing
+their list membership or parent relations.
+_Avoid_: Task list, folder, parent Task
+
+**Local Habit definition**:
+The user-owned identity, settings and lifecycle of a Habit created or configured
+in Personal Dashboard, distinct from its dated completion evidence and derived
+snapshot. It does not create or rename an external Habit implicitly.
+_Avoid_: Habit snapshot, external Habit copy, name-based mapping
+
+**Habit goal revision**:
+A retained goal choice with an effective cycle boundary. A pending revision
+describes the next applicable goal without replacing the current cycle's goal
+or changing the meaning of earlier completion facts.
+_Avoid_: Retroactive goal overwrite, rewritten completion evidence
+
+**Inactive Habit**:
+A Habit temporarily removed from everyday check-in views while retaining its
+identity, settings, completion history and statistics for viewing and recovery.
+_Avoid_: Deleted Habit, automatic failure, new Habit on recovery

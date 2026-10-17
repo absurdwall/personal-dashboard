@@ -1,5 +1,8 @@
 # 07: 在白天时间轴选区创建与移动 Task
 
+> Canonical tracker: [PDEX-07 · GitHub #96](https://github.com/absurdwall/personal-dashboard/issues/96). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户从空白时间选区创建带执行时段的 Task，再拖到另一时段保持计划时长；三个页面呈现同一保存结果。
 
 **Blocked by:** 06 — 保存 Task 计划执行时间段并兼容现有入口

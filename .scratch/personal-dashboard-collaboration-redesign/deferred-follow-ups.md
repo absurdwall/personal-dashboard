@@ -1,5 +1,16 @@
 # Deferred work after human acceptance of this iteration
 
+## Current disposition — 2026-10-17
+
+PDCR-03/12 are closed-deferred because Dida work is not urgent and its future
+role may change. PDCR-11 is closed-retired: the remaining old acceptance work
+is no longer required and will not be scheduled under this ticket. The
+[explicit decision](evidence/ticket-disposition-2026-10-17.md) supersedes the
+older blocked/open states below. InitialPlan reliability was separately
+repaired and locally installed on October 17. No unrun check became a pass.
+
+## Historical deferral — 2026-10-10
+
 2026-10-10. The user accepts the current overall Collaboration interaction and
 requests parent-spec closure after typography review and local installation.
 These items are expressly outside that accepted closeout scope. They retain
@@ -21,6 +32,17 @@ The user's presentation feedback also confirms expanded failures were deliberate
 inspection: the reviewer observed two Work history panels collapsed by default.
 Further real examples may refine presentation and execution quality; this
 iteration does not redesign the accepted conversation model.
+
+## October 17 InitialPlan repair
+
+The user's explicit diagnosis-and-fix request resumes the bounded InitialPlan
+reliability follow-up. [Repair evidence](evidence/initial-plan-contract-2026-10-17.md)
+records the code-mode description gap, automatic schema mismatch, field-level
+recovery repair and real Luna automatic/manual saves in synthetic Vaults.
+The user subsequently authorized local App replacement and commits without push;
+the same evidence records verified installation and preserved personal sources.
+Recovery of the personal day's plan remains separate from these checks. Other
+deferred work and the closed parent retain their status.
 
 ## October 10 follow-up design exploration
 

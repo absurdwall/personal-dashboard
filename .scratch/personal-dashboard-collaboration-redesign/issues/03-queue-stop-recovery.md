@@ -1,20 +1,32 @@
 # 03: 排队、停止、纠正与未知结果恢复
 
+> Canonical tracker: [PDCR-03 · GitHub #80](https://github.com/absurdwall/personal-dashboard/issues/80). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 执行中普通消息排队；用户停止后队列暂停，发送纠正成为新轮；
 之后可以继续队列并核对未知结果，不重复已经保存的修改。
 
 **Blocked by:** [PDCR-02: 显示并保存真实工作过程与最终回复](02-observable-work-history.md)
 
-**Status:** ready-for-human
+**Status:** wontfix
 
 **ID:** PDCR-03
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** blocked
-**Iteration scope:** deferred by user acceptance on 2026-10-10; [remaining scope](../deferred-follow-ups.md)
+**Lifecycle:** closed
+**Iteration scope:** closed-deferred; remaining Dida object-scope work deferred by user on 2026-10-17; [decision](../evidence/ticket-disposition-2026-10-17.md)
 **Implementation:** partial; native object-scope criterion unmet
-**Assignee:** Codex review-fix implementer; root coordinates scope decision
+**Assignee:** unassigned; no current execution
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
+
+## Current answer — 2026-10-17
+
+Closed and deferred by the user; remaining Dida work is not scheduled.
+
+[Disposition and GitHub migration contract](../evidence/ticket-disposition-2026-10-17.md).
+Historical implementation and test evidence below retain their original source
+qualification. Unchecked criteria are not new passes. Migrate as closed with
+reason `not_planned`; previous blocked/open statements below are dated history.
 
 ## Acceptance criteria
 
@@ -61,3 +73,5 @@
   [native hook probe](../evidence/native-hook-probe.md) fails open on timeout or
   malformed output. No answer has been received and no native policy was
   changed. Preserving the current mask is not acceptance of this criterion.
+
+- 2026-10-17: User-authorized local closure; see [current disposition](../evidence/ticket-disposition-2026-10-17.md). No product change or additional acceptance run.

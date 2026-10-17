@@ -47,7 +47,7 @@ test("Tasks keeps the accepted prototype hierarchy and defers heavy controls", (
   assert.match(main, /taskCreateOpen/);
   assert.match(main, /taskListManagementOpen/);
   assert.match(main, /toggleTaskEditorDetails/);
-  assert.match(main, /const dialog = surface === "tasks"/);
+  assert.match(main, /const usesModal = surface === "tasks" \|\| surface === "calendar"/);
   assert.match(main, /task-editor-inline/);
   assert.match(css, /\.tasks-layout\s*\{/);
   assert.match(css, /\.task-row\.task-editor\s*\{/);
@@ -55,7 +55,7 @@ test("Tasks keeps the accepted prototype hierarchy and defers heavy controls", (
   assert.match(css, /\.tasks-content\s*>\s*#tasks-list\s*\{[^}]*gap:\s*0\.15rem/);
   assert.match(css, /\.task-row\[data-task-surface="tasks"\]\s*\.task-title-button\s*\{[^}]*font-family:\s*inherit;[^}]*font-size:\s*12px;[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.4/);
   assert.match(main, /if \(surface === "tasks" && taskCompletionToggle\) heading\.append\(taskCompletionToggle\)/);
-  assert.match(css, /\.task-row\[data-task-surface="tasks"\] \.task-row-summary\s*\{[^}]*grid-template-columns:\s*15px minmax\(0,1fr\) auto;[^}]*gap:\s*7px/);
+  assert.match(css, /\.task-row\[data-task-surface="tasks"\] \.task-row-summary\s*\{[^}]*grid-template-columns:\s*15px minmax\(0,1fr\);/);
   assert.match(css, /\.task-row\[data-task-surface="tasks"\] \.task-completion-toggle input\s*\{[^}]*width:\s*15px;[^}]*height:\s*15px/);
 });
 
@@ -82,12 +82,37 @@ test("Tasks fixed copy has Chinese and English counterparts", () => {
     "tasks.namePlaceholder",
     "tasks.timeNeedsDate",
     "tasks.savedToVault",
+    "tasks.nestingLevel",
   ]) {
     const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));
     assert.ok(line, `missing copy ${key}`);
     assert.match(line, /zh:/);
     assert.match(line, /en:/);
   }
+});
+
+test("Tasks retain a compact level cue after the indentation cap", () => {
+  assert.match(main, /row\.dataset\.taskDepth = String\(depth\)/);
+  assert.match(main, /if \(depth > 4\)[\s\S]*?task-nesting-depth/);
+  assert.match(css, /\.task-nesting-depth/);
+});
+
+test("Tasks opens Content directly and keeps Add subtask outside the collapsed relationship disclosure", () => {
+  assert.match(main, /contentLabel\.append\(contentCaption, content\)/);
+  assert.match(main, /if \(surface === "tasks"\) \{\s*addChildAction = document\.createElement\("button"\)/);
+  assert.match(main, /grid\.append\(contentLabel\);\s*if \(addChildAction\) grid\.append\(addChildAction\);\s*grid\.append\(listSection, scheduleSection\);\s*if \(surface === "tasks"\) grid\.append\(propertiesDetails, parentDetails\)/);
+  assert.match(main, /const content = surface === "tasks" \|\| surface === "calendar"[\s\S]*?\(content \?\? editor\.querySelector<HTMLInputElement>\("\[data-task-name\]"\)\)\?\.focus\(\)/);
+  assert.match(css, /\.task-form-grid label\s*\{[^}]*gap:\s*0\.35rem/);
+  assert.match(css, /\.task-editor-compact \.task-form-grid textarea\[data-task-content\]\s*\{[^}]*min-height:\s*8rem/);
+  assert.match(css, /\.task-editor-compact \.task-add-child\s*\{[^}]*min-height:\s*1\.7rem/);
+});
+
+test("Calendar displays its list and schedule controls without duplicate disclosure summaries", () => {
+  assert.match(main, /document\.createElement\(surface === "calendar" \? "div" : "details"\)/);
+  assert.match(main, /listSection\.append\(listLabel\)/);
+  assert.match(main, /scheduleSection\.append\(scheduleGrid, clearEnd, clearSchedule\)/);
+  assert.match(css, /\.task-editor-compact \.task-calendar-schedule-fields\s*\{[^}]*display:\s*grid/);
+  assert.match(css, /\.task-editor-footer-actions > button\s*\{[^}]*min-height:\s*1\.9rem/);
 });
 
 test("task writes serialize refresh reconciliation and retain retry identity", () => {

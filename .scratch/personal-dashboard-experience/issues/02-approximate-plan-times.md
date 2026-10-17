@@ -1,5 +1,8 @@
 # 02: 将模糊计划定位并编辑时间精度
 
+> Canonical tracker: [PDEX-02 · GitHub #91](https://github.com/absurdwall/personal-dashboard/issues/91). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** “午后”等宽泛计划在白天时间轴有明确的近似位置；用户可以编辑近似时间或显式切换为具体时点/区间，并保存原本或新选择的精度。
 
 **Blocked by:** 01 — 在白天手动编辑具体计划并可靠保存

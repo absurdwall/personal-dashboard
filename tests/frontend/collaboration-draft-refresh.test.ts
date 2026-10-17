@@ -58,14 +58,16 @@ function composer(actualVoice=false, pendingStart=false, empty=false) {
   for(const match of reset.matchAll(/if \(([a-zA-Z]\w*)\)/g))if(!(match[1] in r))r[match[1]]=null;
   for(const match of reset.matchAll(/\b([a-zA-Z]\w*)\.clear\(/g))if(!r[match[1]])r[match[1]]=new Map();
   for(const match of reset.matchAll(/\b([a-zA-Z]\w*)\.invalidate\(/g))r[match[1]]={invalidate(){}};
-  for(const name of ["taskCreateListLabel","taskCreateSubmit","taskCreateDate","taskCreateTime","todayTaskCreateDate","todayTaskCreateTime","calendarTaskCreateSubmit","calendarTaskCreateDate","calendarTaskCreateTime","habitsRange","calendarSummaryHeading","collaborationStatusTimer"])r[name]=null;
+  for(const name of ["taskCreateListLabel","taskCreateSubmit","taskCreateDate","taskCreateTime","todayTaskCreateDate","todayTaskCreateTime","calendarTaskCreateSubmit","calendarTaskCreateDate","calendarTaskCreateTime","habitsRange","calendarSummaryHeading","collaborationStatusTimer","habitDefinitionDialog","habitsDestination","taskCreateDialog","calendarTaskCreateDialog"])r[name]=null;
   Object.assign(r,{beginVoiceTranscriptSave,enqueueCollaborationDraftWrite,submitCollaborationDraftSnapshot,
     CodexCollaborationVoiceInputController,BrowserCodexDictationRuntime:class{constructor(){return runtime;}},crypto,AbortController,
     vaultSelectionInProgress:false,collaborationVaultSwitchDraftWrites:null,collaborationVaultSelectionRevision:0,
     selectVaultAndRefresh,vaultSelectionRequests:{begin:()=>1,isCurrent:()=>true},todayPresentationRequests:{begin:()=>1,isCurrent:()=>true},
     currentInterfaceLanguage:"en",currentWorkspaceDestination:"settings",updateTodayOperationState(){},
     waitForPendingWrites:async()=>true,renderPendingWriteFailure(){},renderToday(){},renderWorkspaceContextStatus(){},
-    openCalendar(){},refreshHabits(){},refreshTasks(){},renderVaultSelectionError(){},
+    openCalendar(){},refreshHabits(){},refreshTasks(){},renderVaultSelectionError(error:any){throw error;},
+    stashCalendarTaskCreateDraft(){},taskEditorForms:()=>[],compactScheduleTransactions:new Map(),
+    taskCreateAttempts:new Map(), taskEndedCreateAttempts:new Map(), taskEditDrafts:new Map(),
     normalizeTaskDateTimeFields(){},renderWorkspaceRailContext(){},settingsVaultStatus:element(),
     refreshCollaborationRunOwner(){},showWorkspaceDestination(){},
     collaborationDrafts:new Map(),collaborationUnsavedDrafts:new Set(),collaborationDraftWrites:new Map(),

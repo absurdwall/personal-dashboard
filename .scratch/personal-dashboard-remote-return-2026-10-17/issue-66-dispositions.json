@@ -1,0 +1,398 @@
+{
+  "issue": "https://github.com/absurdwall/personal-dashboard/issues/66",
+  "baseCommit": "1bbdd1f2d726abeeb5252d237418f3c6248b17cd",
+  "validatedCommit": "047f877a8a1c3d02c8ea8b980c592286dc1fc3c8",
+  "branch": "codex/frontend-regression-66-20261017",
+  "sourceObjects": {
+    "frontend": "d45f07db33b9fa3b462b77cb3611a6ec22dd2cd6",
+    "tests/frontend": "389e0fdc19623e3a5b00a50695843238b54800d5",
+    "package.json": "7ce7f9c7615fb5685cf7ce0a795d2650ea4bb804",
+    "package-lock.json": "e25e7e719ed4fbf6a5896ca677082b31c97c1b63",
+    "tsconfig.json": "5312d402c619e3fdc18d8131a3412aeed3aba630",
+    "scripts/prepare-frontend.mjs": "f5c3431410b73f16e72c823d103aa0dc41be3efb"
+  },
+  "originalCounts": {
+    "obsolete-or-invalid-test-assertion": 6,
+    "incomplete-test-harness": 19,
+    "layout-needs-current-scenario-review": 3,
+    "obsolete-ui-test-path": 12
+  },
+  "verification": {
+    "command": "SDKROOT=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk npm run test:frontend",
+    "counts": {
+      "tests": 537,
+      "pass": 537,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "logPath": "/private/tmp/pd-66-047f877-frontend.log",
+    "logSha256": "285a34e0cfe4b7c244d6d01ef27dc04d1bcd347ffc23f5a30e91d2aedf7e5579",
+    "buildCommand": "npm run build",
+    "buildResult": "pass",
+    "buildLogSha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+  },
+  "failures": [
+    {
+      "originalIndex": 1,
+      "file": "tests/frontend/collaboration-command-completion.test.ts",
+      "originalName": "long help opens on demand while draft, dictation preview and real status surfaces remain exposed",
+      "category": "obsolete-or-invalid-test-assertion",
+      "passingTestName": "long help opens on demand while draft, dictation preview and real status surfaces remain exposed",
+      "result": "pass",
+      "disposition": "Single help disclosure reveals privacy; preview/status stay exposed. Selected option contrast composites alpha backgrounds before enforcing 4.5:1."
+    },
+    {
+      "originalIndex": 2,
+      "file": "tests/frontend/collaboration-command-completion.test.ts",
+      "originalName": "selected slash candidate retains readable foreground on its soft background",
+      "category": "obsolete-or-invalid-test-assertion",
+      "passingTestName": "selected slash candidate retains readable foreground on its soft background",
+      "result": "pass",
+      "disposition": "Single help disclosure reveals privacy; preview/status stay exposed. Selected option contrast composites alpha backgrounds before enforcing 4.5:1."
+    },
+    {
+      "originalIndex": 3,
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "originalName": "saved incomplete draft keeps its warning across successful Vault reset and return",
+      "category": "incomplete-test-harness",
+      "passingTestName": "saved incomplete draft keeps its warning across successful Vault reset and return",
+      "result": "pass",
+      "disposition": "Complete Vault-reset VM dependencies (calendar boundary, dialogs, draft/attempt maps); unexpected Vault errors throw instead of concealing reset failures. Preserve all cache/generation/draft assertions."
+    },
+    {
+      "originalIndex": 4,
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "originalName": "old discuss-create response after a completed Vault switch cannot rebound old caches or save in B",
+      "category": "incomplete-test-harness",
+      "passingTestName": "old discuss-create response after a completed Vault switch cannot rebound old caches or save in B",
+      "result": "pass",
+      "disposition": "Complete Vault-reset VM dependencies (calendar boundary, dialogs, draft/attempt maps); unexpected Vault errors throw instead of concealing reset failures. Preserve all cache/generation/draft assertions."
+    },
+    {
+      "originalIndex": 5,
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "originalName": "old discuss-date response after a completed Vault switch cannot rebound old caches or save in B",
+      "category": "incomplete-test-harness",
+      "passingTestName": "old discuss-date response after a completed Vault switch cannot rebound old caches or save in B",
+      "result": "pass",
+      "disposition": "Complete Vault-reset VM dependencies (calendar boundary, dialogs, draft/attempt maps); unexpected Vault errors throw instead of concealing reset failures. Preserve all cache/generation/draft assertions."
+    },
+    {
+      "originalIndex": 6,
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "originalName": "old create response after a completed Vault switch cannot rebound old caches or save in B",
+      "category": "incomplete-test-harness",
+      "passingTestName": "old create response after a completed Vault switch cannot rebound old caches or save in B",
+      "result": "pass",
+      "disposition": "Complete Vault-reset VM dependencies (calendar boundary, dialogs, draft/attempt maps); unexpected Vault errors throw instead of concealing reset failures. Preserve all cache/generation/draft assertions."
+    },
+    {
+      "originalIndex": 7,
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "originalName": "old creation failure completion cannot publish status under the new Vault",
+      "category": "incomplete-test-harness",
+      "passingTestName": "old creation failure completion cannot publish status under the new Vault",
+      "result": "pass",
+      "disposition": "Complete Vault-reset VM dependencies (calendar boundary, dialogs, draft/attempt maps); unexpected Vault errors throw instead of concealing reset failures. Preserve all cache/generation/draft assertions."
+    },
+    {
+      "originalIndex": 8,
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "originalName": "old creation refresh completion cannot publish status under the new Vault",
+      "category": "incomplete-test-harness",
+      "passingTestName": "old creation refresh completion cannot publish status under the new Vault",
+      "result": "pass",
+      "disposition": "Complete Vault-reset VM dependencies (calendar boundary, dialogs, draft/attempt maps); unexpected Vault errors throw instead of concealing reset failures. Preserve all cache/generation/draft assertions."
+    },
+    {
+      "originalIndex": 9,
+      "file": "tests/frontend/collaboration-layout.test.ts",
+      "originalName": "single-column Collaboration keeps the composer visible when five-session history is expanded at 640×756",
+      "category": "layout-needs-current-scenario-review",
+      "passingTestName": "single-column Collaboration keeps the composer visible when five-session history is expanded at 640×756",
+      "result": "pass",
+      "disposition": "Complete page/controller reproduces clipping; bounded column-header flex-basis repair restores composer hit targets, expanded scrolling history and stationary composer during message scroll."
+    },
+    {
+      "originalIndex": 10,
+      "file": "tests/frontend/collaboration-native-file-refresh.test.ts",
+      "originalName": "opening Tasks during a Collaboration turn keeps the source watch and request target",
+      "category": "incomplete-test-harness",
+      "passingTestName": "opening Tasks during a Collaboration turn keeps the source watch and request target",
+      "result": "pass",
+      "disposition": "Supply compactScheduleTransactions; preserve source watch, target and refresh assertions."
+    },
+    {
+      "originalIndex": 11,
+      "file": "tests/frontend/collaboration-panels.test.ts",
+      "originalName": "chat context opens and closes in place while session controls retain their width behavior",
+      "category": "obsolete-or-invalid-test-assertion",
+      "passingTestName": "chat context opens and closes in place while session controls retain their width behavior",
+      "result": "pass",
+      "disposition": "Use realistic composer height and assert heading/composer clearance instead of obsolete hard-coded offset."
+    },
+    {
+      "originalIndex": 12,
+      "file": "tests/frontend/collaboration-short-record.test.ts",
+      "originalName": "a delayed canonical read preserves the explicitly selected record phase",
+      "category": "incomplete-test-harness",
+      "passingTestName": "a delayed canonical read preserves the explicitly selected record phase",
+      "result": "pass",
+      "disposition": "Supply popup boundaries and Today side-region; preserve selected phase across delayed canonical read."
+    },
+    {
+      "originalIndex": 13,
+      "file": "tests/frontend/collaboration-surface.test.ts",
+      "originalName": "Collaboration keeps its header compact, displays the configured model, and hides account-plan details",
+      "category": "obsolete-or-invalid-test-assertion",
+      "passingTestName": "Collaboration keeps its header compact, displays the configured model, and hides account-plan details",
+      "result": "pass",
+      "disposition": "Match required class tokens while permitting current additional class; preserve compact header/model/account controls."
+    },
+    {
+      "originalIndex": 14,
+      "file": "tests/frontend/daytime-rail-layout.test.ts",
+      "originalName": "Daytime keeps the shared time axis in the reading column and notes below tasks in the rail",
+      "category": "obsolete-or-invalid-test-assertion",
+      "passingTestName": "Daytime keeps the shared time axis in the reading column and notes below tasks in the rail",
+      "result": "pass",
+      "disposition": "Assert common docked side-region ancestor, notes after tasks, and axis outside rail; allow current nesting."
+    },
+    {
+      "originalIndex": 15,
+      "file": "tests/frontend/docked-sidebars.test.ts",
+      "originalName": "Today quick schedule shows its current date and time within the existing row",
+      "category": "layout-needs-current-scenario-review",
+      "passingTestName": "Today quick schedule shows its current date and time with readable entry and action targets",
+      "result": "pass",
+      "disposition": "Complete current controller and actual Tasks readiness/clock; readable name, schedule/action alignment and no clipping/overflow. Today name may wrap above actions. Also cover full future-date label."
+    },
+    {
+      "originalIndex": 16,
+      "file": "tests/frontend/docked-sidebars.test.ts",
+      "originalName": "Tasks quick schedule shows its current date and time within the existing row",
+      "category": "layout-needs-current-scenario-review",
+      "passingTestName": "Tasks quick schedule shows its current date and time with readable entry and action targets",
+      "result": "pass",
+      "disposition": "Complete current controller and actual Tasks readiness/clock; readable name, schedule/action alignment and no clipping/overflow. Today name may wrap above actions. Also cover full future-date label."
+    },
+    {
+      "originalIndex": 17,
+      "file": "tests/frontend/lived-day-rendering-regressions.test.ts",
+      "originalName": "saving a note keeps the open pending Today Task editor and its actual field values",
+      "category": "incomplete-test-harness",
+      "passingTestName": "saving a note keeps the open pending Today Task editor and its actual field values",
+      "result": "pass",
+      "disposition": "Return null for absent fake form controls, including folder target; preserve actual edited field values and Vault binding isolation."
+    },
+    {
+      "originalIndex": 18,
+      "file": "tests/frontend/lived-day-rendering-regressions.test.ts",
+      "originalName": "saving a note keeps the open completed Today Task editor and its actual field values",
+      "category": "incomplete-test-harness",
+      "passingTestName": "saving a note keeps the open completed Today Task editor and its actual field values",
+      "result": "pass",
+      "disposition": "Return null for absent fake form controls, including folder target; preserve actual edited field values and Vault binding isolation."
+    },
+    {
+      "originalIndex": 19,
+      "file": "tests/frontend/lived-day-rendering-regressions.test.ts",
+      "originalName": "note refresh keeps an untouched open editor without creating a false dirty draft; new Vault binding stays closed",
+      "category": "incomplete-test-harness",
+      "passingTestName": "note refresh keeps an untouched open editor without creating a false dirty draft; new Vault binding stays closed",
+      "result": "pass",
+      "disposition": "Return null for absent fake form controls, including folder target; preserve actual edited field values and Vault binding isolation."
+    },
+    {
+      "originalIndex": 20,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "clicking an editable Today marker opens the time editor without scrolling to the detail form",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "clicking an editable Today marker opens the time editor without scrolling to the detail form",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 21,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production fuzzy editor retains approximation and renders the saved readback",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "production fuzzy editor retains approximation and renders the saved readback",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 22,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production precision choices explicitly convert approximate, exact range and exact point without fabricated durations",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "production precision choices explicitly convert approximate, exact range and exact point without fabricated durations",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 23,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production inherited-heading editor uses the captured source and revision while confirmed facts stay unchanged",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "production inherited-heading editor uses the captured source and revision while confirmed facts stay unchanged",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 24,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production uncertain-save editor retains values, disables repeated submission and offers reread",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "production uncertain-save editor retains values, disables repeated submission and offers reread",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 25,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production exact-point conversion sends no former range end and survives a fresh page",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "production exact-point conversion sends no former range end and survives a fresh page",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 26,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production failed manual save rereads unchanged source and requires explicit retry with retained values and fresh revision",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "production failed manual save rereads unchanged source and requires explicit retry with retained values and fresh revision",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 27,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production failed manual save cannot rebind changed source by matching title or position",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "production failed manual save cannot rebind changed source by matching title or position",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 28,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production unchanged untimed plan reread enables explicit timing retry after a failed save",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "current untimed plan stays read-only while legacy editor recovery retains explicit timing retry",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 29,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production point editors hide unused End geometry and retain controls through language refresh",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "production point editors hide unused End geometry and retain controls through language refresh",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 30,
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "originalName": "production saved readback diagnostic follows English-Chinese-English without replay or losing edit values",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "production saved readback diagnostic follows English-Chinese-English without replay or losing edit values",
+      "result": "pass",
+      "disposition": "Ten cases use current marker/modal with precision/save/readback/uncertain/retry/source-binding/language protection. Broad periods have no invented approximate clock. Untimed UI remains read-only; retain its legacy recovery through a temporary full-module controller bridge, without claiming a reachable UI action."
+    },
+    {
+      "originalIndex": 31,
+      "file": "tests/frontend/startup-interface-language.test.ts",
+      "originalName": "persisted English startup refreshes existing axis controls and derived times without replacing interaction state",
+      "category": "obsolete-ui-test-path",
+      "passingTestName": "persisted English startup refreshes existing axis controls and derived times without replacing interaction state",
+      "result": "pass",
+      "disposition": "Current marker/modal retains real nonzero reading position, live nodes, stack state and field edits through bilingual startup. Preserve source text/data and single Today read."
+    },
+    {
+      "originalIndex": 32,
+      "file": "tests/frontend/task-history-editing.test.ts",
+      "originalName": "saving a ordinary Today note preserves a paged completed-task correction and its rollover guard",
+      "category": "incomplete-test-harness",
+      "passingTestName": "saving a ordinary Today note preserves a paged completed-task correction and its rollover guard",
+      "result": "pass",
+      "disposition": "Supply popup/timeline presentation boundaries; preserve paged editor identity, unsaved completion correction, note readback and rollover guard."
+    },
+    {
+      "originalIndex": 33,
+      "file": "tests/frontend/task-history-editing.test.ts",
+      "originalName": "saving a exercise Today note preserves a paged completed-task correction and its rollover guard",
+      "category": "incomplete-test-harness",
+      "passingTestName": "saving a exercise Today note preserves a paged completed-task correction and its rollover guard",
+      "result": "pass",
+      "disposition": "Supply popup/timeline presentation boundaries; preserve paged editor identity, unsaved completion correction, note readback and rollover guard."
+    },
+    {
+      "originalIndex": 34,
+      "file": "tests/frontend/task-history-render.test.ts",
+      "originalName": "default Tasks rendering removes completed and abandoned rows from the main list immediately",
+      "category": "incomplete-test-harness",
+      "passingTestName": "default Tasks rendering removes completed and abandoned rows from the main list immediately",
+      "result": "pass",
+      "disposition": "Supply focus/filter/tree/quick-create state and realistic row dataset/style; preserve folding, 30/60/65 pagination, stable identity and write-availability protection."
+    },
+    {
+      "originalIndex": 35,
+      "file": "tests/frontend/task-history-render.test.ts",
+      "originalName": "expanded history renders thirty tasks at a time, grouped by actual completion date",
+      "category": "incomplete-test-harness",
+      "passingTestName": "expanded history renders thirty tasks at a time, grouped by actual completion date",
+      "result": "pass",
+      "disposition": "Supply focus/filter/tree/quick-create state and realistic row dataset/style; preserve folding, 30/60/65 pagination, stable identity and write-availability protection."
+    },
+    {
+      "originalIndex": 36,
+      "file": "tests/frontend/task-history-render.test.ts",
+      "originalName": "reopening a task brings its same identity back into the main list",
+      "category": "incomplete-test-harness",
+      "passingTestName": "reopening a task brings its same identity back into the main list",
+      "result": "pass",
+      "disposition": "Supply focus/filter/tree/quick-create state and realistic row dataset/style; preserve folding, 30/60/65 pagination, stable identity and write-availability protection."
+    },
+    {
+      "originalIndex": 37,
+      "file": "tests/frontend/task-history-render.test.ts",
+      "originalName": "saved Task links reveal old completed identities beyond the first history page",
+      "category": "incomplete-test-harness",
+      "passingTestName": "saved Task links reveal old completed identities beyond the first history page",
+      "result": "pass",
+      "disposition": "Supply focus/filter/tree/quick-create state and realistic row dataset/style; preserve folding, 30/60/65 pagination, stable identity and write-availability protection."
+    },
+    {
+      "originalIndex": 38,
+      "file": "tests/frontend/task-history-render.test.ts",
+      "originalName": "Today uses the actual renderer to fold completed tasks and count pending only",
+      "category": "incomplete-test-harness",
+      "passingTestName": "Today uses the actual renderer to fold completed tasks and count pending only",
+      "result": "pass",
+      "disposition": "Supply focus/filter/tree/quick-create state and realistic row dataset/style; preserve folding, 30/60/65 pagination, stable identity and write-availability protection."
+    },
+    {
+      "originalIndex": 39,
+      "file": "tests/frontend/task-history-render.test.ts",
+      "originalName": "history expansion reads current write availability and pagination keeps editors unique",
+      "category": "incomplete-test-harness",
+      "passingTestName": "history expansion reads current write availability and pagination keeps editors unique",
+      "result": "pass",
+      "disposition": "Supply focus/filter/tree/quick-create state and realistic row dataset/style; preserve folding, 30/60/65 pagination, stable identity and write-availability protection."
+    },
+    {
+      "originalIndex": 40,
+      "file": "tests/frontend/today-time-axis.test.ts",
+      "originalName": "time axis markup uses one full-width lane for arrangement and fact cards",
+      "category": "obsolete-or-invalid-test-assertion",
+      "passingTestName": "time axis markup uses one full-width lane for arrangement and fact cards",
+      "result": "pass",
+      "disposition": "Assert trigger controls current whole Today side-region; retain single-lane containment/accessibility checks."
+    }
+  ]
+}

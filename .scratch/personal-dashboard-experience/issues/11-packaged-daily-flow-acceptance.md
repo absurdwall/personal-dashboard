@@ -1,5 +1,8 @@
 # 11: 验证同一打包版本的完整日常流程
 
+> Canonical tracker: [PDEX-11 · GitHub #100](https://github.com/absurdwall/personal-dashboard/issues/100). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 在同一个打包 App 中完成计划阅读/调整、Task 时间分配与勾选、整月查看、命令补全和晚间复盘入口的一次可核对流程，保留落盘、重开与实际 UI 证据。
 
 **Blocked by:** 03 — 保持早间文字与可读的统一白天时间轴; 04 — 拖动计划并调整结束时间; 05 — Tasks 使用清晰勾选列表与所选详情; 07 — 在白天时间轴选区创建与移动 Task; 08 — Calendar 完整紧凑月历与记录状态; 09 — Collaboration 减负与 slash 命令补全; 10 — Evening 一键进入带日期的复盘草稿

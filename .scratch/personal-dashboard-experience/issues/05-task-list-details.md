@@ -1,5 +1,8 @@
 # 05: Tasks 使用清晰勾选列表与所选详情
 
+> Canonical tracker: [PDEX-05 · GitHub #94](https://github.com/absurdwall/personal-dashboard/issues/94). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户在保留清单侧栏的简洁任务列表中勾选完成，点击任务查看和编辑详情；长内容与次要操作集中于详情，窄窗口仍可使用。
 
 **Blocked by:** None

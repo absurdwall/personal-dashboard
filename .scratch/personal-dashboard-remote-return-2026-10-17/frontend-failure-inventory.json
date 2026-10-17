@@ -1,0 +1,405 @@
+{
+  "date": "2026-10-17",
+  "investigatedHead": "579f0ab30ce3c4e1043ed88304cc658029304d72",
+  "baseline": "e2102da",
+  "originalRun": {
+    "passed": 496,
+    "failed": 40,
+    "logSha256": "fde677f101806a4a698794b24679e638485b89f9614ee2966337f979920d5a78"
+  },
+  "sourceIdentityChecks": {
+    "frontend": {
+      "baseline": "cd63614403886b9fa4908466878c8f1f9337fd1b",
+      "current": "cd63614403886b9fa4908466878c8f1f9337fd1b"
+    },
+    "tests/frontend": {
+      "baseline": "8a1742d7a7a073f5d7fb1dfdb68d575727f16904",
+      "current": "8a1742d7a7a073f5d7fb1dfdb68d575727f16904"
+    },
+    "package.json": {
+      "baseline": "7ce7f9c7615fb5685cf7ce0a795d2650ea4bb804",
+      "current": "7ce7f9c7615fb5685cf7ce0a795d2650ea4bb804"
+    },
+    "package-lock.json": {
+      "baseline": "e25e7e719ed4fbf6a5896ca677082b31c97c1b63",
+      "current": "e25e7e719ed4fbf6a5896ca677082b31c97c1b63"
+    },
+    "tsconfig.json": {
+      "baseline": "5312d402c619e3fdc18d8131a3412aeed3aba630",
+      "current": "5312d402c619e3fdc18d8131a3412aeed3aba630"
+    },
+    "scripts/prepare-frontend.mjs": {
+      "baseline": "f5c3431410b73f16e72c823d103aa0dc41be3efb",
+      "current": "f5c3431410b73f16e72c823d103aa0dc41be3efb"
+    }
+  },
+  "categoryCounts": {
+    "obsolete-or-invalid-test-assertion": 6,
+    "incomplete-test-harness": 19,
+    "layout-needs-current-scenario-review": 3,
+    "obsolete-ui-test-path": 12
+  },
+  "scope": "Diagnosis only; no product/test fix and no new full-suite green claim. Thirty original failures individually reproduced on baseline; ten plan cases share a demonstrably obsolete bootstrap and were not individually revalidated.",
+  "failures": [
+    {
+      "file": "tests/frontend/collaboration-command-completion.test.ts",
+      "line": 125,
+      "name": "long help opens on demand while draft, dictation preview and real status surfaces remain exposed",
+      "category": "obsolete-or-invalid-test-assertion",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-command-completion.test.ts",
+      "line": 163,
+      "name": "selected slash candidate retains readable foreground on its soft background",
+      "category": "obsolete-or-invalid-test-assertion",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: selected candidate rgb(35, 39, 36) on rgba(0, 0, 0, 0): contrast 1.39",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "line": 301,
+      "name": "saved incomplete draft keeps its warning across successful Vault reset and return",
+      "category": "incomplete-test-harness",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: real reset clears text caches after safe save",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "line": 366,
+      "name": "old discuss-create response after a completed Vault switch cannot rebound old caches or save in B",
+      "category": "incomplete-test-harness",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "line": 366,
+      "name": "old discuss-date response after a completed Vault switch cannot rebound old caches or save in B",
+      "category": "incomplete-test-harness",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "line": 366,
+      "name": "old create response after a completed Vault switch cannot rebound old caches or save in B",
+      "category": "incomplete-test-harness",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "line": 391,
+      "name": "old creation failure completion cannot publish status under the new Vault",
+      "category": "incomplete-test-harness",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-draft-refresh.test.ts",
+      "line": 391,
+      "name": "old creation refresh completion cannot publish status under the new Vault",
+      "category": "incomplete-test-harness",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-layout.test.ts",
+      "line": 389,
+      "name": "single-column Collaboration keeps the composer visible when five-session history is expanded at 640×756",
+      "category": "layout-needs-current-scenario-review",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: {\"viewport\":{\"width\":640,\"height\":756},\"mode\":\"single\",\"accentColor\":\"#2d6c57\",\"shell\":{\"top\":67.1875,\"bottom\":756,\"left\":140,\"right\":640,\"width\":500,\"height\":688.8125},\"regions\":{\"top\":67.1875,\"bottom\":756,\"left\":140,\"right\":640,\"width\":500,\"height\":688.8125},\"information\":{\"top\":67.1875,\"bottom\":756,\"left\":140,\"right\":640,\"width\":500,\"height\":688.8125,\"clientHeight\":689,\"scrollHeight\":689,\"scrollTop\":0,\"scrolledToChatForNarrowViewport\":false},\"destination\":{\"top\":67.1875,\"bottom\":756,\"left\":152,\"right\":611,\"width\":459,\"height\":688.8125},\"primary\":{\"top\":596.59375,\"bottom\":755,\"left\":176,\"right\":587,\"width\":411,\"height\":158.40625},\"chat\":{\"top\":596.59375,\"bottom\":755,\"left\":176,\"right\":587,\"width\":411,\"height\":158.40625,\"scrollHeight\":304,\"clientHeight\":156,\"scrollTop\":0,\"overflowY\":\"hidden\"},\"warningPressure\":false,\"warningText\":\"\",\"warningDisclosureOpen\":false,\"capabilityDisclosure\":{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0,\"width\":0,\"height\":0,\"scrollHeight\":0,\"clientHeight\":0,\"overflowY\":\"auto\"},\"accountStatusText\":\"\",\"language\":{\"document\":\"en\",\"messageLabel\":\"Message\",\"helpLabel\":\"Input and saving details\",\"sendLabel\":\"Send\"},\"runStatus\":{\"top\":652.1875,\"bottom\":669.78125,\"left\":185.796875,\"right\":577.203125,\"width\":391.40625,\"height\":17.59375},\"taskNotice\":{\"scrollHeight\":0,\"clientHeight\":0,\"overflowY\":\"auto\",\"tabIndex\":0},\"hitTargets\":{\"textarea\":{\"rect\":{\"top\":762.84375,\"bottom\":830.875,\"left\":186.796875,\"right\":576.203125,\"width\":389.40625,\"height\":68.03125},\"inBounds\":false,\"pointerHit\":false},\"microphone\":{\"rect\":{\"top\":837.015625,\"bottom\":873.015625,\"left\":464.078125,\"right\":506.859375,\"width\":42.78125,\"height\":36},\"inBounds\":false,\"pointerHit\":false},\"send\":{\"rect\":{\"top\":837.015625,\"bottom\":873.015625,\"left\":513.25,\"right\":571.40625,\"width\":58.15625,\"height\":36},\"inBounds\":false,\"pointerHit\":false},\"help\":{\"rect\":{\"top\":881.203125,\"bottom\":893.203125,\"left\":185.796875,\"right\":577.203125,\"width\":391.40625,\"height\":12},\"inBounds\":false,\"pointerHit\":false}},\"voiceCancelVisible\":false,\"status\":{\"top\":571,\"bottom\":595,\"left\":176,\"right\":587,\"width\":411,\"height\":24,\"children\":[{\"top\":571.96875,\"bottom\":594.03125,\"left\":176,\"right\":270.515625,\"width\":94.515625,\"height\":22.0625,\"scrollHeight\":22,\"clientHeight\":22,\"overflowY\":\"auto\",\"tabIndex\":0},{\"top\":583,\"bottom\":583,\"left\":274.515625,\"right\":377.265625,\"width\":102.75,\"height\":0,\"scrollHeight\":0,\"clientHeight\":0,\"overflowY\":\"auto\",\"tabIndex\":-1},{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0,\"width\":0,\"height\":0,\"scrollHeight\":0,\"clientHeight\":0,\"overflowY\":\"visible\",\"tabIndex\":-1},{\"top\":571,\"bottom\":595,\"left\":500.359375,\"right\":587,\"width\":86.640625,\"height\":24,\"scrollHeight\":24,\"clientHeight\":24,\"overflowY\":\"visible\",\"tabIndex\":0}]},\"history\":{\"top\":\"59.59375px\",\"bottom\":\"18.21875px\",\"left\":195,\"right\":579,\"width\":384,\"height\":80.1875,\"hidden\":false,\"scrollHeight\":436,\"clientHeight\":78,\"overflowY\":\"auto\",\"position\":\"absolute\"},\"messageList\":{\"top\":673.78125,\"bottom\":737.78125,\"left\":185.796875,\"right\":577.203125,\"width\":391.40625,\"height\":64,\"clientHeight\":64,\"scrollHeight\":3805,\"visibleHeight\":64,\"overflowY\":\"auto\"},\"composer\":{\"top\":737.78125,\"bottom\":893.203125,\"left\":185.796875,\"right\":577.203125,\"width\":391.40625,\"height\":155.421875,\"children\":[{\"id\":\"collaboration-composer-date\",\"className\":\"collaboration-target-date\",\"height\":0,\"top\":0,\"bottom\":0,\"display\":\"none\"},{\"id\":\"\",\"className\":\"\",\"height\":11.875,\"top\":745.96875,\"bottom\":757.84375,\"display\":\"block\"},{\"id\":\"\",\"className\":\"collaboration-composer-input\",\"height\":115.359375,\"top\":761.84375,\"bottom\":877.203125,\"display\":\"block\"},{\"id\":\"collaboration-composer-status\",\"className\":\"collaboration-composer-status\",\"height\":0,\"top\":0,\"bottom\":0,\"display\":\"none\"},{\"id\":\"\",\"className\":\"collaboration-help\",\"height\":12,\"top\":881.203125,\"bottom\":893.203125,\"display\":\"block\"},{\"id\":\"collaboration-voice-preview\",\"className\":\"collaboration-voice-preview\",\"height\":0,\"top\":0,\"bottom\":0,\"display\":\"none\"}]},\"textarea\":{\"top\":762.84375,\"bottom\":830.875,\"left\":186.796875,\"right\":576.203125,\"width\":389.40625,\"height\":68.03125,\"scrollHeight\":68,\"clientHeight\":68},\"draftValue\":\"\",\"send\":{\"top\":837.015625,\"bottom\":873.015625,\"left\":513.25,\"right\":571.40625,\"width\":58.15625,\"height\":36},\"composerHelpOpen\":false,\"voicePreview\":{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0,\"width\":0,\"height\":0,\"scrollHeight\":0,\"clientHeight\":0,\"text\":\"\"},\"contextClosedByCloseControl\":false,\"closeControlFocusReturned\":false,\"contextFirstCardInitiallyVisible\":false,\"contextFirstBodyVisibleHeight\":0,\"contextFirstBodyPointerHit\":false,\"contextFirstCardBounds\":{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0,\"width\":0,\"height\":0},\"contextFirstBodyBounds\":{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0,\"width\":0,\"height\":0},\"contextBottomGap\":755,\"currentWork\":{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0,\"width\":0,\"height\":0,\"hidden\":true,\"scrollHeight\":0,\"clientHeight\":0,\"scrollTop\":0,\"overflowY\":\"auto\",\"position\":\"absolute\",\"parentIsChat\":true,\"closeButton\":true},\"chatSurface\":{\"background\":\"rgb(255, 255, 255)\",\"borderStyle\":\"solid\",\"borderWidth\":\"1px\"},\"retainedFailure\":true,\"globalHeaderHidden\":true,\"localHeaderInsideInformation\":true,\"activityDateInsideLocalHeader\":true,\"retainedStatusInChat\":true,\"contextAnchoredToChat\":true,\"contextExtendsUnderComposer\":true,\"composerInChat\":false,\"composerInViewport\":false,\"noSessionInput\":{\"disabled\":false,\"hasFocus\":false},\"titleStyles\":{\"today\":{\"fontFamily\":\"Georgia, Times New Roman, serif\",\"fontSize\":\"32px\",\"lineHeight\":\"31.360001px\"},\"tasks\":{\"fontFamily\":\"Georgia, Times New Roman, serif\",\"fontSize\":\"32px\",\"lineHeight\":\"31.360001px\"},\"calendar\":{\"fontFamily\":\"Georgia, Times New Roman, serif\",\"fontSize\":\"32px\",\"lineHeight\":\"31.360001px\"},\"habits\":{\"fontFamily\":\"Georgia, Times New Roman, serif\",\"fontSize\":\"32px\",\"lineHeight\":\"31.360001px\"},\"collaboration\":{\"fontFamily\":\"Georgia, Times New Roman, serif\",\"fontSize\":\"32px\",\"lineHeight\":\"31.360001px\"}},\"descriptionStyles\":{\"today\":{\"fontFamily\":\"-apple-system, BlinkMacSystemFont, SF Pro Text, Segoe UI, sans-serif\",\"fontSize\":\"11.52px\",\"lineHeight\":\"17.280001px\"},\"tasks\":{\"fontFamily\":\"-apple-system, BlinkMacSystemFont, SF Pro Text, Segoe UI, sans-serif\",\"fontSize\":\"11.52px\",\"lineHeight\":\"17.280001px\"},\"collaboration\":{\"fontFamily\":\"-apple-system, BlinkMacSystemFont, SF Pro Text, Segoe UI, sans-serif\",\"fontSize\":\"11.52px\",\"lineHeight\":\"17.856001px\"}},\"pageFrames\":{\"today\":{\"paddingTop\":\"24.799999px\",\"paddingRight\":\"12.8px\",\"paddingBottom\":\"48px\",\"paddingLeft\":\"12.8px\",\"headerMarginBottom\":\"16px\",\"headerPaddingBottom\":\"16px\",\"headerBorderBottomWidth\":\"1px\",\"bounds\":{\"left\":152,\"right\":611,\"width\":459}},\"tasks\":{\"paddingTop\":\"24.799999px\",\"paddingRight\":\"24px\",\"paddingBottom\":\"48px\",\"paddingLeft\":\"24px\",\"headerMarginBottom\":\"16px\",\"headerPaddingBottom\":\"16px\",\"headerBorderBottomWidth\":\"1px\",\"bounds\":{\"left\":152,\"right\":611,\"width\":459}},\"calendar\":{\"paddingTop\":\"24.799999px\",\"paddingRight\":\"24px\",\"paddingBottom\":\"48px\",\"paddingLeft\":\"24px\",\"headerMarginBottom\":\"16px\",\"headerPaddingBottom\":\"16px\",\"headerBorderBottomWidth\":\"1px\",\"bounds\":{\"left\":152,\"right\":611,\"width\":459}},\"collaboration\":{\"paddingTop\":\"24.799999px\",\"paddingRight\":\"24px\",\"paddingBottom\":\"0px\",\"paddingLeft\":\"24px\",\"headerMarginBottom\":\"16px\",\"headerPaddingBottom\":\"16px\",\"headerBorderBottomWidth\":\"1px\",\"bounds\":{\"left\":152,\"right\":611,\"width\":459}}},\"messageScrollTop\":3741,\"composerTopAfterMessageScroll\":737.78125,\"historyFloatsAboveComposer\":true,\"composerTopAfterMessageScrollDifference\":0,\"interactionTargets\":[{\"id\":\"collaboration-message-draft\",\"bounds\":{\"top\":685.84375,\"bottom\":753.875,\"left\":186.796875,\"right\":576.203125,\"width\":389.40625,\"height\":68.03125},\"visible\":true,\"withinChat\":true,\"pointerHit\":true,\"focused\":true,\"disabled\":false},{\"id\":\"collaboration-send-message\",\"bounds\":{\"top\":718.015625,\"bottom\":754.015625,\"left\":513.25,\"right\":571.40625,\"width\":58.15625,\"height\":36},\"visible\":true,\"withinChat\":true,\"pointerHit\":true,\"focused\":true,\"disabled\":false},{\"id\":\"collaboration-new-session\",\"bounds\":{\"top\":667.578125,\"bottom\":710.578125,\"left\":455.828125,\"right\":554.609375,\"width\":98.78125,\"height\":43},\"visible\":true,\"withinChat\":true,\"pointerHit\":false,\"focused\":true,\"disabled\":false},{\"id\":\"collaboration-session-button\",\"bounds\":{\"top\":677.21875,\"bottom\":735.25,\"left\":206.390625,\"right\":554.609375,\"width\":348.21875,\"height\":58.03125},\"visible\":true,\"withinChat\":true,\"pointerHit\":false,\"focused\":true,\"disabled\":false}]}",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-native-file-refresh.test.ts",
+      "line": 111,
+      "name": "opening Tasks during a Collaboration turn keeps the source watch and request target",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: compactScheduleTransactions is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-panels.test.ts",
+      "line": 69,
+      "name": "chat context opens and closes in place while session controls retain their width behavior",
+      "category": "obsolete-or-invalid-test-assertion",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-short-record.test.ts",
+      "line": 59,
+      "name": "a delayed canonical read preserves the explicitly selected record phase",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: closeTodayAxisFactPopup is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/collaboration-surface.test.ts",
+      "line": 56,
+      "name": "Collaboration keeps its header compact, displays the configured model, and hides account-plan details",
+      "category": "obsolete-or-invalid-test-assertion",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /id=\"collaboration-toggle-context\"[^>]*class=\"sidebar-toggle collaboration-sidebar-toggle\"/. Input:",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/daytime-rail-layout.test.ts",
+      "line": 21,
+      "name": "Daytime keeps the shared time axis in the reading column and notes below tasks in the rail",
+      "category": "obsolete-or-invalid-test-assertion",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: Daily note and Day tasks must share the same right column",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/docked-sidebars.test.ts",
+      "line": 228,
+      "name": "Today quick schedule shows its current date and time within the existing row",
+      "category": "layout-needs-current-scenario-review",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: {\"hidden\":false,\"text\":\"Today · 09:30\",\"labelFontSize\":10.88,\"labelClientWidth\":76,\"labelScrollWidth\":76,\"title\":\"Schedule date and time · Mon, Aug 10 · 09:30\",\"aria\":\"Schedule date and time · Mon, Aug 10 · 09:30\",\"width\":126,\"rects\":[{\"top\":1335.359375,\"height\":21,\"width\":14},{\"top\":1329.859375,\"height\":32,\"width\":126},{\"top\":1329.859375,\"height\":32,\"width\":38.265625}],\"overflow\":false,\"calls\":[{\"command\":\"application_identity\"},{\"command\":\"interface_language_preferences\"},{\"command\":\"today_view\"},{\"command\":\"appearance_preferences\"}]}",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/docked-sidebars.test.ts",
+      "line": 240,
+      "name": "Tasks quick schedule shows its current date and time within the existing row",
+      "category": "layout-needs-current-scenario-review",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: {\"hidden\":false,\"text\":\"Mon, Aug 10 · 09:30\",\"labelFontSize\":10.88,\"labelClientWidth\":64,\"labelScrollWidth\":110,\"title\":\"Schedule date and time · Mon, Aug 10 · 09:30\",\"aria\":\"Schedule date and time · Mon, Aug 10 · 09:30\",\"width\":100.1875,\"rects\":[{\"top\":1000.65625,\"height\":34,\"width\":180.046875},{\"top\":1000.65625,\"height\":34,\"width\":100.1875},{\"top\":1000.65625,\"height\":34,\"width\":38.265625}],\"overflow\":false,\"calls\":[{\"command\":\"application_identity\"},{\"command\":\"interface_language_preferences\"},{\"command\":\"today_view\"},{\"command\":\"appearance_preferences\"},{\"command\":\"tasks_view\"},{\"command\":\"today_clock\"}]}",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/lived-day-rendering-regressions.test.ts",
+      "line": 287,
+      "name": "saving a note keeps the open pending Today Task editor and its actual field values",
+      "category": "incomplete-test-harness",
+      "originalFailure": "TypeError: folderTarget.querySelector is not a function",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/lived-day-rendering-regressions.test.ts",
+      "line": 287,
+      "name": "saving a note keeps the open completed Today Task editor and its actual field values",
+      "category": "incomplete-test-harness",
+      "originalFailure": "TypeError: folderTarget.querySelector is not a function",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/lived-day-rendering-regressions.test.ts",
+      "line": 295,
+      "name": "note refresh keeps an untouched open editor without creating a false dirty draft; new Vault binding stays closed",
+      "category": "incomplete-test-harness",
+      "originalFailure": "TypeError: folderTarget.querySelector is not a function",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 57,
+      "name": "clicking an editable Today marker opens the time editor without scrolling to the detail form",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54217/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-WsZIa4/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 73,
+      "name": "production fuzzy editor retains approximation and renders the saved readback",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54288/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-r4a9bU/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 90,
+      "name": "production precision choices explicitly convert approximate, exact range and exact point without fabricated durations",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54317/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-Lj7oTH/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 112,
+      "name": "production inherited-heading editor uses the captured source and revision while confirmed facts stay unchanged",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54342/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-q6DzgH/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 126,
+      "name": "production uncertain-save editor retains values, disables repeated submission and offers reread",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54470/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-idvKcA/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 137,
+      "name": "production exact-point conversion sends no former range end and survives a fresh page",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54538/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-eTukIx/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 152,
+      "name": "production failed manual save rereads unchanged source and requires explicit retry with retained values and fresh revision",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54637/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-nb5zWS/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 171,
+      "name": "production failed manual save cannot rebind changed source by matching title or position",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54649/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-JOHlU9/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 187,
+      "name": "production unchanged untimed plan reread enables explicit timing retry after a failed save",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54668/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-EPu2be/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 211,
+      "name": "production point editors hide unused End geometry and retain controls through language refresh",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54691/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-ty2BO7/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/plan-time-editor.test.ts",
+      "line": 225,
+      "name": "production saved readback diagnostic follows English-Chinese-English without replay or losing edit values",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-plan-editor.swift http://127.0.0.1:54707/ /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-plan-dom-yIZgpM/check.js 1100",
+      "productFixApplied": false,
+      "baselineReproduction": "shared obsolete bootstrap demonstrated; individual scenario not rerun after SDK mismatch"
+    },
+    {
+      "file": "tests/frontend/startup-interface-language.test.ts",
+      "line": 10,
+      "name": "persisted English startup refreshes existing axis controls and derived times without replacing interaction state",
+      "category": "obsolete-ui-test-path",
+      "originalFailure": "Error: Command failed: swift /Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/tests/frontend/helpers/rendered-evening-entry.swift /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-startup-language-DYKRSy/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-startup-language-DYKRSy/check.js",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/task-history-editing.test.ts",
+      "line": 6,
+      "name": "saving a ordinary Today note preserves a paged completed-task correction and its rollover guard",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: closeTodayAxisTaskPopup is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/task-history-editing.test.ts",
+      "line": 6,
+      "name": "saving a exercise Today note preserves a paged completed-task correction and its rollover guard",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: closeTodayAxisTaskPopup is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/task-history-render.test.ts",
+      "line": 11,
+      "name": "default Tasks rendering removes completed and abandoned rows from the main list immediately",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: taskHistoryFocusDisclosureRequest is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/task-history-render.test.ts",
+      "line": 27,
+      "name": "expanded history renders thirty tasks at a time, grouped by actual completion date",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: taskHistoryFocusDisclosureRequest is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/task-history-render.test.ts",
+      "line": 47,
+      "name": "reopening a task brings its same identity back into the main list",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: taskHistoryFocusDisclosureRequest is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/task-history-render.test.ts",
+      "line": 77,
+      "name": "saved Task links reveal old completed identities beyond the first history page",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: taskHistoryFocusDisclosureRequest is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/task-history-render.test.ts",
+      "line": 87,
+      "name": "Today uses the actual renderer to fold completed tasks and count pending only",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: closeTodayAxisTaskPopup is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/task-history-render.test.ts",
+      "line": 99,
+      "name": "history expansion reads current write availability and pagination keeps editors unique",
+      "category": "incomplete-test-harness",
+      "originalFailure": "ReferenceError: taskHistoryFocusDisclosureRequest is not defined",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    },
+    {
+      "file": "tests/frontend/today-time-axis.test.ts",
+      "line": 206,
+      "name": "time axis markup uses one full-width lane for arrangement and fact cards",
+      "category": "obsolete-or-invalid-test-assertion",
+      "originalFailure": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:",
+      "productFixApplied": false,
+      "baselineReproduction": "same original failure reproduced"
+    }
+  ]
+}

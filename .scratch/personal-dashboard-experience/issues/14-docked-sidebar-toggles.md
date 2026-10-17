@@ -1,5 +1,8 @@
 # PDEX-14: Docked sidebar toggles
 
+> Canonical tracker: [PDEX-14 · GitHub #103](https://github.com/absurdwall/personal-dashboard/issues/103). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 ID: PDEX-14
 Type: ticket
 Parent: [PDEX-FOLLOWUP-02](../sidebar-schedule-spec-2026-10-11.md)

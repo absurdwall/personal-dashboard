@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { stripTypeScriptTypes } from "node:module";
 
-function webKit(script: string): any {
+function webKit(script: string, candidates?: readonly string[]): any {
   const directory = mkdtempSync(join(tmpdir(), "pdex-command-dom-"));
   try {
     const html = readFileSync(new URL("../../frontend/index.html", import.meta.url), "utf8")
@@ -24,7 +24,7 @@ function webKit(script: string): any {
       const composer = document.querySelector('#collaboration-composer');
       composer.addEventListener('submit', event => { event.preventDefault(); submitted++; });
       input.addEventListener('input', () => edited.push(input.value));
-      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => composer.requestSubmit());
+      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => composer.requestSubmit()${candidates ? `, () => ${JSON.stringify(candidates)}` : ""});
       const type = text => { input.value = text; input.focus(); input.setSelectionRange(text.length, text.length); input.dispatchEvent(new Event('input', { bubbles: true })); };
       const key = (key, options = {}) => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }));
       ${script}
@@ -66,6 +66,30 @@ test("slash filtering, arrow selection, Tab and pointer completion retain editab
   assert.equal(result.workflow, false);
 });
 
+test("multiple legal test candidates cycle with arrows and composition keeps normal key ownership", { skip: process.platform !== "darwin" }, () => {
+  const result = webKit(`
+    type('/r'); key('ArrowDown'); const second=menu.querySelector('[aria-selected="true"]')?.textContent;
+    key('ArrowDown'); const third=menu.querySelector('[aria-selected="true"]')?.textContent;
+    key('ArrowDown'); const wrapped=menu.querySelector('[aria-selected="true"]')?.textContent;
+    key('ArrowUp'); const reverseWrapped=menu.querySelector('[aria-selected="true"]')?.textContent;
+    input.dispatchEvent(new CompositionEvent('compositionstart'));
+    const arrowNotConsumed=key('ArrowDown'); const closedDuringComposition=menu.hidden;
+    input.dispatchEvent(new CompositionEvent('compositionend'));
+    const restored=input.getAttribute('aria-activedescendant'); key('Enter');
+    return JSON.stringify({second,third,wrapped,reverseWrapped,arrowNotConsumed,closedDuringComposition,restored,draft:input.value,submitted,hidden:menu.hidden});
+  `, ["/retro", "/review", "/restore"]);
+  assert.equal(result.second, "/review Personal retro");
+  assert.equal(result.third, "/restore Personal retro");
+  assert.equal(result.wrapped, "/retro Personal retro");
+  assert.equal(result.reverseWrapped, "/restore Personal retro");
+  assert.equal(result.arrowNotConsumed, true);
+  assert.equal(result.closedDuringComposition, true);
+  assert.equal(result.restored, "collaboration-command-menu-2");
+  assert.equal(result.draft, "/restore ");
+  assert.equal(result.submitted, 0);
+  assert.equal(result.hidden, true);
+});
+
 test("Escape closes discovery, ordinary slash text stays ordinary, and deliberate send still works", { skip: process.platform !== "darwin" }, () => {
   const result = webKit(`
     type('/'); key('Escape'); const closed = menu.hidden; key('Enter'); const afterEnter = submitted;
@@ -103,11 +127,12 @@ test("long help opens on demand while draft, dictation preview and real status s
     const help = document.querySelector('.collaboration-help'); const collapsed = !help.open; help.querySelector('summary').click();
     const inputHelp = document.querySelector('#collaboration-voice-privacy').closest('details');
     const preview = document.querySelector('#collaboration-voice-preview'); const status = document.querySelector('#collaboration-voice-status');
-    type('/r'); input.dispatchEvent(new FocusEvent('blur')); return JSON.stringify({collapsed, opened: help.open, inputHelpClosed: !inputHelp.open, previewFolded: !!preview.closest('details'), statusFolded: !!status.closest('details'), menuClosed: menu.hidden, draft: input.value, submitted});
+    type('/r'); input.dispatchEvent(new FocusEvent('blur')); return JSON.stringify({collapsed, opened: help.open, privacyInHelp: inputHelp === help, privacyVisible: document.querySelector('#collaboration-voice-privacy').getClientRects().length > 0, previewFolded: !!preview.closest('details'), statusFolded: !!status.closest('details'), menuClosed: menu.hidden, draft: input.value, submitted});
   `);
   assert.equal(result.collapsed, true);
   assert.equal(result.opened, true);
-  assert.equal(result.inputHelpClosed, true);
+  assert.equal(result.privacyInHelp, true);
+  assert.equal(result.privacyVisible, true);
   assert.equal(result.previewFolded, false);
   assert.equal(result.statusFolded, false);
   assert.equal(result.menuClosed, true);
@@ -137,13 +162,23 @@ test("selection or received text cannot make a stale suggestion overwrite an ord
 
 // Measure the real selected option after the production controller and CSS cascade.
 test("selected slash candidate retains readable foreground on its soft background", { skip: process.platform !== "darwin" }, () => {
-  const result = webKit(`type('/r'); const option=menu.querySelector('[aria-selected="true"]'); const style=getComputedStyle(option); return JSON.stringify({color:style.color,background:style.backgroundColor,selected:option.textContent});`);
+  const result = webKit(`type('/r'); const option=menu.querySelector('[aria-selected="true"]'); const style=getComputedStyle(option);
+    // Composite every transparent layer against its ancestor, ending at the white WebKit canvas.
+    const layers=[]; for(let node=option;node;node=node.parentElement)layers.push(getComputedStyle(node).backgroundColor);
+    return JSON.stringify({color:style.color,layers,selected:option.textContent});`);
   const luminance = (color: string) => {
     const channels=color.match(/[\d.]+/g)!.slice(0,3).map(Number).map(value=>value/255).map(value=>value<=0.04045?value/12.92:((value+0.055)/1.055)**2.4);
     return channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722;
   };
-  const light=luminance(result.background), dark=luminance(result.color);
+  const rgba = (color: string) => { const values=color.match(/[\d.]+/g)!.map(Number); return [values[0],values[1],values[2],values[3] ?? 1]; };
+  const composite = result.layers.slice().reverse().reduce((background:number[], layer:string) => {
+    const [r,g,b,a]=rgba(layer); return [r,g,b].map((value,index)=>value*a+background[index]*(1-a));
+  }, [255,255,255]);
+  const background = `rgb(${composite.join(',')})`;
+  const [r,g,b,a] = rgba(result.color);
+  const foreground = `rgb(${[r,g,b].map((value,index)=>value*a+composite[index]*(1-a)).join(',')})`;
+  const light=luminance(background), dark=luminance(foreground);
   const ratio=(Math.max(light,dark)+0.05)/(Math.min(light,dark)+0.05);
   assert.equal(result.selected,"/retro Personal retro");
-  assert.ok(ratio>=4.5,`selected candidate ${result.color} on ${result.background}: contrast ${ratio.toFixed(2)}`);
+  assert.ok(ratio>=4.5,`selected candidate ${result.color} on ${background}: contrast ${ratio.toFixed(2)}`);
 });

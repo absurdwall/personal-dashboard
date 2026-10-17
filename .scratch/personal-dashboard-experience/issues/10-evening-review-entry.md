@@ -1,5 +1,8 @@
 # 10: Evening 一键进入带日期的复盘草稿
 
+> Canonical tracker: [PDEX-10 · GitHub #99](https://github.com/absurdwall/personal-dashboard/issues/99). Migrated and verified 2026-10-17. This file retains historical supporting evidence; GitHub owns current state.
+
+
 **What to build:** 用户从 Evening 开始所查看日期的复盘，进入适合的 Collaboration session，看到带正确上下文的可编辑草稿并自行发送。
 
 **Blocked by:** None

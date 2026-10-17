@@ -12,7 +12,7 @@ const task = (id,name,time,executionEnd=null,state='pending') => ({id,name,conte
   source:{kind:'manual',reference:null},state,deletedAt:null,completion:state==='completed'?{completedOn:'2026-10-10',completedTime:'08:00',recordedAt:'2026-10-10T08:00-04:00',source:'checkbox'}:null,
   overdue:false,timePassed:false,createdAt:'2026-10-10T08:00-04:00',modifiedAt:'2026-10-10T08:00-04:00',changes:[]});
 const tasks = {state:'ready',errorKind:null,message:'Synthetic Tasks',schemaVersion:2,revision:'r1',targetBinding:'synthetic-task-binding',vaultName:'Synthetic',vaultPath:'/synthetic',currentDate:'2026-10-10',
-  lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false}],tasks:[task('point','Synthetic point','09:00'),task('interval','Synthetic interval','13:00',{date:'2026-10-10',time:'14:30'},'completed')]};
+  lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false}],tasks:[{...task('point','Synthetic point','09:00'),content:'Synthetic detail stays out of the axis title'},task('interval','Synthetic interval','13:00',{date:'2026-10-10',time:'14:30'},'completed')]};
 const view = {state:'missing',date:'2026-10-10',isToday:true,currentTime:'09:00',canRecord:true,defaultPhase:'daytime',dailyRecordAvailability:'missing',vaultName:'Synthetic',vaultPath:'/synthetic',vaultAvailability:'available',message:'Synthetic browser IPC fixture',revision:null,targetBinding:'synthetic-record-binding',
   baseline:{availability:'missing',message:'No record',timeline:[],evidence:[]},timeline:[],evidence:[],daytime:{updates:[],shortRecords:[]},
   evening:{account:[],comparison:[],summary:[],questions:[],additions:[],corrections:[],other:[],recordSupplements:[],hasLaterRecordRevision:false},tasks,
@@ -65,8 +65,7 @@ async function pointAt(page,minute,ensureVisible=true) {
   const surface=page.locator('#today-axis-scroll-surface');await surface.scrollIntoViewIfNeeded();
   return page.evaluate(({minute,ensureVisible})=>{
     const plot=document.querySelector('#today-axis-plot'),surface=document.querySelector('#today-axis-scroll-surface');
-    const start=document.querySelector('#today-expand-early').getAttribute('aria-expanded')==='true'?240:360;
-    const end=document.querySelector('#today-expand-late').getAttribute('aria-expanded')==='true'?1680:1440;
+    const start=240,end=1680;
     const pos=()=>{const rect=plot.getBoundingClientRect();return {x:rect.right-30,y:rect.top+(minute-start)/(end-start)*rect.height};};
     if(ensureVisible){const rect=surface.getBoundingClientRect();surface.scrollTop+=pos().y-(rect.top+rect.height/2);}
     return pos();
@@ -98,8 +97,7 @@ async function dragTask(page,id,deltaMinutes) {
   const marker=page.locator(`.today-axis-marker[data-task-id="${id}"] .today-axis-marker-link`);
   await marker.scrollIntoViewIfNeeded();const box=await marker.boundingBox();assert.ok(box);
   const scale=await page.evaluate(()=>{
-    const start=document.querySelector('#today-expand-early').getAttribute('aria-expanded')==='true'?240:360;
-    const end=document.querySelector('#today-expand-late').getAttribute('aria-expanded')==='true'?1680:1440;
+    const start=240,end=1680;
     return document.querySelector('#today-axis-plot').getBoundingClientRect().height/(end-start);
   });
   const x=box.x+box.width/2,y=box.y+box.height/2;
@@ -160,11 +158,15 @@ test('failed selection save retains editable endpoints and reuses its stable Tas
   } finally {await fixture.close();}
 });
 
-test('an ordinary Task card click still opens its existing details',async()=>{
+test('an ordinary Task card click opens its detail editor with title-only axis text',async()=>{
   const fixture=await pageFixture();const {page}=fixture;
   try {
-    await page.locator('.today-axis-marker[data-task-id="point"] .today-axis-marker-link').click();
-    assert.equal(await page.locator('#today-timed-details details[open]').count(),1);
+    const marker=page.locator('.today-axis-marker[data-task-id="point"]');
+    assert.equal(await marker.locator('.today-axis-marker-title').textContent(),'Synthetic point');
+    await marker.locator('.today-axis-marker-link').click();
+    const detail=page.locator('#today-axis-task-popup[open]');
+    assert.equal(await detail.count(),1);
+    assert.equal(await detail.locator('[data-task-content]').inputValue(),'Synthetic detail stays out of the axis title');
     assert.equal(await page.evaluate(()=>window.__calls.some(x=>['update_task','create_task'].includes(x.command))),false);
   } finally {await fixture.close();}
 });
@@ -172,7 +174,6 @@ test('an ordinary Task card click still opens its existing details',async()=>{
 test('an overnight pointer selection retains both natural dates and fifteen-minute snapping',async()=>{
   const fixture=await pageFixture();const {page}=fixture;
   try {
-    await page.locator('#today-expand-late').click();
     const start=await pointAt(page,1412),end=await pointAt(page,1472,false);
     await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
     const dialog=page.locator('dialog[data-axis-task-create]');await dialog.waitFor({state:'visible'});

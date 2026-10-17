@@ -34,6 +34,8 @@ for (const state of ["completed", "withdrawn", "unknown"]) {
     const element = (tag: string) => ({ tag, textContent: "", children: [] as any[], append(...nodes: any[]) { this.children.push(...nodes); } });
     const destination = element("destination");
     const context = vm.createContext({ document: { createElement: element }, habitsDestination: destination,
+      currentHabitSnapshot: null,
+      historicalHabitCorrectionDate: () => null,
       selectedHabitCell: { habitKey: "reading", date: "2026-06-02" }, currentInterfaceLanguage: "en", habitNoteStatus: null,
       currentHabitDateView: { date: "2026-06-02", habitCorrections: { message: "Snapshot missing; local source read", habits: state === "unknown" ? [] : [
         { key: "other", localChanges: [{ state: "completed", changedAt: "other-source" }] },

@@ -222,7 +222,7 @@ test('time axis markup uses one full-width lane for arrangement and fact cards',
   assert.equal(unlocatedRegion.parent, unlocatedAside, 'untimed entries stay beside the Today timeline');
   assert.equal(arrangementUnlocated?.parent?.parent, unlocatedRegion);
   assert.equal(factsUnlocated?.parent?.parent, unlocatedRegion);
-  assert.ok(unlocatedShortcut.attrs.includes('aria-controls="today-unlocated-time-region"'));
+  assert.ok(unlocatedShortcut.attrs.includes('aria-controls="today-side-region"'));
   assert.ok(unlocatedShortcut.attrs.includes('aria-expanded="false"'));
   assert.equal(lane.parent, axis);
   assert.equal(markers.parent?.parent?.parent, lane);
@@ -255,6 +255,36 @@ test('time axis markup uses one full-width lane for arrangement and fact cards',
   assert.ok(scrollSurface?.attrs.includes('role="region"'));
   assert.ok(scrollSurface?.attrs.includes('tabindex="0"'));
   assert.ok(axis.attrs.includes('aria-labelledby="today-daytime-heading"'));
+});
+
+test('the lived-day axis exposes one continuous 04:00 through next-day 04:00 range', () => {
+  const nodes = elements();
+  assert.equal(nodes.some((node) => node.attrs.includes('id="today-expand-early"')), false);
+  assert.equal(nodes.some((node) => node.attrs.includes('id="today-expand-late"')), false);
+  const axis = nodes.find((node) => node.attrs.includes('id="today-continuous-axis"'));
+  const plot = nodes.find((node) => node.attrs.includes('id="today-axis-plot"'));
+  const scrollSurface = nodes.find((node) => node.attrs.includes('id="today-axis-scroll-surface"'));
+  assert.ok(axis && plot && scrollSurface);
+  assert.equal(plot.parent?.parent?.parent, axis, 'all 24 lived-day hours remain in the same plot');
+  assert.equal(scrollSurface.parent, axis.parent?.parent, 'the full axis retains its own scroll surface');
+  assert.deepEqual(hourTickMinutes(), Array.from({ length: 25 }, (_, hour) => (hour + 4) * 60));
+});
+
+test('confirmed facts have a read-only, independently scrollable axis popover', () => {
+  const nodes = elements();
+  const popup = nodes.find((node) => node.tag === 'dialog' && node.attrs.includes('id="today-axis-fact-popup"'));
+  const heading = nodes.find((node) => node.attrs.includes('id="today-axis-fact-popup-heading"'));
+  const close = nodes.find((node) => node.attrs.includes('id="today-axis-fact-popup-close"'));
+  const content = nodes.find((node) => node.attrs.includes('id="today-axis-fact-popup-content"'));
+  assert.ok(popup && heading && close && content);
+  assert.ok(popup.attrs.includes('aria-labelledby="today-axis-fact-popup-heading"'));
+  assert.equal(heading.parent?.parent, popup);
+  assert.equal(content.parent, popup);
+  assert.ok(close.attrs.includes('data-i18n-aria-label="today.axisFactPopupClose"'));
+  const styles = readFileSync(new URL('../../frontend/styles.css', import.meta.url), 'utf8');
+  const rule = styles.match(/\.today-axis-fact-popup\s*\{[^}]*\}/)?.[0] ?? '';
+  assert.match(rule, /max-height:/);
+  assert.match(rule, /overflow-y:\s*auto/);
 });
 
 test('clock ticks update the locator without rebuilding readable timeline entries', () => {

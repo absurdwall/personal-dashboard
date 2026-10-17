@@ -10,9 +10,17 @@ This is the canonical Dashboard-owned completion record. It is independent of th
 
 ## Identity and write boundary
 
-- `habitKey` is the stable lowercase semantic key from the current valid or stale snapshot catalog. Display names and goals are not copied into this document; optional bilingual display names live in the separate [Vault name configuration](habit-names-v1.md).
+- `habitKey` is the stable lowercase semantic key from the valid local
+  [definition catalog](habit-definitions-v1.md) or the current valid/stale
+  snapshot catalog. Display names and goals are not copied into this document;
+  local definition names and optional sourced-Habit display names remain in
+  their respective Vault-owned definition and [name configuration](habit-names-v1.md)
+  documents.
 - `livedDate` is the day the completion belongs to. Today and past dates are valid; future facts are rejected.
-- Only catalog habits with `trackingKind: "weekly-count"` accept this operation. Daily-time targets, threshold evidence, and Short records have separate meanings.
+- Local `daily-completion` and `weekly-count` definitions, and sourced
+  snapshot Habits with a weekly-count goal, accept checkbox completion. A
+  sourced daily-time goal, threshold evidence, and Short records keep their
+  separate meanings.
 - The selected-Vault path is bound into `targetBinding`, and an existing document revision must match `expectedRevision`. A changed target, stale revision, or concurrent external write fails without silently overwriting the current bytes.
 - `changeId` makes a retry idempotent. Reusing it for a different operation is rejected.
 
@@ -70,7 +78,17 @@ Snapshot refresh replaces the entire external projection, so removed external ev
 
 Calendar can open a past date in Today and expose completion-type habits for that exact lived date. The merged checkbox still follows the same OR rule, while the UI separately explains external evidence, current Dashboard-local state, and every local completion or withdrawal with its actual `changedAt` time. Withdrawing a historical local completion therefore does not erase or rewrite external evidence, and an external completion can keep the merged checkbox selected.
 
-The current week uses the catalog's current goal. An earlier week uses only an exact matching `goalHistory.weekOf`; if none exists, the UI says that the historical goal is unknown and does not backfill one. Outside snapshot coverage, external state remains unknown even when a retained local completion is still correctable by stable habit key. If no catalog survives a restart, persisted local habit/date pairs remain visible under their stable keys and may be completed or withdrawn, while their display name, external state, and historical goal remain explicitly unknown; no new habit/date pair may be created without a verifiable catalog. Merely opening an empty past date creates no completion document or Daily Record; an explicit local correction creates only the versioned completion document. Future lived-date completions are rejected.
+The current week uses the definition's current goal when a local goal revision
+exists; otherwise sourced Habits retain the snapshot goal. An earlier sourced
+week uses only an exact matching `goalHistory.weekOf`; if none exists, the UI
+says that the historical goal is unknown and does not backfill one. Outside
+snapshot coverage, external state remains unknown even when a retained local
+completion is still correctable by stable habit key. If neither a definition
+nor a source catalog can be read after restart, the app does not infer a display
+name, goal, or external state from a completion record. Merely opening an empty
+past date creates no completion document or Daily Record; an explicit local
+correction creates only the versioned completion document. Future lived-date
+completions are rejected.
 
 If a refresh damages or makes the local document unreadable, an already-running application retains its last valid merged view and reports the error. After restart, an invalid local document fails closed rather than hiding the damage. Recovery snapshots from conditional atomic writes live outside the canonical path and are never interpreted as current completion state.
 
