@@ -165,3 +165,19 @@ _Avoid_: Workflow retro, automatic replanning, inferred time accounting
 **Workflow retro**:
 A developer's review of Collaboration execution evidence, implementation, and checks to identify failed attempts, unnecessary work, incorrect changes, or misleading feedback. It belongs to development work in Codex, separate from personal management in Dashboard.
 _Avoid_: Personal retro, Dashboard app development, automatic self-modification
+
+## Agreed experience-prototype vocabulary
+
+These terms describe the accepted experience prototype, not shipped behavior.
+
+**Approximate plan time**:
+A plan's stated broad period or approximate time, such as afternoon or about 14:00. Its position on a timeline does not establish an exact start, end, duration, or observed activity.
+_Avoid_: Confirmed time, exact time range, activity evidence
+
+**Exact plan time range**:
+An explicitly chosen start and end for a planned activity. It expresses an arrangement, not evidence that the activity occurred.
+_Avoid_: Observed activity interval, completion record
+
+**Task execution interval**:
+An optional planned start and end for executing a Task, retained across rescheduling. It describes intended time allocation, not a deadline, actual activity duration or completion evidence; a Task with only a time point remains valid.
+_Avoid_: Deadline, actual work interval, completed activity

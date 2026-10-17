@@ -1,0 +1,74 @@
+{
+  "sourceCommit": "71059a3cb686ec9e925f2fd27eccfaee5b41b557",
+  "sourceArchiveSha256": "1e150cae06bb831a415813f5678929c1a2e11614a89dbb3238de5df091615821",
+  "productTreeSha256": "775f9b2b6a44648144a580b9bb88eda7bbde5fc2fb8405ee672d88b80cfc6f8b",
+  "candidateBundle": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/target/release/bundle/macos/Personal Dashboard.app",
+  "binarySha256": "bc91451e4b62af07bffd97309713f6971fb6a6c652a9843f6d145e8446768ade",
+  "bundleFileTreeSha256": "2c8a5f4a8ea1792c90171acb5568828404622a65a541c1528acf615aa8bbfb5d",
+  "environmentOverrides": {
+    "PERSONAL_DASHBOARD_DATA_DIR": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/profile",
+    "PERSONAL_DASHBOARD_BASELINE_FILE": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/none/state.json",
+    "PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS": "1788901500000",
+    "PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES": "-240",
+    "PATHPrefix": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/runtime/bin"
+  },
+  "at": "2026-10-11T07:16:03.501962+00:00",
+  "syntheticProfile": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/profile",
+  "syntheticVault": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/vault",
+  "native": {
+    "method": "Computer Use Virtual Mouse / bound app keyboard; real Tauri persistence; file readback",
+    "initialTaskCount": 44,
+    "finalTaskCount": 46,
+    "original44TaskObjectsUnchanged": true,
+    "createdTasks": [
+      {
+        "id": "manual-task-d5cee037-e01f-4022-9caf-a88714e4d5b8",
+        "name": "Native sidebar quick default",
+        "content": null,
+        "date": "2026-09-08",
+        "time": null,
+        "executionEnd": null,
+        "listId": "inbox",
+        "source": {
+          "kind": "manual",
+          "reference": null
+        },
+        "state": "pending",
+        "deletedAt": null,
+        "completion": null,
+        "createdAt": "2026-09-08T17:05-04:00",
+        "modifiedAt": "2026-09-08T17:05-04:00",
+        "changes": []
+      },
+      {
+        "id": "manual-task-bb5f09ad-8c6d-4d0d-aa95-ee8d8552e4f6",
+        "name": "Native sidebar Today scheduled",
+        "content": null,
+        "date": "2026-09-09",
+        "time": "15:30",
+        "executionEnd": null,
+        "listId": "inbox",
+        "source": {
+          "kind": "manual",
+          "reference": null
+        },
+        "state": "pending",
+        "deletedAt": null,
+        "completion": null,
+        "createdAt": "2026-09-08T17:05-04:00",
+        "modifiedAt": "2026-09-08T17:05-04:00",
+        "changes": []
+      }
+    ],
+    "bothSavedFeedbackClearAndContinuousFocus": true,
+    "TodayConfirmedDefaultResetSelectedDay": true,
+    "historyDateDefaultObserved": "2026-09-07",
+    "navigationCollapseRestore": true,
+    "wholeTodaySidebarRestoredDockedScreenshot": true,
+    "calendarExistingSummaryCollapseRestoreNormalFlow": true,
+    "noSidebarModalObserved": true,
+    "candidateQuitViaCua": true,
+    "pidAbsent": 24278,
+    "qualification": "Native fixed1000\u00d7758 smoke; actual fourwidthbounds and keyboard failure/recovery branches from productionWebKit/browser controlledpublicseams, not OS nativefailure injections. OSIME/quota not rerun. Sogou state unchanged. AX setValue numeric attempts did not modify segmented time; bound keyboard filled3:30PM and actual file confirms15:30."
+  }
+}

@@ -13,7 +13,8 @@
     "build:mac": "tauri build --bundles app",
     "accept:mac": "scripts/acceptance/macos-packaged-launch.sh",
     "accept:cutover": "scripts/acceptance/tauri-only-source.sh && scripts/acceptance/macos-cutover-workflow.sh",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "prototype:experience": "node .scratch/personal-dashboard-experience/prototype/serve.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",

@@ -27,7 +27,7 @@ use crate::collaboration_memory::{
 use crate::habits::{HabitSnapshotState, HabitSnapshotView};
 use crate::platform::FileTodayWorkspacePersistence;
 use crate::tasks::{
-    FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput, TaskDataState,
+    FileTaskStore, TaskExecutionEnd, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput, TaskDataState,
     TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
     TaskListRestoreInput, TaskRestoreInput, TaskState, TaskStateInput, TaskUpdateInput, TasksView,
 };
@@ -103,6 +103,8 @@ pub struct CollaborationTaskReferenceView {
     pub content: Option<String>,
     pub date: Option<String>,
     pub time: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_end: Option<TaskExecutionEnd>,
     pub list_id: String,
     pub state: TaskState,
     pub deleted_at: Option<String>,
@@ -214,6 +216,13 @@ pub struct CollaborationSessionView {
     pub last_habit_refresh: Option<crate::habit_producer::HabitRefreshReport>,
     pub draft: String,
     pub drafts_by_date: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EveningReviewEntryView {
+    pub session: CollaborationSessionView,
+    pub preserved_draft: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -362,6 +371,8 @@ pub enum CollaborationTaskOperation {
         content: Option<String>,
         date: Option<String>,
         time: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        execution_end: Option<TaskExecutionEnd>,
         list_id: Option<String>,
     },
     UpdateTask {
@@ -370,6 +381,8 @@ pub enum CollaborationTaskOperation {
         content: Option<String>,
         date: Option<String>,
         time: Option<String>,
+        #[serde(default, deserialize_with = "crate::tasks::deserialize_execution_end_patch", skip_serializing_if = "Option::is_none")]
+        execution_end: Option<Option<TaskExecutionEnd>>,
         list_id: Option<String>,
     },
     CompleteTask {
@@ -452,6 +465,8 @@ pub enum CollaborationTaskOperationBaseline {
         content: Option<String>,
         date: Option<String>,
         time: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        execution_end: Option<TaskExecutionEnd>,
         list_id: String,
         list_name: String,
         state: TaskState,
@@ -827,8 +842,10 @@ where
                 content,
                 date,
                 time,
+                execution_end,
                 list_id,
             } => self.application.create(TaskCreateInput {
+                execution_end: execution_end.clone(),
                 target_binding: target_binding.to_owned(),
                 expected_revision,
                 task_id: stable_child_identifier("task", operation_id),
@@ -844,8 +861,10 @@ where
                 content,
                 date,
                 time,
+                execution_end,
                 list_id,
             } => self.application.update(TaskUpdateInput {
+                execution_end: execution_end.clone(),
                 target_binding: target_binding.to_owned(),
                 expected_revision: required_revision()?,
                 task_id: task_id.clone(),
@@ -2798,8 +2817,73 @@ impl CollaborationApplication {
         let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
             "Choose a Vault in Settings before starting a collaboration session.".to_string()
         })?;
+        let session = self.empty_session(date, vault_key);
+        let saved = session.clone();
+        self.update_state(|state| {
+            state.sessions.insert(0, saved.clone());
+            Ok(())
+        })?;
+        Ok(session_view(&session))
+    }
+
+    /// Create or recover the session for one explicit frontend creation attempt.
+    /// The identity is bound to the selected Vault and creation date so an
+    /// unknown IPC result can be retried without creating a second session.
+    pub fn create_session_with_identity(
+        &self,
+        date: Option<&str>,
+        session_id: &str,
+        initial_draft: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let date = date
+            .map(str::to_owned)
+            .unwrap_or_else(|| self.clock.current_lived_date());
+        validate_date(&date)?;
+        if session_id.is_empty()
+            || session_id.len() > 128
+            || !session_id.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
+            })
+        {
+            return Err("The collaboration session creation identity is invalid.".into());
+        }
+        if initial_draft.chars().count() > MAX_MESSAGE_CHARACTERS {
+            return Err(format!(
+                "Drafts are limited to {MAX_MESSAGE_CHARACTERS} characters."
+            ));
+        }
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before starting a collaboration session.".to_string()
+        })?;
+        let requested_id = session_id.to_owned();
+        let session = self.update_state(|state| {
+            if let Some(existing) = state.sessions.iter().find(|session| session.id == requested_id) {
+                if existing.vault_key.as_deref() != Some(vault_key.as_str())
+                    || existing.created_date != date
+                {
+                    return Err(
+                        "This collaboration session creation identity is already bound to another Vault or date."
+                            .into(),
+                    );
+                }
+                return Ok(existing.clone());
+            }
+
+            let mut session = self.empty_session(&date, vault_key.clone());
+            session.id = requested_id;
+            session.draft = initial_draft.to_owned();
+            session
+                .drafts_by_date
+                .insert(date.clone(), initial_draft.to_owned());
+            state.sessions.insert(0, session.clone());
+            Ok(session)
+        })?;
+        Ok(session_view(&session))
+    }
+
+    fn empty_session(&self, date: &str, vault_key: String) -> StoredCollaborationSession {
         let now = self.clock.current_timestamp();
-        let session = StoredCollaborationSession {
+        StoredCollaborationSession {
             id: next_identifier("session"),
             vault_key: Some(vault_key),
             title: String::new(),
@@ -2825,13 +2909,41 @@ impl CollaborationApplication {
             habit_refresh_receipts: Vec::new(),
             draft: String::new(),
             drafts_by_date: HashMap::new(),
-        };
-        let saved = session.clone();
-        self.update_state(|state| {
-            state.sessions.insert(0, saved.clone());
-            Ok(())
+        }
+    }
+
+    /// Prepare only a persisted, editable draft. No message/runtime/business write.
+    pub fn prepare_evening_review(&self, date: &str, draft: &str) -> Result<EveningReviewEntryView, String> {
+        validate_date(date)?;
+        if date > self.clock.current_lived_date().as_str() {
+            return Err("Evening review is available for today and past lived dates.".into());
+        }
+        if draft.trim().is_empty() || draft.chars().count() > MAX_MESSAGE_CHARACTERS {
+            return Err(format!("Review drafts must contain 1–{MAX_MESSAGE_CHARACTERS} characters."));
+        }
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before starting an evening review.".to_string()
         })?;
-        Ok(session_view(&session))
+        self.update_state(|state| {
+            let index = state.sessions.iter().position(|session| {
+                session.vault_key.as_deref() == Some(vault_key.as_str()) && session.target_date == date
+                    && matches!(session.run_state.as_str(), "waiting" | "completed" | "stopped")
+            });
+            let index = match index {
+                Some(index) => index,
+                None => { state.sessions.insert(0, self.empty_session(date, vault_key)); 0 }
+            };
+            let session = &mut state.sessions[index];
+            let existing = session.drafts_by_date.get(date).cloned().unwrap_or_else(|| session.draft.clone());
+            let preserved_draft = !existing.is_empty();
+            let text = if preserved_draft { existing } else { draft.to_owned() };
+            session.draft = text.clone();
+            session.drafts_by_date.insert(date.to_owned(), text);
+            if !session.activity_dates.iter().any(|activity| activity == date) {
+                session.activity_dates.push(date.to_owned());
+            }
+            Ok(EveningReviewEntryView { session: session_view(session), preserved_draft })
+        })
     }
 
     pub fn list_sessions(&self, date: &str) -> Result<Vec<CollaborationSessionView>, String> {
@@ -9183,6 +9295,7 @@ fn task_operation_baseline(
             content: task.content.clone(),
             date: task.date.clone(),
             time: task.time.clone(),
+            execution_end: task.execution_end.clone(),
             list_id: task.list_id.clone(),
             list_name: list.name.clone(),
             state: task.state,
@@ -9371,6 +9484,7 @@ fn task_operation_result_snapshot(
             content: task.content.clone(),
             date: task.date.clone(),
             time: task.time.clone(),
+            execution_end: task.execution_end.clone(),
             list_id: task.list_id.clone(),
             list_name: list.name.clone(),
             state: task.state,
@@ -9414,6 +9528,7 @@ fn task_operation_effect_matches(
             content,
             date,
             time,
+            execution_end,
             list_id,
         } => task.is_some_and(|task| {
             task.deleted_at.is_none()
@@ -9421,6 +9536,7 @@ fn task_operation_effect_matches(
                 && task.content == normalized_optional_text(content.as_deref())
                 && task.date == normalized_optional_text(date.as_deref())
                 && task.time == normalized_optional_text(time.as_deref())
+                && task.execution_end == *execution_end
                 && task.list_id == list_id.as_deref().unwrap_or("inbox")
         }),
         CollaborationTaskOperation::UpdateTask {
@@ -9428,11 +9544,12 @@ fn task_operation_effect_matches(
             content,
             date,
             time,
+            execution_end,
             list_id,
             ..
         } => {
-            let previous_list_id = match &operation.baseline {
-                CollaborationTaskOperationBaseline::Task { list_id, .. } => list_id.as_str(),
+            let (previous_list_id, previous_end) = match &operation.baseline {
+                CollaborationTaskOperationBaseline::Task { list_id, execution_end, .. } => (list_id.as_str(), execution_end),
                 _ => return false,
             };
             task.is_some_and(|task| {
@@ -9441,6 +9558,7 @@ fn task_operation_effect_matches(
                     && task.content == normalized_optional_text(content.as_deref())
                     && task.date == normalized_optional_text(date.as_deref())
                     && task.time == normalized_optional_text(time.as_deref())
+                    && &task.execution_end == execution_end.as_ref().unwrap_or(previous_end)
                     && task.list_id == list_id.as_deref().unwrap_or(previous_list_id)
             })
         }
@@ -9731,17 +9849,22 @@ fn collaboration_task_tool_spec(
     };
     let string = json!({ "type": "string" });
     let nullable_string = json!({ "type": ["string", "null"] });
+    let execution_end = json!({
+        "type": ["object", "null"], "properties": {"date": {"type":"string"}, "time": {"type":"string"}},
+        "required": ["date", "time"], "additionalProperties": false,
+        "description": "Optional planned execution end, with its actual calendar date. Start remains Task date/time. In updateTask omission retains the end, null explicitly clears it. An interval is planned allocation, not actual activity or a deadline."
+    });
     let mut defs = Vec::new();
     if task_operations_available {
         defs.extend([
         operation(
             "createTask",
-            json!({"name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "listId": nullable_string}),
+            json!({"name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "executionEnd": execution_end, "listId": nullable_string}),
             &["name", "content", "date", "time", "listId"],
         ),
         operation(
             "updateTask",
-            json!({"taskId": string, "name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "listId": nullable_string}),
+            json!({"taskId": string, "name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "executionEnd": execution_end, "listId": nullable_string}),
             &["taskId", "name", "content", "date", "time", "listId"],
         ),
         operation("completeTask", json!({"taskId": string, "completedTime": {"type":["string","null"], "description":usage::description("task.completedTime")}}), &["taskId"]),
@@ -10103,6 +10226,7 @@ impl CollaborationContextSource for DashboardContextReader {
                                     content: task.content.clone(),
                                     date: task.date.clone(),
                                     time: task.time.clone(),
+                                    execution_end: task.execution_end.clone(),
                                     list_id: task.list_id.clone(),
                                     state: task.state,
                                     deleted_at: task.deleted_at.clone(),
@@ -10211,7 +10335,7 @@ fn daily_record_pane(view: &TodayView) -> ContextPaneView {
         format!("Morning baseline: {}", view.baseline.message),
     ];
     items.extend(
-        view.timeline
+        view.baseline.timeline
             .iter()
             .map(|block| match block.detail.as_deref() {
                 Some(detail) if !detail.is_empty() => {

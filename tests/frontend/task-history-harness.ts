@@ -32,16 +32,17 @@ export function renderer() {
   const context: any = { ...presentation, canMutateTodayTasks: () => true, todayOperationCount: 0,
     todayPresentationFresh: true, document: { createElement: (tag: string) => new Element(tag) },
     CSS: { escape: (value: string) => value }, tasksList: new Element(), tasksCount: new Element(), taskScope: "all", taskStateScope: "all",
-    taskOperationCount: 0, taskCreateOpen: false, taskListManagementOpen: false,
-    taskFocusRequestId: null, taskReturnToCollaborationSessionId: null,
-    taskCreateDrafts: new Map(), taskListCreateDrafts: new Map(),
+    taskOperationCount: 0, currentTaskLivedDate: null, taskCreateOpen: false, taskListManagementOpen: false,
+    taskFocusRequestId: null, selectedTaskDetailId: null, selectedTaskDetailBinding: null, taskEditorDialogRoot: null, taskReturnToCollaborationSessionId: null,
+    taskCreateDrafts: new Map(), taskCreateAttempts: new Map(), taskListCreateDrafts: new Map(),
     setCopy: (element: any, key: string, params: any) => { element.copyKey = key; element.params = params; },
     taskEditor: (task: any) => ({ tagName: "task", id: task.id }),
     taskListForId: () => undefined, renderTaskListScopeButtons: () => {},
     renderTaskListManagement: () => {}, clearTaskEditorDialogs: () => {},
+    updateTaskCreationControls: () => {},
   };
   for (const name of ["taskListScopes", "taskFilter", "tasksStatus", "tasksEmpty", "taskListsManagementPanel",
-    "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton"]) context[name] = null;
+    "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton", "taskQuickForm", "taskQuickName", "taskQuickSubmit"]) context[name] = null;
   for (const name of ["todayTaskStatus", "todayTaskEmpty", "todayTaskOverdueSection", "todayTaskOverdueEmpty",
     "todayTaskCreateForm", "todayTaskCreateName", "todayTaskCreateContent", "todayTaskCreateDate", "todayTaskCreateTime", "todayTaskCreateSubmit"]) context[name] = null;
   context.todayTaskScheduled = new Element();
@@ -74,6 +75,7 @@ function sourceFunction(name: string): string {
 /** Real note-save -> Today render -> history render -> clock guard, with synthetic IPC and UI nodes. */
 export function editingRenderer() {
   const r = renderer();
+  r.eveningReviewEntry = null;
   const functions = ["selectedShortRecordCategory", "stashEveningReviewDraft", "stashDatedNoteDraft",
     "stashTodayTaskCreateDraft", "renderDatedNoteComposer", "taskDraftKey", "readTaskDraft",
     "captureTodayTaskEditors", "hasTodayEditingTarget", "eveningViewHasContent", "renderToday",

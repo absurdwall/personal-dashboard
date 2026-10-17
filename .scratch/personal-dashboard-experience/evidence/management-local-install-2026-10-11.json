@@ -1,0 +1,75 @@
+{
+  "operationId": "management-pdex-installed-f48b002e-4b87-4ffb-83ee-bd9bca41c200",
+  "outcome": "confirmed",
+  "registryRevision": "4e69892e9c986090",
+  "summaryRevision": "4981ce4399878143",
+  "projectId": "product-personal-dashboard",
+  "sourceId": "source-personal-dashboard-experience",
+  "sourceRevision": "01525760c6c0e6bd",
+  "counts": {
+    "open": 1,
+    "resolved": 10,
+    "blocked": 1
+  },
+  "sourceState": "current",
+  "malformedReferences": [],
+  "summary": {
+    "text": "Dashboard experience 已完成实现与独立 Standards/Spec 审查，并按用户授权替换本机 /Applications/Personal Dashboard.app。当前正常生产安装构建自 6af1198（产品与 ffa1b85 一致），可执行文件 SHA a6a277f68b25…；原 Vault、语言、认证、会话/草稿保留，旧 App/profile 已存入私有持久 noindex 备份。PDEX-01–10 均 resolved；真实额度耗尽与真实 IME 专门补测已由用户接受现有证据并明确豁免，不宣称实际观察。PDEX-11 仍 blocked、父 spec open：仅剩持续边缘拖动/取消与拖动中窗口变化、最终安装版窄窗口验收。当前手工步骤与安装回退证据在 personal-dashboard/.scratch/personal-dashboard-experience/manual-acceptance.md 和 evidence/local-install-2026-10-11.md。此前 PR #64/#65 合并、旧安装与其他验收属于历史记录；本轮没有 main 合并、远端操作、测试消息或个人记录编辑。",
+    "blockers": [
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "11-packaged-daily-flow-acceptance.md",
+        "explanation": "仅缺持续原生边缘拖动/取消与拖动中调整窗口，以及最终安装版 830×758 窄窗口；人工操作后核对保存/取消和实际尺寸。"
+      }
+    ],
+    "nextWork": [
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "11-packaged-daily-flow-acceptance.md",
+        "suggestion": "按 manual-acceptance.md 的两类检查协作验收；真实 IME 和额度项已由用户接受/豁免，不再要求补测。保留未测试事实，满足其余验收后再关闭 PDEX-11 和父 spec。"
+      }
+    ],
+    "verifiedAt": "2026-10-11T05:25:12.378003+00:00",
+    "sourceEvidence": [
+      {
+        "sourceId": "source-personal-dashboard-3",
+        "revision": "73f67af62ff88683"
+      },
+      {
+        "sourceId": "source-personal-dashboard-timeline-a-repair",
+        "revision": "6f66259df3b780a1"
+      },
+      {
+        "sourceId": "source-personal-dashboard-3-0-2",
+        "revision": "07bf9d0b79785cbc"
+      },
+      {
+        "sourceId": "source-personal-dashboard-task-history",
+        "revision": "825ecc1788d68868"
+      },
+      {
+        "sourceId": "source-personal-dashboard-codex-dictation",
+        "revision": "32712ec896d18dce"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "revision": "01525760c6c0e6bd"
+      }
+    ],
+    "coverage": "partial",
+    "needsReconciliation": false,
+    "uncoveredSources": [
+      {
+        "sourceId": "source-personal-dashboard-codex-collaboration",
+        "reason": "既有来源无法完整读取；保留其历史格式/状态，不在本轮修复或推断通过。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-github",
+        "reason": "本次本地 tracker/安装同步不查询 GitHub；CLI 在该 helper 环境中不可用。"
+      }
+    ]
+  },
+  "userOwnedProjectFieldsUnchanged": true,
+  "githubQueries": "GitHub CLI excluded from helper PATH for scoped local-only synchronization; unavailable source explicitly uncovered; no remote tracker fetch",
+  "requestDigest": "17438d06585d75bc"
+}

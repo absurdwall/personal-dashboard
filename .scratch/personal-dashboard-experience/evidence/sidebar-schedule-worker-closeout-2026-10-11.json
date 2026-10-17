@@ -1,0 +1,68 @@
+[
+  {
+    "root": "/Users/tingranwang/.codex/worktrees/pdex-docked-sidebars/personal-dashboard",
+    "tip": "be933ac32aa808b355edfbf38cacdb4dae2278d0",
+    "branch": "refs/heads/codex/pdex-14-docked-sidebars",
+    "tipFullyReachableFromIntegration": true,
+    "statusBeforeProtection": "",
+    "uniqueFiles": [],
+    "historyBundle": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/worker-history/pdex-docked-sidebars.bundle",
+    "historyBundleSha256": "a5c8fa42bae3d821f6b4127d5007d79a54e476d61a8c2e6c094f386632de6985",
+    "remainingPatch": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/worker-history/pdex-docked-sidebars-remaining.patch",
+    "patchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ignoredInventory": [
+      "!! dist/",
+      "!! node_modules"
+    ],
+    "neededRawLogs": "/tmp/pdex14-validation.noindex and /tmp/pdex15-validation.noindex preserved; durable hash checkpoint committed",
+    "managedArchiveOutcome": "queued, unconfirmed; unique original files/history separately protected",
+    "checkoutRemoved": true,
+    "cleanupCommand": [
+      "git",
+      "worktree",
+      "remove",
+      "/Users/tingranwang/.codex/worktrees/pdex-docked-sidebars/personal-dashboard"
+    ],
+    "cleanupQualification": "Owned generated/unique contents protected byte-for-byte before removal; original patches/full-file snapshots and committed history recoverable. Managed archive completion not claimed."
+  },
+  {
+    "root": "/Users/tingranwang/.codex/worktrees/pdex-compact-schedule/personal-dashboard",
+    "tip": "3389c332f7c913ee8dec195009ca8499dd50386d",
+    "branch": "refs/heads/codex/pdex-15-compact-schedule",
+    "tipFullyReachableFromIntegration": true,
+    "statusBeforeProtection": " M frontend/main.ts\n M tests/browser/task-quick-create.mjs\n",
+    "uniqueFiles": [
+      {
+        "path": "frontend/main.ts",
+        "backupPath": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/worker-history/pdex-compact-schedule-unique-files/frontend/main.ts",
+        "sha256": "a0e9b4d9b82b88bf70e6c5cc66ed324b2d900b23e10598148a3a6f00d23ea861"
+      },
+      {
+        "path": "tests/browser/task-quick-create.mjs",
+        "backupPath": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/worker-history/pdex-compact-schedule-unique-files/tests/browser/task-quick-create.mjs",
+        "sha256": "89ea8fd3db1e9b119025f627f935ed3b7f83871ec344e5e501be7b6e05ffa67c"
+      }
+    ],
+    "historyBundle": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/worker-history/pdex-compact-schedule.bundle",
+    "historyBundleSha256": "d415f2e982b90037947a4fc36fcf3a40fa0b9f625455dafeafe77f101905c623",
+    "remainingPatch": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/worker-history/pdex-compact-schedule-remaining.patch",
+    "patchSha256": "702e2d2269309ad9b50788f1d2fee5caae76095cbf56b6134675c29981915294",
+    "ignoredInventory": [
+      " M frontend/main.ts",
+      " M tests/browser/task-quick-create.mjs",
+      "!! dist/",
+      "!! node_modules"
+    ],
+    "neededRawLogs": "/tmp/pdex14-validation.noindex and /tmp/pdex15-validation.noindex preserved; durable hash checkpoint committed",
+    "managedArchiveOutcome": "queued, unconfirmed; unique original files/history separately protected",
+    "checkoutRemoved": true,
+    "cleanupCommand": [
+      "git",
+      "worktree",
+      "remove",
+      "--force",
+      "/Users/tingranwang/.codex/worktrees/pdex-compact-schedule/personal-dashboard"
+    ],
+    "cleanupQualification": "Owned generated/unique contents protected byte-for-byte before removal; original patches/full-file snapshots and committed history recoverable. Managed archive completion not claimed."
+  }
+]

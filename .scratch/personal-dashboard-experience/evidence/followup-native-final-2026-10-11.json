@@ -1,0 +1,30 @@
+{
+  "sourceCommit": "2c6b8aa1a9ba30503f8275bb744f7478b0923f7f",
+  "sourceArchiveSha256": "71f541aa9594bc9a5729bd54d77f54d7407ce1de973b800de9fe89e2884a1662",
+  "productTreeSha256": "48b5acae79bba3b266ac682a0e6a5c68b9fd5c26716fc35b5bc93e19b9f0350d",
+  "candidateBundle": "/tmp/pdex-followup-20261011-final.noindex/target/release/bundle/macos/Personal Dashboard.app",
+  "syntheticProfile": "/tmp/pdex-followup-20261011-final.noindex/profile",
+  "syntheticVault": "/tmp/pdex-followup-20261011-final.noindex/vault",
+  "environmentOverrides": {
+    "PERSONAL_DASHBOARD_DATA_DIR": "/tmp/pdex-followup-20261011-final.noindex/profile",
+    "PERSONAL_DASHBOARD_BASELINE_FILE": "/tmp/pdex-followup-20261011-final.noindex/none/state.json",
+    "PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS": "1788901500000",
+    "PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES": "-240",
+    "PATHPrefix": "/tmp/pdex-followup-20261011-final.noindex/runtime/bin"
+  },
+  "bundleFileTreeSha256": "5b83e11d1ae84b95e51a326956f6eedb59786872a2ac990dbe3f844440075eb6",
+  "at": "2026-10-11T06:32:04.175551+00:00",
+  "executableSha256": "c2d220d040a69e358c6b601e379193d037636b8ffc2eac1cf187634acb345960",
+  "nativeSmoke": {
+    "method": "Computer Use Virtual Mouse and bound keyboard; real Tauri create, file readback",
+    "savedStatusVisible": true,
+    "quickInputCleared": true,
+    "focusReturnedToQuickInput": true,
+    "taskCountBefore": 44,
+    "taskCountAfter": 45,
+    "uniqueInboxTaskOptionalFieldsNull": true,
+    "quitThroughComputerUse": true,
+    "process2240Absent": true
+  },
+  "supportingEvidence": "f127 native core receipt retained as historical supporting evidence; no repeat claim for final source"
+}

@@ -264,7 +264,8 @@ use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
     EveningUpdateInput, HabitCompletionMutationInput, HabitSnapshotView,
-    PlanningDayTaskContextView, TodayApplication, TodayClockView, TodayView, VaultSelectionResult,
+    PlanTimeEditInput, PlanTimeEditResult, PlanningDayTaskContextView, TodayApplication,
+    TodayClockView, TodayView, VaultSelectionResult,
 };
 
 type DesktopTodayApplication = TodayApplication<
@@ -374,11 +375,29 @@ fn collaboration_context(
 fn collaboration_create_session(
     application: State<'_, collaboration::CollaborationApplication>,
     date: Option<String>,
+    session_id: Option<String>,
+    initial_draft: Option<String>,
 ) -> Result<collaboration::CollaborationSessionView, String> {
+    if let Some(session_id) = session_id {
+        return application.create_session_with_identity(
+            date.as_deref(),
+            &session_id,
+            initial_draft.as_deref().unwrap_or_default(),
+        );
+    }
     match date {
         Some(date) => application.create_session(&date),
         None => application.create_default_session(),
     }
+}
+
+#[tauri::command]
+fn collaboration_prepare_evening_review(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+    draft: String,
+) -> Result<collaboration::EveningReviewEntryView, String> {
+    application.prepare_evening_review(&date, &draft)
 }
 
 #[tauri::command]
@@ -826,6 +845,14 @@ async fn select_today_vault(
 }
 
 #[tauri::command]
+fn edit_plan_time(
+    application: State<'_, DesktopTodayApplication>,
+    input: PlanTimeEditInput,
+) -> Result<PlanTimeEditResult, String> {
+    application.edit_plan_time(input)
+}
+
+#[tauri::command]
 fn append_daytime_update(
     application: State<'_, DesktopTodayApplication>,
     input: DaytimeUpdateInput,
@@ -1021,6 +1048,7 @@ pub fn run() {
             collaboration_workspace,
             collaboration_context,
             collaboration_create_session,
+            collaboration_prepare_evening_review,
             collaboration_list_sessions,
             collaboration_session,
             collaboration_record_refresh,
@@ -1073,6 +1101,7 @@ pub fn run() {
             set_local_habit_completion,
             set_historical_habit_completion,
             select_today_vault,
+            edit_plan_time,
             append_daytime_update,
             add_dated_note,
             correct_dated_note,
@@ -1096,6 +1125,7 @@ pub fn run() {
         collaboration_workspace,
         collaboration_context,
         collaboration_create_session,
+        collaboration_prepare_evening_review,
         collaboration_list_sessions,
         collaboration_session,
         collaboration_record_refresh,
@@ -1148,6 +1178,7 @@ pub fn run() {
         set_local_habit_completion,
         set_historical_habit_completion,
         select_today_vault,
+        edit_plan_time,
         append_daytime_update,
         add_dated_note,
         correct_dated_note,

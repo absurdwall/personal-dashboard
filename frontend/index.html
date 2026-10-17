@@ -20,6 +20,10 @@
             <p class="product-toolbar-area" data-i18n="toolbar.dailyLife">每日生活</p>
           </div>
         </div>
+        <span class="product-toolbar-divider" aria-hidden="true"></span>
+        <button id="workspace-sidebar-toggle" type="button" class="sidebar-toggle" aria-controls="workspace-sidebar" aria-expanded="true" data-i18n-aria-label="navigation.hideSidebar" data-i18n-title="navigation.hideSidebar">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M7 3v14"/></svg>
+        </button>
         <span class="product-toolbar-space" aria-hidden="true"></span>
         <div class="product-toolbar-actions">
           <button
@@ -60,7 +64,7 @@
           <span class="product-toolbar-caption" data-i18n="toolbar.local">本地</span>
         </div>
       </header>
-      <aside class="workspace-sidebar" aria-label="主要导航" data-i18n-aria-label="navigation.primary">
+      <aside id="workspace-sidebar" class="workspace-sidebar" aria-label="主要导航" data-i18n-aria-label="navigation.primary">
         <div id="workspace-rail-context" class="workspace-rail-context" aria-live="polite">
           <p id="workspace-rail-context-kicker" class="section-label">TODAY · —</p>
           <strong id="workspace-rail-context-title">Today</strong>
@@ -281,10 +285,9 @@
               hidden
             >
               <header class="collaboration-header destination-page-header">
-                <div>
-                  <p class="section-label" data-i18n="collaboration.sectionLabel">LOCAL CODEX · TASK PROPOSALS</p>
+                <div class="collaboration-page-intro">
                   <h2 id="collaboration-heading" class="destination-heading" data-i18n="destination.collaboration">协作</h2>
-                  <p data-i18n="collaboration.introduction">Discuss current selected-Vault data with Codex. Proposed task changes are reviewed and saved through the existing Tasks service.</p>
+                  <p class="collaboration-description" data-i18n="workspace.collaborationDescription">在独立空间中与本地 Codex 讨论最新的 Daily Record、Tasks 和习惯 context。</p>
                 </div>
                 <div class="collaboration-date-toolbar">
                   <label for="collaboration-activity-date" data-i18n="collaboration.activityDate">Session activity date</label>
@@ -297,19 +300,20 @@
                 </div>
               </header>
               <div class="collaboration-status-bar">
-                <p id="collaboration-runtime-status" role="status" aria-live="polite" data-i18n="collaboration.connectionNotChecked">Connection status has not been checked.</p>
-                <p id="collaboration-work-owner" role="status" aria-live="polite"></p>
-                <button id="collaboration-open-settings" type="button" class="text-button" data-i18n="collaboration.openSettings">Codex connection settings</button>
+                <p id="collaboration-runtime-status" role="status" aria-live="polite" tabindex="0" data-i18n="collaboration.connectionNotChecked">Connection status has not been checked.</p>
+                <p id="collaboration-model-summary" role="status" aria-live="polite"></p>
+                <details id="collaboration-recovery-details" class="collaboration-recovery-details" hidden>
+                  <summary data-i18n="collaboration.recoveryDetails">Result needs confirmation</summary>
+                  <p data-i18n="collaboration.composerRecover">The earlier result is unconfirmed. Send a correction or unrelated request; check the saved effect before retrying it.</p>
+                </details>
+                <button id="collaboration-open-settings" type="button" class="text-button" data-i18n="collaboration.openSettings">Codex Settings</button>
               </div>
-              <div class="collaboration-panel-toolbar">
-                <button id="collaboration-toggle-history" type="button" class="secondary-button" aria-controls="collaboration-history-panel" aria-expanded="true" data-i18n="collaboration.toggleHistory">Session history</button>
-                <button id="collaboration-toggle-context" type="button" class="secondary-button" aria-controls="collaboration-work-panel" aria-expanded="true" data-i18n="collaboration.toggleContext">Current work</button>
-              </div>
+              <p id="collaboration-work-owner" class="collaboration-work-owner-status" role="status" aria-live="polite" tabindex="0"></p>
               <div class="collaboration-layout">
+                <div class="collaboration-primary-layout">
                 <section class="collaboration-session-pane" id="collaboration-history-panel" aria-labelledby="collaboration-sessions-heading">
                   <header class="collaboration-pane-heading">
                     <div>
-                      <p class="section-label" data-i18n="collaboration.sessionsLabel">SESSIONS</p>
                       <h3 id="collaboration-sessions-heading" data-i18n="collaboration.sessionsHeading">Sessions</h3>
                     </div>
                     <button id="collaboration-new-session" type="button" data-i18n="collaboration.newSession">New chat</button>
@@ -321,22 +325,32 @@
                 <section class="collaboration-chat-pane" aria-labelledby="collaboration-chat-heading">
                   <header class="collaboration-pane-heading collaboration-chat-heading">
                     <div>
-                      <p class="section-label" data-i18n="collaboration.conversationLabel">CONVERSATION</p>
-                      <h3 id="collaboration-chat-heading" data-i18n="collaboration.noSession">Start or select a session</h3>
+                      <h3 id="collaboration-chat-heading" data-i18n="collaboration.noSession">Type a message to start</h3>
                     </div>
                     <div class="collaboration-chat-header-actions">
+                      <button id="collaboration-toggle-history" type="button" class="sidebar-toggle collaboration-sidebar-toggle" aria-controls="collaboration-history-panel" aria-expanded="true" data-i18n-aria-label="collaboration.toggleHistorySidebar" data-i18n-title="collaboration.toggleHistorySidebar" aria-label="Toggle sessions sidebar" title="Toggle sessions sidebar">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M8 3v14"/></svg>
+                      </button>
+                      <button id="collaboration-toggle-context" type="button" class="sidebar-toggle collaboration-sidebar-toggle" aria-controls="collaboration-work-panel" aria-expanded="false" data-i18n-aria-label="collaboration.toggleContextSidebar" data-i18n-title="collaboration.toggleContextSidebar" aria-label="Toggle current work sidebar" title="Toggle current work sidebar">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M12 3v14"/></svg>
+                      </button>
                       <span id="collaboration-chat-date" class="collaboration-target-date"></span>
                       <button id="collaboration-stop-run" type="button" class="secondary-button" data-i18n="collaboration.stop" hidden>Stop</button>
                     </div>
                   </header>
                   <p id="collaboration-run-status" class="collaboration-run-status" role="status" aria-live="polite"></p>
-                  <p id="collaboration-task-tool-notice" class="collaboration-task-tool-notice" role="status" aria-live="polite" hidden></p>
+                  <details id="collaboration-task-tool-disclosure" class="collaboration-capability-disclosure" hidden>
+                    <summary data-i18n="collaboration.legacyCapabilityDetails">Older session capability notes</summary>
+                    <p id="collaboration-task-tool-notice" class="collaboration-task-tool-notice" role="status" aria-live="polite" tabindex="0" hidden></p>
+                  </details>
                   <div id="collaboration-message-list" class="collaboration-message-list" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation messages" data-i18n-aria-label="collaboration.conversationLabel"></div>
+                  <p id="collaboration-review-entry-notice" class="helper-text" role="status" aria-live="polite" hidden></p>
                   <form id="collaboration-composer" class="collaboration-composer">
                     <p id="collaboration-composer-date" class="collaboration-target-date"></p>
                     <label for="collaboration-message-draft" data-i18n="collaboration.messageLabel">Message</label>
                     <div class="collaboration-composer-input">
-                    <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" aria-describedby="collaboration-composer-status" disabled></textarea>
+                    <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" aria-describedby="collaboration-composer-status"></textarea>
+                    <div id="collaboration-command-menu" class="collaboration-command-menu" role="listbox" hidden></div>
                     <div class="collaboration-voice-controls">
                       <span id="collaboration-voice-status" class="collaboration-voice-status" role="status" aria-live="polite" aria-atomic="true"></span>
                       <button id="collaboration-voice-start" class="collaboration-microphone" type="button" aria-label="Start dictation" aria-describedby="collaboration-composer-status collaboration-voice-status collaboration-voice-privacy" disabled>
@@ -348,15 +362,19 @@
                     </div>
                     </div>
                     <p id="collaboration-composer-status" class="collaboration-composer-status" role="status" aria-live="polite" hidden></p>
+                    <details class="collaboration-help">
+                    <summary data-i18n="collaboration.inputHelp">Input and saving details</summary>
                     <p id="collaboration-voice-privacy" class="collaboration-voice-privacy" data-i18n="collaboration.voicePrivacy">Audio is processed online through Codex after you start dictation. Review the editable transcript before sending.</p>
-                    <p id="collaboration-voice-preview" class="collaboration-voice-preview" aria-live="polite"></p>
                     <div class="collaboration-composer-footer">
                       <p data-i18n="collaboration.readOnlyBoundary">Codex may propose Task, Daily Record review/note/plan, or local Habit completion changes. Requested changes are saved to the selected Vault. External Habit sources and settings are not changed.</p>
                     </div>
+                    </details>
+                    <p id="collaboration-voice-preview" class="collaboration-voice-preview" aria-live="polite"></p>
                   </form>
                 </section>
+                </div>
                 <div id="collaboration-context-resizer" class="collaboration-panel-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="collaboration-work-panel" aria-label="Resize current work" data-i18n-aria-label="collaboration.resizeContext"></div>
-                <aside class="collaboration-context-pane" id="collaboration-work-panel" aria-labelledby="collaboration-context-heading">
+                <aside class="collaboration-context-pane" id="collaboration-work-panel" aria-labelledby="collaboration-context-heading" hidden>
                   <header class="collaboration-pane-heading">
                     <div>
                       <p class="section-label" data-i18n="collaboration.currentWorkLabel">CURRENT WORK</p>
@@ -497,12 +515,32 @@
                       </label>
                     </div>
                   </div>
+                  <form id="task-quick-form" class="task-quick-form" hidden>
+                    <input id="task-quick-name" type="text" maxlength="160" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" />
+<div class="task-schedule-wrap">
+                      <button id="task-quick-schedule" type="button" class="task-schedule-toggle" aria-expanded="false" aria-controls="task-quick-schedule-picker" data-i18n-aria-label="tasks.schedule" data-i18n-title="tasks.schedule" aria-label="安排日期与时刻" title="安排日期与时刻"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4m8-4v4M4 10h16M8 14h3m-3 3h6"/></svg><span class="task-schedule-label" aria-hidden="true"></span></button>
+                      <div id="task-quick-schedule-picker" class="task-schedule-picker" hidden>
+                        <div class="task-schedule-presets"><button id="task-quick-today" type="button" data-i18n="tasks.scheduleToday">今天</button><button id="task-quick-tomorrow" type="button" data-i18n="tasks.scheduleTomorrow">明天</button><button id="task-quick-undated" type="button" data-i18n="tasks.scheduleUndated">无日期</button></div>
+                        <label><span data-i18n="tasks.date">日期（可选）</span><input id="task-quick-date" type="date" data-task-date /></label>
+                        <label><span data-i18n="tasks.time">时刻（需要日期）</span><input id="task-quick-time" type="time" data-task-time /></label>
+                        <div class="task-schedule-actions"><button id="task-quick-schedule-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button><button id="task-quick-schedule-apply" type="button" data-i18n="tasks.scheduleApply">应用</button></div>
+                      </div>
+                    </div>
+                    <button id="task-quick-submit" type="submit" data-i18n="tasks.quickAdd">添加</button>
+                  </form>
+                  <div id="task-quick-recovery" class="task-create-recovery" hidden>
+                    <button id="task-quick-recheck" type="button" class="secondary-button" data-i18n="tasks.refresh">刷新 Tasks</button>
+                    <button id="task-quick-retry" type="button" data-i18n="tasks.retryOriginal" disabled>重试原任务</button>
+                    <button id="task-quick-end-attempt" type="button" class="secondary-button" data-i18n="tasks.endSubmission" disabled>结束原提交</button>
+                  </div>
+                  <div id="task-create-ended-attempts" class="task-create-ended-attempts" hidden></div>
                   <div id="tasks-list" class="tasks-list" aria-live="polite"></div>
                   <p id="tasks-empty" class="tasks-empty" hidden data-i18n="tasks.emptyAll">还没有任务；可以从收集箱开始。</p>
                   <p class="tasks-boundary" data-i18n="tasks.savedToVault">任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。</p>
+                  <dialog id="task-create-dialog" class="tasks-create-dialog" aria-labelledby="task-create-heading">
                   <form id="task-create-form" class="task-form task-create-form" hidden>
                     <div class="task-form-heading">
-                      <h3 data-i18n="tasks.addHeading">新建任务</h3>
+                      <h3 id="task-create-heading" data-i18n="tasks.addHeading">新建任务</h3>
                       <small id="task-create-list-label" data-i18n="tasks.inbox">收集箱</small>
                     </div>
                     <div class="task-form-grid">
@@ -526,14 +564,28 @@
                         <span data-i18n="tasks.time">时刻（需要日期）</span>
                         <input id="task-create-time" type="time" disabled data-task-time />
                       </label>
+                      <label>
+                        <span data-i18n="tasks.executionEndDate">结束日期（可选）</span>
+                        <input id="task-create-end-date" type="date" data-task-end-date />
+                      </label>
+                      <label>
+                        <span data-i18n="tasks.executionEndTime">结束时刻（可选）</span>
+                        <input id="task-create-end-time" type="time" data-task-end-time />
+                      </label>
                     </div>
                     <p class="task-form-boundary" data-i18n="tasks.savedToVault">任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。</p>
+                    <p id="task-create-status" role="status" aria-live="polite"></p>
                     <div class="task-form-actions">
+                      <button id="task-create-recheck" type="button" class="secondary-button" data-i18n="tasks.refresh" hidden>刷新 Tasks</button>
+                      <button id="task-create-retry" type="button" data-i18n="tasks.retryOriginal" hidden disabled>重试原任务</button>
+                      <button id="task-create-end-attempt" type="button" class="secondary-button" data-i18n="tasks.endSubmission" hidden disabled>结束原提交</button>
                       <button id="task-create-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button>
                       <button id="task-create-submit" type="submit" data-i18n="tasks.add">加入收集箱</button>
                     </div>
                   </form>
+                  </dialog>
                 </section>
+                <aside id="task-editor-dialog-root" class="tasks-selected-detail" aria-label="Task details" data-i18n-aria-label="tasks.details" hidden></aside>
               </div>
             </section>
             <section
@@ -734,7 +786,7 @@
                     >
                       <div class="today-region-heading">
                         <div>
-                          <p class="section-label" data-i18n="today.morningSection">早间 · 早间基准</p>
+                          <p class="section-label" data-i18n="today.morningSection">早间 · Daily Record 早间基准</p>
                           <h3 id="today-timeline-heading" data-i18n="today.initialArrangement">当天的初始安排</h3>
                         </div>
                         <span id="today-block-count" class="today-count"></span>
@@ -744,7 +796,7 @@
                         id="today-baseline-timeline"
                         class="today-timeline"
                         role="list"
-                        aria-label="今天的早间计划时间线"
+                        aria-label="当天的早间文字安排"
                         data-i18n-aria-label="today.morningTimeline"
                       ></ol>
                       <p id="today-plan-empty" class="today-plan-empty" data-i18n="today.noBaseline" hidden>
@@ -761,13 +813,16 @@
                       hidden
                     >
                       <div class="today-region-heading">
-                        <div>
+                        <div class="today-daytime-heading-group">
                           <h3 id="today-daytime-heading" data-i18n="today.timelineAndRecords">时间轴 + 记录</h3>
                         </div>
                         <div class="today-time-axis-actions">
                           <span id="today-daytime-count" class="today-count"></span>
                           <button id="today-locate-now" type="button" class="today-locate-now" aria-label="定位现在" title="定位现在" data-i18n-aria-label="today.locateNow" data-i18n-title="today.locateNow">
                             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/></svg>
+                          </button>
+                          <button id="today-unlocated-time-shortcut" type="button" class="sidebar-toggle" aria-controls="today-side-region" aria-expanded="false">
+                            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M12 3v14"/></svg>
                           </button>
                         </div>
                       </div>
@@ -787,12 +842,11 @@
                           <i class="today-axis-lane-legend-symbol is-task" aria-hidden="true"></i>
                           <span data-i18n="today.sourceTask">Task</span>
                         </span>
-                        <a id="today-unlocated-time-shortcut" class="today-axis-unlocated-shortcut" href="#today-unlocated-time-region" data-i18n="today.unlocatedTimes">
-                          Items without a precise time
-                        </a>
+
                       </div>
                       <div class="today-daytime-layout">
                         <div class="today-time-axis-toolbar">
+                          <p id="today-axis-edit-status" role="status" aria-live="polite" hidden></p>
                           <p class="today-time-axis-boundary" data-i18n="today.axisNote">
                             时间轴只整理明确事实和当前安排；没有记录的活动继续保持未知。
                           </p>
@@ -820,7 +874,7 @@
                               <p id="today-timed-empty" class="today-axis-empty" data-i18n="today.noTimedItems" hidden>
                                 这份 Daily Record 尚无带明确时刻的安排或事实。
                               </p>
-                              <div id="today-timed-details" class="today-axis-details"></div>
+                              <div id="today-timed-details" class="today-axis-details" hidden></div>
                             </section>
                           </div>
                         </div>
@@ -863,6 +917,10 @@
                           <p class="section-label" data-i18n="today.evening">晚间复盘</p>
                           <h3 id="today-evening-heading" data-i18n="today.agentRecord">Agent 整理的今日记录</h3>
                         </div>
+                      </div>
+                      <div class="today-review-entry">
+                        <button id="today-start-review" type="button" disabled data-i18n="today.startReview">开始复盘今天</button>
+                        <p id="today-review-entry-status" class="helper-text" role="status" aria-live="polite"></p>
                       </div>
                       <p class="today-reading-introduction" data-i18n="today.eveningIntro">
                         先读一个保守的 first pass；不要求完整重建整天。
@@ -924,7 +982,7 @@
                     </section>
                   </div>
 
-                  <aside class="today-side-region" aria-label="当天任务、记录与计划依据" data-i18n-aria-label="today.sideRegion">
+                  <aside id="today-side-region" class="today-side-region" aria-label="当天任务、记录与计划依据" data-i18n-aria-label="today.sideRegion">
                     <section id="today-unlocated-time-region" class="today-axis-unlocated-region" aria-labelledby="today-unlocated-time-heading" hidden>
                       <h3 id="today-unlocated-time-heading" data-i18n="today.unlocatedTimes">Items without a precise time</h3>
                       <p data-i18n="today.unlocatedIntro">保留原有精度，不硬塞到某一分钟。</p>
@@ -963,35 +1021,30 @@
                         没有未归档的逾期待办。
                       </p>
                       <form id="today-task-create-form" class="task-form today-task-create-form" hidden>
-                        <div class="task-form-heading">
-                          <h4 data-i18n="tasks.addHeading">新建任务</h4>
-                          <small data-i18n="today.taskCreateDefault">默认今天和收集箱，可在保存前修改</small>
+                        <div class="task-compact-row">
+                          <input id="today-task-create-name" type="text" maxlength="160" required placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" data-task-name />
+                          <div class="task-schedule-wrap">
+                      <button id="today-task-create-schedule" type="button" class="task-schedule-toggle" aria-expanded="false" aria-controls="today-task-create-schedule-picker" data-i18n-aria-label="tasks.schedule" data-i18n-title="tasks.schedule" aria-label="安排日期与时刻" title="安排日期与时刻"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4m8-4v4M4 10h16M8 14h3m-3 3h6"/></svg><span class="task-schedule-label" aria-hidden="true"></span></button>
+                      <div id="today-task-create-schedule-picker" class="task-schedule-picker" hidden>
+                        <div class="task-schedule-presets"><button id="today-task-create-today" type="button" data-i18n="tasks.scheduleToday">今天</button><button id="today-task-create-tomorrow" type="button" data-i18n="tasks.scheduleTomorrow">明天</button><button id="today-task-create-undated" type="button" data-i18n="tasks.scheduleUndated">无日期</button></div>
+                        <label><span data-i18n="tasks.date">日期（可选）</span><input id="today-task-create-date" type="date" data-task-date /></label>
+                        <label><span data-i18n="tasks.time">时刻（需要日期）</span><input id="today-task-create-time" type="time" data-task-time /></label>
+                        <div class="task-schedule-actions"><button id="today-task-create-schedule-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button><button id="today-task-create-schedule-apply" type="button" data-i18n="tasks.scheduleApply">应用</button></div>
+                      </div>
+                    </div>
+                          <button id="today-task-create-submit" type="submit" data-i18n="tasks.quickAdd">添加</button>
                         </div>
-                        <div class="task-form-grid">
-                          <label class="task-form-wide">
-                            <span data-i18n="tasks.name">名称</span>
-                            <input id="today-task-create-name" type="text" maxlength="160" required placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" data-task-name />
-                          </label>
-                          <label class="task-form-wide">
-                            <span data-i18n="tasks.content">内容（可选）</span>
-                            <textarea id="today-task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder" data-task-content></textarea>
-                          </label>
-                          <label>
-                            <span data-i18n="tasks.list">清单</span>
-                            <select id="today-task-create-list" data-task-list></select>
-                          </label>
-                          <label>
-                            <span data-i18n="tasks.date">日期（可选）</span>
-                            <input id="today-task-create-date" type="date" data-task-date />
-                          </label>
-                          <label>
-                            <span data-i18n="tasks.time">时刻（需要日期）</span>
-                            <input id="today-task-create-time" type="time" disabled data-task-time />
-                          </label>
-                        </div>
-                        <p class="task-form-boundary" data-i18n="today.tasksBoundary">保存后，Tasks、Today 与 Calendar 会共享这一个任务；不会写入 Daily Record。</p>
-                        <button id="today-task-create-submit" type="submit" data-i18n="tasks.add">加入收集箱</button>
-                      </form>
+                        <details class="task-compact-details"><summary data-i18n="tasks.optionalDetails">更多任务信息</summary><div class="task-form-grid">
+                          <label class="task-form-wide"><span data-i18n="tasks.content">内容（可选）</span><textarea id="today-task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder" data-task-content></textarea></label>
+                          <label><span data-i18n="tasks.list">清单</span><select id="today-task-create-list" data-task-list></select></label>
+                        </div></details>
+                                            </form>
+                      <div id="today-task-create-recovery" class="task-create-recovery" hidden>
+                        <button id="today-task-create-recheck" type="button" class="secondary-button" data-i18n="tasks.refresh">刷新 Tasks</button>
+                        <button id="today-task-create-retry" type="button" data-i18n="tasks.retryOriginal" disabled>重试原任务</button>
+                        <button id="today-task-create-end-attempt" type="button" class="secondary-button" data-i18n="tasks.endSubmission" disabled>结束原提交</button>
+                      </div>
+                      <div id="today-task-create-ended-attempts" class="task-create-ended-attempts" hidden></div>
                       <p class="day-task-boundary" data-i18n="today.tasksBoundary">
                         未勾选表示尚未确认；无日期任务不会自动塞入今天，归档清单不进入日常待办。
                       </p>
@@ -1180,7 +1233,6 @@
       </section>
     </main>
 
-    <div id="task-editor-dialog-root"></div>
 
     <script type="module" src="main.js"></script>
   </body>

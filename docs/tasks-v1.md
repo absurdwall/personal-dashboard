@@ -67,6 +67,24 @@ rewrite the tasks. Restoring one deleted task clears only that task's
 tombstone; it does not restore the archived list. New tasks and cross-list
 moves cannot target an archived list until the list itself is restored.
 
+## Task list and selected details
+
+Tasks retain the list sidebar and scope/state filters. A compact row offers an
+accessible completion checkbox, the Task name and its saved schedule. Clicking
+the name or row selects one full detail panel independently of completion.
+The panel sits beside the list at wide sizes and below it in narrow windows;
+closing it returns keyboard focus to the Task name.
+
+The selected panel reuses the shared editor for name, content, list, date,
+time and optional execution end. Provenance, completion corrections, change
+history, Collaboration entry and abandon/delete/restore controls remain there.
+Completed and abandoned history stays folded and paged by thirty, with the
+selected or linked identity included even beyond the first page. Navigation
+retains drafts; a failed save preserves the selected editor and its submitted
+values for explicit refresh/retry. Writes keep the existing revision, stable
+operation identity and saved-readback checks, and freeze edit controls while
+pending. A Task link selects its actual list before revealing the details.
+
 ## Today derived view
 
 Today is a date-based presentation over this same source, not another list or
@@ -87,15 +105,20 @@ those files during normal 4.0 reads.
 ## Calendar derived view
 
 Calendar keeps its existing Daily Record availability and Review semantics. Its
-month response adds up to two dated, non-deleted task title previews per cell
+month response adds up to four dated, non-deleted task title previews per cell
 plus an overflow count. The previews retain the task state so completed and
 abandoned work can be distinguished; archived-list tasks remain eligible for
 historical Calendar lookup. Undated tasks have no month-cell placement, and
 late completion does not move a task away from its scheduled date.
+The month includes complete Sunday-to-Saturday weeks, using five rows for
+compact months and six when needed. Record/Review markers and the true overflow
+count sit beside the date; missing records remain unmarked and read errors
+retain their separate state. Task completion never implies Review.
 
 Selecting a date, including its `+N` overflow label, reads that date through
 the existing `TodayApplication::read_date` boundary and presents the complete
-dated task set in the existing right-side panel. The panel uses the shared
+dated task set in the existing detail panel (beside the month at wide widths,
+below it at narrow widths). The panel uses the shared
 task id, binding, revision and mutation commands for editing, state changes,
 completion correction and rescheduling. New tasks default to the selected date
 and Inbox. Reading Calendar or saving a task only reads or writes the task
@@ -107,3 +130,54 @@ adapter is specified in [daily-flow-task-adapter-v1.md](daily-flow-task-adapter-
 and its canonical daily-loop wiring is documented in
 [daily-flow-integration-v1.md](daily-flow-integration-v1.md); packaged acceptance
 remains a separate gate.
+
+## Optional planned execution interval (PDEX-06)
+
+Task `date` and `time` continue to identify its scheduled start/calendar
+placement. `executionEnd` is an optional `{date, time}` planned execution end;
+both endpoints need complete valid dates and `HH:mm` times, and end must be
+strictly after start. An overnight end retains its actual calendar date.
+Absent or null persisted ends mean the existing point/date/undated Task, with
+no inferred duration. An interval is never completion evidence or a deadline.
+
+Create accepts an optional end. Update omitting `executionEnd` retains the
+saved end, explicit `null` clears it, and an object replaces it. A start edit
+that would invalidate a retained end is rejected atomically; callers moving
+an interval pass both the changed start and end. Change history retains both
+ends. New changed manual updates also retain their normalized original field
+payload and the omitted/null/object end patch in history. Reusing a change id
+must match that original payload; a genuine retry remains read-only after later
+edits, rather than reapplying an older end. Legacy changes without retained
+operation payloads keep their prior result-based retry compatibility. Existing
+Task identity and selected-Vault/revision checks remain in use. The shared Task
+editor exposes end date/time and an explicit clear action; Tasks, Today and Calendar read that same Task store.
+
+Collaboration's `createTask` and `updateTask` operations accept the same
+optional `executionEnd`. Current Task references and proposal/result baselines
+retain it. Operation readback checks both endpoints (an omitted update end is
+checked against the baseline); an unchanged end cannot be reported as a saved
+end edit. Omitted new fields stay omitted in old serialized operation records,
+so adding this capability does not change old operation fingerprints.
+
+## Today timeline direct manipulation (PDEX-07)
+
+Blank-axis pointer selection opens an editable Task creation dialog. The start
+and end become natural calendar dates and local times (including a next-day
+end across midnight) before the existing `create_task` boundary is invoked.
+Moving a Task uses its saved start and optional execution end, with 15-minute
+snapping of the new start. The saved duration remains unchanged; a point Task
+keeps `executionEnd: null`. Minimum card height never supplies a duration.
+
+The gesture controller owns the plot once, uses its existing inner scroll
+surface during a held edge drag, and cancels its unsaved preview on Escape.
+Facts stay outside its editable targets. Task detail/time editing opens the
+same stable Task identity. These operations do not call Daily Record writes
+or change completion/abandonment state.
+
+A rejected/unconfirmed move keeps the saved card and the desired timing in a
+recovery dialog. Rereading checks the existing Task before an explicit retry;
+if retry is needed, only the requested timing is applied to current content,
+list and state. A failed creation retains its form and stable Task identity.
+No uncertain write is replayed automatically. `today-axis-gestures.ts` is the
+single pointer owner; plan gestures may extend its resolver/commit callbacks
+rather than installing a second controller.

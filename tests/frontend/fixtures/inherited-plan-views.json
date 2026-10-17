@@ -1,0 +1,278 @@
+{
+  "loaded": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": null,
+          "period": "早晨",
+          "title": "：Morning stays unchanged"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-182ad059b259c83f",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [],
+          "observedFacts": [
+            "08:45 已经阅读"
+          ],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "已发生事件"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-b4cf5033bd786e09",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "d441ff0d97b70bb6",
+    "state": "ready",
+    "targetBinding": "target-6a2308b1855be34e",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-00041be2911693c4",
+      "tasks": [],
+      "vaultName": "inherited-plan-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-1706-1791682217606230000-14/inherited-plan-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": null,
+          "planId": null,
+          "planPrecision": null,
+          "sourceDate": "2026-08-10",
+          "startMinute": 525,
+          "text": "08:45 已经阅读",
+          "timeEditable": false
+        }
+      ],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": 600,
+          "period": "08:00–10:00",
+          "planId": "plan-94ea775ae97fc2d9",
+          "planPrecision": "exactRange",
+          "sourceDate": "2026-08-10",
+          "startMinute": 480,
+          "text": "Inherited synthetic plan",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": null,
+        "period": "08:00–10:00",
+        "title": "Inherited synthetic plan"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "inherited-plan-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-1706-1791682217606230000-14/inherited-plan-vault"
+  },
+  "saved": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": null,
+          "period": "早晨",
+          "title": "：Morning stays unchanged"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-182ad059b259c83f",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [],
+          "observedFacts": [
+            "08:45 已经阅读"
+          ],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "已发生事件"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：08:00–10:00 → 10:00–12:00",
+            "项目：Inherited synthetic plan"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-b4cf5033bd786e09",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "b58b8c614546e0a7",
+    "state": "ready",
+    "targetBinding": "target-6a2308b1855be34e",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-00041be2911693c4",
+      "tasks": [],
+      "vaultName": "inherited-plan-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-1706-1791682217606230000-14/inherited-plan-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": null,
+          "planId": null,
+          "planPrecision": null,
+          "sourceDate": "2026-08-10",
+          "startMinute": 525,
+          "text": "08:45 已经阅读",
+          "timeEditable": false
+        }
+      ],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": 720,
+          "period": "10:00–12:00",
+          "planId": "plan-ad42ccbd56edf234",
+          "planPrecision": "exactRange",
+          "sourceDate": "2026-08-10",
+          "startMinute": 600,
+          "text": "Inherited synthetic plan",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": null,
+        "period": "10:00–12:00",
+        "title": "Inherited synthetic plan"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "inherited-plan-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-1706-1791682217606230000-14/inherited-plan-vault"
+  }
+}

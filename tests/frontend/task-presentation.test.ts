@@ -601,3 +601,19 @@ test("lived-day Task projection includes next-date early hours exactly once and 
   assert.equal(todayTaskTimeAxisEntries([yearEnd], "2026-12-31", new Set())[0].startMinute, 1440);
   assert.deepEqual(todayTaskTimeAxisEntries([{ ...task, time: null }], "2026-10-01", new Set()), []);
 });
+
+test("interval edits retain distinct retry identities and require confirmed end readback", async () => {
+  const requests = new LatestRequest();
+  const identities = new TaskOperationIdentityStore();
+  const edit = { targetBinding: "binding", taskId: "overnight", name: "Synthetic", content: null,
+    date: "2026-10-10", time: "23:30", listId: "inbox",
+    executionEnd: { date: "2026-10-11", time: "00:30" } };
+  assert.notEqual(taskEditOperationKey(edit), taskEditOperationKey({ ...edit, executionEnd: null }));
+  assert.notEqual(taskEditOperationKey({ ...edit, executionEnd: undefined }), taskEditOperationKey({ ...edit, executionEnd: null }), "omission and clear are different operations");
+  const result = await performTaskUpdateRequest(edit, {
+    expectedRevision: "r1", requests, identities, createChangeId: () => "interval-edit",
+    isCurrent: () => true,
+    invoke: async () => ({ state: "ready", targetBinding: "binding", tasks: [{ ...edit, id: edit.taskId, executionEnd: null }] }),
+  });
+  assert.equal(result.confirmed, false, "unchanged end must not be reported as a saved interval");
+});

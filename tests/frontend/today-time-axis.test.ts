@@ -77,7 +77,7 @@ test('keeps the now label clear of the nearest hourly tick at exact and adjacent
   assert.equal(hourTickIsClearFromNow(840, null), true);
 });
 
-test('groups overlapping time-axis cards into one readable stack instead of horizontal tracks', () => {
+test('groups colliding time-axis cards into temporary columns and reuses nonconflicting space', () => {
   assert.equal(TODAY_AXIS_LABEL_MINIMUM_MINUTES, 48);
   assert.deepEqual(
     axisOverlapPlacements([
@@ -129,7 +129,7 @@ test('groups overlapping time-axis cards into one readable stack instead of hori
   );
 });
 
-test('stacks partially overlapping real time ranges without moving their source anchors', () => {
+test('places partially overlapping real time ranges beside one another without moving source anchors', () => {
   assert.deepEqual(
     axisOverlapPlacements([
       { startMinute: 780, endMinute: 815 },
@@ -222,7 +222,8 @@ test('time axis markup uses one full-width lane for arrangement and fact cards',
   assert.equal(unlocatedRegion.parent, unlocatedAside, 'untimed entries stay beside the Today timeline');
   assert.equal(arrangementUnlocated?.parent?.parent, unlocatedRegion);
   assert.equal(factsUnlocated?.parent?.parent, unlocatedRegion);
-  assert.ok(unlocatedShortcut.attrs.includes('href="#today-unlocated-time-region"'));
+  assert.ok(unlocatedShortcut.attrs.includes('aria-controls="today-unlocated-time-region"'));
+  assert.ok(unlocatedShortcut.attrs.includes('aria-expanded="false"'));
   assert.equal(lane.parent, axis);
   assert.equal(markers.parent?.parent?.parent, lane);
   assert.ok(lane.attrs.includes('aria-labelledby="today-timeline-lane-heading"'));

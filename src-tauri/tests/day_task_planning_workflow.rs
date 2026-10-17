@@ -362,7 +362,7 @@ fn calendar_and_other_summary_reads_do_not_receive_pending_planning_input() {
 
     assert!(summary.day_tasks.tasks.is_empty());
     assert!(!task_path(vault.path(), "2026-09-08").exists());
-    assert_eq!(month.days.len(), 42);
+    assert_eq!(month.days.len(), 35);
     assert!(!task_path(vault.path(), "2026-09-08").exists());
 
     let explicitly_opened = application.open().unwrap();

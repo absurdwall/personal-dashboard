@@ -5,8 +5,40 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
+  "calendar.hideSummary": { zh: "收起日期摘要侧栏", en: "Hide date summary sidebar" },
+  "calendar.showSummary": { zh: "展开日期摘要侧栏", en: "Show date summary sidebar" },
+  "navigation.hideSidebar": { zh: "收起主导航侧栏", en: "Hide navigation sidebar" },
+  "navigation.showSidebar": { zh: "展开主导航侧栏", en: "Show navigation sidebar" },
+  "today.hideSidebar": { zh: "收起当天侧栏（{count} 项未定位条目）", en: "Hide Today sidebar ({count} untimed items)" },
+  "today.showSidebar": { zh: "展开当天侧栏（{count} 项未定位条目）", en: "Show Today sidebar ({count} untimed items)" },
+  "today.planResizeEnd": { zh: "调整计划结束（拖动，或点击编辑）", en: "Adjust plan end (drag or click to edit)" },
+  "today.planApproximateReference": { zh: "约{time}", en: "Around {time}" },
+  "today.planPrecision": { zh: "时间表达", en: "Time expression" },
+  "today.planApproximatePoint": { zh: "约略时间点", en: "Approximate time point" },
+  "today.planExactPoint": { zh: "具体时间点", en: "Exact time point" },
+  "today.planExactRange": { zh: "具体时间区间", en: "Exact time range" },
+  "today.planTimeOutsideWindow": { zh: "原安排超出当前生活日范围。请在 Daily Record 中明确编辑完整起止，界面不会截断后保存。", en: "This plan extends outside this lived day. Edit its complete endpoints in the Daily Record; clipped display times will not be saved." },
+  "today.planTimeUnavailable": { zh: "这项旧安排无法安全定位。请重新读取，或在 Daily Record 中明确编辑时间。", en: "This legacy plan cannot be located safely. Reload or edit its time explicitly in the Daily Record." },
+  "today.editPlanTime": { zh: "编辑计划时间", en: "Edit plan time" },
+  "today.planStart": { zh: "开始", en: "Start" },
+  "today.planEnd": { zh: "结束", en: "End" },
+  "today.planNextDay": { zh: "次日", en: "Next day" },
+  "today.planTimeHelp": { zh: "只修改当前安排。早间基准和已确认事实保持原值。", en: "Updates the current arrangement. The morning baseline and confirmed facts retain their values." },
+  "today.planSave": { zh: "保存时间", en: "Save time" },
+  "today.planCancel": { zh: "关闭", en: "Close" },
+  "today.planSaved": { zh: "计划时间已保存并读回确认。", en: "Plan time saved and verified by reading the record." },
+  "today.planSavedNeedsReadback": { zh: "文档已保存；请重新读取核对界面。", en: "Document saved; read the record again to verify the display." },
+  "today.planReadbackDiagnostic": { zh: "{error}", en: "{error}" },
+  "today.planUnconfirmedError": { zh: "结果未确认；编辑值仍保留。请重新读取核对后再操作。 {error}", en: "Result unconfirmed; your edit is retained. Read the record again before another edit. {error}" },
+  "today.planUnconfirmed": { zh: "结果未确认；编辑值仍保留。请重新读取核对后再操作。", en: "Result unconfirmed; your edit is retained. Read the record again before another edit." },
+  "today.planRetryReady": { zh: "已读回未更改的来源；编辑值仍保留，可明确重试保存。", en: "The unchanged source was reread. Your edit is retained; save again to retry." },
+  "today.planSourceChanged": { zh: "来源或修订已改变，无法安全重绑此编辑。值仍保留；请关闭并重新选择来源后明确编辑。", en: "The source or revision changed and this edit cannot be safely rebound. Values are retained; close and reselect the source to edit explicitly." },
+  "today.planRecheck": { zh: "重新读取核对", en: "Read record again" },
+  "today.planInvalidTime": { zh: "请输入有效的开始时间；结束必须晚于开始，范围为当天 04:00 至次日 04:00。", en: "Enter a valid start; end must follow start within 04:00 today to 04:00 the next day." },
   "collaboration.toggleHistory": { zh: "会话历史", en: "Session history" },
   "collaboration.toggleContext": { zh: "当前工作", en: "Current work" },
+  "collaboration.toggleHistorySidebar": { zh: "切换会话侧栏", en: "Toggle sessions sidebar" },
+  "collaboration.toggleContextSidebar": { zh: "切换当前工作侧栏", en: "Toggle current work sidebar" },
   "collaboration.resizeHistory": { zh: "调整会话历史宽度（方向键调整，Home 最窄，End 最宽）", en: "Resize session history (arrow keys adjust, Home minimum, End maximum)" },
   "collaboration.resizeContext": { zh: "调整当前工作宽度（方向键调整，Home 最窄，End 最宽）", en: "Resize current work (arrow keys adjust, Home minimum, End maximum)" },
   "toolbar.label": { zh: "工作区工具栏", en: "Workspace toolbar" },
@@ -113,6 +145,7 @@ const interfaceCopies = {
   "collaboration.connectChatGPT": { zh: "连接 ChatGPT", en: "Connect ChatGPT" },
   "collaboration.modelLabel": { zh: "可用 Codex 模型", en: "Available Codex model" },
   "collaboration.modelDefault": { zh: "运行环境默认模型", en: "Runtime default" },
+  "collaboration.modelSummary": { zh: "{model} · {effort}", en: "{model} · {effort}" },
   "collaboration.reasoningEffortLabel": { zh: "推理强度", en: "Reasoning effort" },
   "collaboration.reasoningEffortDefault": { zh: "运行环境默认强度", en: "Runtime default" },
   "collaboration.modelReasoningDefault": { zh: "运行环境默认（{effort}）", en: "Runtime default ({effort})" },
@@ -149,14 +182,15 @@ const interfaceCopies = {
   "collaboration.previousDate": { zh: "前一天", en: "Previous day" },
   "collaboration.nextDate": { zh: "后一天", en: "Next day" },
   "collaboration.today": { zh: "今天", en: "Today" },
-  "collaboration.openSettings": { zh: "Codex 连接设置", en: "Codex connection settings" },
+  "collaboration.openSettings": { zh: "Codex 设置", en: "Codex Settings" },
   "collaboration.sessionsLabel": { zh: "会话", en: "SESSIONS" },
   "collaboration.sessionsHeading": { zh: "会话", en: "Sessions" },
   "collaboration.newSession": { zh: "新对话", en: "New chat" },
-  "collaboration.noSession": { zh: "开始或选择一个会话", en: "Start or select a session" },
+  "collaboration.noSession": { zh: "输入消息开始对话", en: "Type a message to start" },
   "collaboration.conversationLabel": { zh: "对话", en: "CONVERSATION" },
   "collaboration.currentWorkLabel": { zh: "当前工作内容", en: "CURRENT WORK" },
   "collaboration.contextHeading": { zh: "当前 context", en: "Current context" },
+  "collaboration.legacyCapabilityDetails": { zh: "旧会话能力说明", en: "Older session capability notes" },
   "collaboration.memoryHeading": { zh: "记忆与衔接", en: "Memory and continuity" },
   "collaboration.longTermHeading": { zh: "长期背景", en: "Long-term background" },
   "collaboration.longTermEditLabel": { zh: "现有 life/Self.md 文档", en: "Existing life/Self.md document" },
@@ -221,7 +255,8 @@ const interfaceCopies = {
   "collaboration.targetDateShort": { zh: "目标：{date}", en: "Target: {date}" },
   "collaboration.activityDatesShort": { zh: "活动：{dates}", en: "Active: {dates}" },
   "collaboration.workOwner": { zh: "当前工作：{session} · {vault} · {state}", en: "Current work: {session} · {vault} · {state}" },
-  "collaboration.recoveryRequired": { zh: "旧请求仍需核对结果；可先处理无关工作或发送纠正。", en: "An earlier result still needs checking; unrelated work and corrections can continue." },
+  "collaboration.recoveryRequired": { zh: "结果待确认", en: "Result needs confirmation" },
+  "collaboration.recoveryDetails": { zh: "结果待确认", en: "Result needs confirmation" },
   "collaboration.dailyRecord": { zh: "Daily Record", en: "Daily Record" },
   "collaboration.tasks": { zh: "Tasks", en: "Tasks" },
   "collaboration.habits": { zh: "习惯", en: "Habits" },
@@ -393,10 +428,14 @@ const interfaceCopies = {
   "collaboration.taskOperationStatus.rejected": { zh: "已取消 · 未保存", en: "Dismissed · not saved" },
   "collaboration.taskOperationStatus.conflict": { zh: "版本冲突 · 未确认保存", en: "Version conflict · save not confirmed" },
   "collaboration.taskOperationStatus.failed": { zh: "未完成 · 需要核对", en: "Not completed · check result" },
+  "collaboration.personalRetroCommand": { zh: "个人复盘", en: "Personal retro" },
+  "collaboration.about": { zh: "关于协作", en: "About collaboration" },
+  "collaboration.inputHelp": { zh: "输入与保存说明", en: "Input and saving details" },
   "collaboration.messageLabel": { zh: "消息", en: "Message" },
   "collaboration.messagePlaceholder": { zh: "描述你想讨论的事情…", en: "Describe what you want to discuss…" },
   "collaboration.composerSelectVault": { zh: "请先在设置中选择 Vault。", en: "Choose a Vault in Settings before starting a chat." },
-  "collaboration.composerNewSession": { zh: "先点“新对话”，再开始输入消息。", en: "Click New chat to start writing a message." },
+  "collaboration.composerNewSession": { zh: "在下方输入消息；点击发送会创建新对话。", en: "Type a message below. Sending starts a new chat." },
+  "collaboration.composerCreatingSession": { zh: "正在创建新对话；草稿会保留。", en: "Creating a chat. Your draft stays here." },
   "collaboration.composerConnect": { zh: "请先连接 ChatGPT，再发送消息。", en: "Connect to ChatGPT before sending a message." },
   "collaboration.composerRecover": { zh: "旧结果尚未确认；可发送纠正或无关请求，重试原效果前请核对保存结果。", en: "The earlier result is unconfirmed. Send a correction or unrelated request; check the saved effect before retrying it." },
   "collaboration.composerSavingDate": { zh: "正在保存会话日期，稍后即可输入。", en: "Saving the session date. You can type when it finishes." },
@@ -441,10 +480,12 @@ const interfaceCopies = {
   "collaboration.chooseVault": { zh: "请先在设置中选择 Vault，才能读取当前内容并保存会话。", en: "Choose a Vault in Settings to read current context and save sessions." },
   "collaboration.noSessions": { zh: "这一天还没有会话。", en: "There are no sessions for this day yet." },
   "collaboration.untitledSession": { zh: "未命名会话", en: "Untitled session" },
-  "collaboration.selectSession": { zh: "选择会话以查看对话。", en: "Select a session to view its conversation." },
+  "collaboration.selectSession": { zh: "在下方输入消息以开始新对话，或选择会话查看已有对话。", en: "Write a message below to start a new chat, or select a session to view its conversation." },
   "collaboration.emptyConversation": { zh: "会话已保存；发送一条消息开始讨论。", en: "Session saved. Send a message to start the conversation." },
   "collaboration.noCurrentEntries": { zh: "当前没有可显示的条目。", en: "There are no current entries to show." },
   "collaboration.sessionCreated": { zh: "会话已保存。", en: "Session saved." },
+  "collaboration.retrySessionCreate": { zh: "重试创建会话", en: "Retry creating chat" },
+  "collaboration.sessionCreateFailed": { zh: "无法创建协作会话：{error}", en: "Could not create the collaboration session: {error}" },
   "collaboration.contextLoaded": { zh: "已读取所选 Vault 的当前内容。", en: "Loaded current content from the selected Vault." },
   "collaboration.currentVault": { zh: "Vault：{name}", en: "Vault: {name}" },
   "collaboration.statusWaiting": { zh: "等待消息", en: "Waiting for a message" },
@@ -569,7 +610,6 @@ const interfaceCopies = {
   "collaboration.sendFailed": { zh: "消息未能发送：{error}", en: "Message could not be sent: {error}" },
   "collaboration.contextReadFailed": { zh: "无法读取当前内容：{error}", en: "Could not read current context: {error}" },
   "collaboration.connectionDetails": { zh: "{version} · {path}", en: "{version} · {path}" },
-  "collaboration.accountDetails": { zh: "{email} · {plan}", en: "{email} · {plan}" },
   "appearance.saving": { zh: "正在保存本机外观偏好…", en: "Saving the local appearance preference…" },
   "appearance.saved": { zh: "颜色已保存在这台 Mac。", en: "The color is saved on this Mac." },
   "appearance.restoring": { zh: "正在恢复默认外观…", en: "Restoring the default appearance…" },
@@ -600,6 +640,7 @@ const interfaceCopies = {
   "calendar.readError": { zh: "读取错误", en: "Read error" },
   "calendar.noRecord": { zh: "无记录", en: "No record" },
   "calendar.markerUnreviewed": { zh: "记", en: "N" },
+  "calendar.markerError": { zh: "!", en: "!" },
   "calendar.markerReviewed": { zh: "复", en: "R" },
   "calendar.selectedDay": { zh: "选中日期", en: "SELECTED DAY" },
   "calendar.chooseDate": { zh: "选择一个日期", en: "Choose a date" },
@@ -664,12 +705,12 @@ const interfaceCopies = {
   "today.morningShort": { zh: "早间", en: "Morning" },
   "today.daytimeShort": { zh: "当日", en: "Daytime" },
   "today.eveningShort": { zh: "晚间", en: "Evening" },
-  "today.morningSection": { zh: "早间 · 早间基准", en: "MORNING · BASELINE" },
+  "today.morningSection": { zh: "早间 · Daily Record 早间基准", en: "MORNING · DAILY RECORD BASELINE" },
   "today.daytimeSection": { zh: "当日 · 时间轴", en: "DAYTIME · TIMELINE" },
   "today.shortRecordText": { zh: "简短记录内容", en: "Short record text" },
   "today.eveningUpdateText": { zh: "晚间更新内容", en: "Evening update text" },
   "today.initialArrangement": { zh: "当天的初始安排", en: "Initial arrangement for the day" },
-  "today.morningTimeline": { zh: "今天的早间计划时间线", en: "Today's morning plan timeline" },
+  "today.morningTimeline": { zh: "当天的早间文字安排", en: "Today's morning baseline plan" },
   "today.noBaseline": { zh: "这份 Daily Record 尚未独立保存早间基准。", en: "This Daily Record does not yet contain a separately saved morning baseline." },
   "today.noBaselineStart": { zh: "这份 Daily Record 未独立保存早间基准；不会用当前安排补造起点。", en: "This Daily Record has no separately saved morning baseline; the current arrangement will not be used to invent one." },
   "today.emptyBaseline": { zh: "早间基准已建立，但初始安排仍为空。", en: "The morning baseline exists, but its initial arrangement is empty." },
@@ -689,10 +730,13 @@ const interfaceCopies = {
   "today.expandEarlyExpanded": { zh: "04:00–06:00 · 收起", en: "04:00–06:00 · Collapse" },
   "today.expandLateCollapsed": { zh: "次日 00:00–04:00 · 展开", en: "Next day 00:00–04:00 · Expand" },
   "today.expandLateExpanded": { zh: "次日 00:00–04:00 · 收起", en: "Next day 00:00–04:00 · Collapse" },
+  "today.axisPeriodItemCount": { zh: "{count} 项", en: "{count} item(s)" },
   "today.axisScrollRegion": {
     zh: "当天任务、日记安排和已确认事实共用的时间轴。",
     en: "Shared timeline of today's tasks, Diary arrangements, and confirmed facts.",
   },
+  "today.showUnlocatedItems": { zh: "展开未定时间内容（{count}）", en: "Show untimed items ({count})" },
+  "today.hideUnlocatedItems": { zh: "收起未定时间内容（{count}）", en: "Hide untimed items ({count})" },
   "today.unlocatedTimes": { zh: "时间未明确的内容", en: "Items without a precise time" },
   "today.unlocatedLabel": { zh: "未按明确时刻定位", en: "No precise time" },
   "today.unlocatedPlanLabel": { zh: "计划", en: "Plan" },
@@ -710,8 +754,8 @@ const interfaceCopies = {
   },
   "today.sourceDate": { zh: "来源日期：{date}", en: "Source date: {date}" },
   "today.sourceTask": { zh: "任务", en: "Task" },
-  "today.sourceArrangement": { zh: "日记安排", en: "Diary arrangement" },
-  "today.sourceConfirmedFact": { zh: "日记事实", en: "Diary fact" },
+  "today.sourceArrangement": { zh: "当前安排", en: "Current arrangement" },
+  "today.sourceConfirmedFact": { zh: "已确认事实", en: "Confirmed fact" },
   "today.continuesFromPrevious": { zh: "延续自前一天", en: "Continues from the previous day" },
   "today.continuesIntoNext": { zh: "延续至下一天", en: "Continues into the next day" },
   "today.openAxisItem": { zh: "打开 {time}：{text}", en: "Open {time}: {text}" },
@@ -831,6 +875,16 @@ const interfaceCopies = {
   "tasks.content": { zh: "内容（可选）", en: "Content (optional)" },
   "tasks.contentPlaceholder": { zh: "补充必要背景或下一步", en: "Add useful context or the next step" },
   "tasks.date": { zh: "日期（可选）", en: "Date (optional)" },
+  "today.axisTaskMoveRecovery": {zh:"Task 时间修改需要核对",en:"Review the Task timing change"},
+  "today.axisTaskUnavailable": {zh:"Task 已删除、放弃或清单已归档；请从任务详情核对。",en:"The Task is deleted, abandoned or in an archived list. Review Task details."},
+  "today.axisCancel": {zh:"取消",en:"Cancel"},
+  "today.axisTaskInvalid": {zh:"时段超出 04:00 至次日 04:00，或结束不晚于开始；未保存。",en:"The interval is outside 04:00–04:00 next day or its end does not follow its start. Nothing saved."},
+  "today.axisTaskRetry": {zh:"已重新读取任务；草稿已保留。核对后可再次保存。",en:"Tasks reread; your draft is retained. Review it before saving again."},
+  "today.axisTaskAlreadyExists": {zh:"该身份已有保存的 Task；请从任务详情核对或编辑。",en:"A saved Task already uses this identity. Review or edit it in Task details."},
+  "tasks.executionEndDate": { zh: "计划执行结束日期（可选）", en: "Planned execution end date (optional)" },
+  "tasks.executionEndTime": { zh: "计划执行结束时刻（需要结束日期）", en: "Planned execution end time (requires end date)" },
+  "tasks.clearExecutionEnd": { zh: "清除执行结束时间", en: "Clear execution end" },
+  "tasks.invalidExecutionInterval": { zh: "执行区间需要完整的起止日期和时刻，结束必须晚于开始。跨午夜请填写实际结束日期。", en: "An execution interval needs complete start and end dates and times. The end must follow the start; use the actual end date when crossing midnight." },
   "tasks.time": { zh: "时刻（需要日期）", en: "Time (requires a date)" },
   "tasks.clearSchedule": { zh: "清除日期与时刻", en: "Clear date and time" },
   "tasks.save": { zh: "保存", en: "Save" },
@@ -844,6 +898,23 @@ const interfaceCopies = {
   "tasks.editLabel": { zh: "编辑任务“{task}”", en: "Edit task {task}" },
   "tasks.details": { zh: "详情", en: "Details" },
   "tasks.createLabel": { zh: "新建任务名称", en: "New task name" },
+  "tasks.createUnconfirmed": { zh: "保存结果未确认；草稿已保留，请读回检查：{error}", en: "Save result unconfirmed. Draft retained; read back to check: {error}" },
+  "tasks.viewExisting": { zh: "查看现有任务", en: "View existing task" },
+  "tasks.endSubmission": { zh: "结束原提交", en: "End original submission" },
+  "tasks.endedSubmission": { zh: "已结束的提交 · {name}", en: "Ended submission · {name}" },
+  "tasks.endedAbsent": { zh: "读回时未找到原任务。此提交已结束，原输入保留供检查；新建将使用新的任务身份。", en: "The original task was absent at readback. This submission has ended; its input remains available to review. New tasks use a new identity." },
+  "tasks.endedConflict": { zh: "读回时原任务已存在且内容不同。此提交已结束，不会重放或更改现有任务；原输入保留供检查。", en: "Readback found the original task with different values. This submission has ended and will not replay or change the existing task. Its input remains available to review." },
+  "tasks.retryOriginal": { zh: "重试原任务", en: "Retry original task" },
+  "tasks.retryReady": { zh: "已读回：原任务尚未出现，可明确重试原提交。", en: "Read verified: the original task is absent. You may retry the original submission." },
+  "tasks.createIdentityConflict": { zh: "此任务身份已存在，但与原提交不符。请检查 Tasks；不会创建重复任务。", en: "This task identity exists with different values. Check Tasks; no duplicate will be created." },
+  "tasks.schedule": { zh: "安排日期与时刻", en: "Schedule date and time" },
+  "tasks.scheduleSummary": { zh: "安排日期与时刻 · {schedule}", en: "Schedule date and time · {schedule}" },
+  "tasks.scheduleToday": { zh: "今天", en: "Today" },
+  "tasks.scheduleTomorrow": { zh: "明天", en: "Tomorrow" },
+  "tasks.scheduleUndated": { zh: "无日期", en: "No date" },
+  "tasks.scheduleApply": { zh: "应用", en: "Apply" },
+  "tasks.optionalDetails": { zh: "更多任务信息", en: "Optional task details" },
+  "tasks.quickAdd": { zh: "添加", en: "Add" },
   "tasks.saved": { zh: "任务已保存到所选 Vault。", en: "Task saved to the selected Vault." },
   "tasks.notSaved": { zh: "任务未保存：{error}", en: "Task not saved: {error}" },
   "tasks.confirmationFailed": { zh: "任务写入结果无法确认；草稿仍保留，请刷新后检查。", en: "The task write could not be confirmed; the draft is preserved. Refresh to check." },
@@ -927,6 +998,15 @@ const interfaceCopies = {
   "today.noArrangementChanges": { zh: "今天还没有明确记录的安排变化。", en: "No arrangement changes have been explicitly recorded today." },
   "today.updateBoundary": { zh: "重排由外部 Agent 明确更新“当前安排”；这里的记录不会覆盖早间基准，也不会自动写回 Dida365。", en: "An external Agent explicitly updates the current arrangement. Notes here do not overwrite the morning baseline or write back to Dida365." },
   "today.agentRecord": { zh: "Agent 整理的今日记录", en: "Today's record organized by the Agent" },
+  "today.startReview": { zh: "开始复盘今天", en: "Review today" },
+  "today.startReviewDate": { zh: "复盘 {date}", en: "Review {date}" },
+  "today.reviewOpening": { zh: "正在准备 {date} 的复盘草稿…", en: "Preparing a review draft for {date}…" },
+  "today.reviewDraftReady": { zh: "草稿已就绪，可编辑后自行发送。", en: "Draft ready. Edit and send when ready." },
+  "today.reviewDraftPreserved": { zh: "已有草稿已保留，请核对后自行发送。", en: "Existing draft kept. Review and send when ready." },
+  "today.reviewBusy": { zh: "未能进入复盘。协作或 Vault 操作尚未完成，请等待操作结束后重试。已有草稿保留。", en: "Could not open the review. Another Collaboration or Vault operation is in progress. Wait for it to finish before retrying. Your draft is retained." },
+  "today.reviewTargetChanged": { zh: "未能进入复盘。进入复盘期间所选 Vault 已更改，请从当前 Vault 重新进入复盘。已有草稿保留。", en: "Could not open the review. The selected Vault changed while opening the review. Reopen the review from the current Vault. Your draft is retained." },
+  "today.reviewOpenFailed": { zh: "未能进入复盘。已有草稿保留，请重试。{error}", en: "Could not open the review. Your draft is retained; please retry. {error}" },
+  "today.reviewDraft": { zh: "/retro 请和我一起复盘 {date} 的一天。请先读取所选 Vault 中该日期的权威 Daily Record（dashboard://record/{date}?phase=evening），区分安排、已记录事实、Task 和 Habit 证据；缺少证据的部分保持未知。先帮助我回顾并询问需要补充的内容。", en: "/retro Help me review {date}. First read that date’s authoritative Daily Record in the selected Vault (dashboard://record/{date}?phase=evening). Distinguish arrangements, recorded facts, Tasks and Habit evidence; leave missing evidence unknown. Start by reviewing with me and asking what I want to add." },
   "today.eveningIntro": { zh: "先读一个保守的 first pass；不要求完整重建整天。", en: "Start with a conservative first pass; a complete reconstruction of the day is not required." },
   "today.whatHappened": { zh: "今天发生了什么", en: "What happened today" },
   "today.planVsActual": { zh: "计划与实际", en: "Plan and actual" },
@@ -1965,6 +2045,12 @@ const chineseErrorPrefixes: readonly Readonly<[string, string]>[] = [
 ];
 
 const chineseApplicationErrors: Readonly<Record<string, string>> = {
+  "The collaboration session creation result did not match its request.":
+    "协作会话创建结果与请求不匹配。",
+  "The collaboration session creation identity is invalid.":
+    "协作会话创建标识无效。",
+  "This collaboration session creation identity is already bound to another Vault or date.":
+    "此协作会话创建标识已绑定到另一个 Vault 或日期。",
   "Background image selection is unavailable.": "背景图片选择目前不可用。",
   "Background image storage is unavailable.": "背景图片存储目前不可用。",
   "The selected background image is unavailable.": "所选背景图片不可用。",
@@ -2074,6 +2160,28 @@ export function localizeApplicationError(
   error: string,
   language: InterfaceLanguage,
 ): string {
+  // These stable Today result wrappers surround an opaque storage diagnostic.
+  // Translate only the wrapper, retaining paths, user text and OS error details.
+  const savedRefreshPrefix = "文档已保存，但页面刷新失败：";
+  const savedRefreshSuffix = "；请重新读取核对。";
+  if (error.startsWith(savedRefreshPrefix) && error.endsWith(savedRefreshSuffix)) {
+    const detail = error.slice(savedRefreshPrefix.length, -savedRefreshSuffix.length);
+    return language === "zh" ? error : `Document saved, but the display refresh failed: ${detail}; read the record again to verify.`;
+  }
+  if (error === "文档已保存，但读回结果已经变化；请重新读取核对。") {
+    return language === "zh" ? error : "Document saved, but the readback changed; read the record again to verify.";
+  }
+  const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
+  const knownCollaborationDiagnostic = chineseApplicationErrors[applicationDiagnostic];
+  if (knownCollaborationDiagnostic) {
+    return language === "zh" ? knownCollaborationDiagnostic : applicationDiagnostic;
+  }
+  const collaborationDraftLimit = /^Drafts are limited to (\d+) characters\.$/.exec(applicationDiagnostic);
+  if (collaborationDraftLimit) {
+    return language === "zh"
+      ? `草稿最多可包含 ${collaborationDraftLimit[1]} 个字符。`
+      : applicationDiagnostic;
+  }
   if (language === "zh") {
     const exact = chineseApplicationErrors[error];
     if (exact) return exact;

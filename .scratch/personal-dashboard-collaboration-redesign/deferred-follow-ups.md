@@ -21,3 +21,15 @@ The user's presentation feedback also confirms expanded failures were deliberate
 inspection: the reviewer observed two Work history panels collapsed by default.
 Further real examples may refine presentation and execution quality; this
 iteration does not redesign the accepted conversation model.
+
+## October 10 follow-up design exploration
+
+The user accepts Personal Retro's current functional path and defers content
+optimization. They authorize throwaway prototypes for the subsequent experience
+feedback, including discoverable `/retro` completion, without installing a new
+product build. The primary-source branch is
+`codex/dashboard-experience-prototype`; [prototype and pending review](../personal-dashboard-experience/prototype/README.md)
+records three layouts, synthetic interactions, source boundaries and the
+unresolved Task time-window contract. No winning variant, implementation ticket,
+product fix or additional release acceptance is implied. This pointer leaves
+the closed parent and the original deferred ticket statuses intact.

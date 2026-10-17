@@ -141,6 +141,7 @@ fn create_task<C: TodayClock>(
 ) -> TasksView {
     application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             task_id: task_id.into(),
@@ -484,6 +485,7 @@ fn today_reads_shared_tasks_with_date_and_archive_semantics_without_legacy_plan_
 
     let rescheduled = tasks
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: reopened.target_binding.clone().unwrap(),
             expected_revision: reopened.revision.clone().unwrap(),
             task_id: "completed-task".into(),
@@ -631,6 +633,7 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
     clock.set("2026-09-17", "17:06");
     let moved = tasks
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone().unwrap(),
             task_id: "shared-task".into(),
@@ -661,6 +664,7 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
     clock.set("2026-09-17", "17:07");
     opened = tasks
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: moved.target_binding.clone().unwrap(),
             expected_revision: moved.revision.clone().unwrap(),
             task_id: "shared-task".into(),
@@ -855,4 +859,149 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
             .exists(),
         "cross-midnight Task reads must not create a Daily Record"
     );
+}
+
+#[test]
+fn planned_task_interval_survives_restart_shared_views_and_legacy_update() {
+    let vault = TempVault::new("planned-interval");
+    let app = task_app(vault.path());
+    let opened = app.read().unwrap();
+    let create: TaskCreateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": opened.target_binding, "expectedRevision": opened.revision,
+        "taskId": "interval-task", "name": "Synthetic overnight task", "content": null,
+        "date": "2026-09-17", "time": "23:30", "listId": "inbox",
+        "executionEnd": {"date": "2026-09-18", "time": "00:30"}
+    })).unwrap();
+    let saved = app.create(create.clone()).unwrap();
+    let duplicate = app.create(create).unwrap();
+    assert_eq!(duplicate.tasks.len(), 1);
+    assert_eq!(duplicate.revision, saved.revision);
+    let end = serde_json::json!({"date": "2026-09-18", "time": "00:30"});
+    assert_eq!(serde_json::to_value(&saved.tasks[0]).unwrap()["executionEnd"], end);
+    let legacy: TaskUpdateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": saved.target_binding, "expectedRevision": saved.revision,
+        "taskId": "interval-task", "changeId": "legacy-content-edit", "name": "Updated synthetic task",
+        "content": "Old caller still works", "date": "2026-09-17", "time": "23:30", "listId": "inbox"
+    })).unwrap();
+    let edited = app.update(legacy).unwrap();
+    let listed = app.create_list(TaskListCreateInput {
+        target_binding: edited.target_binding.unwrap(), expected_revision: edited.revision,
+        list_id: "interval-list".into(), name: "Synthetic interval list".into(),
+    }).unwrap();
+    let moved: TaskUpdateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": listed.target_binding, "expectedRevision": listed.revision,
+        "taskId": "interval-task", "changeId": "legacy-list-move", "name": "Updated synthetic task",
+        "content": "Old caller still works", "date": "2026-09-17", "time": "23:30", "listId": "interval-list"
+    })).unwrap();
+    app.update(moved).unwrap();
+    let reopened = task_app(vault.path()).read().unwrap();
+    assert_eq!(reopened.tasks[0].list_id, "interval-list");
+    assert_eq!(serde_json::to_value(&reopened.tasks[0]).unwrap()["executionEnd"], end);
+    let today = today_app(vault.path()).read_date("2026-09-17").unwrap();
+    assert_eq!(today.tasks.tasks[0].id, "interval-task");
+    assert_eq!(serde_json::to_value(&today.tasks.tasks[0]).unwrap()["executionEnd"], end);
+    let completed = app.set_state(TaskStateInput {
+        target_binding: reopened.target_binding.unwrap(), expected_revision: reopened.revision.unwrap(),
+        task_id: "interval-task".into(), change_id: "interval-complete".into(), state: TaskState::Completed,
+    }).unwrap();
+    let pending = app.set_state(TaskStateInput {
+        target_binding: completed.target_binding.unwrap(), expected_revision: completed.revision.unwrap(),
+        task_id: "interval-task".into(), change_id: "interval-reopen".into(), state: TaskState::Pending,
+    }).unwrap();
+    assert_eq!(serde_json::to_value(&pending.tasks[0]).unwrap()["executionEnd"], end);
+    assert_eq!(pending.tasks[0].date.as_deref(), Some("2026-09-17"));
+}
+
+#[test]
+fn task_interval_changes_reject_invalid_ranges_and_clear_only_on_explicit_null() {
+    let vault = TempVault::new("interval-edit");
+    let app = task_app(vault.path());
+    let opened = app.read().unwrap();
+    let saved = app.create(serde_json::from_value(serde_json::json!({
+        "targetBinding": opened.target_binding, "taskId": "interval-edit", "name": "Synthetic", "date": "2026-09-17", "time": "08:00",
+        "executionEnd": {"date": "2026-09-17", "time": "10:00"}
+    })).unwrap()).unwrap();
+    let update = serde_json::json!({"targetBinding":saved.target_binding, "expectedRevision":saved.revision,
+        "taskId":"interval-edit", "changeId":"invalid-range", "name":"Synthetic", "date":"2026-09-17", "time":"11:00",
+        "executionEnd":{"date":"2026-09-17","time":"10:00"}});
+    assert!(app.update(serde_json::from_value(update).unwrap()).is_err());
+    assert_eq!(app.read().unwrap(), saved, "invalid input never writes a truncated or flipped interval");
+    let moved = serde_json::json!({"targetBinding":saved.target_binding, "expectedRevision":saved.revision,
+        "taskId":"interval-edit", "changeId":"move-range", "name":"Synthetic", "date":"2026-09-17", "time":"10:00",
+        "executionEnd":{"date":"2026-09-17","time":"12:00"}});
+    let moved_input: TaskUpdateInput = serde_json::from_value(moved).unwrap();
+    let moved = app.update(moved_input.clone()).unwrap();
+    assert_eq!(app.update(moved_input).unwrap().revision, moved.revision);
+    assert_eq!(serde_json::to_value(&moved.tasks[0].changes[0]).unwrap()["previousExecutionEnd"], serde_json::json!({"date":"2026-09-17","time":"10:00"}));
+    let edited = app.update(serde_json::from_value(serde_json::json!({"targetBinding":moved.target_binding, "expectedRevision":moved.revision,
+        "taskId":"interval-edit", "changeId":"edit-end", "name":"Synthetic", "date":"2026-09-17", "time":"10:00",
+        "executionEnd":{"date":"2026-09-17","time":"12:45"}})).unwrap()).unwrap();
+    assert_eq!(serde_json::to_value(&edited.tasks[0]).unwrap()["executionEnd"]["time"], "12:45");
+    let cleared = app.update(serde_json::from_value(serde_json::json!({"targetBinding":edited.target_binding, "expectedRevision":edited.revision,
+        "taskId":"interval-edit", "changeId":"clear-range", "name":"Synthetic", "date":"2026-09-17", "time":"10:00", "executionEnd":null})).unwrap()).unwrap();
+    assert!(serde_json::to_value(&task_app(vault.path()).read().unwrap().tasks[0]).unwrap()["executionEnd"].is_null());
+    assert_eq!(cleared.tasks[0].time.as_deref(), Some("10:00"));
+    assert_eq!(cleared.tasks[0].state, TaskState::Pending);
+}
+
+#[test]
+fn legacy_task_time_modes_never_gain_a_fabricated_execution_end() {
+    let vault = TempVault::new("legacy-interval-modes");
+    let app = task_app(vault.path());
+    let mut opened = app.read().unwrap();
+    for (id, date, time) in [("undated", None, None), ("date-only", Some("2026-09-17"), None), ("point", Some("2026-09-17"), Some("09:30"))] {
+        opened = create_task(&app, &opened, id, "Synthetic legacy Task", date, time, None);
+    }
+    let restarted = task_app(vault.path()).read().unwrap();
+    assert_eq!(restarted.tasks.len(), 3);
+    assert!(restarted.tasks.iter().all(|task| task.execution_end.is_none()));
+    assert_eq!(restarted.tasks[0].date, None);
+    assert_eq!(restarted.tasks[1].date.as_deref(), Some("2026-09-17"));
+    assert_eq!(restarted.tasks[1].time, None);
+    assert_eq!(restarted.tasks[2].time.as_deref(), Some("09:30"));
+    let orphan = serde_json::from_value(serde_json::json!({"targetBinding": restarted.target_binding, "expectedRevision": restarted.revision,
+        "taskId":"orphan-time", "name":"Synthetic invalid time", "date":null,"time":"09:30"})).unwrap();
+    assert!(app.create(orphan).is_err());
+    assert_eq!(app.read().unwrap().tasks.len(), 3);
+}
+
+#[test]
+fn timeline_task_payloads_keep_natural_calendar_dates_and_never_change_the_daily_record() {
+    let vault = TempVault::new("timeline-create-move");
+    let app = task_app(vault.path());
+    let before = today_app(vault.path()).read_date("2026-09-17").unwrap();
+    let opened = app.read().unwrap();
+    let create: TaskCreateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": opened.target_binding, "expectedRevision": opened.revision, "taskId":"axis-selected-task", "name":"Synthetic selected interval",
+        "date":"2026-09-17", "time":"23:45", "executionEnd":{"date":"2026-09-18","time":"00:15"}
+    })).unwrap();
+    let created = app.create(create.clone()).unwrap();
+    assert_eq!(app.create(create).unwrap().tasks.len(), 1);
+    let movement: TaskUpdateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": created.target_binding, "expectedRevision":created.revision,
+        "taskId":"axis-selected-task","changeId":"axis-move-selected","name":"Synthetic selected interval",
+        "date":"2026-09-18","time":"01:15","executionEnd":{"date":"2026-09-18","time":"01:45"}
+    })).unwrap();
+    let moved = app.update(movement.clone()).unwrap();
+    assert_eq!(app.update(movement).unwrap().revision, moved.revision);
+    let reopened = task_app(vault.path()).read().unwrap();
+    assert_eq!(reopened.tasks[0].id, "axis-selected-task");
+    assert_eq!(reopened.tasks[0].date.as_deref(), Some("2026-09-18"));
+    assert_eq!(reopened.tasks[0].time.as_deref(), Some("01:15"));
+    assert_eq!(reopened.tasks[0].execution_end.as_ref().unwrap().time, "01:45");
+    let after = today_app(vault.path()).read_date("2026-09-17").unwrap();
+    assert_eq!(after.tasks.tasks[0], reopened.tasks[0]);
+    assert_eq!(after.baseline, before.baseline);
+    assert_eq!(after.time_axis, before.time_axis);
+    assert_eq!(after.daily_record_availability, before.daily_record_availability);
+    let calendar = today_app(vault.path()).calendar_month(2026, 9).unwrap();
+    assert!(calendar.day("2026-09-17").unwrap().task_summaries.is_empty());
+    assert_eq!(calendar.day("2026-09-18").unwrap().task_summaries[0].id, "axis-selected-task");
+    let stale: TaskUpdateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": reopened.target_binding, "expectedRevision":"stale-source-revision",
+        "taskId":"axis-selected-task","changeId":"axis-conflicted-move","name":"Synthetic selected interval",
+        "date":"2026-09-18","time":"02:00","executionEnd":{"date":"2026-09-18","time":"02:30"}
+    })).unwrap();
+    assert!(app.update(stale).is_err());
+    assert_eq!(app.read().unwrap(), reopened);
 }

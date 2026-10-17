@@ -1,0 +1,79 @@
+{
+  "sourceCommit": "f127cc910bf78e94ce10d849c2f43e548edabc0c",
+  "binarySha256": "485b1c2b514ef8ca3e7d4421fd7df32b5f848f20d1aa8e8ee136422e68e8adc4",
+  "bundleFileTreeSha256": "af85de1ff80e21982bd77130e29ef4eaf4bd2093e6a64fc23cdd665cb3ccb8bc",
+  "nativeTool": "Computer Use Virtual Mouse / bound app keyboard",
+  "profile": "/tmp/pdex-followup-20261011-repair.noindex/profile",
+  "vault": "/tmp/pdex-followup-20261011-repair.noindex/vault",
+  "saved": [
+    {
+      "id": "manual-task-10709abe-7320-4f9c-92bd-87dbd7a164b5",
+      "name": "Native repair first",
+      "content": null,
+      "date": null,
+      "time": null,
+      "executionEnd": null,
+      "listId": "inbox",
+      "source": {
+        "kind": "manual",
+        "reference": null
+      },
+      "state": "pending",
+      "deletedAt": null,
+      "completion": null,
+      "createdAt": "2026-09-08T17:05-04:00",
+      "modifiedAt": "2026-09-08T17:05-04:00",
+      "changes": []
+    },
+    {
+      "id": "manual-task-993d0b24-f9c1-4313-928e-c90a496b4c40",
+      "name": "Native repair second",
+      "content": null,
+      "date": null,
+      "time": null,
+      "executionEnd": null,
+      "listId": "inbox",
+      "source": {
+        "kind": "manual",
+        "reference": null
+      },
+      "state": "pending",
+      "deletedAt": null,
+      "completion": null,
+      "createdAt": "2026-09-08T17:05-04:00",
+      "modifiedAt": "2026-09-08T17:05-04:00",
+      "changes": []
+    },
+    {
+      "id": "manual-task-c655a48d-6ebb-4922-814e-9f5486e964f2",
+      "name": "Native recovered Inbox",
+      "content": null,
+      "date": null,
+      "time": null,
+      "executionEnd": null,
+      "listId": "inbox",
+      "source": {
+        "kind": "manual",
+        "reference": null
+      },
+      "state": "pending",
+      "deletedAt": null,
+      "completion": null,
+      "createdAt": "2026-09-08T17:05-04:00",
+      "modifiedAt": "2026-09-08T17:05-04:00",
+      "changes": []
+    }
+  ],
+  "taskCount": 47,
+  "taskDocumentSha256": "7b5df726f5fbfd2848a8e87e87657d1aceb1612a627ac4d2e976be39e6248344",
+  "observations": [
+    "Real Tauri saved2nameonlyInboxTasks, clearedinput andretainedfocus continuous.",
+    "NewTaskviewportmodal autoNamefocus; typedCancellednative draftthenEscape; noTaskcreated,NewTaskfocusreturned.",
+    "Externalarchiveonlysyntheticcustomlist beforecreate; realTauri rejectsarchivedlist, unconfirmedstatus/draftretained/Enddisabled.",
+    "RefreshreadbackconfirmsoldTaskabsent;Endenabled,explicitEnd retainsoriginalreview,Archiveviewread-only.",
+    "ChooseInbox andcreateNative recovered Inbox succeedsnewidwithcontinuousfocus; olddraftnotcreated, original44Tasks unchanged.",
+    "Today1000x758autocollapsedcount2;realnativeShowdrawerAX/screenshotsourcecontentreadable;ClosefocusreturnsShowbutton."
+  ],
+  "qualification": "Unknown response/lost-save scenarios are controlled public-boundary tests; this native fault is actual synthetic archived-list refusal. No real personal data/OSIME/modelsubmission.",
+  "next": "P3 dynamic Inbox label fix requires new frozen source/package; f127native is supporting historical evidence only."
+}

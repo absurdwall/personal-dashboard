@@ -24,6 +24,12 @@ test("Collaboration is a latest-shell destination with the adjacent approved A w
   // Width policy is covered by collaboration-panels behavior tests.
   assert.match(html, /aria-controls="collaboration-history-panel"/);
   assert.match(html, /aria-controls="collaboration-work-panel"/);
+  assert.match(html, /id="collaboration-toggle-context"[^>]*aria-expanded="false"/);
+  assert.match(html, /id="collaboration-work-panel"[^>]*hidden/);
+  assert.match(html, /<details id="collaboration-task-tool-disclosure"[^>]*hidden>/);
+  assert.match(html, /id="collaboration-task-tool-notice"[^>]*role="status"/);
+  assert.match(copies, /"collaboration\.legacyCapabilityDetails":\s*\{[^\n]*zh:[^\n]*en:/);
+  assert.match(copies, /"today\.reviewDraftReady":\s*\{[^\n]*Draft ready\. Edit and send when ready\./);
 });
 
 test("external apps stay disabled in Dashboard collaboration", () => {
@@ -47,9 +53,27 @@ test("Codex settings report experimental status and runtime capability instead o
   assert.match(copies, /"collaboration\.turnBlocked":\s*\{[^\n]*zh:[^\n]*en:/);
 });
 
-test("the composer remains gated on authenticated runtime plus verified read-only turns", () => {
+test("Collaboration keeps its header compact, displays the configured model, and hides account-plan details", () => {
+  assert.doesNotMatch(html, /data-i18n="collaboration\.(about|introduction)"/);
+  assert.match(html, /id="collaboration-model-summary"/);
+  assert.match(main, /const activeModel = connection\.models\.find/);
+  assert.match(main, /connection\.selectedReasoningEffort \?\? activeModel\?\.defaultReasoningEffort/);
+  assert.doesNotMatch(main, /connection\.accountEmail|connection\.planType/);
+  assert.doesNotMatch(main, /Luna Max/);
+  assert.match(html, /id="collaboration-open-settings"[^>]*data-i18n="collaboration\.openSettings"/);
+  assert.match(html, /id="collaboration-toggle-history"[^>]*class="sidebar-toggle collaboration-sidebar-toggle"/);
+  assert.match(html, /id="collaboration-toggle-context"[^>]*class="sidebar-toggle collaboration-sidebar-toggle"/);
+  assert.match(html, /id="collaboration-recovery-details"[^>]*hidden/);
+  assert.match(main, /collaborationRecoveryDetails\.hidden = !recoveryBlocked/);
+  assert.match(copies, /"collaboration\.recoveryRequired": \{ zh: "结果待确认", en: "Result needs confirmation" \}/);
+});
+
+test("local composition remains editable while Send is gated on authenticated runtime plus verified read-only turns", () => {
   assert.match(main, /currentCollaborationConnection\?\.authenticated === true\s*&&\s*currentCollaborationConnection\.authMode === "chatgpt"\s*&&\s*currentCollaborationConnection\.readOnlyTextTurnsAvailable/);
-  assert.match(html, /id="collaboration-message-draft"[^>]*disabled/);
+  assert.doesNotMatch(html, /id="collaboration-message-draft"[^>]*disabled/);
+  assert.match(main, /collaborationMessageDraft\.disabled = composerBusy/);
+  assert.match(main, /collaborationEmptyDraft = collaborationMessageDraft\.value/);
+  assert.match(main, /collaborationSendButton\.disabled = !connected \|\| !vaultAvailable/);
   assert.match(html, /id="collaboration-send-message"[^>]*disabled/);
   assert.match(html, /id="collaboration-composer-status"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(html, /aria-describedby="collaboration-composer-status"/);

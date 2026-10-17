@@ -1,0 +1,18 @@
+{
+  "sourceCommit": "256ecd01aab9e92ef6bf139d7d83ccc2ae671aee",
+  "binarySha256": "32132f656be31fc6f8ecd3b1b2dc5aea20436ab3460f493d8933629321dd5845",
+  "bundleFiles": {
+    "Contents/Info.plist": "8c4bb396a4c0e9ff4c81c55ded4395f3e4f13ee3244e402bb3554a53c9fb54d1",
+    "Contents/MacOS/personal-dashboard": "32132f656be31fc6f8ecd3b1b2dc5aea20436ab3460f493d8933629321dd5845",
+    "Contents/Resources/icon.icns": "8c9e518ddaeb5d795b7195a72a0b051b6299e6a7b5277eb37b9a2dfd7bf1ce00",
+    "Contents/_CodeSignature/CodeResources": "11dc3645b684a4d8f93055c68d88e8622513786e96c4244c717ecb17be0633be"
+  },
+  "clockNY": "2026-09-08 17:05 -0400",
+  "syntheticProfile": "/tmp/pdex-11-run.noindex/profile",
+  "syntheticVault": "/tmp/pdex-11-run.noindex/vault",
+  "runtime": "explicitly synthetic inspect-only candidate PATH; no authentication or model execution",
+  "candidateBundle": "/tmp/pdex-package-build.noindex/release/bundle/macos/Personal Dashboard.app",
+  "installedExecutableSha256": "33941698a758314fc9c24d8095e02c65e10a77d1d2825503ab0fcb953ae0da55",
+  "bundleIdentifier": "com.tortillaflat.personal-dashboard",
+  "bundleVersion": "4.0.7"
+}

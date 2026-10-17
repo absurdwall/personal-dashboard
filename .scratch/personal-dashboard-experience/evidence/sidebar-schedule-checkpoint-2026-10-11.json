@@ -1,0 +1,315 @@
+{
+  "sourceCommit": "71059a3cb686ec9e925f2fd27eccfaee5b41b557",
+  "logs": [
+    {
+      "path": "/tmp/pdex14-validation.noindex/build-current.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/calendar-red.log",
+      "bytes": 2848,
+      "sha256": "3ce2c9be8b4e983002d0f8ce6418ecd3a815759a37ee2b6701341cebca0eb659"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/core-green.log",
+      "bytes": 15199,
+      "sha256": "4c40fac380560c9134c7146e109f19d2e276cd480d2e90a41b4f5029a180aa10"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/final-core.log",
+      "bytes": 51646,
+      "sha256": "d96ab90016973784a3acab5ae8f561b1806656f875941c44f1baa245f2d944f8"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/geometry-green.log",
+      "bytes": 34231,
+      "sha256": "800bf511a07dabab11ab51796772322d864256254ebd72460a79c1e2ec2d0399"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/integrated-build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/integrated-core.log",
+      "bytes": 51632,
+      "sha256": "8dc5e1436a8044669cea7608892ff5b886bf34fd8b29260f845bbd550c4411d0"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/integrated-keyboard.log",
+      "bytes": 428,
+      "sha256": "3a9c07f71eb9d1d476ef00b0ece896ce2a7cb575c6ae65906567de978ebbeaf3"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/keyboard-browser.log",
+      "bytes": 429,
+      "sha256": "6bb094ed3243822acc6f1dba848132a418fbc2e50c28851a08a8964004f87327"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/nav-columns-red.log",
+      "bytes": 1033,
+      "sha256": "f622ac11b47ec25602569f5b4f265edc191aa3e8e1aaeb69a3faa04401a74487"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/nav-green.log",
+      "bytes": 11142,
+      "sha256": "9f8c01f27fdad509aae04d3ba14672430bab0092cabcec94363bc8d98f55c295"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/nav-label-red.log",
+      "bytes": 6087,
+      "sha256": "a59dce761fedc747422b4f8ea9e1e77f22955de3ff163c5348f10cccfa5d1ea4"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/nav-red.log",
+      "bytes": 2779,
+      "sha256": "126683f422473c106861a3fb52e6cbaf56d108068f17d9aa02e3146d2c1c3d3c"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/reading-green.log",
+      "bytes": 223,
+      "sha256": "bc6a04362a39652d0e5f4f8a407d1c48a3cfeccda5dce28d817bc01c89aafe0d"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/reading-red-flushed.log",
+      "bytes": 1062,
+      "sha256": "a4462e44830de01bc3a2899c8a8670ef982f1682c37736bcb67e16e56b5a6c33"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/reading-red-real.log",
+      "bytes": 220,
+      "sha256": "4da1cdc24cd14063bb0413661251e8e6437b7c3145818804bc5e3b4939d019a9"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/reading-red.log",
+      "bytes": 222,
+      "sha256": "3109e99ce1783a428662c94245cefb1e6fb8167009b8a9309a717027c56857b1"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/regressions.log",
+      "bytes": 4383,
+      "sha256": "c4a07f4d98f94895518ca60bc48453040764fbfcbf43bd1f37e7ff3050d68730"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/resize-debug.log",
+      "bytes": 425,
+      "sha256": "b438cb40683481ad1b25a8e68dc548a2c1d65889049baea763387a86f33b0b1f"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/resize-isolated.log",
+      "bytes": 219,
+      "sha256": "c4ea9edea1ceb2e86555d0861ae3667087e4576ca9e9f216b20618cc566c801a"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/today-green.log",
+      "bytes": 228,
+      "sha256": "386b5c1c6380142b7125eb2af5df25152fc04739bf436e2ef2e25e924d94de58"
+    },
+    {
+      "path": "/tmp/pdex14-validation.noindex/today-red.log",
+      "bytes": 1072,
+      "sha256": "c4fbce19f637281ae3448c34ab64ccc4e18f0580ed084b8cc740be2b389320e3"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/baseline-build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/coherent-frontend-green.log",
+      "bytes": 4842,
+      "sha256": "33a9fa82d5a676f61143230a5631755d1f5d431f5cb06ef03d92060000d677cf"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/coherent-product-green.log",
+      "bytes": 463,
+      "sha256": "c64a3cdf7f284f715dca5ae129d3f9e0a3461f20b323611e739c82c22bb039d2"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/compact-geometry-red-corrected.log",
+      "bytes": 219,
+      "sha256": "27e4c9d582da0cea5a8a2789113a0635203f15197bae212217330d66fff8a0db"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/compact-geometry-red.log",
+      "bytes": 1343,
+      "sha256": "1aa1bf665bd26dfde88943495a4e4c7bcad405ec517492adddf5e77c177ca73b"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/creation-all-initial.log",
+      "bytes": 1741,
+      "sha256": "a9389e5006b83495c87759c064a3e061750b19417c7a10948e334e3f56cde785"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/frontend-green.log",
+      "bytes": 4845,
+      "sha256": "1725473683da4c6cc3cd91c69d8876cf6e4ddd8a881f958032f8991778b51ff7"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/frontend-initial.log",
+      "bytes": 7367,
+      "sha256": "9f65f8af05a48857cb7210ee257e5dc7b0fbb40d1de53e57b2842f8d750c106a"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/lived-scope-build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/lived-scope-red.log",
+      "bytes": 908,
+      "sha256": "ffce4bab9c10749814fa52d9be23790359fc4cdb4b7dddf9b799c87053eca051"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/quick-schedule-green.log",
+      "bytes": 226,
+      "sha256": "2ebd3c5a5919a519c2001fd37aac6e889d0ac58c103b0a80f62f41be94990b54"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/quick-schedule-red.log",
+      "bytes": 997,
+      "sha256": "ba37ad7e77441c2d924886f8dc1b1fbf4fe2af4024bb4733b28a6d4b3bbbd58b"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/slice1-build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/slice2-build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/today-historical-green.log",
+      "bytes": 244,
+      "sha256": "b0efd59302c54378059fffe0e39d8afc2fb96cd0c75aa603fcf5645506a7a85f"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/today-recovery-extended-green.log",
+      "bytes": 386,
+      "sha256": "b6800dc346b7a1821e706a20ceaf1ce97de57b8febc7ff343b65eed228e1dfdc"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/today-recovery-green.log",
+      "bytes": 227,
+      "sha256": "53730dffafe2e30a0b3fe0577aa5275f170a24d6ce1f143a028c89fb0cf58e41"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/today-recovery-red.log",
+      "bytes": 966,
+      "sha256": "4e5846ed86fe917855e8fdb022039aafcfebc4bd98398de19250565f6a4a8ba8"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/today-undated-green.log",
+      "bytes": 257,
+      "sha256": "d78b30d1074f786aaffb58ba04c58511eb6179d191a929f9c91b5cfb511eb70d"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/today-undated-red.log",
+      "bytes": 1052,
+      "sha256": "1c55bdeb5efc590e74b554a88f9f2cf9873b314c058339b9d5e225a1e75523ee"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/undated-build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex15-validation.noindex/undated-history-green.log",
+      "bytes": 1479,
+      "sha256": "d59286303133182d5b574ca46dff7a072ea17631358b1c2534df51f23bcdd630"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/final-creation-browser.log",
+      "bytes": 4157,
+      "sha256": "ea6aaa1deec6e3fedc1ba665857253058bbc95ece0678fe5978b458b855a3ab5"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/integration-build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/integration-creation-browser-initial.log",
+      "bytes": 2870,
+      "sha256": "3a53cbb840d40cb326eade2ef8e1d74d92d06013ed724e0f5e765074d19a3972"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/integration-sidebar-task-language.log",
+      "bytes": 53898,
+      "sha256": "4998041b2311b8744c59fd1e2d7e870f13b63716b4743ebd03a383b8b7a8b437"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-context-geometry.log",
+      "bytes": 1109,
+      "sha256": "2a1d24f8ddb5d0325615ce14c7b805ecdb1e935f6aebf9dcc5e6545aa9fdec14"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-review-build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-review-green.log",
+      "bytes": 483,
+      "sha256": "3508de5c69698acec2b04da7c95300c52c9dc38bcb7853bdcd8932c22b7323de"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-review-red.log",
+      "bytes": 3418,
+      "sha256": "49179d36aeb1ff005a6adcdf50e39b70f704d1e0266ccfa76ea06efe9c9b6eca"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/final-creation-browser-current.log",
+      "bytes": 2859,
+      "sha256": "8fa56a10e5b9801f4d0b8a48b69ab6d486d83b7a379d43ca3ec9e98ad8aabe1d"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/final-frontend.log",
+      "bytes": 54297,
+      "sha256": "d34081d4f5ade5a9ec5fba99db40b3369d502cfdae588bd46ab33370a61d2196"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-repair-final.log",
+      "bytes": 703,
+      "sha256": "6417204c095d017bf3beaac30e7567b7e74b53def4118159463f435a2dae1920"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/retained-sidebar-keyboard.log",
+      "bytes": 429,
+      "sha256": "25cab637ef30ba5a6dc2972e75e3a7c664a75c8d877200a0d257d87bdb87bae8"
+    }
+  ],
+  "workers": [
+    {
+      "root": "/Users/tingranwang/.codex/worktrees/pdex-docked-sidebars/personal-dashboard",
+      "status": "",
+      "remainingPatch": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/pdex-docked-sidebars-remaining.patch",
+      "remainingPatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "policy": "Preserve checkout until unique changes are inventoried and independently reviewed; no cleanup yet. PDEX15 remaining source/test improvements incorporated explicitly in71059a3 without discarding worker history."
+    },
+    {
+      "root": "/Users/tingranwang/.codex/worktrees/pdex-compact-schedule/personal-dashboard",
+      "status": " M frontend/main.ts\n M tests/browser/task-quick-create.mjs\n",
+      "remainingPatch": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/pdex-compact-schedule-remaining.patch",
+      "remainingPatchSha256": "702e2d2269309ad9b50788f1d2fee5caae76095cbf56b6134675c29981915294",
+      "policy": "Preserve checkout until unique changes are inventoried and independently reviewed; no cleanup yet. PDEX15 remaining source/test improvements incorporated explicitly in71059a3 without discarding worker history."
+    }
+  ],
+  "agentLimit": "Both implementers and merger encountered account usage limit; root continued bounded repairs and validation. No errored reviewer result treated as approval.",
+  "status": "Reviewed71059a3 frozen package built/native real save readback passed and normal installed; human acceptance pending; earlier worker states historical",
+  "currentValidation": {
+    "sourceCommit": "71059a3cb686ec9e925f2fd27eccfaee5b41b557",
+    "buildPassed": true,
+    "creationBrowser": "24/24",
+    "focusedFrontendWebKit": "39/39",
+    "repairSubsetBrowser": "6/6"
+  }
+}

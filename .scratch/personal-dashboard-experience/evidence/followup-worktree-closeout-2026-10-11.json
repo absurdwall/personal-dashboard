@@ -1,0 +1,40 @@
+[
+  {
+    "root": "/Users/tingranwang/.codex/worktrees/pdex-task-creation/personal-dashboard",
+    "tip": "08c9f1b44068a10b696765aef4206fea1302211d",
+    "clean": true,
+    "fullyReachableFromIntegration": true,
+    "ignoredInventory": [
+      "!! dist/",
+      "!! node_modules"
+    ],
+    "ignoredPolicy": "node_modules symlink and generated dist are rebuildable; needed validation artifacts retained separately under /tmp/.noindex and durable source-hash receipts",
+    "branch": "refs/heads/codex/pdex-12-quick-task-create",
+    "historyBundle": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-followup-20261011/worker-history/pdex-task-creation.bundle",
+    "historyBundleSha256": "17920bf5ad89708b832d98fdf11ed12ed92090c65037651ae1b8b91f9a2055c1",
+    "managedArchiveRequested": true,
+    "managedArchiveOutcome": "queued, not confirmed; clean checkout removal after independently verified recoverable history bundle",
+    "removalExitCode": 0,
+    "removalDiagnostic": "",
+    "checkoutRemoved": true
+  },
+  {
+    "root": "/Users/tingranwang/.codex/worktrees/pdex-unlocated-panel/personal-dashboard",
+    "tip": "f224feda1f2b62a99528678b8d3d15c8792263f9",
+    "clean": true,
+    "fullyReachableFromIntegration": true,
+    "ignoredInventory": [
+      "!! dist/",
+      "!! node_modules"
+    ],
+    "ignoredPolicy": "node_modules symlink and generated dist are rebuildable; needed validation artifacts retained separately under /tmp/.noindex and durable source-hash receipts",
+    "branch": "refs/heads/codex/pdex-13-unlocated-panel",
+    "historyBundle": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-followup-20261011/worker-history/pdex-unlocated-panel.bundle",
+    "historyBundleSha256": "9c8718740f851c822c5dcd665aefe3d7af87d8fcd06a02bc266bbae658d88b69",
+    "managedArchiveRequested": true,
+    "managedArchiveOutcome": "queued, not confirmed; clean checkout removal after independently verified recoverable history bundle",
+    "removalExitCode": 0,
+    "removalDiagnostic": "",
+    "checkoutRemoved": true
+  }
+]

@@ -111,8 +111,9 @@ test('expanding quiet hours recomputes stacks and exposes next-day entries', () 
   assert.equal(renderTimeline(entries).todayTimedEvents.children.length, 2);
 });
 
-function html(node: Element): string {
+function html(node: Element | string): string {
   const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+  if (typeof node === 'string') return escape(node);
   return `<${node.tagName} class="${escape(node.className)}">${escape(node.textContent)}${node.children.map(html).join('')}</${node.tagName}>`;
 }
 
@@ -208,7 +209,7 @@ function expansionHarness() {
     scrollTo({ top }: { top: number }) { this.scrollTop = top; } };
   const plot = { getBoundingClientRect: () => ({ top: -viewport.scrollTop, bottom: 1080 - viewport.scrollTop, height: 1080 }) };
   const context = createContext({ ...axis, document: { getElementById: (id: string) => controls.get(id) },
-    currentTodayView: { date: '2026-10-01' }, workspaceInformation: viewport,
+    currentTodayView: { date: '2026-10-01' }, workspaceInformation: viewport, todayAxisScrollSurface: viewport,
     todayAxisEarlyExpanded: false, todayAxisLateExpanded: false, todayAxisFollowState: 'following',
     todayContinuousAxis: { querySelector: () => plot },
     todayTimedDetails: new Element(), todayTimedEvents: new Element(),
@@ -258,7 +259,7 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
       'todayTimedEmpty:today-timed-empty', 'todayCurrentArrangementUnlocated:today-current-arrangement-unlocated',
       'todayConfirmedFactsUnlocated:today-confirmed-facts-unlocated', 'todayCurrentTime:today-current-time',
       'todayLocateNowButton:today-locate-now', 'todayUnlocatedTimeRegion:today-unlocated-time-region',
-      'todayUnlocatedTimeShortcut:today-unlocated-time-shortcut'].map(binding => {
+      'todayUnlocatedTimeShortcut:today-unlocated-time-shortcut', 'todaySideRegion:today-side-region'].map(binding => {
         const [name, id] = binding.split(':'); return `const ${name} = document.getElementById('${id}');`;
       }).join('\n');
     const script = `(() => {
@@ -269,7 +270,9 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
       document.getElementById('today-phase-morning').hidden = true;
       ${pure}
       ${bindings}
-      const workspaceInformation = document.querySelector('.workspace-information');
+      ${main.slice(main.indexOf('const todayUnlocatedNarrow ='), main.indexOf('todayUnlocatedTimeShortcut?.addEventListener("click"'))}
+      const todayAxisScrollSurface = document.getElementById('today-axis-scroll-surface');
+      const workspaceInformation = todayAxisScrollSurface;
       let todayAxisFollowState = 'following';
       let currentInterfaceLanguage = 'en';
       let currentWorkspaceDestination = 'today';
@@ -279,7 +282,7 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
       const updateTodayAxisMarkerAccessibleName = () => {};
       const todayTaskTimeAxisEntries = () => [];
       let currentTodayView = { date: '2026-10-01', isToday: true, currentTime: '12:00', tasks: { tasks: [], lists: [] },
-        timeAxis: { currentArrangement: [360, 410, 720, 1390, 1439, 1500].map((startMinute, i) => ({
+        timeAxis: { currentArrangement: [360, 410, 720, 1390, 1439].map((startMinute, i) => ({
           startMinute, endMinute: null, text: 'Rendered item ' + i, sourceDate: '2026-10-01'
         })), confirmedFacts: [], unlocatedCurrentArrangement: [], unlocatedConfirmedFacts: [] } };
       ${handler('let todayAxisEarlyExpanded', 'function todayEvidenceGroup(')}

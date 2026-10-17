@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-11",
+  "projectId": "product-personal-dashboard",
+  "operation": "submitSummary",
+  "operationId": "pdex-human-closeout-summary-20261011",
+  "outcome": "confirmed",
+  "canonicalRegistryRevisionBefore": "7445454661f87703",
+  "canonicalRegistryRevisionAfter": "62cd2aa2a06ef622",
+  "summaryRevisionBefore": "47912100c768f298",
+  "summaryRevisionAfter": "4c7a24b9686e312b",
+  "sourceId": "source-personal-dashboard-experience",
+  "sourceState": "current",
+  "sourceRevision": "6d326cfdfab45b0f",
+  "malformedReferences": [],
+  "workItems": [
+    {
+      "localId": "PDEX-FOLLOWUP-03",
+      "sourceReference": "00-followup-spec-03.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "7095bed35c97c9dc",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-FOLLOWUP-04",
+      "sourceReference": "00-followup-spec-04.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "cd72321b82c27727",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-FOLLOWUP-05",
+      "sourceReference": "00-followup-spec-05.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "671cb74863ff4cfb",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-FOLLOWUP-01",
+      "sourceReference": "00-followup-spec.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "beadd3beaf418e68",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-FOLLOWUP-02",
+      "sourceReference": "00-sidebar-schedule-spec.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "bdf362a4e5879886",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-12",
+      "sourceReference": "12-lightweight-task-create.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "1c9eb580cc745134",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-13",
+      "sourceReference": "13-today-unlocated-drawer.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "58943b5dfdeecc30",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-14",
+      "sourceReference": "14-docked-sidebar-toggles.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "edadc898f1ece4fe",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-15",
+      "sourceReference": "15-compact-task-schedule.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "6bed995bba01baf1",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-16",
+      "sourceReference": "16-shell-compactness.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "314ed99659ca5d02",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-17",
+      "sourceReference": "17-collaboration-layout-recovery.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "1f8338db89a7013f",
+      "claimSupported": false
+    },
+    {
+      "localId": "PDEX-18",
+      "sourceReference": "18-dashboard-shell-and-collaboration-repair.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "c37bab6b4f549977",
+      "claimSupported": false
+    }
+  ],
+  "summaryCoverage": "partial",
+  "needsReconciliation": false,
+  "uncoveredSources": [
+    "source-personal-dashboard-codex-collaboration",
+    "source-personal-dashboard-github"
+  ],
+  "nativeClaimIssued": false,
+  "remoteGitHubQueryPerformed": false,
+  "helperExecution": "Installed tortilla-flat-management helper after connect/discover; summary and canonical Work Item source were reread."
+}

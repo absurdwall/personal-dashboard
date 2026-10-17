@@ -1,0 +1,184 @@
+# Integrated two-axis review
+
+Date: 2026-10-10. Fixed point: `8960c80`; reviewed feature head: `7672698`.
+
+Independent read-only reviewers inspected the same pinned diff. The Standards and Spec axes remain separate. Fix verification is pending, assigned to the single PDEX-11 implementer.
+
+## Standards
+
+Pinned range: `8960c80bc81ae35a7dcd871dd104f4b3d04497de...7672698628a85a760e678ca05cce7b2859e4cc16`.
+
+Reviewed AGENTS.md and parent agreements, CONTEXT.md, domain/tracker/triage guidance, all six ADRs, Task and offline-adapter contracts, changed production code and relevant tests. No additional scoped instruction files were found. Local-only tracking overrides the default GitHub workflow.
+
+### Documented contract breach
+
+**[P2] Preserve the reschedule end patch in successful-operation history — `src-tauri/src/tasks.rs:2024–2029` (also mutation history construction at 1714–1722).** The new matcher uses `execution_end.as_ref().is_none_or(|end| &change.new_execution_end == end)`. Non-noop reschedules retain only the resulting end, with `operation: None`; this erases the distinction between omitted, explicitly cleared and explicitly set ends. `docs/tasks-v1.md:49–53` requires matching payloads and rejects conflicting operation-id reuse; `docs/daily-flow-task-adapter-v1.md:155–162` defines omission as preservation and null as clearing.
+
+Reproduced with the existing compiled offline adapter and an isolated synthetic Vault: create a point Task at 10:00; reschedule to 11:00 with ID `old-preserve` and omitted end; add a 12:00 end using another ID; reuse `old-preserve` with `executionEnd:null`. The adapter accepts the conflicting request, returns `changed:false`, and leaves the 12:00 end in place. It should reject this ID collision, while a genuine omitted-end retry should remain idempotent. Retain/compare the original tri-state patch for changed reschedules as the noop branch already does; preserve compatibility for old history. Cover omitted/null/object collisions after subsequent edits.
+
+### Baseline smell judgment calls
+
+No additional actionable smell findings. The shared pointer owner and native validation/persistence seams avoid introducing parallel stores or duplicated mutation paths. Existing large `main.ts` is inherited architecture; a broad split is outside this bounded change. Formatting/type/lint checks were not treated as review findings.
+
+No source files edited; no Cargo, GitHub, real profile, or real Vault operations performed. Native reproduction used an ephemeral synthetic Vault and removed it automatically. Packaged acceptance and subsequent candidate fixes are outside this pinned review.
+
+## Spec
+
+Base: `8960c80bc81ae35a7dcd871dd104f4b3d04497de`
+Head: `7672698628a85a760e678ca05cce7b2859e4cc16`
+Read-only review; no GitHub access, source edits, builds, or personal-data mutations.
+
+### Findings
+
+#### [P2] Plan reread never restores an explicit retry with retained values
+
+Location: `frontend/main.ts:5434` (reread handler), related `5436–5446`, `5461–5486`.
+
+Spec `spec.md:111`: “失败恢复已保存状态并保留可重试的编辑值，未确认结果通过重新读取核对，不自动重放。”
+
+After a rejected or uncertain manual time save, `submitted` remains true and Save/precision/time controls remain disabled. A failed plan drag creates the same disabled recovery editor immediately. “Read record again” only calls `refreshToday(loaded.date)`; it does not compare the returned authoritative entry, close a confirmed-save recovery, refresh source/revision bindings, or unlock an explicit retry when reread establishes that the desired edit did not save. Thus even a transient write failure, followed by a successful reread of the unchanged record, leaves the retained requested values permanently unusable. Canceling and reopening loses them. Task movement recovery already has an explicit reread/retry flow.
+
+Fix: reconcile reread against the captured Vault/source and desired values. Confirm a matching saved result without replay; when the entry is still safely identifiable and the edit was not saved, retain the proposed precision and times, rebind the current revision, and enable a user-triggered retry. If identity is no longer safe, show the explicit source-edit path without title-based guessing. Do not replay automatically.
+
+Existing evidence confirms the frozen behavior: `tests/frontend/plan-time-editor.test.ts:108–117` asserts disabled values after an uncertain save, and `tests/browser/today-axis-plan-gestures.mjs:152–188` clicks reread but never tests a later explicit retry. Extend those actual UI scenarios to cover failed save → successful reread → explicit retry and saved-but-readback-failed → confirmed reread → no extra mutation.
+
+### Other scope/acceptance observations
+
+No additional concrete missing requirements, unrequested behavior, or wrong behavior found in the reviewed production changes. Plan source/revision binding, precision, Morning/fact separation, Task optional-end preservation/clear/retry identity, shared axis movement, Calendar source statuses, slash draft-only behavior and dated Evening session entry were traced across their main seams. PDEX-11 packaged/OS/IME acceptance is still active and explicitly pending; this is not reported as falsely delivered or as a code defect. Parent spec remains open.
+
+Review summary: Standards one P2; Spec one P2. Additional actual native QA found Calendar last-row clipping at a 1280x720 outer window / 1280x688 client viewport. This separate packaged finding is also assigned to PDEX-11. Original reports remain retained here; later fix verification will be appended.
+
+## Fix verification
+
+Four bounded repair commits: Calendar `88d9225`, original Task Reschedule patch `7d8dcdc`, immutable Morning context `5874ddb`, and plan reread/explicit retry `9cbd96e`. A follow-up Spec review found that unlocated plans needed the same opaque-ID recovery lookup; `07119c9` adds that path and an actual rendered-WebKit regression. Every repair remains in retained history, merged via `b7b0ba0` and `3a0935d`.
+
+### Standards follow-up
+
+# Standards follow-up review
+
+Frozen head: `b7b0ba05576fc2d873c9828b8921390abac0b0eb`.
+Supplemental range: `7672698...b7b0ba0`; original base remains `8960c80bc81ae35a7dcd871dd104f4b3d04497de`.
+
+**Original P2 resolved.** Changed daily-flow reschedules now retain `TaskChangeOperation::Reschedule` with the original tri-state `execution_end` patch. Retry matching compares recorded date, time and patch exactly before using the legacy result-based fallback. Consequently omitted/null/object collisions are rejected, while an authentic omitted retry cannot erase a subsequently added end and an authentic object retry cannot reapply an end after later clearing. The validator admits this retained payload only for a daily-flow `Rescheduled` change whose recorded values agree with the saved result. Existing history without the new operation remains readable with its former compatibility behavior. The added adapter regression exercises the originally reproduced collision, omitted/object/null substitutions, genuine retries and intervening end changes.
+
+**Supplemental source changes inspected:** Morning context now reads `view.baseline.timeline`, aligning ADR/domain distinctions with the existing separate Current arrangement projection; its regression uses visibly different morning/current endpoints. Calendar adjustments reduce native-client vertical overhead and strengthen selector specificity; geometry coverage now includes 688/726 client heights. Plan recovery rereads the original date/binding, preserves proposed values, unlocks retry only when the opaque source ID still identifies unchanged editable bytes, and requires a deliberate submit with a fresh revision and operation ID. Confirmed saved revisions close after readback without replay; changed sources remain blocked rather than being matched by title or position.
+
+**Remaining actionable Standards findings: none.** No additional material Fowler-smell findings in the bounded fixes. Legacy tri-state history cannot retroactively gain missing original-payload information; the explicit compatibility fallback is appropriate to preserving retained records.
+
+Read-only source/test inspection only: no Cargo, GitHub, UI, personal data, or source edits. Test pass claims and final packaged acceptance are independently recorded by the implementer/root and are not inferred from this review.
+
+
+### Spec follow-up and final
+
+# Spec follow-up review
+
+Frozen head: `b7b0ba05576fc2d873c9828b8921390abac0b0eb`; supplemental diff `7672698...b7b0ba0` (original base `8960c80` retained). Read only: no builds, source edits, UI actions, GitHub access or subagents.
+
+The original P2 recovery issue is resolved for located plans. Reread validates date/Vault/current-request identity, confirms a known saved whole-document revision without replay, or rebinds an unchanged opaque source ID to the fresh revision and enables deliberate retry while retaining precision/times. Changed source IDs remain blocked rather than matched by title/position. Tests now cover actual WebKit failed-save/reread/explicit-retry, unsafe rebinding refusal, Chrome drag retry, and saved/readback-failure confirmation without a second mutation.
+
+**Remaining [P2] Include safely editable unlocated plans in the recovery identity lookup — `frontend/main.ts:5459`.** Spec `spec.md:111`: “失败恢复已保存状态并保留可重试的编辑值”. The native binding explicitly assigns safe IDs/editability to both located and unlocated current arrangements (`today.rs:6243–6279`), and the editor is exposed for `arrangement-unlocated` (`main.ts:5341–5351`). However reread searches only `fresh.timeAxis.currentArrangement`. A safe no-time/relative entry (for example `- **稍后：** Synthetic plan`) can be explicitly timed; after a transient failed save, unchanged authoritative reread finds no candidate, falsely reports source changed, and leaves its retained values permanently disabled. Search both current-arrangement arrays by the same opaque ID, preserving every existing safety gate, and cover that production editor failure/retry path. No automatic replay is needed.
+
+Supplemental changes introduce no other concrete Spec findings: immutable baseline now supplies Morning context, Calendar tightening addresses the observed native client height without changing source semantics, and new Task reschedule histories retain/compare the original omitted/null/object patch while preserving old-history compatibility. Final packaged/OS acceptance remains pending and is not inferred from automated checks.
+
+Summary: original P2 resolved for located entries; one remaining P2 recovery edge for safe unlocated entries.
+
+
+# Final Spec fix verification
+
+Reviewed frozen worker tip `256ecd01aab9e92ef6bf139d7d83ccc2ae671aee`, supplemental diff `b7b0ba0...256ecd0`; original review base `8960c80` retained. Read-only source/test inspection, without builds, UI actions, GitHub access, native data mutations or subagents.
+
+**Remaining P2 resolved.** `openPlanTimeEditor` now searches both `currentArrangement` and `unlocatedCurrentArrangement` for the captured opaque source ID. It retains the previously verified same-Vault/date/request/revision gates, refuses changed or unsafe identities, enables only deliberate retries with retained precision/times, and confirms known saved revisions without replay. The new production WebKit scenario exercises a safe untimed entry through failed save → authoritative reread → preserved 14:00 approximate-point values → explicit retry using the same source ID. It asserts one mutation before retry and two only after explicit submission.
+
+No remaining concrete Spec findings in the reviewed fix ranges. Both recovery findings are resolved; the reviewed Calendar, immutable Morning-context and Task retry-identity fixes retain their documented contracts. The earlier combined UI run with stale built assets is excluded from verification; rebuilt-assets checks and final packaged/OS acceptance remain independently owned by the root/QA workflow. This review does not infer packaged acceptance, installation, publication or parent-spec closure.
+
+Spec axis summary: zero unresolved findings.
+
+
+Final independent review summary: zero unresolved Standards findings; zero unresolved Spec findings. Original findings and their follow-up remain retained separately. Actual packaged acceptance remains independently pending.
+
+
+## Independent review of final checkpoint — 2026-10-11
+
+Review chat: `01a128ff-8865-7493-9698-cc48c19d7939`. Pinned range: `8960c80bc81ae35a7dcd871dd104f4b3d04497de...c63c805c0e91971a0129d8093109e587a3d87ac3`. Earlier zero-finding conclusions above apply to their recorded ranges; this new review exposed two bounded findings.
+
+### Standards
+
+- **[P2] Retain the original execution-end patch identity for manual Task updates.** `TaskApplication::update` resolves an omitted end against the current Task before testing duplicate change ID. An interval Task renamed with an omitted end accepts an explicit same-end object under that ID; a point Task similarly accepts explicit null. The matching-payload contract and omitted/null/object semantics in `docs/tasks-v1.md` require rejecting conflicting reuse. Retain the original update payload for successful edits, compare it before resolving current values, and retain legacy history compatibility. Public persistence regressions must include all tri-state substitutions and genuine retries after subsequent end edits.
+- **[P2] Track Evening dynamic label, status and error copy.** The controller overwrites `button.textContent` while the HTML still carries `data-i18n=today.startReview`. A language refresh changes a past-date label from `复盘 2026-10-09` to `Review today`, although clicking still targets October 9. Status/error text also bypasses the shared retained localization metadata required by `docs/interface-language.md`. Use shared copy/error setters and actual language-switch checks.
+
+### Spec
+
+- **[P2] Keep current/past Evening wording aligned with the captured target after language refresh.** This is the same date-label defect above; PDEX-10 requires accurate entry wording and authority context. The target must remain unchanged while label and retained status/error wrappers switch language; user drafts and source text must remain untouched.
+
+### Repair assignment
+
+Both findings are assigned to the single PDEX-11 implementer on `codex/pdex-review-repairs`; root records integration and notifies the review chat after verification. No additional native acceptance, installation, remote publication or parent closure is inferred. PDEX-09/PDEX-11 remain blocked as previously documented.
+
+
+### Repair verification submitted for independent follow-up
+
+No-ff integration `51f728782db3b1e376e8d540ce368a98a8e8a5f6` retains worker tip `3660baa209c0e4f621c3101ddd28f67024910457`. Product source matches `4a0c272dea10f01e2ef99b16c25e1b341837d02b`. Manual updates record/compare original normalized fields and exact omitted/null/object end patch before current-state resolution, while legacy payload-free history retains compatibility. Genuine retries preserve later cleared ends and changed starts; retained daily-flow IDs cannot collide with manual updates. The selector binding is rechecked before retry readback. Dated Evening buttons and pending/ready/preserved/error paths use the shared retained copy/error metadata; actual production language switches preserve the target, user draft and diagnostic path.
+
+Build, 432 frontend, 23 browser and 523 Rust checks passed; six existing native ignores remain. The initial OS66 fixture-cleanup failure, exact rerun and bounded worker-teardown fix are preserved in [repair evidence](review-repairs-2026-10-11.md), with [log digests](review-repairs-2026-10-11-logs.json). Fixes and regressions are complete; the independent review chat’s final verdict is pending. PDEX-09/PDEX-11 native acceptance is unchanged.
+
+
+### Independent follow-up and Evening guard repair — 2026-10-11
+
+The independent review chat confirmed both original P2 findings resolved over `c63c805...720a28f`, with zero remaining Spec findings. It found an introduced Standards P3: the three Evening guards rendered `today.reviewOpenFailed` without its required `{error}` variable, and the controller wrapped that rendered error again. The resulting guard message contained duplicate failure wrappers and a literal placeholder.
+
+Product commit `ff913083940ad27314373dc20ea376cb9c79e7c0` retains a typed catalog key for busy/Vault-change guard causes; the shared copy callback renders and refreshes that cause. Arbitrary backend diagnostics still use the shared retained error setter. No guard condition, draft/date protection or submit behavior changed. No-ff integration `a6f948736ff1d6274bf1c6c8f5eeb7689779b7a4` retains clean worker/evidence tip `e7da2646d0f640ed87b8e6f0b0f0e847bd0eedaa`.
+
+Actual production WebKit red/green coverage exercises all three guards and zh → en → zh refresh, concrete causes, one wrapper, no placeholder/Error prefix, retained CJK draft/path and date, no submission or forbidden preparation/adoption. Build succeeded; 21 focused Evening/interface-language tests passed. Root verified the four follow-up artifact digests. Rust is identical to the 523-pass checkpoint; 432 frontend/23 browser remain earlier full-suite results, not repeated after this bounded frontend repair. Final independent P3 verification is pending. Native acceptance remains blocked as recorded.
+
+
+## Final independent repair verdict — 2026-10-11
+
+Review chat `01a128ff-8865-7493-9698-cc48c19d7939` independently reviewed frozen integration `6656041b518fe979c1318a7e7f87a2c14503cd42` and returned **Standards: zero unresolved; Spec: zero unresolved**. Both original P2 findings and the introduced P3 are resolved, with no additional actionable findings; the reviewer explicitly reported satisfaction with this repair scope.
+
+Independent Standards execution confirmed actual guard/controller/catalog behavior, historical date, concrete localized causes and absence of placeholders/duplicate wrappers. Independent Spec reran all seven Evening tests, seven passed. The review root reran the compiled-library Task collision repro: omitted → explicit object and omitted → explicit null both rejected conflicting reuse with persisted state unchanged. Its original language repro retained `Review 2026-10-09` and opened date `2026-10-09`. It independently verified all 15 artifact hashes, the 523-pass/zero-failure/six-ignore native log across 26 result sections, unchanged Rust since `4a0c272`, and final frontend/test source identical to `ff913083`.
+
+Final implementation-owned verification remains build plus 21 focused Evening/interface-language checks. Earlier full 432 frontend and 23 browser totals are historical checkpoint results; the final guard-copy change did not rerun those full suites. These verdicts do not add packaged, IME, authenticated quota or other native acceptance. PDEX-09/PDEX-11 remain blocked and the parent specification remains open. Subsequent closeout changes only durable records.
+
+
+## Native-discovered repair review checkpoint — 2026-10-11
+
+Bounded repair commit `477d439653b2d5b97eceff7db3f2aa562fbadd0d` retains startup language metadata, readable slash selection, genuinely hidden unused point End controls, stable control captions and localized saved-refresh diagnostics. Product integration is `ffa1b85`; [repair red/green evidence](native-discovered-frontend-repairs-2026-10-11.md) retains the reproduced native defects and production regressions. Independent source review found no additional product defect, but flagged a P3 vacuous startup scroll assertion. Test-only `87ed1df` corrects it to require the real `#today-axis-scroll-surface`, positive scroll position before preference resolution and preserved position afterward; no-ff integration `20515dd` retains its history.
+
+Root refreshed canonical `dist` through `npm run build` and all five focused files passed 43/43. The reviewer's earlier canonical 41/43 run used stale assets and remains tool-history-only evidence (session 96403/chunk 4b6458), without an invented log path/hash. [Fresh B native evidence](native-acceptance-2026-10-11-b.md) is bound to `ffa1b85`; product files at `20515dd` are identical. Final independent Standards/Spec verdict and explicit satisfaction with this bounded implementation remain pending. PDEX-09/PDEX-11 and the parent retain their acceptance states.
+
+
+## Final independent native-repair verdict — 2026-10-11
+
+Review chat `01a128ff-8865-7493-9698-cc48c19d7939` independently reviewed final checkpoint `f82ef664961b4f01066bd05c4b4fd8a0bea92350` and returned **Standards: zero unresolved; Spec: zero actionable**. Both independent reviewers and the review root explicitly reported satisfaction with the bounded implementation/native-discovered repairs. The P3 vacuous scroll assertion is resolved by the actual positive-scroll viewport regression.
+
+The review root independently verified all 216 source-A and 105 source-B raw artifact hashes, four B bundle files, exact frozen Git archive and zero final product-file difference from package source `ffa1b85056fe3f2bc3ab68ce652001b3b6f9537e`. It inspected native B capture 06's English saved-refresh diagnostic/hidden point End and capture 09's readable slash selection, and the current canonical 43-pass/zero-failure focused log. Historical failure/asset provenance and native source qualifications remain retained.
+
+This verdict accepts the bounded repairs, not full native acceptance. Fresh B 830×758 narrow-window behavior, real Sogou composition, held edge dragging/active gesture resize cancellation and authenticated quota exhaustion remain unverified. PDEX-09/PDEX-11 remain blocked, their combined acceptance criteria unchecked, and PDEX-SPEC-01 open. No main merge, remote publication, installation or real-data mutation follows from this review.
+
+
+## Human quota acceptance decision — 2026-10-11
+
+The human explicitly accepted the quota-exhaustion criterion and waived further actual exhaustion testing in review chat `01a128ff-8865-7493-9698-cc48c19d7939` (direct user reply `01a12969-8b59-76a3-a544-d67411f4656f`). The quota subgate is **accepted by human waiver on existing evidence**, not an observed exhaustion result. No controlled injection, new model request or artificial quota spending is required or performed. Historical statements that actual exhaustion was not established remain true observations; their pending-test/blocker status is superseded by this explicit decision.
+
+PDEX-11's conflict/write-failure/unconfirmed-result combined criterion is now checked: existing qualified source/persistence/production native evidence supports those constituents, and the quota constituent is explicitly accepted by the human. Remaining required gates are real Sogou composition, sustained native edge/active resize cancellation and fresh final-installed 830×758 narrow-window behavior. PDEX-09/PDEX-11 remain blocked, parent open, and nine other tickets resolved. [Current manual checks](../manual-acceptance.md) no longer asks for quota exhaustion. Installation remains confirmed and does not by itself close the remaining gates.
+
+
+## Human IME acceptance and PDEX-09 resolution — 2026-10-11
+
+The direct human message `01a1296a-888d-7193-9c10-77ca83962f5f` in review chat explicitly accepts the real Chinese IME criterion on existing evidence and waives dedicated native composition testing; normal daily Chinese use will supply future issue feedback. This is **human acceptance/test waiver**, not an observed OS composition result. Existing keyboard/completion/ordinary-slash/draft checks and independent review are complete, so PDEX-09 is now locally resolved/closed with all acceptance criteria accounted for. The same shared IME subgate is accepted for PDEX-11. No additional test message, input-source change or model request is required.
+
+Current tracker: ten resolved, one blocked (PDEX-11), parent open. PDEX-11's slash/draft/date/Evening combined criterion is checked using existing qualified behavior evidence plus the explicit IME waiver; its quota/conflict/failure criterion is already accepted as recorded above. Only sustained native edge dragging/active gesture cancellation and resize, plus fresh final-installed 830×758 narrow-window behavior remain required. [Current two manual check categories](../manual-acceptance.md) supersede earlier pending-IME/quota lists without erasing historical observations. Installation is confirmed; full native acceptance and parent closure remain pending these two categories.
+
+
+## Independent installed-release verification — 2026-10-11
+
+After human-authorized normal App replacement and explicit quota/IME test waivers, review chat `01a128ff-8865-7493-9698-cc48c19d7939` independently confirmed the running `/Applications/Personal Dashboard.app` uses the new normal production binary, strict signature and bundle file hashes match, and the old bundle backup is recoverable. Its current verdict confirms PDEX-09 resolved and PDEX-11 blocked only by sustained native drag/active cancellation/resize and final narrow-window checks. Dedicated IME and quota testing are accepted/waived by the human; no observed OS composition or exhausted-account claim is made. [Installed identity/data-retention proof](local-install-2026-10-11.md) and [Management confirmation](management-local-install-2026-10-11.json) retain the local release separately from outstanding native acceptance.
+
+
+## Direct human acceptance and initiative closeout — 2026-10-11
+
+The human confirms plan time-bar drag with visible plan-time revisions, timeline drag-selection to create a Task, narrowed Calendar usability and correct-looking overlap entries in the actual installed normal App. The reviewer additionally observed saved-and-readback-verified feedback and revision records through read-only UI inspection, and accepts the round on existing implementation/automated/native evidence plus these direct human results. [Final local acceptance record](human-acceptance-2026-10-11.md) retains exact message/provenance pointers and evidence qualifications.
+
+Today narrow-window time-axis compression/partial occlusion from the retained Items without a precise time side column is explicitly accepted by the human as an interface limitation; optional improvement does not block this round. Sustained held-edge auto-scroll, active-drag resize/cancel and exact final-installed 830×758 geometry were not separately observed: no claim of per-step performance or a direct human waiver is made. IME/quota retain their separate explicit acceptance/test waivers.
+
+PDEX-11 is now resolved/closed; all eleven tickets and PDEX-SPEC-01 are locally resolved/closed, with no current initiative blocker. Earlier parent holds prevented acceptance inferred solely from automatic checks; this direct human installed-App acceptance and independent reviewer overall conclusion provide the missing basis for parent closure. No product changes, live UI action, personal-data write or new model/test request were performed by implementation closeout. Product diff from reviewed `ffa1b85` is zero. Historical records remain; no main/remote publication or tracker migration is inferred.

@@ -337,6 +337,23 @@ test("fixed error details switch language without changing their source diagnost
     localizeApplicationError("The selected calendar month is invalid.", "zh"),
     "所选日历月份无效。",
   );
+  for (const [diagnostic, expected] of [
+    ["The collaboration session creation result did not match its request.", "协作会话创建结果与请求不匹配。"],
+    ["The collaboration session creation identity is invalid.", "协作会话创建标识无效。"],
+    ["This collaboration session creation identity is already bound to another Vault or date.", "此协作会话创建标识已绑定到另一个 Vault 或日期。"],
+  ]) {
+    assert.equal(localizeApplicationError(diagnostic, "zh"), expected);
+    assert.equal(localizeApplicationError(`Error: ${diagnostic}`, "zh"), expected);
+    assert.equal(localizeApplicationError(`Error: ${diagnostic}`, "en"), diagnostic);
+  }
+  assert.equal(
+    localizeApplicationError("Drafts are limited to 1500 characters.", "zh"),
+    "草稿最多可包含 1500 个字符。",
+  );
+  assert.equal(
+    localizeApplicationError("Error: Drafts are limited to 1500 characters.", "en"),
+    "Drafts are limited to 1500 characters.",
+  );
   assert.equal(
     localizeApplicationError(
       "无法读取 Habits 快照：Habits 快照 range.from 不是有效日期。",

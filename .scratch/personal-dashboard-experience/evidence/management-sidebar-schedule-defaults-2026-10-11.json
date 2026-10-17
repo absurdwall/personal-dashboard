@@ -1,0 +1,169 @@
+{
+  "projectId": "product-personal-dashboard",
+  "registryRevision": "c2e738a9f59acf90",
+  "summaryRevision": "55cbea6cad6fe945",
+  "source": {
+    "portfolioRecordId": "product-personal-dashboard",
+    "sourceId": "source-personal-dashboard-experience",
+    "label": "Dashboard experience — local spec and tickets",
+    "kind": "localMarkdown",
+    "enabled": true,
+    "state": "current",
+    "revision": "c424c2d33a30d156",
+    "issueCount": 18,
+    "malformedReferences": [],
+    "error": null,
+    "lastSuccessfulRefreshAt": 1791701190311,
+    "capabilities": {
+      "create": true,
+      "creatableFields": [
+        "title",
+        "nativeState",
+        "blockers"
+      ],
+      "edit": true,
+      "claim": true,
+      "close": true,
+      "open": true
+    }
+  },
+  "records": [
+    {
+      "reference": "00-followup-spec.md",
+      "nativeState": "open"
+    },
+    {
+      "reference": "00-sidebar-schedule-spec.md",
+      "nativeState": "open"
+    },
+    {
+      "reference": "00-spec.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "01-current-plan-time-editor.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "02-approximate-plan-times.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "03-unified-readable-today.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "04-plan-drag-and-resize.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "05-task-list-details.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "06-task-execution-intervals.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "07-task-timeline-create-move.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "08-compact-calendar.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "09-collaboration-command-completion.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "10-evening-review-entry.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "11-packaged-daily-flow-acceptance.md",
+      "nativeState": "resolved"
+    },
+    {
+      "reference": "12-lightweight-task-create.md",
+      "nativeState": "in-progress"
+    },
+    {
+      "reference": "13-today-unlocated-drawer.md",
+      "nativeState": "in-progress"
+    },
+    {
+      "reference": "14-docked-sidebar-toggles.md",
+      "nativeState": "in-progress"
+    },
+    {
+      "reference": "15-compact-task-schedule.md",
+      "nativeState": "in-progress"
+    }
+  ],
+  "summary": {
+    "text": "已安装前轮 PDEX12/13产品2c6b8aa，独立review/正常包身份和个人数据保护已确认，但用户最新反馈明确修订Sidebar语义。新PDEX-FOLLOWUP-02/spec与14/15本地票据已完整发布5602eb9并分别领取：Today未定位栏改原位置dock/collapse，禁止drawer；所有页面左主导航toggle保留side定位；Calendar仅已有摘要栏toggle（现窄窗实际移下，未隐藏）；Tasks/Today Tasks一行name+compact日期时间+Add。用户直接回复确认两个入口都默认当天：Tasks用本地livedday，Today用所选livedday，均无默认time，允许明确clear/change。Todaytoggle针对整块现有rightsidebar（Task/records/untimed），count0恢复入口仍可达。新工作待实现/review/currentnative包与授权替换，再人工验收。原01–11及原parent保持accepted，旧12/13drawer证据保留但不能作新范围通过。当前日常安装与个人数据保持，无GitHub/main/新依赖操作。",
+    "blockers": [],
+    "nextWork": [
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "14-docked-sidebar-toggles.md",
+        "suggestion": "实现原位置Today/主导航/既有Calendar摘要toggle并实际验证跨页geometry与无业务写入。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "15-compact-task-schedule.md",
+        "suggestion": "实现两处compact schedule row保留创建恢复语义，验证真实date/time保存读回。"
+      }
+    ],
+    "verifiedAt": "2026-10-11T06:46:27.824291+00:00",
+    "sourceEvidence": [
+      {
+        "sourceId": "source-personal-dashboard-3",
+        "revision": "73f67af62ff88683"
+      },
+      {
+        "sourceId": "source-personal-dashboard-timeline-a-repair",
+        "revision": "6f66259df3b780a1"
+      },
+      {
+        "sourceId": "source-personal-dashboard-3-0-2",
+        "revision": "07bf9d0b79785cbc"
+      },
+      {
+        "sourceId": "source-personal-dashboard-task-history",
+        "revision": "825ecc1788d68868"
+      },
+      {
+        "sourceId": "source-personal-dashboard-codex-dictation",
+        "revision": "32712ec896d18dce"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "revision": "c424c2d33a30d156"
+      }
+    ],
+    "coverage": "partial",
+    "needsReconciliation": false,
+    "uncoveredSources": [
+      {
+        "sourceId": "source-personal-dashboard-codex-collaboration",
+        "reason": "既有来源未完整可读；保持local scope，无gh，不查询远程或改历史格式。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-github",
+        "reason": "既有来源未完整可读；保持local scope，无gh，不查询远程或改历史格式。"
+      }
+    ]
+  },
+  "projectFieldsPreserved": {
+    "lifecycle": true,
+    "currentFocus": true,
+    "review": true,
+    "sources": true,
+    "workingDirectory": true,
+    "repository": true
+  },
+  "helperChildSystemPathExcludesGh": true,
+  "canonicalReadbackConfirmed": true
+}

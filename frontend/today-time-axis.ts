@@ -118,13 +118,16 @@ export function axisOverlapPlacements(
       componentEnd = Math.max(componentEnd, ordered[groupEnd].end);
     }
 
-    const groupSize = groupEnd - groupStart + 1;
+    const columnEnds: number[] = [];
     for (let index = groupStart; index <= groupEnd; index += 1) {
-      placements[ordered[index].index] = {
-        stackId,
-        stackIndex: index - groupStart,
-        stackSize: groupSize,
-      };
+      const item = ordered[index];
+      let column = columnEnds.findIndex(end => end <= item.start);
+      if (column < 0) column = columnEnds.length;
+      columnEnds[column] = item.end;
+      placements[item.index] = { stackId, stackIndex: column, stackSize: 1 };
+    }
+    for (let index = groupStart; index <= groupEnd; index += 1) {
+      placements[ordered[index].index].stackSize = columnEnds.length;
     }
     groupStart = groupEnd + 1;
     stackId += 1;

@@ -196,9 +196,9 @@ fn month_projection_is_bounded_to_real_dates_and_isolates_record_errors() {
         .calendar_month(2026, 9)
         .expect("valid calendar month should load");
 
-    assert_eq!(month.days.len(), 42);
+    assert_eq!(month.days.len(), 35);
     assert_eq!(month.days.first().unwrap().date, "2026-08-30");
-    assert_eq!(month.days.last().unwrap().date, "2026-10-10");
+    assert_eq!(month.days.last().unwrap().date, "2026-10-03");
     assert_eq!(
         month.day("2026-09-05").unwrap().availability,
         DailyRecordAvailability::Reviewed
@@ -256,6 +256,7 @@ fn create_task(
 ) -> TasksView {
     application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: view.target_binding.expect("task target should be bound"),
             expected_revision: view.revision,
             task_id: id.into(),
@@ -425,10 +426,11 @@ fn calendar_month_includes_bounded_task_summaries_and_archived_history() {
             .iter()
             .map(|task| task.id.as_str())
             .collect::<Vec<_>>(),
-        vec!["alpha", "beta"]
+        vec!["alpha", "beta", "gamma", "late"]
     );
-    assert_eq!(dense.task_overflow_count, 4);
+    assert_eq!(dense.task_overflow_count, 2);
     assert_eq!(dense.task_summaries[0].state, TaskState::Pending);
+    assert_eq!(dense.availability, DailyRecordAvailability::Missing, "Task completion must not create review state");
     assert_eq!(
         month
             .day("2026-09-25")
@@ -511,5 +513,77 @@ fn calendar_month_distinguishes_damaged_tasks_from_a_healthy_empty_source() {
             DailyRecordAvailability::Reviewed
         );
         assert_eq!(fs::read(&task_path).unwrap(), bytes);
+    }
+}
+
+#[test]
+fn calendar_returns_five_or_six_complete_weeks_from_real_month_boundaries() {
+    let vault = TempDirectory::new("calendar-compact-week-count");
+    fs::create_dir_all(vault.path().join(".obsidian")).unwrap();
+    let app = TodayApplication::new(SelectedVault(vault.path().to_path_buf()), NoSelection, MutableClock(Rc::new(RefCell::new("2026-09-09".into()))));
+    for (year, month, count, first, last) in [
+        (2026, 9, 35, "2026-08-30", "2026-10-03"),
+        (2026, 5, 42, "2026-04-26", "2026-06-06"),
+        (2026, 2, 35, "2026-02-01", "2026-03-07"),
+    ] {
+        let view = app.calendar_month(year, month).unwrap();
+        assert_eq!(view.days.len(), count);
+        assert_eq!(view.days.first().unwrap().date, first);
+        assert_eq!(view.days.last().unwrap().date, last);
+    }
+}
+
+#[test]
+fn compact_calendar_keeps_true_record_state_and_shared_task_interval_after_reopen() {
+    use personal_dashboard_lib::tasks::TaskExecutionEnd;
+    let vault = TempDirectory::new("compact-calendar-source");
+    let unreviewed = write_record(vault.path(), "2026-09-09", "## 今天的大致安排\n\n- **下午：** 合成安排。\n");
+    let reviewed = write_record(vault.path(), "2026-09-10", "## 晚间复盘\n\n### 今天发生了什么\n\n合成已保存复盘。\n");
+    let damaged = record_path(vault.path(), "2026-09-11");
+    fs::write(&damaged, "damaged synthetic record").unwrap();
+    let originals = [fs::read(&unreviewed).unwrap(), fs::read(&reviewed).unwrap(), fs::read(&damaged).unwrap()];
+    let persistence = SelectedVault(vault.path().to_path_buf());
+    let clock = MutableClock(Rc::new(RefCell::new("2026-09-09".into())));
+    let tasks = TaskApplication::new(persistence.clone(), clock.clone(), FileTaskStore);
+    let mut view = tasks.read().unwrap();
+    for index in 0..7 {
+        view = tasks.create(TaskCreateInput {
+            target_binding: view.target_binding.clone().unwrap(), expected_revision: view.revision.clone(),
+            task_id: format!("preview-{index}"), name: format!("合成任务 {index} 完整长标题"), content: Some(format!("合成完整详情 {index}")),
+            date: Some("2026-09-09".into()), time: (index == 0).then(|| "23:30".into()),
+            execution_end: (index == 0).then(|| TaskExecutionEnd {date:"2026-09-10".into(),time:"00:45".into()}), list_id:None,
+        }).unwrap();
+    }
+    view = tasks.set_state(TaskStateInput {target_binding:view.target_binding.clone().unwrap(),expected_revision:view.revision.clone().unwrap(),task_id:"preview-1".into(),change_id:"complete-preview-1".into(),state:TaskState::Completed}).unwrap();
+    let task_revision = view.revision;
+    drop(tasks);
+    let reopened = TodayApplication::new(persistence, NoSelection, clock);
+    let month = reopened.calendar_month(2026, 9).unwrap();
+    let dense = month.day("2026-09-09").unwrap();
+    assert_eq!(dense.task_summaries.len(), 4);
+    assert_eq!(dense.task_overflow_count, 3);
+    assert_eq!(dense.availability, DailyRecordAvailability::Unreviewed);
+    assert_eq!(month.day("2026-09-10").unwrap().availability, DailyRecordAvailability::Reviewed);
+    assert_eq!(month.day("2026-09-11").unwrap().availability, DailyRecordAvailability::Error);
+    assert_eq!(month.day("2026-09-12").unwrap().availability, DailyRecordAvailability::Missing);
+    let selected = reopened.read_date("2026-09-09").unwrap();
+    assert_eq!(selected.tasks.tasks.len(), 7);
+    assert_eq!(selected.tasks.revision, task_revision);
+    let interval = selected.tasks.tasks.iter().find(|task| task.id == "preview-0").unwrap();
+    assert_eq!(interval.time.as_deref(), Some("23:30"));
+    assert_eq!(interval.execution_end.as_ref().map(|end| (end.date.as_str(), end.time.as_str())), Some(("2026-09-10", "00:45")));
+    assert_eq!([fs::read(&unreviewed).unwrap(), fs::read(&reviewed).unwrap(), fs::read(&damaged).unwrap()], originals);
+    assert!(!record_path(vault.path(), "2026-09-12").exists());
+    if let Ok(destination) = std::env::var("PDEX_CALENDAR_FIXTURE") {
+        let mut fixture = serde_json::json!({"month":month,"selected":selected});
+        // Only opaque synthetic fixture bindings/paths are normalized for a stable
+        // checked-in renderer fixture; all domain projections remain real reads.
+        fixture["selected"]["vaultName"] = serde_json::json!("synthetic-calendar-vault");
+        fixture["selected"]["tasks"]["vaultName"] = serde_json::json!("synthetic-calendar-vault");
+        fixture["selected"]["tasks"]["vaultPath"] = serde_json::json!("/synthetic/calendar-vault");
+        fixture["selected"]["vaultPath"] = serde_json::json!("/synthetic/calendar-vault");
+        fixture["selected"]["targetBinding"] = serde_json::json!("synthetic-daily-binding");
+        fixture["selected"]["tasks"]["targetBinding"] = serde_json::json!("synthetic-task-binding");
+        fs::write(destination, serde_json::to_vec_pretty(&fixture).unwrap()).unwrap();
     }
 }

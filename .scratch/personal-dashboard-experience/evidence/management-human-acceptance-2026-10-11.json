@@ -1,0 +1,135 @@
+{
+  "operationId": "management-pdex-human-acceptance-6ed941aa-15c8-477b-abbe-c19485bda9d7",
+  "outcome": "confirmed",
+  "registryRevision": "b69ca519f2f43084",
+  "summaryRevision": "747bdb6a386c2741",
+  "projectId": "product-personal-dashboard",
+  "sourceId": "source-personal-dashboard-experience",
+  "sourceRevision": "df799cdc1855fe0b",
+  "counts": {
+    "resolved": 12
+  },
+  "sourceState": "current",
+  "malformedReferences": [],
+  "items": [
+    {
+      "sourceReference": "00-spec.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "baf0357311dca8a1"
+    },
+    {
+      "sourceReference": "01-current-plan-time-editor.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "b382dadf59cc1d32"
+    },
+    {
+      "sourceReference": "02-approximate-plan-times.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "2bbe51d29e2ae169"
+    },
+    {
+      "sourceReference": "03-unified-readable-today.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "041c20bc94b5d019"
+    },
+    {
+      "sourceReference": "04-plan-drag-and-resize.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "9a5f8411b7d4417b"
+    },
+    {
+      "sourceReference": "05-task-list-details.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "9e6dde73ab405ac3"
+    },
+    {
+      "sourceReference": "06-task-execution-intervals.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "392d8d2417e60740"
+    },
+    {
+      "sourceReference": "07-task-timeline-create-move.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "0a25354bb1c168e3"
+    },
+    {
+      "sourceReference": "08-compact-calendar.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "f56c375843530816"
+    },
+    {
+      "sourceReference": "09-collaboration-command-completion.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "2196761b4294fb7f"
+    },
+    {
+      "sourceReference": "10-evening-review-entry.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "79c070d0457304b0"
+    },
+    {
+      "sourceReference": "11-packaged-daily-flow-acceptance.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "86abfe7eaa8546b9"
+    }
+  ],
+  "summary": {
+    "text": "Dashboard experience 本轮已完成本地人工验收：PDEX-01–11 与父 PDEX-SPEC-01 均 resolved/closed，无本轮 blocker。用户在实际正常安装版确认拖动计划并看到修订、拖选时间范围创建 Task、Calendar 窄窗与重叠可用；reviewer 只读观察保存并读回验证及修订记录，结合既有代码/回归/合格原生证据认可整体验收。Today 窄窗口被保留的 Items without a precise time 右栏挤压/部分遮挡是用户明确接受的界面限制，可选后续优化；未单独观察 held-edge 持续滚动、active-drag resize/cancel 和精确 830×758 几何，不宣称用户逐项测过或豁免这些未提及子操作。IME/额度专项补测是此前独立明确的用户接受/豁免，不宣称实际观察。/Applications/Personal Dashboard.app 保持正常生产配置，构建源6af1198、产品与ffa1b85一致、可执行SHA a6a277f68b25…；旧App/profile私有持久备份可回退。最终依据在 personal-dashboard/.scratch/personal-dashboard-experience/evidence/human-acceptance-2026-10-11.md。本次仅 docs 收尾，无产品代码、live UI、个人数据、model请求、GitHub查询/发布或main合并；其他历史来源/票据保持各自状态。",
+    "blockers": [],
+    "nextWork": [],
+    "verifiedAt": "2026-10-11T05:42:54.525904+00:00",
+    "sourceEvidence": [
+      {
+        "sourceId": "source-personal-dashboard-3",
+        "revision": "73f67af62ff88683"
+      },
+      {
+        "sourceId": "source-personal-dashboard-timeline-a-repair",
+        "revision": "6f66259df3b780a1"
+      },
+      {
+        "sourceId": "source-personal-dashboard-3-0-2",
+        "revision": "07bf9d0b79785cbc"
+      },
+      {
+        "sourceId": "source-personal-dashboard-task-history",
+        "revision": "825ecc1788d68868"
+      },
+      {
+        "sourceId": "source-personal-dashboard-codex-dictation",
+        "revision": "32712ec896d18dce"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "revision": "df799cdc1855fe0b"
+      }
+    ],
+    "coverage": "partial",
+    "needsReconciliation": false,
+    "uncoveredSources": [
+      {
+        "sourceId": "source-personal-dashboard-codex-collaboration",
+        "reason": "既有来源无法完整读取；其历史格式/状态保持，不推断本轮覆盖或通过。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-github",
+        "reason": "本次本地 tracker/验收收尾不查询 GitHub；CLI 在 helper 子环境中不可用。"
+      }
+    ]
+  },
+  "userOwnedProjectFieldsUnchanged": true,
+  "githubQueries": "GitHub CLI excluded from helper child PATH; unavailable source explicitly uncovered; no remote tracker query",
+  "requestDigest": "7e66d9ad979c7e40"
+}

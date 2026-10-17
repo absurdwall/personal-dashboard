@@ -170,6 +170,22 @@ impl CollaborationContextSource for FixtureContext {
     }
 }
 
+struct OtherVaultContext;
+
+impl CollaborationContextSource for OtherVaultContext {
+    fn current_vault_key(&self) -> Result<Option<String>, String> {
+        Ok(Some("other-synthetic-vault".into()))
+    }
+
+    fn read_context(
+        &self,
+        _expected_vault_key: Option<&str>,
+        _date: &str,
+    ) -> Result<CollaborationContextView, String> {
+        Err("This identity-binding test does not read context.".into())
+    }
+}
+
 #[derive(Clone)]
 struct FakeAppServer {
     prompts: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
@@ -638,6 +654,93 @@ fn user_and_assistant_messages_survive_reopening_the_application_service() {
 }
 
 #[test]
+fn retrying_a_saved_creation_identity_after_a_lost_response_recovers_the_same_session_and_draft() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let identity = "collaboration-session-request-123";
+    let draft = "Synthetic draft saved with the session before the response was lost.";
+    let application = new_application(&directory, Arc::clone(&prompts));
+
+    // The service call persisted successfully, but the caller discards its
+    // response to model an IPC result that was saved and then lost.
+    application
+        .create_session_with_identity(Some("2026-09-27"), identity, draft)
+        .unwrap();
+    drop(application);
+
+    let reopened = new_application(&directory, prompts);
+    let recovered = reopened
+        .create_session_with_identity(Some("2026-09-27"), identity, draft)
+        .unwrap();
+    assert_eq!(recovered.id, identity);
+    assert_eq!(recovered.created_date, "2026-09-27");
+    assert_eq!(recovered.target_date, "2026-09-27");
+    assert_eq!(recovered.draft, draft);
+    assert_eq!(recovered.drafts_by_date.get("2026-09-27").map(String::as_str), Some(draft));
+    assert!(recovered.messages.is_empty(), "recovering a draft never submits it");
+    assert_eq!(reopened.list_sessions("2026-09-27").unwrap().len(), 1);
+}
+
+#[test]
+fn creation_identity_cannot_be_reused_for_a_different_date_binding() {
+    let directory = IsolatedDirectory::new();
+    let application = new_application(&directory, Arc::new(Mutex::new(Vec::new())));
+    let original = application
+        .create_session_with_identity(Some("2026-09-27"), "collaboration-request-binding", "Original draft")
+        .unwrap();
+
+    let mismatch = application
+        .create_session_with_identity(Some("2026-09-26"), "collaboration-request-binding", "Other draft")
+        .unwrap_err();
+    assert!(mismatch.contains("another Vault or date"));
+    let sessions = application.list_sessions("2026-09-27").unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].id, original.id);
+    assert_eq!(sessions[0].draft, "Original draft");
+    assert!(application.list_sessions("2026-09-26").unwrap().is_empty());
+}
+
+#[test]
+fn creation_identity_cannot_be_reused_after_the_selected_vault_changes() {
+    let directory = IsolatedDirectory::new();
+    let application = new_application(&directory, Arc::new(Mutex::new(Vec::new())));
+    let original = application
+        .create_session_with_identity(Some("2026-09-27"), "collaboration-request-vault", "Original draft")
+        .unwrap();
+
+    let switched_vault = CollaborationApplication::with_adapters(
+        Arc::new(FileCollaborationStore::new(
+            directory
+                .path()
+                .join("collaboration")
+                .join("collaboration.json"),
+        )),
+        Box::new(FakeAppServer {
+            prompts: Arc::new(Mutex::new(Vec::new())),
+            calls: Arc::new(Mutex::new(Vec::new())),
+            read_only_text_turns_available: true,
+            switch_vault_on_inspect: None,
+            turn_gate: None,
+            reconciliations: Arc::new(Mutex::new(HashMap::new())),
+            memory_call: None,
+            memory_tool_results: Arc::new(Mutex::new(Vec::new())),
+        }),
+        Arc::new(OtherVaultContext),
+        Arc::new(FixedClock),
+        directory.path().to_path_buf(),
+        "Only use supplied read-only Dashboard context.".into(),
+    );
+    let mismatch = switched_vault
+        .create_session_with_identity(Some("2026-09-27"), "collaboration-request-vault", "Other draft")
+        .unwrap_err();
+
+    assert!(mismatch.contains("another Vault or date"));
+    assert_eq!(application.list_sessions("2026-09-27").unwrap().len(), 1);
+    assert_eq!(application.session("synthetic-vault", &original.id).unwrap().draft, "Original draft");
+    assert!(switched_vault.list_sessions("2026-09-27").unwrap().is_empty());
+}
+
+#[test]
 fn session_drafts_target_dates_and_activity_history_survive_reopening() {
     let directory = IsolatedDirectory::new();
     let prompts = Arc::new(Mutex::new(Vec::new()));
@@ -699,6 +802,42 @@ fn session_drafts_target_dates_and_activity_history_survive_reopening() {
         switched_back.draft,
         "First date draft with a late voice transcript"
     );
+}
+
+// Completion is draft editing; /retro follows the same persisted conversation
+// path as a typed request and remains editable until the user submits it.
+#[test]
+fn retro_draft_survives_restart_without_running_until_explicit_submission() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let application = new_application(&directory, Arc::clone(&prompts));
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .save_draft_for_selected_vault(&session.id, "2026-09-20", "/retro ")
+        .unwrap();
+    drop(application);
+
+    let reopened = new_application(&directory, Arc::clone(&prompts));
+    let draft = reopened.session("synthetic-vault", &session.id).unwrap();
+    assert_eq!(draft.drafts_by_date.get("2026-09-20").map(String::as_str), Some("/retro "));
+    assert!(draft.messages.is_empty());
+    assert!(prompts.lock().unwrap().is_empty());
+    let edited = "/retro 请复盘 2026-09-20 的安排";
+    reopened.save_draft_for_selected_vault(&session.id, "2026-09-20", edited).unwrap();
+    reopened.submit_message("synthetic-vault", &session.id, "2026-09-20", edited).unwrap();
+    wait_until_finished(&reopened, &session.id);
+    drop(reopened);
+
+    let restarted = new_application(&directory, Arc::clone(&prompts));
+    let saved = restarted.session("synthetic-vault", &session.id).unwrap();
+    assert_eq!(saved.messages.len(), 2);
+    assert_eq!(saved.messages[0].text, edited);
+    assert_eq!(saved.messages[0].target_date, "2026-09-20");
+    assert_eq!(saved.drafts_by_date.get("2026-09-20").map(String::as_str).unwrap_or(""), "");
+    let sent = prompts.lock().unwrap();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].user_text, edited);
+    assert_eq!(sent[0].context.date, "2026-09-20");
 }
 
 #[test]
@@ -1676,7 +1815,7 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
     fs::create_dir_all(daily_record.parent().unwrap()).unwrap();
     fs::write(
         &daily_record,
-        "---\ntype: daily-record\ndate: 2026-09-08\n---\n# 2026-09-08\n\n## 早间基准\n\n### 初始安排\n\nCanonical synthetic baseline.\n\n## 今天的大致安排\n\n- **上午：** Canonical synthetic plan.\n\n## 白天更新\n\n## 晚间复盘\n\n### 用户补充\n\n- Synthetic current evening addition.\n",
+        "---\ntype: daily-record\ndate: 2026-09-08\n---\n# 2026-09-08\n\n## 早间基准\n\n### 初始安排\n\n- **08:00–10:00：** Canonical synthetic baseline.\n\n## 今天的大致安排\n\n- **18:00–20:30：** Canonical synthetic plan.\n\n## 白天更新\n\n## 晚间复盘\n\n### 用户补充\n\n- Synthetic current evening addition.\n",
     )
     .unwrap();
     let habit_snapshot = vault.join("life/.personal-dashboard/derived/habits-v1.json");
@@ -1694,6 +1833,7 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
     let opened_tasks = task_application.read().unwrap();
     let task_context = task_application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: opened_tasks.target_binding.unwrap(),
             expected_revision: opened_tasks.revision,
             task_id: "collaboration-context-task".into(),
@@ -1723,6 +1863,17 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
     let context = reader.read_context(Some(&vault_key), "2026-09-08").unwrap();
 
     assert_eq!(context.daily_record.state, "ready");
+    assert!(context.daily_record.items.iter().any(|item| {
+        item.starts_with("Morning · 08:00–10:00 ·")
+            && item.contains("Canonical synthetic baseline")
+    }), "Morning context must describe the immutable baseline: {:?}", context.daily_record.items);
+    assert!(context.daily_record.items.iter().any(|item| {
+        item.starts_with("Current arrangement · 18:00–20:30 ·")
+            && item.contains("Canonical synthetic plan")
+    }));
+    assert!(!context.daily_record.items.iter().any(|item| {
+        item.starts_with("Morning ·") && item.contains("Canonical synthetic plan")
+    }));
     assert!(context
         .daily_record
         .items
@@ -2343,4 +2494,91 @@ fn failed_history_save_of_queued_stop_never_dispatches_that_request() {
     let completed = wait_for_run_state(&application, &session.id, "completed");
     assert_eq!(completed.messages[1].delivery_state, "paused");
     assert_eq!(gate.started_len(), 1);
+}
+
+#[test]
+fn evening_entry_prepares_selected_date_draft_once_and_restores_it_after_restart() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let app = new_application(&directory, Arc::clone(&prompts));
+    for date in ["2026-09-27", "2026-09-20"] {
+        let draft = format!("/retro Review {date}: dashboard://record/{date}?phase=evening");
+        let opened = app.prepare_evening_review(date, &draft).unwrap();
+        assert_eq!(opened.session.target_date, date);
+        assert_eq!(opened.session.draft, draft);
+        assert!(!opened.preserved_draft);
+        let again = app.prepare_evening_review(date, "do not overwrite").unwrap();
+        assert_eq!(again.session.id, opened.session.id);
+        assert_eq!(again.session.draft, draft);
+        assert!(again.preserved_draft);
+        assert_eq!(app.list_sessions(date).unwrap().len(), 1);
+        assert!(again.session.messages.is_empty());
+    }
+    drop(app);
+    let restored = new_application(&directory, Arc::clone(&prompts));
+    for date in ["2026-09-27", "2026-09-20"] {
+        let saved = restored.list_sessions(date).unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].target_date, date);
+        assert!(saved[0].draft.contains(&format!("dashboard://record/{date}?phase=evening")));
+        assert!(saved[0].messages.is_empty());
+    }
+    assert!(prompts.lock().unwrap().is_empty());
+}
+
+#[test]
+fn evening_entry_reuses_date_matched_session_without_retargeting_or_losing_other_drafts() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let app = new_application(&directory, Arc::clone(&prompts));
+    let past = app.create_session("2026-09-20").unwrap();
+    app.save_draft_for_selected_vault(&past.id, "2026-09-20", "用户尚未发出的复盘草稿").unwrap();
+    app.save_draft_for_selected_vault(&past.id, "2026-09-19", "另一天的未完成草稿").unwrap();
+    let today = app.create_session("2026-09-27").unwrap();
+    app.save_draft_for_selected_vault(&today.id, "2026-09-27", "今天的其他工作").unwrap();
+    let opened = app.prepare_evening_review("2026-09-20", "new review request").unwrap();
+    assert_eq!(opened.session.id, past.id);
+    assert_eq!(opened.session.draft, "用户尚未发出的复盘草稿");
+    assert_eq!(opened.session.drafts_by_date["2026-09-19"], "另一天的未完成草稿");
+    assert!(opened.preserved_draft);
+    let unchanged = app.session("synthetic-vault", &today.id).unwrap();
+    assert_eq!(unchanged.target_date, "2026-09-27");
+    assert_eq!(unchanged.draft, "今天的其他工作");
+    assert!(prompts.lock().unwrap().is_empty());
+}
+
+#[test]
+fn concurrent_evening_entry_clicks_create_one_saved_session_without_runtime_requests() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let app = Arc::new(new_application(&directory, Arc::clone(&prompts)));
+    let workers: Vec<_> = (0..4).map(|_| {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.prepare_evening_review("2026-09-20", "/retro Review 2026-09-20").unwrap().session.id)
+    }).collect();
+    let ids: Vec<_> = workers.into_iter().map(|worker| worker.join().unwrap()).collect();
+    assert!(ids.iter().all(|id| id == &ids[0]));
+    assert_eq!(app.list_sessions("2026-09-20").unwrap().len(), 1);
+    assert!(prompts.lock().unwrap().is_empty());
+    assert!(app.prepare_evening_review("2026-09-28", "future").is_err());
+    assert!(app.list_sessions("2026-09-28").unwrap().is_empty());
+}
+
+#[test]
+fn evening_entry_leaves_active_same_date_work_running_in_its_original_session() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let gate = Arc::new(FakeTurnGate::default());
+    let app = new_application_with_controls(&directory, Arc::clone(&prompts), Arc::new(Mutex::new(Vec::new())), Some(Arc::clone(&gate)), Arc::new(Mutex::new(HashMap::new())));
+    let active = app.create_session("2026-09-20").unwrap();
+    app.submit_message("synthetic-vault", &active.id, "2026-09-20", "Existing work").unwrap();
+    gate.wait_for_started(1);
+    let review = app.prepare_evening_review("2026-09-20", "/retro Review selected date").unwrap();
+    assert_ne!(review.session.id, active.id);
+    assert!(review.session.messages.is_empty());
+    assert_eq!(app.prepare_evening_review("2026-09-20", "repeat").unwrap().session.id, review.session.id);
+    gate.release_all();
+    wait_until_finished(&app, &active.id);
+    assert_eq!(prompts.lock().unwrap().len(), 1);
+    assert!(app.session("synthetic-vault", &review.session.id).unwrap().messages.is_empty());
 }

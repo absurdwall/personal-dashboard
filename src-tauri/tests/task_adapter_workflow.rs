@@ -129,6 +129,7 @@ fn apply_request(
 
 fn action(task_id: &str, source_reference: &str, name: &str) -> DailyFlowCandidate {
     DailyFlowCandidate::Action {
+        execution_end: None,
         task_id: task_id.into(),
         source_reference: source_reference.into(),
         name: name.into(),
@@ -208,6 +209,7 @@ fn create_manual_task(
 ) -> personal_dashboard_lib::tasks::TasksView {
     application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: current.target_binding.clone().unwrap(),
             expected_revision: current.revision.clone(),
             task_id: task_id.into(),
@@ -301,6 +303,7 @@ fn real_cli_entry_reads_and_writes_a_synthetic_vault_across_processes() {
         target_binding,
         None,
         vec![DailyFlowCandidate::Action {
+            execution_end: None,
             task_id: "cli-task".into(),
             source_reference: "cli-source".into(),
             name: "跨进程保存".into(),
@@ -321,6 +324,7 @@ fn real_cli_entry_reads_and_writes_a_synthetic_vault_across_processes() {
         target_binding,
         Some("stale-revision".into()),
         vec![DailyFlowCandidate::Action {
+            execution_end: None,
             task_id: "cli-stale-task".into(),
             source_reference: "cli-stale-source".into(),
             name: "不应覆盖".into(),
@@ -393,6 +397,7 @@ fn external_read_reports_lived_date_context_and_excludes_archived_pending_obliga
         .unwrap();
     let archived_task = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: list.target_binding.clone().unwrap(),
             expected_revision: list.revision.clone(),
             task_id: "archived-pending".into(),
@@ -545,6 +550,7 @@ fn external_actions_are_idempotent_preserve_user_edits_and_never_revive_deleted_
     );
     let edited = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: repeated.read.target_binding.clone().unwrap(),
             expected_revision: repeated.read.revision.clone().unwrap(),
             task_id: "flow-task".into(),
@@ -655,6 +661,7 @@ fn explicit_daily_flow_commands_preserve_history_source_and_completion_precision
                 created.read.revision.clone(),
                 vec![],
                 vec![DailyFlowCommand::Reschedule {
+                    execution_end: None,
                     task_id: "command-task".into(),
                     operation_id: "flow-reschedule-1".into(),
                     date: Some("2026-09-17".into()),
@@ -687,6 +694,7 @@ fn explicit_daily_flow_commands_preserve_history_source_and_completion_precision
                 rescheduled.read.revision.clone(),
                 vec![],
                 vec![DailyFlowCommand::Reschedule {
+                    execution_end: None,
                     task_id: "command-task".into(),
                     operation_id: "flow-reschedule-1".into(),
                     date: Some("2026-09-17".into()),
@@ -878,6 +886,7 @@ fn no_op_daily_flow_commands_persist_identity_before_user_edits() {
                 created.read.revision.clone(),
                 vec![],
                 vec![DailyFlowCommand::Reschedule {
+                    execution_end: None,
                     task_id: "noop-task".into(),
                     operation_id: "noop-reschedule-1".into(),
                     date: Some("2026-09-17".into()),
@@ -904,6 +913,7 @@ fn no_op_daily_flow_commands_persist_identity_before_user_edits() {
     );
     let edited = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: no_op_reschedule.read.target_binding.clone().unwrap(),
             expected_revision: no_op_reschedule.read.revision.clone().unwrap(),
             task_id: "noop-task".into(),
@@ -923,6 +933,7 @@ fn no_op_daily_flow_commands_persist_identity_before_user_edits() {
                 edited.revision.clone(),
                 vec![],
                 vec![DailyFlowCommand::Reschedule {
+                    execution_end: None,
                     task_id: "noop-task".into(),
                     operation_id: "noop-reschedule-1".into(),
                     date: Some("2026-09-17".into()),
@@ -1112,6 +1123,7 @@ fn adapter_rejects_stale_and_concurrent_writes_without_overwriting_external_byte
     );
     let user_edit = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: created.read.target_binding.clone().unwrap(),
             expected_revision: created.read.revision.clone().unwrap(),
             task_id: "race-task".into(),
@@ -1260,4 +1272,187 @@ impl TaskStore for FailingTaskStore {
     fn create_new(&self, _path: &Path, _document: &[u8]) -> Result<(), String> {
         Err("injected task create failure".into())
     }
+}
+
+#[test]
+fn adapter_creates_moves_and_clears_planned_intervals_with_repeat_delivery() {
+    let vault = TempVault::new("execution-interval");
+    let adapter = adapter(vault.path());
+    let opened = match adapter.execute(read_request(vault.path(), "2026-09-17")).unwrap() {
+        DailyFlowTaskResponse::Read(view) => view, _ => panic!("read result"),
+    };
+    let request: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+        "operation": "apply", "schemaVersion": 1, "vaultPath": vault.path(), "livedDate": "2026-09-17",
+        "targetBinding": opened.target_binding, "expectedRevision": opened.revision,
+        "candidates": [{"kind": "action", "taskId": "interval-adapter", "sourceReference": "synthetic-interval",
+            "name": "Synthetic overnight action", "content": null, "date": "2026-09-17", "time": "23:00", "listId": "inbox",
+            "executionEnd": {"date": "2026-09-18", "time": "01:00"}}], "commands": []
+    })).unwrap();
+    let saved = match adapter.execute(request.clone()).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    let mut request = request;
+    if let DailyFlowTaskRequest::Apply { expected_revision, .. } = &mut request { *expected_revision = saved.revision.clone(); }
+    let duplicate = match adapter.execute(request).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    assert_eq!(duplicate.read.tasks.len(), 1);
+    assert_eq!(serde_json::to_value(&saved.read.tasks[0]).unwrap()["executionEnd"], serde_json::json!({"date":"2026-09-18", "time":"01:00"}));
+    let cli_read = run_cli(&read_request(vault.path(), "2026-09-17"));
+    assert_eq!(cli_read["result"]["tasks"][0]["executionEnd"], serde_json::json!({"date":"2026-09-18", "time":"01:00"}));
+    let moved: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+        "operation": "apply", "schemaVersion": 1, "vaultPath": vault.path(), "livedDate": "2026-09-17",
+        "targetBinding": saved.target_binding, "expectedRevision": saved.revision, "candidates": [],
+        "commands": [{"kind": "reschedule", "taskId": "interval-adapter", "operationId": "interval-adapter-move",
+            "date": "2026-09-17", "time": "22:00", "executionEnd": {"date":"2026-09-18", "time":"00:00"}}]
+    })).unwrap();
+    let saved = match adapter.execute(moved.clone()).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    let mut moved = moved;
+    if let DailyFlowTaskRequest::Apply { expected_revision, .. } = &mut moved { *expected_revision = saved.revision.clone(); }
+    let duplicate = match adapter.execute(moved).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    assert!(!duplicate.changed);
+    assert_eq!(serde_json::to_value(&duplicate.read.tasks[0]).unwrap()["executionEnd"], serde_json::json!({"date":"2026-09-18", "time":"00:00"}));
+    let cleared: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+        "operation": "apply", "schemaVersion": 1, "vaultPath": vault.path(), "livedDate": "2026-09-17",
+        "targetBinding": saved.target_binding, "expectedRevision": saved.revision, "candidates": [],
+        "commands": [{"kind": "reschedule", "taskId": "interval-adapter", "operationId": "interval-adapter-clear",
+            "date": "2026-09-17", "time": "22:00", "executionEnd": null}]
+    })).unwrap();
+    let cleared = match adapter.execute(cleared).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    assert!(serde_json::to_value(&cleared.read.tasks[0]).unwrap()["executionEnd"].is_null());
+}
+
+#[test]
+fn changed_reschedule_retries_preserve_the_original_end_patch_identity() {
+    let vault = TempVault::new("changed-reschedule-patch-identity");
+    let app = adapter(vault.path());
+    let read = match app
+        .execute(read_request(vault.path(), "2026-09-17"))
+        .unwrap()
+    {
+        DailyFlowTaskResponse::Read(view) => view,
+        _ => panic!("read result"),
+    };
+    let mut revision = read.revision;
+    let binding = read.target_binding;
+    let mut apply = |commands: serde_json::Value, candidates: serde_json::Value| {
+        let request: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+            "operation":"apply", "schemaVersion":1, "vaultPath":vault.path(),
+            "livedDate":"2026-09-17", "targetBinding":binding,
+            "expectedRevision":revision, "commands":commands, "candidates":candidates
+        }))
+        .unwrap();
+        let result = app.execute(request);
+        if let Ok(DailyFlowTaskResponse::Apply(view)) = &result {
+            revision = view.revision.clone();
+        }
+        result
+    };
+    apply(
+        serde_json::json!([]),
+        serde_json::json!([{
+            "kind":"action", "taskId":"patch-task", "sourceReference":"synthetic-patch",
+            "name":"Synthetic patch identity", "content":null, "date":"2026-09-17",
+            "time":"10:00", "listId":"inbox"
+        }]),
+    )
+    .unwrap();
+    let omitted = serde_json::json!({"kind":"reschedule", "taskId":"patch-task",
+        "operationId":"preserve-end", "date":"2026-09-17", "time":"11:00"});
+    apply(serde_json::json!([omitted.clone()]), serde_json::json!([])).unwrap();
+    let object = serde_json::json!({"kind":"reschedule", "taskId":"patch-task",
+        "operationId":"set-end", "date":"2026-09-17", "time":"11:00",
+        "executionEnd":{"date":"2026-09-17", "time":"12:00"}});
+    apply(serde_json::json!([object.clone()]), serde_json::json!([])).unwrap();
+    let mut collision = omitted.clone();
+    collision["executionEnd"] = serde_json::Value::Null;
+    assert!(
+        apply(serde_json::json!([collision]), serde_json::json!([])).is_err(),
+        "an omitted-end operation cannot be reused as an explicit clear"
+    );
+    let genuine = match apply(serde_json::json!([omitted.clone()]), serde_json::json!([])).unwrap()
+    {
+        DailyFlowTaskResponse::Apply(view) => view,
+        _ => panic!("apply result"),
+    };
+    assert!(!genuine.changed);
+    assert_eq!(
+        genuine.read.tasks[0].execution_end.as_ref().unwrap().time,
+        "12:00"
+    );
+    let mut collision = omitted;
+    collision["executionEnd"] = object["executionEnd"].clone();
+    assert!(apply(serde_json::json!([collision]), serde_json::json!([])).is_err());
+    let mut collision = object.clone();
+    collision.as_object_mut().unwrap().remove("executionEnd");
+    assert!(apply(serde_json::json!([collision]), serde_json::json!([])).is_err());
+    let mut clear = object.clone();
+    clear["operationId"] = "clear-end".into();
+    clear["executionEnd"] = serde_json::Value::Null;
+    apply(serde_json::json!([clear.clone()]), serde_json::json!([])).unwrap();
+    let mut collision = clear;
+    collision.as_object_mut().unwrap().remove("executionEnd");
+    assert!(apply(serde_json::json!([collision]), serde_json::json!([])).is_err());
+    let genuine = match apply(serde_json::json!([object]), serde_json::json!([])).unwrap() {
+        DailyFlowTaskResponse::Apply(view) => view,
+        _ => panic!("apply result"),
+    };
+    assert!(!genuine.changed);
+    assert!(genuine.read.tasks[0].execution_end.is_none());
+}
+
+#[test]
+fn retained_daily_flow_operation_id_cannot_be_reused_as_manual_update() {
+    let vault = TempVault::new("manual-id-collision");
+    let app = TaskApplication::new(
+        SelectedVault(vault.path().to_owned()),
+        FixedClock,
+        FileTaskStore,
+    );
+    let empty = app.read().unwrap();
+    let created = app
+        .create(TaskCreateInput {
+            target_binding: empty.target_binding.unwrap(),
+            expected_revision: empty.revision,
+            task_id: "collision-task".into(),
+            name: "Synthetic collision task".into(),
+            content: None,
+            date: Some("2026-09-17".into()),
+            time: Some("08:00".into()),
+            execution_end: None,
+            list_id: None,
+        })
+        .unwrap();
+    let request: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+        "operation":"apply", "schemaVersion":1, "vaultPath":vault.path(), "livedDate":"2026-09-17",
+        "targetBinding":created.target_binding, "expectedRevision":created.revision, "candidates":[],
+        "commands":[{"kind":"reschedule", "taskId":"collision-task", "operationId":"retained-flow-id", "date":"2026-09-17", "time":"09:00"}]
+    })).unwrap();
+    adapter(vault.path()).execute(request).unwrap();
+    let moved = app.read().unwrap();
+    let before = fs::read(
+        vault
+            .path()
+            .join("life/.personal-dashboard/tasks/v1/tasks.json"),
+    )
+    .unwrap();
+    assert!(app
+        .update(TaskUpdateInput {
+            target_binding: moved.target_binding.unwrap(),
+            expected_revision: moved.revision.unwrap(),
+            task_id: "collision-task".into(),
+            change_id: "retained-flow-id".into(),
+            name: "Synthetic collision task".into(),
+            content: None,
+            date: Some("2026-09-17".into()),
+            time: Some("09:00".into()),
+            execution_end: None,
+            list_id: None,
+        })
+        .is_err());
+    assert_eq!(
+        fs::read(
+            vault
+                .path()
+                .join("life/.personal-dashboard/tasks/v1/tasks.json")
+        )
+        .unwrap(),
+        before
+    );
 }

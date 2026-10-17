@@ -1987,6 +1987,7 @@ fn revision_conflict_requires_refresh_and_a_second_explicit_approval() {
     let before_external_change = tasks.read().unwrap();
     tasks
         .create(personal_dashboard_lib::tasks::TaskCreateInput {
+            execution_end: None,
             target_binding: before_external_change.target_binding.unwrap(),
             expected_revision: before_external_change.revision,
             task_id: "unrelated-human-task".into(),
@@ -3430,6 +3431,7 @@ fn task_application_adapter_preserves_date_completion_and_list_lifecycle_semanti
     view = adapter
         .apply(
             &CollaborationTaskOperation::CreateTask {
+                execution_end: None,
                 name: "Draft report".into(),
                 content: Some("Collect notes".into()),
                 date: Some("2026-09-20".into()),
@@ -3445,6 +3447,7 @@ fn task_application_adapter_preserves_date_completion_and_list_lifecycle_semanti
     view = adapter
         .apply(
             &CollaborationTaskOperation::UpdateTask {
+                execution_end: None,
                 task_id: task_id.clone(),
                 name: "Prepare report".into(),
                 content: Some("Collect final notes".into()),
@@ -3614,6 +3617,7 @@ fn automatic_plan_triggers_at_configured_local_time_and_restart_does_not_duplica
     let empty_tasks = tasks.read().unwrap();
     tasks
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: empty_tasks.target_binding.unwrap(),
             expected_revision: empty_tasks.revision,
             task_id: "existing-synthetic-task".into(),
@@ -4188,6 +4192,7 @@ fn automatic_session_human_continuation_saves_tasks_records_habits_and_memory_th
     let empty = tasks.read().unwrap();
     tasks
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: empty.target_binding.unwrap(),
             expected_revision: empty.revision,
             task_id: "human-task".into(),
@@ -4998,6 +5003,7 @@ fn queued_natural_completion_keeps_original_lived_day_across_four_am() {
     let empty = tasks.read().unwrap();
     tasks
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: empty.target_binding.unwrap(),
             expected_revision: empty.revision,
             task_id: "laundry-task".into(),
@@ -5073,6 +5079,7 @@ impl CollaborationTaskService for InterleavedTaskNoteEdit {
             let task = &view.tasks[0];
             TaskApplication::new(self.vault.clone(), FixedClock, FileTaskStore).update(
                 personal_dashboard_lib::tasks::TaskUpdateInput {
+                    execution_end: None,
                     target_binding: view.target_binding.clone().unwrap(),
                     expected_revision: view.revision.clone().unwrap(),
                     task_id: task.id.clone(),
@@ -5107,6 +5114,7 @@ fn interleaved_task_note_edit_is_rechecked_against_the_actual_proposal_baseline(
     let empty = tasks.read().unwrap();
     tasks
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: empty.target_binding.unwrap(),
             expected_revision: empty.revision,
             task_id: "laundry-task".into(),
@@ -6361,7 +6369,8 @@ fn repeated_attempted_task_reads_original_id_after_history_failure_and_preserves
         let session=app.create_default_session().unwrap();app.submit_message("vault-a",&session.id,&session.target_date,"下周五我要买菜").unwrap();wait_for_finish(&app,&session.id,"vault-a");
         let operation=app.session("vault-a",&session.id).unwrap().task_operations[0].clone();assert_eq!(operation.status,"awaitingApproval");
         let tasks=TaskApplication::new(vault.clone(),clock.clone(),FileTaskStore);let view=tasks.read().unwrap();let task=&view.tasks[0];
-        if concurrent_note {tasks.update(personal_dashboard_lib::tasks::TaskUpdateInput{target_binding:view.target_binding.clone().unwrap(),expected_revision:view.revision.clone().unwrap(),task_id:task.id.clone(),change_id:"later-user-note".into(),name:task.name.clone(),content:Some("Concurrent user note stays intact".into()),date:task.date.clone(),time:task.time.clone(),list_id:None}).unwrap();}
+        if concurrent_note {tasks.update(personal_dashboard_lib::tasks::TaskUpdateInput{
+                execution_end: None,target_binding:view.target_binding.clone().unwrap(),expected_revision:view.revision.clone().unwrap(),task_id:task.id.clone(),change_id:"later-user-note".into(),name:task.name.clone(),content:Some("Concurrent user note stays intact".into()),date:task.date.clone(),time:task.time.clone(),list_id:None}).unwrap();}
         let before=fs::read(path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH)).unwrap();app.shutdown().unwrap();drop(app);
         let reopened=new_journey_application(&directory,&vault,clock,source,Arc::new(AtomicBool::new(false)));
         reopened.submit_message("vault-a",&session.id,&session.target_date,"下周五我要买菜").unwrap();wait_for_finish(&reopened,&session.id,"vault-a");
@@ -7199,7 +7208,8 @@ fn bounded_task_history_retains_reported_completion_after_reopen_without_rewriti
     let adapter = TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(), FixedClock, FileTaskStore));
     let view = adapter.read().unwrap();
     let binding = view.target_binding.unwrap();
-    let view = adapter.apply(&CollaborationTaskOperation::CreateTask { name: "Send report".into(), content: Some("Keep my notes".into()), date: Some("2026-10-02".into()), time: Some("09:00".into()), list_id: None }, &binding, None, "history-create").unwrap();
+    let view = adapter.apply(&CollaborationTaskOperation::CreateTask {
+        execution_end: None, name: "Send report".into(), content: Some("Keep my notes".into()), date: Some("2026-10-02".into()), time: Some("09:00".into()), list_id: None }, &binding, None, "history-create").unwrap();
     let id = view.tasks[0].id.clone();
     let view = adapter.apply_for_date(&CollaborationTaskOperation::CompleteTask { task_id: id.clone(), completed_time: Some("15:20".into()) }, &binding, view.revision.as_deref(), "history-complete", "2026-09-24").unwrap();
     let view = adapter.apply(&CollaborationTaskOperation::ReopenTask { task_id: id.clone() }, &binding, view.revision.as_deref(), "history-reopen").unwrap();
@@ -7512,7 +7522,8 @@ fn personal_retro_reads_three_real_histories_for_complete_lived_days_without_bus
     let clock = ManualClock::new("2026-09-28", "10:00");
     let tasks = TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(), clock.clone(), FileTaskStore));
     let opened = tasks.read().unwrap(); let binding = opened.target_binding.unwrap();
-    let created = tasks.apply(&CollaborationTaskOperation::CreateTask {name:"Synthetic report".into(),content:None,date:Some("2026-10-02".into()),time:Some("09:00".into()),list_id:None},&binding,None,"retro-create").unwrap();
+    let created = tasks.apply(&CollaborationTaskOperation::CreateTask {
+        execution_end: None,name:"Synthetic report".into(),content:None,date:Some("2026-10-02".into()),time:Some("09:00".into()),list_id:None},&binding,None,"retro-create").unwrap();
     let id = created.tasks[0].id.clone();
     tasks.apply_for_date(&CollaborationTaskOperation::CompleteTask {task_id:id.clone(),completed_time:None},&binding,created.revision.as_deref(),"retro-complete","2026-09-26").unwrap();
     let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
@@ -7637,4 +7648,77 @@ fn queued_retro_period_keeps_submission_lived_day_across_four_am_and_browsed_dat
     let after=serde_json::to_value(&requests.lock().unwrap()[2].dates).unwrap();
     assert_eq!(after["defaultPersonalRetroPeriod"],json!({"fromDate":"2026-09-21","toDate":"2026-09-27"}));
     assert!(!path.join("life/.personal-dashboard/tasks/v1/tasks.json").exists());
+}
+
+#[test]
+fn collaboration_task_service_retains_or_explicitly_clears_execution_end() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("synthetic-interval"));
+    let service = TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault, FixedClock, FileTaskStore));
+    let opened = service.read().unwrap();
+    let create: CollaborationTaskOperation = serde_json::from_value(json!({"operation":"createTask", "name":"Synthetic overnight",
+        "content":null, "date":"2026-09-27", "time":"23:30", "listId":"inbox", "executionEnd":{"date":"2026-09-28","time":"00:30"}})).unwrap();
+    let saved = service.apply(&create, opened.target_binding.as_deref().unwrap(), None, "synthetic-interval-create").unwrap();
+    let task = &saved.tasks[0];
+    let end = json!({"date":"2026-09-28","time":"00:30"});
+    assert_eq!(serde_json::to_value(task).unwrap()["executionEnd"], end);
+    let legacy: CollaborationTaskOperation = serde_json::from_value(json!({"operation":"updateTask", "taskId":task.id,
+        "name":"Edited via old conversation contract", "content":null, "date":"2026-09-27", "time":"23:30", "listId":"inbox"})).unwrap();
+    let saved = service.apply(&legacy, saved.target_binding.as_deref().unwrap(), saved.revision.as_deref(), "synthetic-interval-legacy").unwrap();
+    assert_eq!(serde_json::to_value(&saved.tasks[0]).unwrap()["executionEnd"], end);
+    let clear: CollaborationTaskOperation = serde_json::from_value(json!({"operation":"updateTask", "taskId":saved.tasks[0].id,
+        "name":"Edited via old conversation contract", "content":null, "date":"2026-09-27", "time":"23:30", "listId":"inbox", "executionEnd":null})).unwrap();
+    let cleared = service.apply(&clear, saved.target_binding.as_deref().unwrap(), saved.revision.as_deref(), "synthetic-interval-clear").unwrap();
+    assert!(serde_json::to_value(&cleared.tasks[0]).unwrap()["executionEnd"].is_null());
+}
+
+#[test]
+fn evening_entry_leaves_canonical_records_tasks_and_calendar_review_states_unchanged() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("review-entry-vault");
+    let reviewed_path = prepare_daily_review_vault(&path, false);
+    let unreviewed_path = path.join("life/Journal/Daily/2026/2026-09/2026-09-20.md");
+    fs::write(&unreviewed_path, "---\ntype: daily-record\ndate: 2026-09-20\n---\n# 2026-09-20\n\n## 今天的大致安排\n\n- **下午：** Synthetic arrangement; no activity inferred.\n\n## 晚间复盘\n").unwrap();
+    let reviewed_before = fs::read(&reviewed_path).unwrap();
+    let unreviewed_before = fs::read(&unreviewed_path).unwrap();
+    let vault = MutableVault::new(&path);
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock);
+    let before = today.calendar_month(2026, 9).unwrap();
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("review-entry-vault"), Arc::new(AtomicBool::new(false)));
+    for date in ["2026-09-27", "2026-09-20", "2026-09-19"] {
+        let draft = format!("/retro Review {date}; dashboard://record/{date}?phase=evening");
+        let opened = app.prepare_evening_review(date, &draft).unwrap();
+        assert_eq!(opened.session.target_date, date);
+        assert!(opened.session.task_operations.is_empty());
+        assert!(opened.session.messages.is_empty());
+        let repeated = app.prepare_evening_review(date, &draft).unwrap();
+        assert_eq!(repeated.session.id, opened.session.id);
+    }
+    let after = today.calendar_month(2026, 9).unwrap();
+    for date in ["2026-09-27", "2026-09-20", "2026-09-19"] {
+        assert_eq!(after.day(date).unwrap().availability, before.day(date).unwrap().availability);
+    }
+    assert_eq!(after.day("2026-09-27").unwrap().availability, personal_dashboard_lib::today::DailyRecordAvailability::Reviewed);
+    assert_eq!(after.day("2026-09-20").unwrap().availability, personal_dashboard_lib::today::DailyRecordAvailability::Unreviewed);
+    assert_eq!(after.day("2026-09-19").unwrap().availability, personal_dashboard_lib::today::DailyRecordAvailability::Missing);
+    assert_eq!(fs::read(&reviewed_path).unwrap(), reviewed_before);
+    assert_eq!(fs::read(&unreviewed_path).unwrap(), unreviewed_before);
+    assert!(!path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH).exists());
+    assert!(!path.join("life/Journal/Daily/2026/2026-09/2026-09-19.md").exists());
+}
+
+#[test]
+fn evening_entry_save_failure_has_no_saved_session_and_retry_creates_one() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("entry-save-failure");
+    let vault = MutableVault::new(&path);
+    let fail = Arc::new(AtomicBool::new(false));
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("entry-save-failure"), Arc::clone(&fail));
+    fail.store(true, Ordering::SeqCst);
+    assert!(app.prepare_evening_review("2026-09-20", "/retro review 2026-09-20").is_err());
+    assert!(app.list_sessions("2026-09-20").unwrap().is_empty());
+    let saved = app.prepare_evening_review("2026-09-20", "/retro review 2026-09-20").unwrap();
+    let again = app.prepare_evening_review("2026-09-20", "retry").unwrap();
+    assert_eq!(again.session.id, saved.session.id);
+    assert_eq!(app.list_sessions("2026-09-20").unwrap().len(), 1);
 }

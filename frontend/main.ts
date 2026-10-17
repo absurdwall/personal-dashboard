@@ -1,3 +1,6 @@
+import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
+import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
+import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
 import { appendCollaborationMarkdown, appendCollaborationWorkHistory, type CollaborationWorkHistory, type CollaborationLink, type WorkHistoryLabels } from "./collaboration-work-history.js";
 import { initializeCollaborationPanels } from "./collaboration-panels.js";
 import {
@@ -181,6 +184,9 @@ type DaytimeView = Readonly<{
 }>;
 
 type TimeAxisEntryView = Readonly<{
+  planId?: string | null;
+  timeEditable?: boolean;
+  planPrecision?: "broad" | "approximatePoint" | "exactPoint" | "exactRange" | "unlocated" | null;
   period: string | null;
   text: string;
   sourceDate: string;
@@ -274,6 +280,8 @@ type TaskChangeView = Readonly<{
   newDate: string | null;
   previousTime: string | null;
   newTime: string | null;
+  previousExecutionEnd?: Readonly<{date: string; time: string}> | null;
+  newExecutionEnd?: Readonly<{date: string; time: string}> | null;
   previousListId: string | null;
   newListId: string | null;
   previousState: "pending" | "completed" | "abandoned" | null;
@@ -287,6 +295,16 @@ type TaskChangeView = Readonly<{
         kind: "reschedule";
         date: string | null;
         time: string | null;
+        executionEnd?: Readonly<{ date: string; time: string }> | null;
+      }>
+    | Readonly<{
+        kind: "manualUpdate";
+        name: string;
+        content: string | null;
+        date: string | null;
+        time: string | null;
+        listId: string | null;
+        executionEnd?: Readonly<{ date: string; time: string }> | null;
       }>
     | Readonly<{ kind: "setState"; state: "pending" | "completed" | "abandoned" }>
     | Readonly<{
@@ -305,6 +323,7 @@ type TaskCompletionView = Readonly<{
 }>;
 
 type TaskView = Readonly<{
+  executionEnd: Readonly<{ date: string; time: string }> | null;
   id: string;
   name: string;
   content: string | null;
@@ -648,6 +667,7 @@ type CollaborationTaskReferenceView = Readonly<{
   content: string | null;
   date: string | null;
   time: string | null;
+  executionEnd?: Readonly<{date: string; time: string}> | null;
   listId: string;
   state: "pending" | "completed" | "abandoned";
   deletedAt: string | null;
@@ -715,8 +735,8 @@ type CollaborationExternalApprovalRequest = Readonly<{
 }>;
 
 type CollaborationTaskOperation =
-  | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
-  | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
+  | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string | null }>
+  | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string | null }>
   | Readonly<{ operation: "completeTask"; taskId: string; completedTime?: string | null }>
   | Readonly<{ operation: "abandonTask" | "reopenTask" | "deleteTask" | "restoreTask"; taskId: string }>
   | Readonly<{ operation: "correctCompletion"; taskId: string; completedOn: string; completedTime: string | null }>
@@ -745,7 +765,7 @@ type DailyPlanBlockInput = Readonly<{ period: string; title: string; detail: str
 type DailyPlanEvidenceInput = Readonly<{ label: string; items: readonly string[] }>;
 
 type CollaborationTaskOperationBaseline =
-  | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
+  | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
   | Readonly<{ kind: "list"; id: string; name: string; archived: boolean }>
   | Readonly<{
       kind: "dailyRecord";
@@ -949,6 +969,8 @@ const collaborationMemoryProposalErrors = new Map<string, string>();
 const collaborationLongTermDrafts = new Map<string, Readonly<{ text: string; revision: string }>>();
 const collaborationContinuityDrafts = new Map<string, Readonly<{ text: string; revision: number }>>();
 let taskFocusRequestId: string | null = null;
+let selectedTaskDetailId: string | null = null;
+let selectedTaskDetailBinding: string | null = null;
 let taskReturnToCollaborationSessionId: string | null = null;
 let dailyPlanReturnToCollaborationSessionId: string | null = null;
 let dailyPlanReturnToCollaborationDate: string | null = null;
@@ -957,11 +979,23 @@ let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
 let collaborationStatusTimer: number | null = null;
 let collaborationTargetDatePendingSession: string | null = null;
+let collaborationEmptyDraft = "";
+let collaborationEmptyComposerActive = false;
+let collaborationSessionCreationPromise: Promise<CollaborationSessionView | null> | null = null;
+let collaborationSessionCreationResult: CollaborationSessionView | null = null;
+let collaborationSessionCreationError: unknown = null;
+let collaborationSessionCreationAttempt: {
+  id: string;
+  date: string;
+  initialDraft: string;
+  latestDraft: string;
+} | null = null;
 const collaborationDrafts = new Map<string, string>();
 const collaborationUnsavedDrafts = new Set<string>();
 const collaborationDraftWrites = new Map<string, Promise<CollaborationSessionView>>();
 let collaborationVaultSwitchDraftWrites: Promise<unknown>[] | null = null;
 let collaborationVaultSelectionRevision = 0;
+let collaborationReviewEntryNoticeTimer: number | null = null;
 const collaborationDraftSaveTimers = new Map<string, number>();
 const collaborationTargetDates = new Map<string, string>();
 let activeCollaborationVoiceTarget: CollaborationVoiceTarget | null = null;
@@ -1016,13 +1050,17 @@ function cacheCollaborationDrafts(session: CollaborationSessionView, preserveLoc
   // Only acknowledgement of the exact current snapshot releases protection.
   for (const [date, draft] of Object.entries(session.draftsByDate)) {
     const key = collaborationDraftKey(session.id, date);
-    if (collaborationSubmittedDrafts.get(key) === draft) continue;
+    const submittedDraft = collaborationSubmittedDrafts.get(key);
+    if (submittedDraft !== undefined &&
+      (submittedDraft === draft || collaborationDrafts.get(key) === "")) continue;
     if ((!preserveLocal && !collaborationUnsavedDrafts.has(key)) || !collaborationDrafts.has(key)) {
       collaborationDrafts.set(key, draft);
     }
   }
   const targetKey = collaborationDraftKey(session.id, session.targetDate);
-  if (collaborationSubmittedDrafts.get(targetKey) === session.draft) return;
+  const submittedDraft = collaborationSubmittedDrafts.get(targetKey);
+  if (submittedDraft !== undefined &&
+    (submittedDraft === session.draft || collaborationDrafts.get(targetKey) === "")) return;
   if ((!preserveLocal && !collaborationUnsavedDrafts.has(targetKey)) || !collaborationDrafts.has(targetKey)) {
     collaborationDrafts.set(targetKey, session.draft);
   }
@@ -1043,6 +1081,27 @@ const runtimeStatus = document.querySelector<HTMLElement>("#runtime-status");
 const workspaceDestinationButtons = document.querySelectorAll<HTMLButtonElement>(
   ".destination-button[data-workspace-destination]",
 );
+const workspaceSidebar = document.querySelector<HTMLElement>("#workspace-sidebar");
+const workspaceSidebarToggle = document.querySelector<HTMLButtonElement>("#workspace-sidebar-toggle");
+let workspaceSidebarExpanded = true;
+function updateWorkspaceSidebarPresentation(): void {
+  if (!workspaceSidebar || !workspaceSidebarToggle) return;
+  if (!workspaceSidebarExpanded && workspaceSidebar.contains(document.activeElement)) {
+    workspaceSidebarToggle.focus({preventScroll: true});
+  }
+  workspaceSidebar.hidden = !workspaceSidebarExpanded;
+  document.querySelector<HTMLElement>(".app-shell")?.setAttribute("data-navigation-expanded", String(workspaceSidebarExpanded));
+  workspaceSidebarToggle.setAttribute("aria-expanded", String(workspaceSidebarExpanded));
+  const key = workspaceSidebarExpanded ? "navigation.hideSidebar" : "navigation.showSidebar";
+  workspaceSidebarToggle.dataset.i18nAriaLabel = key;
+  workspaceSidebarToggle.dataset.i18nTitle = key;
+  workspaceSidebarToggle.setAttribute("aria-label", t(key));
+  workspaceSidebarToggle.title = t(key);
+}
+workspaceSidebarToggle?.addEventListener("click", () => {
+  workspaceSidebarExpanded = !workspaceSidebarExpanded;
+  updateWorkspaceSidebarPresentation();
+});
 const workspaceDestinationPanels = document.querySelectorAll<HTMLElement>(
   "[data-workspace-panel]",
 );
@@ -1070,9 +1129,13 @@ const collaborationWorkOwner = document.querySelector<HTMLElement>("#collaborati
 const collaborationMessageList = document.querySelector<HTMLElement>("#collaboration-message-list");
 const collaborationTaskOperations = document.querySelector<HTMLElement>("#collaboration-task-operations");
 const collaborationTaskToolNotice = document.querySelector<HTMLElement>("#collaboration-task-tool-notice");
+const collaborationTaskToolDisclosure = document.querySelector<HTMLDetailsElement>("#collaboration-task-tool-disclosure");
 const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
 const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
+const collaborationCommandMenu = document.querySelector<HTMLElement>("#collaboration-command-menu");
+let collaborationCommandCompletion: { close: () => void } | null = null;
 const collaborationComposerStatus = document.querySelector<HTMLElement>("#collaboration-composer-status");
+const collaborationRecoveryDetails = document.querySelector<HTMLDetailsElement>("#collaboration-recovery-details");
 const collaborationVoicePreview = document.querySelector<HTMLElement>("#collaboration-voice-preview");
 const collaborationVoiceStartButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-start");
 const collaborationVoiceCancelButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-cancel");
@@ -1100,6 +1163,7 @@ const collaborationContinuitySaveButton = document.querySelector<HTMLButtonEleme
 const collaborationContinuityExpiry = document.querySelector<HTMLElement>("#collaboration-continuity-expiry");
 const collaborationMemoryProposals = document.querySelector<HTMLElement>("#collaboration-memory-proposals");
 const collaborationRuntimeStatus = document.querySelector<HTMLElement>("#collaboration-runtime-status");
+const collaborationModelSummary = document.querySelector<HTMLElement>("#collaboration-model-summary");
 const collaborationConnectionStatus = document.querySelector<HTMLElement>("#collaboration-connection-status");
 const collaborationTurnCapability = document.querySelector<HTMLElement>("#collaboration-turn-capability");
 const collaborationRuntimeDetails = document.querySelector<HTMLElement>("#collaboration-runtime-details");
@@ -1155,6 +1219,11 @@ const calendarToday = document.querySelector<HTMLButtonElement>("#calendar-today
 const calendarStatus = document.querySelector<HTMLElement>("#calendar-status");
 const calendarMonthHeading = document.querySelector<HTMLElement>("#calendar-month-heading");
 const calendarGrid = document.querySelector<HTMLElement>("#calendar-grid");
+const calendarTaskPreviewResizeObserver = calendarGrid && typeof ResizeObserver !== "undefined"
+  ? new ResizeObserver(() => updateCalendarTaskPreviewRows())
+  : null;
+calendarTaskPreviewResizeObserver?.observe(calendarGrid!);
+const calendarSummary = document.querySelector<HTMLElement>("#calendar-summary");
 const calendarSummaryHeading = document.querySelector<HTMLElement>("#calendar-summary-heading");
 const calendarSummaryStatus = document.querySelector<HTMLElement>("#calendar-summary-status");
 const calendarSummaryCopy = document.querySelector<HTMLElement>("#calendar-summary-copy");
@@ -1192,6 +1261,19 @@ const taskFilter = document.querySelector<HTMLSelectElement>("#task-filter");
 const tasksCount = document.querySelector<HTMLElement>("#tasks-count");
 const tasksList = document.querySelector<HTMLElement>("#tasks-list");
 const tasksEmpty = document.querySelector<HTMLElement>("#tasks-empty");
+const taskQuickForm = document.querySelector<HTMLFormElement>("#task-quick-form");
+const taskQuickName = document.querySelector<HTMLInputElement>("#task-quick-name");
+const taskQuickSubmit = document.querySelector<HTMLButtonElement>("#task-quick-submit");
+const taskQuickRecovery = document.querySelector<HTMLElement>("#task-quick-recovery");
+const taskQuickRecheck = document.querySelector<HTMLButtonElement>("#task-quick-recheck");
+const taskQuickRetry = document.querySelector<HTMLButtonElement>("#task-quick-retry");
+const taskQuickEndAttempt = document.querySelector<HTMLButtonElement>("#task-quick-end-attempt");
+const taskCreateEndAttempt = document.querySelector<HTMLButtonElement>("#task-create-end-attempt");
+const taskEndedCreateRegion = document.querySelector<HTMLElement>("#task-create-ended-attempts");
+const taskCreateRecheck = document.querySelector<HTMLButtonElement>("#task-create-recheck");
+const taskCreateRetry = document.querySelector<HTMLButtonElement>("#task-create-retry");
+const taskCreateStatus = document.querySelector<HTMLElement>("#task-create-status");
+const taskCreateDialog = document.querySelector<HTMLDialogElement>("#task-create-dialog");
 const taskCreateForm = document.querySelector<HTMLFormElement>("#task-create-form");
 const taskCreateName = document.querySelector<HTMLInputElement>("#task-create-name");
 const taskCreateContent = document.querySelector<HTMLTextAreaElement>("#task-create-content");
@@ -1199,6 +1281,8 @@ const taskCreateList = document.querySelector<HTMLSelectElement>("#task-create-l
 const taskCreateListLabel = document.querySelector<HTMLElement>("#task-create-list-label");
 const taskCreateDate = document.querySelector<HTMLInputElement>("#task-create-date");
 const taskCreateTime = document.querySelector<HTMLInputElement>("#task-create-time");
+const taskCreateEndDate = document.querySelector<HTMLInputElement>("#task-create-end-date");
+const taskCreateEndTime = document.querySelector<HTMLInputElement>("#task-create-end-time");
 const taskCreateSubmit = document.querySelector<HTMLButtonElement>("#task-create-submit");
 const taskCreateCancel = document.querySelector<HTMLButtonElement>("#task-create-cancel");
 const taskNewButton = document.querySelector<HTMLButtonElement>("#task-new");
@@ -1243,26 +1327,45 @@ const todayTimeline = document.querySelector<HTMLOListElement>("#today-baseline-
 const todayBlockCount = document.querySelector<HTMLElement>("#today-block-count");
 const todayPlanEmpty = document.querySelector<HTMLElement>("#today-plan-empty");
 const todayContinuousAxis = document.querySelector<HTMLElement>("#today-continuous-axis");
+const todayAxisScrollSurface = document.querySelector<HTMLElement>("#today-axis-scroll-surface");
 const todayHourTicks = document.querySelector<HTMLElement>("#today-hour-ticks");
 const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#today-current-arrangement-unlocated");
 const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
-const todayUnlocatedTimeShortcut = document.querySelector<HTMLAnchorElement>("#today-unlocated-time-shortcut");
-todayUnlocatedTimeShortcut?.addEventListener("click", (event) => {
-  if (!todayUnlocatedTimeRegion || todayUnlocatedTimeRegion.hidden) return;
-  event.preventDefault();
-  const scrollSurface = todayUnlocatedTimeRegion.closest<HTMLElement>(".workspace-information");
-  if (!scrollSurface) {
-    todayUnlocatedTimeRegion.scrollIntoView({ behavior: "auto", block: "start" });
-    return;
+const todayUnlocatedTimeShortcut = document.querySelector<HTMLButtonElement>("#today-unlocated-time-shortcut");
+const todaySideRegion = document.querySelector<HTMLElement>(".today-side-region");
+const todayUnlocatedNarrow = () => {
+  const availableWidth = document.querySelector<HTMLElement>(".today-layout")?.getBoundingClientRect().width ?? 0;
+  return availableWidth > 0 ? availableWidth < 560 : window.innerWidth <= 790;
+};
+// Presentation state only; keep the original sidebar and every draft/detail node
+// docked in the same position. Manual intent lasts for this date/phase.
+let todayUnlocatedOverride: boolean | null = null;
+let todayUnlocatedCount = 0;
+let todaySidebarReadingPosition: number | null = null;
+function updateTodayUnlocatedPresentation(): void {
+  if (!todaySideRegion || !todayUnlocatedTimeRegion || !todayUnlocatedTimeShortcut) return;
+  const daytime = document.querySelector<HTMLElement>("#today-ready")?.dataset.phase === "daytime";
+  const shown = !daytime || (todayUnlocatedOverride ?? !todayUnlocatedNarrow());
+  if (!shown && todaySideRegion.contains(document.activeElement)) {
+    todayUnlocatedTimeShortcut.focus({preventScroll: true});
   }
-  const toolbar = todayUnlocatedTimeShortcut.closest<HTMLElement>(".today-time-axis-toolbar");
-  const stickyOffset = toolbar && getComputedStyle(toolbar).position === "sticky"
-    ? toolbar.offsetHeight + 12
-    : 0;
-  const regionTop = todayUnlocatedTimeRegion.getBoundingClientRect().top -
-    scrollSurface.getBoundingClientRect().top + scrollSurface.scrollTop;
-  scrollSurface.scrollTo({ top: Math.max(0, regionTop - stickyOffset), behavior: "auto" });
+  const restoreReadingPosition = shown && todaySideRegion.hidden ? todaySidebarReadingPosition : null;
+  if (!shown && !todaySideRegion.hidden) todaySidebarReadingPosition = workspaceInformation?.scrollTop ?? null;
+  todaySideRegion.hidden = !shown;
+  todayUnlocatedTimeRegion.hidden = todayUnlocatedCount === 0;
+  todayUnlocatedTimeShortcut.hidden = false;
+  todayUnlocatedTimeShortcut.setAttribute("aria-expanded", String(shown));
+  const label = t(shown ? "today.hideSidebar" : "today.showSidebar", {count: todayUnlocatedCount});
+  todayUnlocatedTimeShortcut.setAttribute("aria-label", label);
+  todayUnlocatedTimeShortcut.title = label;
+  document.querySelector<HTMLElement>(".today-layout")?.setAttribute("data-unlocated-presentation", shown ? "inline" : "collapsed");
+  if (restoreReadingPosition !== null && workspaceInformation) workspaceInformation.scrollTop = restoreReadingPosition;
+}
+todayUnlocatedTimeShortcut?.addEventListener("click", () => {
+  todayUnlocatedOverride = todayUnlocatedTimeShortcut.getAttribute("aria-expanded") !== "true";
+  updateTodayUnlocatedPresentation();
 });
+window.addEventListener("resize", () => updateTodayUnlocatedPresentation());
 const todayTimedEvents = document.querySelector<HTMLOListElement>("#today-timed-events");
 const todayTimedDurations = document.querySelector<HTMLElement>("#today-timed-duration");
 const todayTimedEmpty = document.querySelector<HTMLElement>("#today-timed-empty");
@@ -1411,6 +1514,7 @@ let currentTasksView: TasksView | null = null;
 let taskScope: TaskListScope = "all";
 let taskStateScope: "all" | "pending" | "completed" | "abandoned" | "deleted" = "all";
 let taskCreateOpen = false;
+const composingTaskCreateForms = new WeakSet<HTMLFormElement>();
 let taskListManagementOpen = false;
 let taskOperationCount = 0;
 let taskRefreshQueued = false;
@@ -1418,6 +1522,8 @@ const taskRequests = new LatestRequest();
 const todayTaskRequests = new LatestRequest();
 const calendarTaskRequests = new LatestRequest();
 type TaskDraft = Readonly<{
+  endDate: string;
+  endTime: string;
   name: string;
   content: string;
   date: string;
@@ -1426,6 +1532,25 @@ type TaskDraft = Readonly<{
   completionDate: string;
   completionTime: string;
 }>;
+type TaskCreateInput = Readonly<{
+  targetBinding: string; expectedRevision: string | null; taskId: string; name: string;
+  content: string | null; date: string | null; time: string | null; listId: string;
+  executionEnd: Readonly<{date: string; time: string}> | null;
+}>;
+type TaskCreateAttempt = {
+  origin: "quick" | "modal" | "today"; surfaceDate?: string; draft: TaskDraft; input: TaskCreateInput;
+  originalInput: TaskCreateInput; listName: string;
+  phase: "unverified" | "retry-ready" | "conflict";
+};
+const taskCreateAttempts = new Map<string, TaskCreateAttempt>();
+// Transient review of explicitly ended submissions; never another Task storage source.
+const taskEndedCreateAttempts = new Map<string, TaskCreateAttempt[]>();
+const taskQuickDrafts = new Map<string, string>();
+const taskQuickScheduleDrafts = new Map<string, {date: string; time: string}>();
+const compactScheduleTransactions = new Map<string, {invalidate: () => void; validateContext: () => void}>();
+let currentTaskLivedDate: string | null = null;
+const taskQuickDate = document.querySelector<HTMLInputElement>("#task-quick-date");
+const taskQuickTime = document.querySelector<HTMLInputElement>("#task-quick-time");
 const taskCreateDrafts = new Map<string, TaskDraft>();
 const todayTaskCreateDrafts = new Map<string, TaskDraft>();
 const calendarTaskCreateDrafts = new Map<string, TaskDraft>();
@@ -1526,11 +1651,15 @@ function setRawText(element: HTMLElement | null, value: string): void {
 }
 
 initializeCollaborationPanels();
+const todayLayoutForResize = document.querySelector<HTMLElement>(".today-layout");
+if (todayLayoutForResize) new ResizeObserver(() => updateTodayUnlocatedPresentation()).observe(todayLayoutForResize);
 
 function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
   currentInterfaceLanguage = preferences.interfaceLanguage;
   applyInterfaceLanguage(currentInterfaceLanguage);
   document.querySelectorAll<HTMLAnchorElement>(".today-axis-marker-link").forEach((link) => {
+    const time = link.querySelector<HTMLElement>(".today-axis-marker-time");
+    if (time) link.dataset.axisItemTime = time.textContent ?? "";
     updateTodayAxisMarkerAccessibleName(link, currentInterfaceLanguage);
   });
   if (workspaceLanguageButton) {
@@ -1545,6 +1674,8 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
     workspaceLanguageButton.setAttribute("aria-label", t(nextLanguageKey));
     workspaceLanguageButton.title = t(nextLanguageKey);
   }
+  updateCompactScheduleLabel("task-quick", taskQuickDate, taskQuickTime);
+  updateCompactScheduleLabel("today-task-create", todayTaskCreateDate, todayTaskCreateTime);
   if (currentCalendarMonth) renderCalendarGrid(currentCalendarMonth);
   if (currentCalendarSummaryView) renderCalendarSummary(currentCalendarSummaryView);
   if (currentHabitSnapshot) renderHabitSnapshot(currentHabitSnapshot);
@@ -1554,6 +1685,8 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
     renderLegacyDayTasks(currentTodayView.dayTasks);
     renderHistoricalHabitCorrections(currentTodayView);
   }
+  updateWorkspaceSidebarPresentation();
+  updateTodayUnlocatedPresentation();
   renderWorkspaceNavigationLanguage();
   renderWorkspaceFeatureArea(currentWorkspaceDestination);
   renderWorkspaceRailContext(currentWorkspaceDestination);
@@ -1603,6 +1736,12 @@ function resetVaultScopedWorkspaceState(): void {
   }
   currentCollaborationWorkspace = null;
   currentCollaborationSession = null;
+  collaborationEmptyDraft = "";
+  collaborationEmptyComposerActive = false;
+  collaborationSessionCreationPromise = null;
+  collaborationSessionCreationResult = null;
+  collaborationSessionCreationError = null;
+  collaborationSessionCreationAttempt = null;
   collaborationDrafts.clear();
   collaborationUnsavedDrafts.clear();
   collaborationVoicePreviews.clear();
@@ -1618,6 +1757,9 @@ function resetVaultScopedWorkspaceState(): void {
   selectedCalendarDate = null;
   currentTodayView = null;
   currentTasksView = null;
+  selectedTaskDetailId = null;
+  selectedTaskDetailBinding = null;
+  taskEditorDialogRoot?.toggleAttribute("hidden", true);
   taskScope = "all";
   taskStateScope = "all";
   taskCreateOpen = false;
@@ -1632,6 +1774,15 @@ function resetVaultScopedWorkspaceState(): void {
   historicalHabitCompletionStatus = null;
   datedNoteDrafts.clear();
   taskCreateDrafts.clear();
+  taskQuickDrafts.clear();
+  compactScheduleTransactions.forEach(transaction => transaction.invalidate());
+  taskQuickScheduleDrafts.clear();
+  currentTaskLivedDate = null;
+  taskCreateAttempts.clear();
+  taskEndedCreateAttempts.clear();
+  taskEndedCreateRegion?.replaceChildren();
+  taskQuickForm?.reset();
+  taskCreateDialog?.close();
   todayTaskCreateDrafts.clear();
   calendarTaskCreateDrafts.clear();
   taskEditDrafts.clear();
@@ -1979,6 +2130,7 @@ function renderCollaborationConnection(): void {
     if (collaborationModelSelect) collaborationModelSelect.disabled = true;
     if (collaborationReasoningEffortSelect) collaborationReasoningEffortSelect.disabled = true;
     if (collaborationConnectButton) collaborationConnectButton.disabled = true;
+    if (collaborationModelSummary) setRawText(collaborationModelSummary, "");
     return;
   }
 
@@ -1995,12 +2147,6 @@ function renderCollaborationConnection(): void {
     state = "signed-out";
   } else {
     summary = t("collaboration.connectionReady");
-    if (connection.accountEmail || connection.planType) {
-      summary += ` · ${t("collaboration.accountDetails", {
-        email: connection.accountEmail ?? "ChatGPT",
-        plan: connection.planType ?? "",
-      })}`;
-    }
     state = "ready";
   }
   if (!connection.error && !connection.readOnlyTextTurnsAvailable) {
@@ -2010,6 +2156,16 @@ function renderCollaborationConnection(): void {
   if (collaborationConnectionStatus) collaborationConnectionStatus.dataset.state = state;
   setRawText(collaborationRuntimeStatus, summary);
   if (collaborationRuntimeStatus) collaborationRuntimeStatus.dataset.state = state;
+
+  const activeModel = connection.models.find((model) => model.id === connection.selectedModel) ??
+    (connection.selectedModel ? undefined : connection.models.find((model) => model.isDefault));
+  const modelName = activeModel?.displayName ?? connection.selectedModel ?? t("collaboration.modelDefault");
+  const effort = connection.selectedReasoningEffort ?? activeModel?.defaultReasoningEffort ??
+    t("collaboration.reasoningEffortDefault");
+  if (collaborationModelSummary) {
+    setRawText(collaborationModelSummary, t("collaboration.modelSummary", { model: modelName, effort }));
+    collaborationModelSummary.dataset.state = state;
+  }
 
   if (collaborationRuntimeDetails) {
     const details = [connection.version, connection.executablePath].filter(Boolean).join(" · ");
@@ -2699,8 +2855,14 @@ function renderCollaborationVoiceControls(): void {
   collaborationVoiceStartButton.title=label;
   collaborationVoiceStartButton.dataset.action=stop?"stop":"start";
   collaborationVoiceStartButton.setAttribute("aria-pressed",String(stop));
-  collaborationVoiceStartButton.disabled=vaultSelectionInProgress||state==="requesting"||state==="connecting"||state==="transcribing"||
-    (state==="idle"&&(!target||collaborationMessageDraft?.disabled===true||collaborationSendingDrafts.has(key)));
+  const connection = currentCollaborationConnection;
+  const voiceAvailable = connection?.authenticated === true &&
+    connection.authMode === "chatgpt" && connection.readOnlyTextTurnsAvailable &&
+    Boolean(currentCollaborationWorkspace?.context.vaultName);
+  collaborationVoiceStartButton.disabled = state === "recording"
+    ? false
+    : vaultSelectionInProgress || state !== "idle" || !voiceAvailable || !target ||
+      collaborationMessageDraft?.disabled === true || collaborationSendingDrafts.has(key);
   collaborationVoiceCancelButton?.toggleAttribute("hidden",state==="idle");
   if(collaborationVoiceCancelButton)collaborationVoiceCancelButton.disabled=state==="idle";
   if(collaborationVoiceStatus)collaborationVoiceStatus.dataset.state=state;
@@ -2765,7 +2927,8 @@ async function startOrStopCollaborationVoice(): Promise<void> {
   void collaborationVoiceController.start(target);
 }
 
-function collaborationTaskSchedule(date: string | null, time: string | null): string {
+function collaborationTaskSchedule(date: string | null, time: string | null, end?: Readonly<{date: string; time: string}> | null): string {
+  if (date && time && end) return `${collaborationDateLabel(date)} · ${time} – ${end.date === date ? "" : `${collaborationDateLabel(end.date)} `}${end.time}`;
   const day = date ? collaborationDateLabel(date) : t("collaboration.taskUndated");
   return time ? `${day} · ${time}` : day;
 }
@@ -2777,7 +2940,7 @@ function collaborationTaskBaselineText(
     return t("collaboration.taskBaselineTask", {
       name: baseline.name,
       id: baseline.id,
-      schedule: collaborationTaskSchedule(baseline.date, baseline.time),
+      schedule: collaborationTaskSchedule(baseline.date, baseline.time, baseline.executionEnd),
       list: baseline.listName,
       state: t(taskStateCopyKey(baseline.state)),
       content: baseline.content ?? t("collaboration.taskNoNote"),
@@ -3129,7 +3292,7 @@ function collaborationTaskOperationText(
     case "createTask":
       return t("collaboration.taskOpCreate", {
         name: operation.name,
-        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        schedule: collaborationTaskSchedule(operation.date, operation.time, operation.executionEnd),
         list: listLabel(operation.listId),
         content: operation.content ?? t("collaboration.taskNoNote"),
       });
@@ -3137,7 +3300,7 @@ function collaborationTaskOperationText(
       return t("collaboration.taskOpUpdate", {
         name: operation.name,
         id: operation.taskId,
-        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        schedule: collaborationTaskSchedule(operation.date, operation.time, operation.executionEnd),
         list: listLabel(operation.listId),
         content: operation.content ?? t("collaboration.taskNoNote"),
       });
@@ -3459,7 +3622,9 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
     const legacyDailyPlan = Boolean(session?.runtimeThreadId && session.dailyPlanToolAvailable !== true);
     const legacyDailyRecord = Boolean(session?.runtimeThreadId && session.dailyRecordToolAvailable !== true);
     const legacyMemory = Boolean(session?.runtimeThreadId && session.memoryToolAvailable !== true);
-    collaborationTaskToolNotice.hidden = !(legacyTasks || legacyDailyPlan || legacyDailyRecord || legacyMemory);
+    const hasLegacyCapability = legacyTasks || legacyDailyPlan || legacyDailyRecord || legacyMemory;
+    collaborationTaskToolNotice.hidden = !hasLegacyCapability;
+    if (collaborationTaskToolDisclosure) collaborationTaskToolDisclosure.hidden = !hasLegacyCapability;
     if (legacyTasks || legacyDailyPlan || legacyDailyRecord || legacyMemory) {
       if (legacyTasks) {
         const message = document.createElement("span");
@@ -4129,8 +4294,8 @@ function renderCollaborationWorkspace(): void {
     }
     renderCollaborationSessionList(sessions);
     if (workspace.recoveryRequired && !workspace.activeRun) {
-      setCopy(collaborationWorkOwner, "collaboration.recoveryRequired");
-      if (collaborationWorkOwner) collaborationWorkOwner.dataset.state = "recovery";
+      setRawText(collaborationWorkOwner, "");
+      collaborationWorkOwner?.removeAttribute("data-state");
     } else if (workspace.activeRun) {
       setRawText(
         collaborationWorkOwner,
@@ -4186,39 +4351,55 @@ function renderCollaborationWorkspace(): void {
     currentCollaborationConnection.readOnlyTextTurnsAvailable;
   const vaultAvailable = Boolean(workspace?.context.vaultName);
   const recoveryBlocked = Boolean(workspace?.recoveryRequired);
+  if (collaborationRecoveryDetails) collaborationRecoveryDetails.hidden = !recoveryBlocked;
   const targetDate = session
     ? collaborationTargetDates.get(session.id) ?? (collaborationTargetDateInput?.value || collaborationTargetDate)
     : "";
+  const reviewNotice = document.querySelector<HTMLElement>("#collaboration-review-entry-notice");
+  if (reviewNotice) reviewNotice.hidden = reviewNotice.dataset.dismissed === "true" || !session || reviewNotice.dataset.sessionId !== session.id || reviewNotice.dataset.targetDate !== targetDate || !collaborationDraftForDate(session, targetDate);
   const targetKey = session ? collaborationDraftKey(session.id, targetDate) : "";
   const targetDatePending = Boolean(session && collaborationTargetDatePendingSession === session.id);
   const sendingDraft = targetKey !== "" && collaborationSendingDrafts.has(targetKey);
+  const composerBusy = targetDatePending || sendingDraft || vaultSelectionInProgress ||
+    collaborationSessionCreationPromise !== null;
   if (collaborationMessageDraft) {
-    collaborationMessageDraft.disabled = !session || !connected || !vaultAvailable ||
-      targetDatePending || sendingDraft || vaultSelectionInProgress;
+    collaborationMessageDraft.disabled = composerBusy;
+    if (collaborationMessageDraft.disabled || document.activeElement !== collaborationMessageDraft) {
+      collaborationCommandCompletion?.close();
+    }
     if (session && document.activeElement !== collaborationMessageDraft) {
       collaborationMessageDraft.value = collaborationDraftForDate(session, targetDate);
+    } else if (!session && document.activeElement !== collaborationMessageDraft) {
+      collaborationMessageDraft.value = collaborationEmptyDraft;
     }
   }
   if (collaborationSendButton) {
-    collaborationSendButton.disabled = !session || !connected || !vaultAvailable ||
-      sendingDraft || vaultSelectionInProgress || collaborationVoiceController.state !== "idle" ||
+    collaborationSendButton.disabled = !connected || !vaultAvailable || composerBusy ||
+      collaborationVoiceController.state !== "idle" ||
       !(collaborationMessageDraft?.value.trim());
   }
   let composerStatus: InterfaceCopyKey | null = null;
   if (!vaultAvailable) {
     composerStatus = "collaboration.composerSelectVault";
   } else if (recoveryBlocked) {
-    composerStatus = "collaboration.composerRecover";
-  } else if (!session) {
-    composerStatus = "collaboration.composerNewSession";
+    composerStatus = null;
+  } else if (collaborationSessionCreationError) {
+    if (collaborationComposerStatus) {
+      collaborationComposerStatus.hidden = false;
+      setCopyError(collaborationComposerStatus, "collaboration.sessionCreateFailed", collaborationSessionCreationError);
+    }
+  } else if (collaborationSessionCreationPromise) {
+    composerStatus = "collaboration.composerCreatingSession";
   } else if (!connected) {
     composerStatus = "collaboration.composerConnect";
+  } else if (!session) {
+    composerStatus = "collaboration.composerNewSession";
   } else if (targetDatePending) {
     composerStatus = "collaboration.composerSavingDate";
   } else if (sendingDraft) {
     composerStatus = "collaboration.composerSending";
   }
-  if (collaborationComposerStatus) {
+  if (collaborationComposerStatus && !collaborationSessionCreationError) {
     collaborationComposerStatus.hidden = composerStatus === null;
     if (composerStatus) {
       setCopy(collaborationComposerStatus, composerStatus);
@@ -4234,13 +4415,41 @@ function renderCollaborationWorkspace(): void {
     collaborationStopButton.disabled = session?.runState === "stopping";
   }
   const createButton = document.querySelector<HTMLButtonElement>("#collaboration-new-session");
-  if (createButton) createButton.disabled = !vaultAvailable || vaultSelectionInProgress;
-  if (collaborationTargetDateInput) collaborationTargetDateInput.disabled = vaultSelectionInProgress || targetDatePending;
+  if (createButton) {
+    createButton.disabled = !vaultAvailable || vaultSelectionInProgress ||
+      collaborationSessionCreationPromise !== null;
+    setCopy(createButton, collaborationSessionCreationAttempt && !collaborationSessionCreationPromise
+      ? "collaboration.retrySessionCreate"
+      : "collaboration.newSession");
+  }
+  const activityDateBusy = collaborationSessionCreationAttempt !== null ||
+    collaborationSessionCreationPromise !== null || vaultSelectionInProgress;
+  if (collaborationDateInput) {
+    collaborationDateInput.disabled = activityDateBusy;
+  }
+  for (const selector of [
+    "#collaboration-date-previous",
+    "#collaboration-date-next",
+    "#collaboration-date-today",
+  ]) {
+    const button = document.querySelector<HTMLButtonElement>(selector);
+    if (button) button.disabled = activityDateBusy;
+  }
+  if (collaborationTargetDateInput) collaborationTargetDateInput.disabled = vaultSelectionInProgress || targetDatePending ||
+    collaborationSessionCreationPromise !== null || collaborationSessionCreationAttempt !== null;
   renderCollaborationVoiceControls();
 }
 
 function stashCollaborationDraft(forVaultSwitch = false): void {
   if (vaultSelectionInProgress && !forVaultSwitch) return;
+  if (!currentCollaborationSession && collaborationMessageDraft) {
+    collaborationEmptyDraft = collaborationMessageDraft.value;
+    if (collaborationSessionCreationAttempt) {
+      collaborationSessionCreationAttempt.latestDraft = collaborationEmptyDraft;
+    }
+    collaborationEmptyComposerActive = true;
+    return;
+  }
   if (currentCollaborationSession && collaborationMessageDraft) {
     const sessionId = currentCollaborationSession.id;
     const targetDate = collaborationTargetDates.get(sessionId) ?? collaborationTargetDate;
@@ -4363,9 +4572,11 @@ async function drainCollaborationDraftsForVaultSwitch(): Promise<void> {
 }
 
 function selectCollaborationSession(session: CollaborationSessionView): void {
+  if (collaborationSessionCreationPromise) return;
   cancelCollaborationVoiceCaptureForSelectionChange();
   stashCollaborationDraft();
   currentCollaborationSession = session;
+  collaborationEmptyComposerActive = false;
   collaborationEmptyTargetDate = null;
   cacheCollaborationDrafts(session);
   collaborationTargetDate = collaborationTargetDates.get(session.id) ?? session.targetDate;
@@ -4419,7 +4630,8 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
     const previousId = currentCollaborationSession?.id;
     const previousTargetDate = collaborationTargetDate;
     let session = workspace.sessions.find((candidate) => candidate.id === previousId) ??
-      workspace.sessions[0] ?? null;
+      (collaborationSessionCreationPromise ? collaborationSessionCreationResult : null) ??
+      (collaborationEmptyComposerActive ? null : workspace.sessions[0] ?? null);
     const nextTargetDate = session
       ? collaborationTargetDates.get(session.id) ?? session.targetDate
       : collaborationEmptyTargetDate ?? date;
@@ -4451,7 +4663,7 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
     if (request !== collaborationWorkspaceRequest) return;
     if (quiet) return;
     currentCollaborationWorkspace = null;
-    currentCollaborationSession = null;
+    if (!collaborationSessionCreationResult) currentCollaborationSession = null;
     if (collaborationSessionsStatus) {
       setCopyError(collaborationSessionsStatus, "collaboration.sessionLoadFailed", error);
     }
@@ -4502,7 +4714,7 @@ async function refreshCollaborationContext(): Promise<void> {
 }
 
 async function saveCollaborationTargetDate(): Promise<void> {
-  if (vaultSelectionInProgress) return;
+  if (vaultSelectionInProgress || collaborationSessionCreationPromise || collaborationSessionCreationAttempt) return;
   const session = currentCollaborationSession;
   const date = collaborationTargetDateInput?.value || collaborationTargetDate;
   if (!session) {
@@ -4641,38 +4853,153 @@ async function changeCollaborationPendingRequest(sessionId: string, executionId:
   }
 }
 
-async function createCollaborationSession(): Promise<void> {
-  if (vaultSelectionInProgress) return;
+async function createCollaborationSession(): Promise<CollaborationSessionView | null> {
+  if (vaultSelectionInProgress || collaborationSessionCreationPromise) return null;
   const vaultRevision = collaborationVaultSelectionRevision;
   const explicitDate = collaborationEmptyTargetDate ??
     (collaborationActivityDateExplicit ? collaborationActivityDate : null);
+  const hadSelectedSession = currentCollaborationSession !== null;
+  const retainedAttempt = collaborationSessionCreationAttempt;
+  const initialDraft = hadSelectedSession
+    ? ""
+    : (collaborationMessageDraft?.value ?? collaborationEmptyDraft);
+  let attempt = retainedAttempt;
+  collaborationSessionCreationError = null;
+  const creation = (async (): Promise<CollaborationSessionView | null> => {
+    try {
+      if (!attempt) {
+        let date = explicitDate || collaborationActivityDate;
+        if (!date) {
+          const clock = await window.__TAURI__.core.invoke<TodayClockView>("today_clock");
+          if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
+          date = clock.livedDate;
+        }
+        attempt = {
+          id: localOperationId("collaboration-session"),
+          date,
+          initialDraft,
+          latestDraft: initialDraft,
+        };
+        collaborationSessionCreationAttempt = attempt;
+      }
+      const creationAttempt = attempt;
+      const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+        "collaboration_create_session",
+        { date: creationAttempt.date, sessionId: creationAttempt.id, initialDraft: creationAttempt.initialDraft },
+      );
+      if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
+      if (session.id !== creationAttempt.id || session.createdDate !== creationAttempt.date) {
+        throw new Error("The collaboration session creation result did not match its request.");
+      }
+      collaborationSessionCreationAttempt = null;
+      cancelCollaborationVoiceCaptureForSelectionChange();
+      stashCollaborationDraft();
+      const entryDraft = retainedAttempt
+        ? creationAttempt.latestDraft
+        : hadSelectedSession ? null : collaborationEmptyDraft;
+      collaborationSessionCreationResult = session;
+      const date = session.targetDate || session.createdDate;
+      cacheCollaborationDrafts(session);
+      currentCollaborationSession = session;
+      collaborationEmptyDraft = "";
+      collaborationEmptyComposerActive = false;
+      collaborationEmptyTargetDate = null;
+      collaborationTargetDates.set(session.id, date);
+      collaborationActivityDate = date;
+      collaborationTargetDate = date;
+      if (collaborationTargetDateInput) collaborationTargetDateInput.value = date;
+      if (entryDraft !== null) {
+        collaborationDrafts.set(collaborationDraftKey(session.id, date), entryDraft);
+        if (entryDraft) {
+          collaborationUnsavedDrafts.add(collaborationDraftKey(session.id, date));
+          if (collaborationMessageDraft) collaborationMessageDraft.value = entryDraft;
+          stashCollaborationDraft();
+        }
+      }
+      renderCollaborationWorkspace();
+      await refreshCollaborationWorkspace();
+      if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
+      if (collaborationSessionsStatus) setCopy(collaborationSessionsStatus, "collaboration.sessionCreated");
+      return currentCollaborationSession?.id === session.id ? currentCollaborationSession : session;
+    } catch (error) {
+      if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
+      collaborationSessionCreationError = error;
+      if (collaborationSessionsStatus) {
+        setCopyError(collaborationSessionsStatus, "collaboration.sessionCreateFailed", error);
+      }
+      renderCollaborationWorkspace();
+      return null;
+    }
+  })();
+  collaborationSessionCreationPromise = creation;
+  renderCollaborationWorkspace();
   try {
-    const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
-      "collaboration_create_session",
-      { date: explicitDate },
-    );
-    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
-    const date = session.createdDate;
-    cancelCollaborationVoiceCaptureForSelectionChange();
-    stashCollaborationDraft();
-    cacheCollaborationDrafts(session);
-    currentCollaborationSession = session;
-    collaborationEmptyTargetDate = null;
-    collaborationTargetDates.set(session.id, date);
-    collaborationActivityDate = date;
-    collaborationTargetDate = date;
-    if (collaborationTargetDateInput) collaborationTargetDateInput.value = date;
-    renderCollaborationWorkspace();
-    await refreshCollaborationWorkspace();
-    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
-    if (collaborationSessionsStatus) setCopy(collaborationSessionsStatus, "collaboration.sessionCreated");
-  } catch (error) {
-    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
-    if (collaborationSessionsStatus) {
-      setCopyError(collaborationSessionsStatus, "collaboration.sessionLoadFailed", error);
+    return await creation;
+  } finally {
+    if (collaborationSessionCreationPromise === creation) {
+      collaborationSessionCreationPromise = null;
+      collaborationSessionCreationResult = null;
+      renderCollaborationWorkspace();
     }
   }
 }
+
+async function openCollaborationForEveningReview(targetDate: string): Promise<boolean> {
+  if (vaultSelectionInProgress || collaborationTargetDatePendingSession || collaborationSendingDrafts.size) {
+    throw new EveningReviewGuardError("today.reviewBusy");
+  }
+  const vaultRevision = collaborationVaultSelectionRevision;
+  stashCollaborationDraft();
+  cancelCollaborationVoiceCaptureForSelectionChange();
+  await flushCollaborationDraft();
+  if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) throw new EveningReviewGuardError("today.reviewTargetChanged");
+  const opened = await window.__TAURI__.core.invoke<Readonly<{ session: CollaborationSessionView; preservedDraft: boolean }>>(
+    "collaboration_prepare_evening_review", { date: targetDate, draft: t("today.reviewDraft", { date: targetDate }) },
+  );
+  if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) throw new EveningReviewGuardError("today.reviewTargetChanged");
+  const session = opened.session;
+  currentCollaborationSession = session;
+  cacheCollaborationDrafts(session);
+  collaborationEmptyTargetDate = null;
+  collaborationActivityDate = targetDate;
+  collaborationActivityDateExplicit = true;
+  collaborationTargetDate = targetDate;
+  collaborationTargetDates.set(session.id, targetDate);
+  if (collaborationDateInput) collaborationDateInput.value = targetDate;
+  if (collaborationTargetDateInput) collaborationTargetDateInput.value = targetDate;
+  showWorkspaceDestination("collaboration");
+  renderCollaborationWorkspace();
+  const notice = document.querySelector<HTMLElement>("#collaboration-review-entry-notice");
+  if (notice) {
+    if (collaborationReviewEntryNoticeTimer !== null) window.clearTimeout(collaborationReviewEntryNoticeTimer);
+    notice.dataset.sessionId = session.id;
+    notice.dataset.targetDate = targetDate;
+    notice.dataset.dismissed = "false";
+    setCopy(notice, opened.preservedDraft ? "today.reviewDraftPreserved" : "today.reviewDraftReady", { date: targetDate });
+    notice.hidden = false;
+    collaborationReviewEntryNoticeTimer = window.setTimeout(() => {
+      if (notice.dataset.sessionId === session.id && notice.dataset.targetDate === targetDate) {
+        notice.dataset.dismissed = "true";
+        notice.hidden = true;
+      }
+      collaborationReviewEntryNoticeTimer = null;
+    }, 5000);
+  }
+  await refreshCollaborationWorkspace(true);
+  window.requestAnimationFrame(() => collaborationMessageDraft?.focus());
+  return opened.preservedDraft;
+}
+
+const eveningReviewEntryButton = document.querySelector<HTMLButtonElement>("#today-start-review");
+const eveningReviewEntryStatus = document.querySelector<HTMLElement>("#today-review-entry-status");
+const eveningReviewEntry = eveningReviewEntryButton && eveningReviewEntryStatus
+  ? initializeEveningReviewEntry(eveningReviewEntryButton, eveningReviewEntryStatus,
+    () => currentTodayView ? { date: currentTodayView.date, isToday: currentTodayView.isToday,
+      available: currentTodayView.canRecord && !vaultSelectionInProgress } : null,
+    openCollaborationForEveningReview,
+    (element, key, values) => setCopy(element, key as InterfaceCopyKey, values),
+    (element, key, error) => setCopyError(element, key as InterfaceCopyKey, error))
+  : null;
 
 async function openCollaborationForTask(
   taskId: string,
@@ -4922,9 +5249,21 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
 }
 
 async function sendCollaborationMessage(): Promise<void> {
-  const session = currentCollaborationSession;
+  if (vaultSelectionInProgress || collaborationVoiceController.state !== "idle" ||
+    collaborationSessionCreationPromise) return;
+  let session = currentCollaborationSession;
+  if (!session) {
+    const draft = collaborationMessageDraft?.value ?? "";
+    const connected = currentCollaborationConnection?.authenticated === true &&
+      currentCollaborationConnection.authMode === "chatgpt" &&
+      currentCollaborationConnection.readOnlyTextTurnsAvailable;
+    if (!draft.trim() || !connected || !currentCollaborationWorkspace?.context.vaultName) return;
+    const createdSession = await createCollaborationSession();
+    if (!createdSession || currentCollaborationSession?.id !== createdSession.id || vaultSelectionInProgress) return;
+    session = createdSession;
+  }
   const message = collaborationMessageDraft?.value ?? "";
-  if (!session || !message.trim() || vaultSelectionInProgress || collaborationVoiceController.state !== "idle") return;
+  if (!message.trim()) return;
   const targetDate = collaborationTargetDates.get(session.id) ??
     (collaborationTargetDateInput?.value || collaborationTargetDate);
   const target = { sessionId: session.id, targetDate };
@@ -5143,16 +5482,61 @@ function formatAxisMinute(minute: number): string {
 
 type TodayAxisLaneId = "arrangement" | "facts" | "tasks" | "arrangement-unlocated" | "facts-unlocated";
 
+function hasExactPlanTime(entry: TimeAxisEntryView): boolean {
+  return entry.planPrecision === "exactPoint" || entry.planPrecision === "exactRange";
+}
+
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
+  if(entry.task) {
+    const task=currentTodayView?.tasks.tasks.find(task=>task.id===entry.task!.id);
+    if(task?.date&&task.time) {
+      const datePrefix=task.date===currentTodayView?.date?"":`${task.date} · `;
+      const end=task.executionEnd?`–${task.executionEnd.date===task.date?"":`${task.executionEnd.date} · `}${task.executionEnd.time}`:"";
+      return `${datePrefix}${task.time}${end}`;
+    }
+  }
   if (entry.startMinute === null) {
     if (entry.period) return `${entry.period} · ${t("today.unlocatedPlanLabel")}`;
     if (lane === "facts" || lane === "facts-unlocated") return t("today.unlocatedConfirmedFactLabel");
     return t("today.unlocatedLabel");
   }
   const start = formatAxisMinute(entry.startMinute);
+  if (entry.planPrecision === "broad") return `${entry.period} · ${t("today.planApproximateReference", { time: start })}`;
+  if (entry.planPrecision === "approximatePoint") {
+    const label = t("today.planApproximateReference", { time: start });
+    return entry.startMinute >= 1440 ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
+  }
   const label = entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
   return entry.startMinute >= 1440 || (entry.endMinute ?? 0) > 1440
     ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
+}
+
+// Retain copy metadata only for derived labels; period and source text stay verbatim.
+function appendAxisEntryTimeLabel(
+  target: HTMLElement,
+  entry: TimeAxisEntryView,
+  lane: TodayAxisLaneId,
+): void {
+  let key: InterfaceCopyKey;
+  let variables: Record<string, string> = {};
+  if (!entry.task && entry.startMinute === null) {
+    if (entry.period) target.append(`${entry.period} · `);
+    key = entry.period ? "today.unlocatedPlanLabel" :
+      lane === "facts" || lane === "facts-unlocated" ? "today.unlocatedConfirmedFactLabel" : "today.unlocatedLabel";
+  } else if (!entry.task && (entry.planPrecision === "broad" || entry.planPrecision === "approximatePoint")) {
+    if (entry.planPrecision === "broad") target.append(`${entry.period} · `);
+    key = "today.planApproximateReference";
+    variables = { time: formatAxisMinute(entry.startMinute!) };
+  } else {
+    target.textContent = axisEntryTimeLabel(entry, lane);
+    return;
+  }
+  const label = document.createElement("span");
+  setCopy(label, key, variables);
+  target.append(label);
+  if (entry.planPrecision === "approximatePoint" && entry.startMinute! >= 1440) {
+    target.append(` · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}`);
+  }
 }
 
 function axisEntryMetadataCopyKeys(
@@ -5195,7 +5579,7 @@ function axisEntryDetails(
   const summary = document.createElement("summary");
   const time = document.createElement(entry.startMinute === null ? "span" : "time");
   if (entry.startMinute === null) time.className = "today-axis-entry-time-label";
-  time.textContent = axisEntryTimeLabel(entry, lane);
+  appendAxisEntryTimeLabel(time, entry, lane);
   if (entry.startMinute !== null) {
     time.setAttribute("datetime", `${entry.startMinute >= 1440 ? nextAxisDate(currentTodayView?.date ?? entry.sourceDate) : (currentTodayView?.date ?? entry.sourceDate)}T${formatAxisMinute(entry.startMinute)}`);
   }
@@ -5249,7 +5633,450 @@ function axisEntryDetails(
     metadata.append(continuation);
   }
   details.append(metadata);
+  // Broad or unlocated plans are readable summaries; only precise timeline
+  // markers expose the plan-time editor.
+  if (lane !== "arrangement" || !hasExactPlanTime(entry)) return details;
+  if(entry.task) {
+    const edit=document.createElement("button");edit.type="button";setCopy(edit,"tasks.editLabel",{task:entry.text});
+    edit.addEventListener("click",()=>{taskFocusRequestId=entry.task!.id;showWorkspaceDestination("tasks");});details.append(edit);
+  }
+  if (lane === "arrangement") {
+    if (!entry.planId || !entry.timeEditable || entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
+      const unavailable = document.createElement("p");
+      setCopy(unavailable, entry.continuesFromPreviousDay || entry.continuesIntoNextDay ? "today.planTimeOutsideWindow" : "today.planTimeUnavailable");
+      details.append(unavailable);
+      return details;
+    }
+    const edit = document.createElement("button");
+    edit.type = "button";
+    setCopy(edit, "today.editPlanTime");
+    edit.addEventListener("click", () => openPlanTimeEditor(entry));
+    details.append(edit);
+  }
   return details;
+}
+
+function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
+  loaded: TodayView; startMinute: number; endMinute: number | null; notice: string; savedRevision?: string;
+}>): void {
+  const loaded = recovery?.loaded ?? currentTodayView;
+  if (!entry.planId || !entry.timeEditable || !loaded?.revision || !loaded.targetBinding) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "plan-time-editor";
+  dialog.dataset.i18nAriaLabel = "today.editPlanTime";
+  dialog.setAttribute("aria-label", t("today.editPlanTime"));
+  const form = document.createElement("form");
+  const heading = document.createElement("h3");
+  setCopy(heading, "today.editPlanTime");
+  const title = document.createElement("p");
+  title.textContent = entry.text;
+  const help = document.createElement("p");
+  setCopy(help, "today.planTimeHelp");
+  form.append(heading, title, help);
+  const precisionLabel = document.createElement("label");
+  const precisionCaption = document.createElement("span");
+  setCopy(precisionCaption, "today.planPrecision");
+  precisionLabel.append(precisionCaption);
+  const precision = document.createElement("select");
+  for (const [value, key] of [
+    ["approximatePoint", "today.planApproximatePoint"],
+    ["exactPoint", "today.planExactPoint"],
+    ["exactRange", "today.planExactRange"],
+  ] as const) {
+    const option = document.createElement("option");
+    option.value = value;
+    setCopy(option, key);
+    precision.append(option);
+  }
+  precision.value = entry.planPrecision === "exactRange" || entry.planPrecision === "exactPoint"
+    ? entry.planPrecision : "approximatePoint";
+  precisionLabel.append(precision);
+  form.append(precisionLabel);
+  const timeControl = (key: InterfaceCopyKey, minute: number | null) => {
+    const group = document.createElement("div");
+    const label = document.createElement("label");
+    const caption = document.createElement("span");
+    setCopy(caption, key);
+    label.append(caption);
+    const time = document.createElement("input");
+    time.type = "time";
+    time.step = "60";
+    time.value = minute === null ? "" : formatAxisMinute(minute);
+    label.append(time);
+    const dayLabel = document.createElement("label");
+    const nextDay = document.createElement("input");
+    nextDay.type = "checkbox";
+    nextDay.checked = minute !== null && minute >= 1440;
+    const dayCopy = document.createElement("span");
+    setCopy(dayCopy, "today.planNextDay");
+    dayLabel.append(nextDay, dayCopy);
+    group.append(label, dayLabel);
+    form.append(group);
+    return { time, nextDay, group };
+  };
+  const start = timeControl("today.planStart", recovery?.startMinute ?? entry.startMinute);
+  const end = timeControl("today.planEnd", recovery ? recovery.endMinute : entry.endMinute);
+  start.time.required = true;
+  const updatePrecision = () => {
+    const range = precision.value === "exactRange";
+    end.group.hidden = !range;
+    end.time.required = range;
+    end.time.disabled = end.nextDay.disabled = !range;
+  };
+  precision.addEventListener("change", updatePrecision);
+  updatePrecision();
+  const status = document.createElement("p");
+  status.setAttribute("role", "status");
+  const save = document.createElement("button");
+  save.type = "submit";
+  setCopy(save, "today.planSave");
+  const close = document.createElement("button");
+  close.type = "button";
+  setCopy(close, "today.planCancel");
+  close.addEventListener("click", () => dialog.close());
+  const recheck = document.createElement("button");
+  recheck.type = "button";
+  setCopy(recheck, "today.planRecheck");
+  recheck.hidden = true;
+  let expectedRevision = loaded.revision;
+  let savedRevision = recovery?.savedRevision;
+  recheck.addEventListener("click", () => {
+    if (todayOperationCount > 0) return;
+    recheck.disabled = true;
+    updateTodayOperationState(1);
+    const request = todayPresentationRequests.begin();
+    void (async () => {
+      try {
+        const fresh = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date: loaded.date });
+        if (!dialog.open || fresh.date !== loaded.date || fresh.targetBinding !== loaded.targetBinding ||
+            !fresh.revision || !todayPresentationRequests.isCurrent(request) ||
+            currentTodayView?.date !== loaded.date || currentTodayView.targetBinding !== loaded.targetBinding) {
+          setCopy(status, "today.planSourceChanged");
+          return;
+        }
+        renderToday(fresh);
+        // A successful command's whole-document revision confirms its readback
+        // without guessing an updated source ID from its title or position.
+        if (savedRevision && fresh.revision === savedRevision) {
+          showTodayMutationCopy("today.planSaved", "ready");
+          showTodayAxisEditCopy("today.planSaved");
+          dialog.close();
+          return;
+        }
+        const unchanged = [...fresh.timeAxis.currentArrangement, ...fresh.timeAxis.unlocatedCurrentArrangement]
+          .find(candidate => candidate.planId === entry.planId);
+        if (savedRevision || !unchanged?.timeEditable) {
+          setCopy(status, "today.planSourceChanged");
+          return;
+        }
+        // The opaque raw-source/span ID still identifies unchanged bytes.
+        // Keep the proposed values and require a deliberate subsequent submit.
+        expectedRevision = fresh.revision;
+        submitted = false;
+        save.disabled = precision.disabled = start.time.disabled = start.nextDay.disabled = false;
+        end.nextDay.disabled = false;
+        updatePrecision();
+        setCopy(status, "today.planRetryReady");
+        recheck.hidden = true;
+      } catch (error) {
+        setCopyError(status, "today.planUnconfirmedError", error);
+      } finally {
+        recheck.disabled = false;
+        updateTodayOperationState(-1);
+      }
+    })();
+  });
+  form.append(status, save, recheck, close);
+  if (recovery) {
+    setCopyError(status, recovery.savedRevision ? "today.planReadbackDiagnostic" : "today.planUnconfirmedError", recovery.notice);
+    recheck.hidden = false;
+    save.disabled = precision.disabled = true;
+    start.time.disabled = end.time.disabled = start.nextDay.disabled = end.nextDay.disabled = true;
+  }
+  let submitted = Boolean(recovery);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (submitted || todayOperationCount > 0) return;
+    const parse = (control: typeof start) => {
+      if (!/^\d{2}:\d{2}$/.test(control.time.value)) return null;
+      const [hours, minutes] = control.time.value.split(":").map(Number);
+      return hours * 60 + minutes + (control.nextDay.checked ? 1440 : 0);
+    };
+    const startMinute = parse(start);
+    const range = precision.value === "exactRange";
+    const endMinute = range ? parse(end) : null;
+    if (startMinute === null || startMinute < 240 || startMinute >= 1680 ||
+        (range && (endMinute === null || endMinute <= startMinute || endMinute > 1680))) {
+      setCopy(status, "today.planInvalidTime");
+      return;
+    }
+    const operationId = `plan-time-${crypto.randomUUID()}`;
+    // A captured source/revision stays bound even when the displayed date or Vault changes.
+    submitted = true;
+    save.disabled = precision.disabled = true;
+    start.time.disabled = end.time.disabled = start.nextDay.disabled = end.nextDay.disabled = true;
+    const request = todayPresentationRequests.begin();
+    updateTodayOperationState(1);
+    const operation = (async () => {
+      let confirmed = false;
+      try {
+        const result = await window.__TAURI__.core.invoke<Readonly<{ savedRevision: string; view: TodayView | null; refreshError: string | null }>>("edit_plan_time", {
+          input: { date: loaded.date, targetBinding: loaded.targetBinding, expectedRevision,
+            planId: entry.planId, operationId, startMinute, endMinute, precision: precision.value },
+        });
+        savedRevision = result.savedRevision;
+        confirmed = result.view !== null;
+        if (result.view && todayPresentationRequests.isCurrent(request)) {
+          renderToday(result.view);
+          showTodayMutationCopy("today.planSaved", "ready");
+          dialog.close();
+        } else {
+          if (result.refreshError) setCopyError(status, "today.planReadbackDiagnostic", result.refreshError);
+          else setCopy(status, "today.planSavedNeedsReadback");
+          recheck.hidden = false;
+        }
+      } catch (error) {
+        setCopyError(status, "today.planUnconfirmedError", error);
+        recheck.hidden = false;
+      } finally {
+        updateTodayOperationState(-1);
+      }
+      return confirmed;
+    })();
+    void pendingWrites.track(operation);
+  });
+  dialog.append(form);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+function openTodayAxisTaskCreate(loaded: TodayView, startMinute: number, endMinute: number): void {
+  const binding=loaded.tasks.targetBinding;
+  if(!binding)return;
+  const dialog=document.createElement("dialog");dialog.dataset.axisTaskCreate="";dialog.className="today-axis-task-dialog";
+  const heading=document.createElement("h3");setCopy(heading,"tasks.addHeading");
+  const form=document.createElement("form");form.className="task-form";
+  const grid=document.createElement("div");grid.className="task-form-grid";
+  const start=taskAxisDateTime(loaded.date,startMinute),end=taskAxisDateTime(loaded.date,endMinute);
+  const input=(key:InterfaceCopyKey,type:string,data:string,value:string)=>{
+    const label=document.createElement("label");const caption=document.createElement("span");setCopy(caption,key);
+    const field=document.createElement("input");field.type=type;field.dataset[data]="";field.value=value;
+    label.append(caption,field);grid.append(label);return field;
+  };
+  const name=input("tasks.name","text","taskName","");name.required=true;name.maxLength=160;
+  const noteLabel=document.createElement("label");const noteCaption=document.createElement("span");setCopy(noteCaption,"tasks.content");
+  const note=document.createElement("textarea");note.rows=2;note.dataset.taskContent="";noteLabel.append(noteCaption,note);grid.append(noteLabel);
+  input("tasks.date","date","taskDate",start.date);input("tasks.time","time","taskTime",start.time);
+  input("tasks.executionEndDate","date","taskEndDate",end.date);input("tasks.executionEndTime","time","taskEndTime",end.time);
+  const listLabel=document.createElement("label");const listCaption=document.createElement("span");setCopy(listCaption,"tasks.list");
+  const list=document.createElement("select");list.dataset.taskList="";renderTaskListSelect(list,loaded.tasks,"inbox",false);
+  listLabel.append(listCaption,list);grid.append(listLabel);
+  const status=document.createElement("p");status.setAttribute("role","status");status.dataset.axisTaskStatus="";
+  const save=document.createElement("button");save.type="submit";setCopy(save,"tasks.save");
+  const cancel=document.createElement("button");cancel.type="button";setCopy(cancel,"today.axisCancel");cancel.addEventListener("click",()=>dialog.close());
+  const recheck=document.createElement("button");recheck.type="button";recheck.hidden=true;setCopy(recheck,"tasks.refresh");
+  const taskId=localOperationId("axis-task");let revision=loaded.tasks.revision;let submitted: Record<string,unknown>|null=null;let busy=false;
+  const sameTarget=()=>currentWorkspaceDestination==="today"&&currentTodayView?.date===loaded.date&&currentTodayView.tasks.targetBinding===binding;
+  const matches=(task:TaskView)=>submitted!==null&&task.id===taskId&&task.name===submitted.name&&task.content===submitted.content&&
+    task.date===submitted.date&&task.time===submitted.time&&task.listId===submitted.listId&&
+    task.executionEnd?.date===(submitted.executionEnd as {date:string}|null)?.date&&task.executionEnd?.time===(submitted.executionEnd as {time:string}|null)?.time;
+  recheck.addEventListener("click",()=>{
+    if(busy||!sameTarget()) {setCopy(status,"tasks.refreshFirst");return;}
+    busy=true;recheck.disabled=true;
+    const operation=(async()=>{try {
+      const latest=await window.__TAURI__.core.invoke<TasksView>("tasks_view");
+      if(!sameTarget()||latest.targetBinding!==binding||latest.state==="error"||latest.state==="unconfigured")throw Error(latest.message);
+      renderTaskSurface("today",latest);
+      if(latest.tasks.some(matches)){setCopy(taskSurfaceStatus("today"),"tasks.saved");showTodayAxisEditCopy("tasks.saved");dialog.close();return true;}
+      if(latest.tasks.some(task=>task.id===taskId)){setCopy(status,"today.axisTaskAlreadyExists");save.disabled=true;return false;}
+      revision=latest.revision;save.disabled=false;setCopy(status,"today.axisTaskRetry");return false;
+    }catch(error){setCopyError(status,"tasks.notSaved",error);return false;}finally{busy=false;recheck.disabled=false;}})();
+    void pendingWrites.track(operation);
+  });
+  form.addEventListener("submit",event=>{
+    event.preventDefault();if(busy||!sameTarget()){setCopy(status,"tasks.refreshFirst");return;}
+    const draft=readTaskDraft(form);
+    if(!draft.name.trim()){name.focus();return;}
+    if(!draft.date||!draft.time||!draft.endDate||!draft.endTime||`${draft.endDate}T${draft.endTime}`<=`${draft.date}T${draft.time}`||
+      taskAxisMinute(loaded.date,{date:draft.date,time:draft.time})<240||taskAxisMinute(loaded.date,{date:draft.endDate,time:draft.endTime})>1680){
+      setCopy(status,"tasks.invalidExecutionInterval");return;
+    }
+    submitted={targetBinding:binding,expectedRevision:revision,taskId,name:draft.name.trim(),content:draft.content.trim()||null,
+      date:draft.date,time:draft.time,executionEnd:{date:draft.endDate,time:draft.endTime},listId:draft.listId||"inbox"};
+    busy=true;save.disabled=true;const request=todayTaskRequests.begin();updateTaskOperationState(1);
+    const operation=(async()=>{try {
+      const result=await window.__TAURI__.core.invoke<TasksView>("create_task",{input:submitted});
+      if(!taskSurfaceIsCurrent("today",request,binding,result.targetBinding,loaded.date,revision)||
+        !["ready","empty"].includes(result.state)||!result.tasks.some(matches))throw Error(result.message||t("tasks.confirmationFailed"));
+      renderTaskSurface("today",result);setCopy(taskSurfaceStatus("today"),"tasks.saved");showTodayAxisEditCopy("tasks.saved");dialog.close();return true;
+    }catch(error){setCopyError(status,"tasks.notSaved",error);recheck.hidden=false;return false;}
+    finally{busy=false;updateTaskOperationState(-1);}})();
+    void pendingWrites.track(operation);
+  });
+  form.append(grid,status,save,cancel,recheck);dialog.append(heading,form);dialog.addEventListener("close",()=>dialog.remove(),{once:true});
+  document.body.append(dialog);dialog.showModal();name.focus();
+}
+
+async function moveTodayAxisTask(change: AxisGestureCommit<TodayView>): Promise<boolean> {
+  const loaded=change.context,target=change.target;
+  const binding=loaded.tasks.targetBinding;
+  let savedTask=loaded.tasks.tasks.find(task=>task.id===target?.key);
+  let revision=loaded.tasks.revision;
+  if(!binding||!savedTask||!revision)return false;
+  const start=taskAxisDateTime(loaded.date,change.startMinute);
+  const executionEnd=change.endMinute===null?null:taskAxisDateTime(loaded.date,change.endMinute);
+  const sameTarget=()=>currentWorkspaceDestination==="today"&&currentTodayView?.date===loaded.date&&currentTodayView.tasks.targetBinding===binding;
+  const matches=(task:TaskView)=>task.id===target!.key&&task.date===start.date&&task.time===start.time&&
+    task.executionEnd?.date===executionEnd?.date&&task.executionEnd?.time===executionEnd?.time;
+  let recovery:HTMLDialogElement|null=null;
+  let status:HTMLElement|null=taskSurfaceStatus("today");
+  let retry:HTMLButtonElement|null=null;
+  const save=async():Promise<boolean>=>{
+    if(!sameTarget()||!savedTask||!revision){setCopy(status,"tasks.refreshFirst");return false;}
+    const source=savedTask;
+    const edit={targetBinding:binding,taskId:source.id,name:source.name,content:source.content,listId:source.listId,
+      date:start.date,time:start.time,executionEnd};
+    updateTaskOperationState(1);if(retry)retry.disabled=true;
+    try {
+      const result=await performTaskUpdateRequest(edit,{expectedRevision:revision,requests:todayTaskRequests,identities:taskOperationIds,
+        createChangeId:()=>localOperationId("axis-task-move"),invoke:input=>window.__TAURI__.core.invoke<TasksView>("update_task",{input}),
+        isCurrent:(token,view)=>taskSurfaceIsCurrent("today",token,binding,view.targetBinding,loaded.date,revision)});
+      if(!result.confirmed)throw Error(result.view.message||t("tasks.confirmationFailed"));
+      renderTaskSurface("today",result.view);setCopy(taskSurfaceStatus("today"),"tasks.saved");showTodayAxisEditCopy("tasks.saved");recovery?.close();return true;
+    }catch(error){
+      if(sameTarget()&&currentTodayView)renderTodayTimeAxis(currentTodayView);
+      if(!recovery) {
+        recovery=document.createElement("dialog");recovery.dataset.axisTaskRecovery="";recovery.className="today-axis-task-dialog";
+        const heading=document.createElement("h3");setCopy(heading,"today.axisTaskMoveRecovery");
+        const desired=document.createElement("p");desired.textContent=taskScheduleText(start.date,start.time,executionEnd);
+        status=document.createElement("p");status.setAttribute("role","status");status.dataset.axisTaskStatus="";
+        const read=document.createElement("button");read.type="button";read.dataset.axisTaskRecheck="";setCopy(read,"tasks.refresh");
+        retry=document.createElement("button");retry.type="button";retry.dataset.axisTaskRetry="";retry.disabled=true;setCopy(retry,"tasks.save");
+        const cancel=document.createElement("button");cancel.type="button";setCopy(cancel,"today.axisCancel");cancel.addEventListener("click",()=>recovery?.close());
+        read.addEventListener("click",()=>{
+          if(!sameTarget()){setCopy(status,"tasks.refreshFirst");return;}
+          read.disabled=true;
+          const operation=(async()=>{try {
+            const current=await window.__TAURI__.core.invoke<TasksView>("tasks_view");
+            if(!sameTarget()||current.targetBinding!==binding||current.state==="error"||current.state==="unconfigured")throw Error(current.message);
+            renderTaskSurface("today",current);
+            const found=current.tasks.find(task=>task.id===target!.key);
+            if(found&&matches(found)){setCopy(taskSurfaceStatus("today"),"tasks.saved");showTodayAxisEditCopy("tasks.saved");recovery?.close();return true;}
+            if(!found||found.deletedAt!==null||found.state==="abandoned"||current.lists.some(list=>list.id===found.listId&&list.archived)) {
+              setCopy(status,"today.axisTaskUnavailable");return false;
+            }
+            // Rebase only the requested timing onto current content/list/state.
+            savedTask=found;revision=current.revision;retry!.disabled=false;
+            setCopy(status,"today.axisTaskRetry");return false;
+          }catch(error){setCopyError(status,"tasks.notSaved",error);return false;}finally{read.disabled=false;}})();
+          void pendingWrites.track(operation);
+        });
+        retry.addEventListener("click",()=>{void pendingWrites.track(save());});
+        recovery.append(heading,desired,status,read,retry,cancel);recovery.addEventListener("close",()=>recovery?.remove(),{once:true});
+        document.body.append(recovery);recovery.showModal();
+      }
+      setCopyError(status,"tasks.notSaved",error);return false;
+    }finally{updateTaskOperationState(-1);}
+  };
+  return save();
+}
+
+async function moveTodayAxisPlan(change: AxisGestureCommit<TodayView>): Promise<boolean> {
+  const loaded = change.context;
+  const entry = loaded.timeAxis.currentArrangement.find(entry => entry.planId === change.target?.key);
+  if (!entry?.planId || !entry.timeEditable || !loaded.revision || !loaded.targetBinding) return false;
+  const sameTarget = () => currentWorkspaceDestination === "today" && currentTodayView?.date === loaded.date &&
+    currentTodayView.targetBinding === loaded.targetBinding;
+  const precision = entry.planPrecision === "broad" || entry.planPrecision === "approximatePoint"
+    ? "approximatePoint" : change.endMinute === null ? "exactPoint" : "exactRange";
+  const request = todayPresentationRequests.begin();
+  todayPresentationFresh = false;
+  updateTodayOperationState(1);
+  const recover = (notice: string, savedRevision?: string) => {
+    if (!sameTarget() || !todayPresentationRequests.isCurrent(request)) return;
+    renderTodayTimeAxis(currentTodayView!);
+    showTodayAxisEditCopy(savedRevision ? "today.planSavedNeedsReadback" : "today.planUnconfirmed", "error");
+    openPlanTimeEditor(entry, { loaded, startMinute: change.startMinute, endMinute: change.endMinute, notice, savedRevision });
+  };
+  try {
+    const result = await window.__TAURI__.core.invoke<Readonly<{ savedRevision: string; view: TodayView | null; refreshError: string | null }>>("edit_plan_time", {
+      input: { date: loaded.date, targetBinding: loaded.targetBinding, expectedRevision: loaded.revision,
+        planId: entry.planId, operationId: `plan-drag-${crypto.randomUUID()}`,
+        startMinute: change.startMinute, endMinute: change.endMinute, precision },
+    });
+    if (result.view) {
+      if (sameTarget() && todayPresentationRequests.isCurrent(request)) {
+        renderToday(result.view);
+        showTodayMutationCopy("today.planSaved", "ready");
+        showTodayAxisEditCopy("today.planSaved");
+      }
+      return true;
+    }
+    recover(result.refreshError ?? t("today.planSavedNeedsReadback"), result.savedRevision);
+  } catch (error) {
+    recover(String(error));
+  } finally {
+    updateTodayOperationState(-1);
+  }
+  return false;
+}
+
+function todayAxisGesturePreviewLabel(change: AxisGestureCommit<TodayView>): string {
+  const entry = change.target?.kind === "plan"
+    ? change.context.timeAxis.currentArrangement.find(entry => entry.planId === change.target?.key) : null;
+  const start = formatAxisMinute(change.startMinute);
+  const label = entry?.planPrecision === "broad" || entry?.planPrecision === "approximatePoint"
+    ? t("today.planApproximateReference", { time: start })
+    : change.endMinute === null ? start : `${start}–${formatAxisMinute(change.endMinute)}`;
+  return change.startMinute >= 1440 || (change.endMinute ?? 0) >= 1440
+    ? `${label} · ${nextAxisDate(change.context.date)}` : label;
+}
+
+function resolveTodayAxisGestureTarget(element: Element, loaded: TodayView): AxisGestureTarget | null | false {
+  const tasksWritable = canMutateTodayTasks({todayOperationCount, taskOperationCount,
+    hasTargetBinding: Boolean(loaded.tasks.targetBinding), state: loaded.tasks.state, isPresentationCurrent: todayPresentationFresh});
+  const marker=element.closest<HTMLElement>(".today-axis-marker");if(!marker)return tasksWritable ? null : false;
+  const planId = marker.dataset.planId;
+  if (planId) {
+    const entry = loaded.timeAxis.currentArrangement.find(entry => entry.planId === planId);
+    if (!loaded.revision || !loaded.targetBinding || !entry?.timeEditable || entry.startMinute === null || entry.continuesFromPreviousDay || entry.continuesIntoNextDay) return false;
+    const resizing = Boolean(element.closest("[data-axis-resize]"));
+    if (resizing && (entry.planPrecision !== "exactRange" || entry.endMinute === null)) return false;
+    return { key: planId, kind: "plan", startMinute: entry.startMinute, endMinute: entry.endMinute,
+      mode: resizing ? "resize-end" : "move" };
+  }
+  const id=marker.dataset.taskId;if(!tasksWritable || !id)return false;
+  const task=loaded.tasks.tasks.find(task=>task.id===id);
+  if(!task?.date||!task.time||task.deletedAt!==null||task.state==="abandoned")return false;
+  return {key:task.id,kind:"task",startMinute:taskAxisMinute(loaded.date,{date:task.date,time:task.time}),
+    endMinute:task.executionEnd?taskAxisMinute(loaded.date,task.executionEnd):null};
+}
+function commitTodayAxisGesture(change: AxisGestureCommit<TodayView>): void {
+  if(!change.target&&change.endMinute!==null)openTodayAxisTaskCreate(change.context,change.startMinute,change.endMinute);
+  else if(change.target?.kind==="task")void pendingWrites.track(moveTodayAxisTask(change));
+  else if(change.target?.kind==="plan")void pendingWrites.track(moveTodayAxisPlan(change));
+}
+function showTodayAxisEditCopy(key: InterfaceCopyKey, state: "ready" | "error" = "ready"): void {
+  const status=document.querySelector<HTMLElement>("#today-axis-edit-status");
+  if(status){setCopy(status,key);status.hidden=false;status.dataset.state=state;}
+}
+function installTodayAxisGestures(): void {
+  const plot=document.querySelector<HTMLElement>("#today-axis-plot");
+  const scrollSurface=document.querySelector<HTMLElement>("#today-axis-scroll-surface");
+  if(!plot||!scrollSurface)return;
+  attachTodayAxisGestures({plot,scrollSurface,bounds:axisBounds,
+    begin:()=>{
+      if (!currentTodayView || !todayPresentationFresh || todayOperationCount > 0 || taskOperationCount > 0) return null;
+      const planWritable = Boolean(currentTodayView.revision && currentTodayView.targetBinding);
+      const tasksWritable = canMutateTodayTasks({todayOperationCount,taskOperationCount,
+        hasTargetBinding:Boolean(currentTodayView.tasks.targetBinding),state:currentTodayView.tasks.state,isPresentationCurrent:todayPresentationFresh});
+      if (!planWritable && !tasksWritable) return null;
+      todayAxisFollowState=onManualScroll(todayAxisFollowState);return currentTodayView;
+    },
+    resolveTarget:resolveTodayAxisGestureTarget,onCommit:commitTodayAxisGesture,previewLabel:todayAxisGesturePreviewLabel,
+    onInvalid:()=>{setCopy(taskSurfaceStatus("today"),"today.axisTaskInvalid");showTodayAxisEditCopy("today.axisTaskInvalid","error");},
+  });
 }
 
 function renderTodayTimeAxisEntries(
@@ -5272,7 +6099,9 @@ function renderTodayTimeAxisEntries(
   ordered.forEach(({ entry, index }) => {
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
   });
-  todayTimedDetails.replaceChildren(...ordered.map(({ index }) => detailElements.get(index)!));
+  const lowerDetailEntries = ordered.filter(({ entry }) => entry.lane !== "arrangement");
+  todayTimedDetails.replaceChildren(...lowerDetailEntries.map(({ index }) => detailElements.get(index)!));
+  todayTimedDetails.toggleAttribute("hidden", lowerDetailEntries.length === 0);
   const [visibleStart, visibleEnd] = axisBounds();
   const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
     entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
@@ -5287,6 +6116,11 @@ function renderTodayTimeAxisEntries(
       endMinute: entry.endMinute,
     })),
     [visibleStart, visibleEnd],
+  );
+  // Dense collisions retain readable targets; the same axis can scroll
+  // horizontally in a narrow window rather than clipping every card.
+  todayTimedEvents.closest<HTMLElement>(".today-axis-plot")?.style.setProperty(
+    "--today-axis-min-track-width", `${Math.max(0, ...stackPlacements.map((placement) => placement.stackSize)) * 144}px`,
   );
   const placementByIndex = new Map(
     visibleEntries.map(({ index }, placementIndex) => [index, stackPlacements[placementIndex]]),
@@ -5305,6 +6139,9 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-completed", entry.task?.state === "completed");
       marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
       if (entry.task) marker.dataset.taskId = entry.task.id;
+      const editablePlan = original.lane === "arrangement" && hasExactPlanTime(original) && original.planId && original.timeEditable &&
+        !original.continuesFromPreviousDay && !original.continuesIntoNextDay;
+      if (editablePlan) marker.dataset.planId = original.planId!;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
       marker.style.setProperty(
         "--axis-label-center",
@@ -5322,9 +6159,14 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-centered-label", markerLayout.isCenteredLabel);
       markersByStack.set(placement.stackId, [...(markersByStack.get(placement.stackId) ?? []), marker]);
 
-      const link = document.createElement("a");
-      link.href = `#today-axis-${entry.lane}-entry-${index}`;
+      const readOnlyArrangement = original.lane === "arrangement" && !editablePlan;
+      const link = document.createElement(readOnlyArrangement ? "span" : "a");
+      if (link instanceof HTMLAnchorElement) {
+        link.href = `#today-axis-${entry.lane}-entry-${index}`;
+      }
       link.className = "today-axis-marker-link";
+      if (readOnlyArrangement) link.classList.add("is-read-only");
+      link.draggable = false;
       link.dataset.axisItemTime = axisEntryTimeLabel(original, original.lane);
       link.dataset.axisItemText = entry.text;
       link.dataset.axisMetadataCopyKeys = JSON.stringify(
@@ -5333,7 +6175,7 @@ function renderTodayTimeAxisEntries(
       updateTodayAxisMarkerAccessibleName(link, currentInterfaceLanguage);
       const timeLabel = document.createElement("span");
       timeLabel.className = "today-axis-marker-time";
-      timeLabel.textContent = axisEntryTimeLabel(original, original.lane);
+      appendAxisEntryTimeLabel(timeLabel, original, original.lane);
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
       title.textContent = entry.task
@@ -5348,26 +6190,51 @@ function renderTodayTimeAxisEntries(
       appendAxisEntryMetadata(metadata, entry, entry.lane);
       link.append(timeLabel, title, metadata);
       link.classList.toggle("is-short-range", durationMinutes !== null && markerLayout.isCenteredLabel);
-      link.addEventListener("click", (event) => {
-        event.preventDefault();
-        const members = markersByStack.get(placement.stackId) ?? [];
-        members.forEach((member) => member.classList.toggle("is-stack-front", member === marker));
-        const target = detailElements.get(index);
-        if (!target) return;
-        target.open = true;
-        todayAxisFollowState = onManualScroll(todayAxisFollowState);
-        target.scrollIntoView({ block: "center", behavior: "smooth" });
-      });
+      if (!readOnlyArrangement) {
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          const members = markersByStack.get(placement.stackId) ?? [];
+          members.forEach((member) => member.classList.toggle("is-stack-front", member === marker));
+          if (editablePlan) {
+            openPlanTimeEditor(original);
+            return;
+          }
+          const target = detailElements.get(index);
+          if (!target) return;
+          target.open = true;
+          todayAxisFollowState = onManualScroll(todayAxisFollowState);
+          target.scrollIntoView({ block: "center", behavior: "smooth" });
+        });
+      }
       marker.append(link);
+      if (editablePlan && original.planPrecision === "exactRange" && original.endMinute !== null) {
+        const endHandle = document.createElement("button");
+        endHandle.type = "button";
+        endHandle.className = "today-axis-plan-end";
+        endHandle.dataset.axisResize = "";
+        endHandle.dataset.i18nAriaLabel = "today.planResizeEnd";
+        endHandle.dataset.i18nTitle = "today.planResizeEnd";
+        endHandle.setAttribute("aria-label", t("today.planResizeEnd"));
+        endHandle.title = t("today.planResizeEnd");
+        if (markerLayout.isCenteredLabel) {
+          endHandle.style.top = `calc(50% + var(--today-axis-plot-height) * ${(original.endMinute - markerLayout.centerMinute) / (visibleEnd - visibleStart)})`;
+        }
+        endHandle.addEventListener("click", () => openPlanTimeEditor(original));
+        marker.append(endHandle);
+      }
 
       if (placement.stackSize > 1) {
+        const groupCount = stackPlacements.filter(candidate => candidate.stackId === placement.stackId).length;
         const reveal = document.createElement("button");
         reveal.type = "button";
         reveal.className = "today-axis-stack-reveal";
-        const revealLabel = t("today.overlapStackReveal", { count: placement.stackSize });
+        reveal.dataset.i18nAriaLabel = "today.overlapStackReveal";
+        reveal.dataset.i18nTitle = "today.overlapStackReveal";
+        reveal.dataset.i18nVariables = JSON.stringify({ count: groupCount });
+        const revealLabel = t("today.overlapStackReveal", { count: groupCount });
         reveal.setAttribute("aria-label", revealLabel);
         reveal.title = revealLabel;
-        reveal.textContent = `∨ ${placement.stackSize}`;
+        reveal.textContent = `∨ ${groupCount}`;
         reveal.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -5458,11 +6325,23 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
 
 function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
+  const entries: readonly TimedTodayAxisEntry[] = [
+    ...view.timeAxis.currentArrangement.map((entry) => ({ ...entry, lane: "arrangement" as const })),
+    ...view.timeAxis.confirmedFacts.map((entry) => ({ ...entry, lane: "facts" as const })),
+    ...todayTaskTimeAxisEntries(view.tasks.tasks, view.date,
+      new Set(view.tasks.lists.filter((list) => list.archived).map((list) => list.id)),
+    ).map((entry) => ({ ...entry, lane: "tasks" as const })),
+  ];
+  const earlyCount = entries.filter((entry) => entry.startMinute !== null && entry.startMinute < 360).length;
+  const lateCount = entries.filter((entry) => entry.startMinute !== null &&
+    (entry.endMinute ?? entry.startMinute) >= 1440).length;
   if (todayAxisRenderedDate !== view.date) {
     todayAxisRenderedDate = view.date;
+    todayUnlocatedOverride = null;
+    todaySidebarReadingPosition = null;
     const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
-    todayAxisEarlyExpanded = now !== null && now < 360;
-    todayAxisLateExpanded = now !== null && now >= 1440;
+    todayAxisEarlyExpanded = earlyCount > 0 || (now !== null && now < 360);
+    todayAxisLateExpanded = lateCount > 0 || (now !== null && now >= 1440);
   }
   todayContinuousAxis.style.setProperty("--today-axis-plot-height", `calc(${(axisBounds()[1] - axisBounds()[0]) / 60} * var(--today-axis-hour-height))`);
   for (const [id, expanded] of [["today-expand-early", todayAxisEarlyExpanded], ["today-expand-late", todayAxisLateExpanded]] as const) {
@@ -5472,6 +6351,8 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
       setCopy(button, id === "today-expand-early"
         ? (expanded ? "today.expandEarlyExpanded" : "today.expandEarlyCollapsed")
         : (expanded ? "today.expandLateExpanded" : "today.expandLateCollapsed"));
+      const count = id === "today-expand-early" ? earlyCount : lateCount;
+      if (count) button.textContent += ` · ${t("today.axisPeriodItemCount", { count })}`;
     }
   }
   todayHourTicks?.replaceChildren(
@@ -5492,22 +6373,12 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
   );
   if (todayHourTicks && todayCurrentTime) todayHourTicks.append(todayCurrentTime);
   renderTodayTimeAxisEntries(
-    [
-      ...view.timeAxis.currentArrangement.map((entry) => ({ ...entry, lane: "arrangement" as const })),
-      ...view.timeAxis.confirmedFacts.map((entry) => ({ ...entry, lane: "facts" as const })),
-      ...todayTaskTimeAxisEntries(
-        view.tasks.tasks,
-        view.date,
-        new Set(view.tasks.lists.filter((list) => list.archived).map((list) => list.id)),
-      ).map((entry) => ({ ...entry, lane: "tasks" as const })),
-    ],
+    entries,
     view.timeAxis.unlocatedCurrentArrangement,
     view.timeAxis.unlocatedConfirmedFacts,
   );
-  const hasUnlocatedEntries = view.timeAxis.unlocatedCurrentArrangement.length > 0 ||
-    view.timeAxis.unlocatedConfirmedFacts.length > 0;
-  if (todayUnlocatedTimeRegion) todayUnlocatedTimeRegion.hidden = !hasUnlocatedEntries;
-  todayUnlocatedTimeShortcut?.classList.toggle("is-available", hasUnlocatedEntries);
+  todayUnlocatedCount = view.timeAxis.unlocatedCurrentArrangement.length + view.timeAxis.unlocatedConfirmedFacts.length;
+  updateTodayUnlocatedPresentation();
   updateTodayTimeAxisClock(view, currentTime);
 }
 
@@ -5516,7 +6387,8 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
 function toggleTodayAxisSegment(id: string): void {
   if (!currentTodayView) return;
   const plot = todayContinuousAxis?.querySelector<HTMLElement>(".today-axis-plot");
-  const viewport = workspaceInformation?.getBoundingClientRect();
+  const scrollSurface = todayAxisScrollSurface ?? workspaceInformation;
+  const viewport = scrollSurface?.getBoundingClientRect();
   const oldPlot = plot?.getBoundingClientRect();
   const [start, end] = axisBounds();
   const anchorY = viewport && oldPlot ? Math.max(viewport.top, oldPlot.top) : null;
@@ -5553,7 +6425,7 @@ function toggleTodayAxisSegment(id: string): void {
       });
     }
   });
-  if (!workspaceInformation) return;
+  if (!scrollSurface) return;
   let delta = 0;
   if (anchorMinute !== null && anchorY !== null && plot) {
     const next = plot.getBoundingClientRect();
@@ -5565,7 +6437,7 @@ function toggleTodayAxisSegment(id: string): void {
     if (next) delta = next.getBoundingClientRect().top - detailY;
   }
   if (delta !== 0) {
-    workspaceInformation.scrollTo({ top: workspaceInformation.scrollTop + delta, behavior: "instant" });
+    scrollSurface.scrollTo({ top: scrollSurface.scrollTop + delta, behavior: "instant" });
   }
 }
 
@@ -5772,6 +6644,8 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
   if (todayEvidenceRegion) {
     todayEvidenceRegion.hidden = phase !== "morning";
   }
+  if (phaseChanged) {todayUnlocatedOverride = null;todaySidebarReadingPosition = null;}
+  updateTodayUnlocatedPresentation();
   renderTodayEvidence();
   if (phaseChanged && workspaceInformation) {
     workspaceInformation.scrollTop = 0;
@@ -5879,6 +6753,7 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
     if (
       draft.name !== task.name || draft.content !== (task.content ?? "") ||
       draft.date !== (task.date ?? "") || draft.time !== (task.time ?? "") ||
+      draft.endDate !== (task.executionEnd?.date ?? "") || draft.endTime !== (task.executionEnd?.time ?? "") ||
       draft.listId !== task.listId || draft.completionDate !== (task.completion?.completedOn ?? "") ||
       draft.completionTime !== (task.completion?.completedTime ?? "")
     ) {
@@ -5966,6 +6841,7 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
   if (todayDaytimeForm) {
     todayDaytimeForm.hidden = !view.canRecord;
   }
+  eveningReviewEntry?.render();
   if (todayEveningForm) {
     todayEveningForm.hidden = !view.canRecord;
   }
@@ -6213,7 +7089,8 @@ function stashTodayTaskCreateDraft(): void {
   if (!view || !binding || !todayTaskCreateForm) return;
   const draft = readTaskDraft(todayTaskCreateForm);
   const key = todayTaskCreateDraftKey(binding, view.date);
-  if (isBlankTaskDraft(draft)) {
+  const untouchedDefault = !draft.name && !draft.content && draft.date === view.date && !draft.time && draft.listId === "inbox";
+  if (untouchedDefault) {
     todayTaskCreateDrafts.delete(key);
   } else {
     todayTaskCreateDrafts.set(key, draft);
@@ -6342,7 +7219,8 @@ function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): voi
   const draftKey = shared.targetBinding
     ? todayTaskCreateDraftKey(shared.targetBinding, view.date)
     : null;
-  const draft = draftKey ? todayTaskCreateDrafts.get(draftKey) : undefined;
+  const attempt = draftKey ? taskCreateAttempts.get(draftKey) : undefined;
+  const draft = attempt?.draft ?? (draftKey ? todayTaskCreateDrafts.get(draftKey) : undefined);
   todayTaskCreateForm?.toggleAttribute("hidden", !writable);
   todayTaskCreateForm?.querySelectorAll("input, textarea, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
@@ -6354,9 +7232,7 @@ function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): voi
     if (selectedCreateList && todayTaskCreateSubmit) {
       setRawText(
         todayTaskCreateSubmit,
-        selectedCreateList.id === "inbox"
-          ? t("tasks.add")
-          : t("tasks.addToList", { list: selectedCreateList.name }),
+        t("tasks.quickAdd"),
       );
     }
     if (todayTaskCreateName) todayTaskCreateName.value = draft?.name ?? "";
@@ -6364,7 +7240,9 @@ function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): voi
     if (todayTaskCreateDate) todayTaskCreateDate.value = draft?.date ?? view.date;
     if (todayTaskCreateTime) todayTaskCreateTime.value = draft?.time ?? "";
     normalizeTaskDateTimeFields(todayTaskCreateDate, todayTaskCreateTime, !writable);
+    updateCompactScheduleLabel("today-task-create", todayTaskCreateDate, todayTaskCreateTime);
     todayTaskCreateSubmit?.toggleAttribute("disabled", !writable);
+    updateTodayTaskCreationControls();
   }
 }
 
@@ -6821,7 +7699,14 @@ function scrollTodayAxisToNow(): void {
   }
   todayAxisFollowState = locateNow(todayAxisFollowState);
   programmaticTodayAxisScrollUntil = Date.now() + 1200;
-  todayCurrentTime.scrollIntoView({ block: "center", behavior: "smooth" });
+  if (todayAxisScrollSurface) {
+    const viewport = todayAxisScrollSurface.getBoundingClientRect();
+    const marker = todayCurrentTime.getBoundingClientRect();
+    todayAxisScrollSurface.scrollTo({
+      top: todayAxisScrollSurface.scrollTop + marker.top - viewport.top - viewport.height / 2,
+      behavior: "instant",
+    });
+  }
   window.setTimeout(() => {
     programmaticTodayAxisScrollUntil = 0;
   }, 1300);
@@ -6888,6 +7773,23 @@ async function selectTodayVault(): Promise<void> {
   if (vaultSelectionInProgress) {
     return;
   }
+  const unboundComposer = currentCollaborationSession ? null : {
+    draft: collaborationMessageDraft?.value ?? collaborationEmptyDraft,
+    active: collaborationEmptyComposerActive,
+    targetDate: collaborationEmptyTargetDate,
+    activityDate: collaborationActivityDate,
+    activityDateExplicit: collaborationActivityDateExplicit,
+  };
+  const restoreUnboundComposer = () => {
+    if (!unboundComposer || currentCollaborationSession) return;
+    collaborationEmptyDraft = unboundComposer.draft;
+    collaborationEmptyComposerActive = unboundComposer.active || Boolean(unboundComposer.draft);
+    collaborationEmptyTargetDate = unboundComposer.targetDate;
+    collaborationActivityDate = unboundComposer.activityDate;
+    collaborationActivityDateExplicit = unboundComposer.activityDateExplicit;
+    collaborationTargetDate = unboundComposer.targetDate ?? unboundComposer.activityDate;
+    if (collaborationMessageDraft) collaborationMessageDraft.value = unboundComposer.draft;
+  };
   vaultSelectionInProgress = true;
   collaborationVaultSelectionRevision += 1;
   collaborationVaultSwitchDraftWrites = [...collaborationDraftWrites.values()];
@@ -6908,7 +7810,7 @@ async function selectTodayVault(): Promise<void> {
   const presentationRequest = todayPresentationRequests.begin();
   updateTodayOperationState(1);
   try {
-    await selectVaultAndRefresh(
+    const selectionOutcome = await selectVaultAndRefresh(
       () =>
         window.__TAURI__.core.invoke<VaultSelectionResult<TodayView>>(
           "select_today_vault",
@@ -6932,6 +7834,7 @@ async function selectTodayVault(): Promise<void> {
         renderPendingWriteFailure,
         prepareForVaultSwitch: (view) => {
           resetVaultScopedWorkspaceState();
+          restoreUnboundComposer();
           selectedTodayDate = null;
           currentTodayPhase = view.defaultPhase;
         },
@@ -6943,6 +7846,7 @@ async function selectTodayVault(): Promise<void> {
         refreshTasks,
       },
     );
+    if (selectionOutcome === "changed" || selectionOutcome === "reconciled") restoreUnboundComposer();
   } catch (error) {
     if (vaultSelectionRequests.isCurrent(selectionRequest)) {
       renderVaultSelectionError(error);
@@ -6950,6 +7854,7 @@ async function selectTodayVault(): Promise<void> {
   } finally {
     collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
+    restoreUnboundComposer();
     renderCollaborationWorkspace();
     updateTodayOperationState(-1);
   }
@@ -7001,7 +7906,7 @@ const calendarAvailabilityLabels: Record<
   missing: { label: "calendar.noRecord", marker: null },
   unreviewed: { label: "calendar.unreviewed", marker: "calendar.markerUnreviewed" },
   reviewed: { label: "calendar.reviewed", marker: "calendar.markerReviewed" },
-  error: { label: "calendar.readError", marker: null },
+  error: { label: "calendar.readError", marker: "calendar.markerError" },
 };
 
 function calendarDateLabel(date: string): string {
@@ -7021,6 +7926,77 @@ function populateCalendarYears(centerYear: number): void {
     }),
   );
   calendarYear.value = String(centerYear);
+}
+
+function updateCalendarTaskPreviewRows(): void {
+  if (!calendarGrid) return;
+
+  const cells = Array.from(calendarGrid.querySelectorAll<HTMLButtonElement>(".calendar-day"));
+  const firstCell = cells.find((cell) =>
+    cell.querySelector<HTMLElement>(".calendar-day-task-summary"),
+  );
+  const firstSummary = firstCell?.querySelector<HTMLElement>(".calendar-day-task-summary");
+  const firstSummaries = firstCell?.querySelector<HTMLElement>(".calendar-day-task-summaries");
+  const summaryStyle = firstSummary ? window.getComputedStyle(firstSummary) : null;
+  const summariesStyle = firstSummaries ? window.getComputedStyle(firstSummaries) : null;
+  const lineHeight = summaryStyle
+    ? Number.parseFloat(summaryStyle.lineHeight) ||
+      (Number.parseFloat(summaryStyle.fontSize) || 10) * 1.25
+    : 12;
+  const summaryGap = summariesStyle
+    ? Number.parseFloat(summariesStyle.rowGap || summariesStyle.gap) || 0
+    : 0;
+
+  for (const cell of cells) {
+    const summaries = cell.querySelector<HTMLElement>(".calendar-day-task-summaries");
+    const top = cell.querySelector<HTMLElement>(".calendar-day-top");
+    if (!summaries || !top) continue;
+
+    const items = Array.from(summaries.querySelectorAll<HTMLElement>(".calendar-day-task-summary"));
+    const cellStyle = window.getComputedStyle(cell);
+    const topStyle = window.getComputedStyle(top);
+    const summariesStyle = window.getComputedStyle(summaries);
+    const topMargin = Number.parseFloat(topStyle.marginBottom) || 0;
+    const summariesMargin = Number.parseFloat(summariesStyle.marginTop) || 0;
+    const borders =
+      (Number.parseFloat(cellStyle.borderTopWidth) || 0) +
+      (Number.parseFloat(cellStyle.borderBottomWidth) || 0);
+    const padding =
+      (Number.parseFloat(cellStyle.paddingTop) || 0) +
+      (Number.parseFloat(cellStyle.paddingBottom) || 0);
+    const available = Math.max(
+      0,
+      cell.getBoundingClientRect().height - borders - padding -
+        top.getBoundingClientRect().height - topMargin - summariesMargin,
+    );
+    const capacity = Math.min(
+      items.length,
+      Math.max(0, Math.floor((available + summaryGap + 0.001) / (lineHeight + summaryGap))),
+    );
+    items.forEach((item, index) => {
+      item.hidden = index >= capacity;
+    });
+
+    const baseOverflow = Number.parseInt(cell.dataset.calendarTaskOverflowBase ?? "0", 10) || 0;
+    const overflowCount = baseOverflow + Math.max(0, items.length - capacity);
+    const overflow = cell.querySelector<HTMLElement>(".calendar-day-task-overflow");
+    if (overflow) {
+      overflow.dataset.calendarTaskOverflow = String(overflowCount);
+      if (overflowCount > 0) {
+        setCopy(overflow, "calendar.taskOverflow", { count: overflowCount });
+      } else {
+        setRawText(overflow, "");
+      }
+    }
+    const accessibleBase = cell.dataset.calendarTaskAriaBase ?? cell.getAttribute("aria-label") ?? "";
+    cell.setAttribute(
+      "aria-label",
+      [
+        accessibleBase,
+        overflowCount > 0 ? t("calendar.taskOverflow", { count: overflowCount }) : "",
+      ].filter(Boolean).join(" · "),
+    );
+  }
 }
 
 function renderCalendarGrid(month: CalendarMonthView): void {
@@ -7045,6 +8021,7 @@ function renderCalendarGrid(month: CalendarMonthView): void {
       "aria-label",
       formatInterfaceMonth(month.year, month.month, currentInterfaceLanguage),
     );
+    calendarGrid.style.setProperty("--calendar-week-count", String(month.days.length / 7));
     calendarGrid.replaceChildren(
       ...month.days.map((day) => {
         const button = document.createElement("button");
@@ -7071,18 +8048,15 @@ function renderCalendarGrid(month: CalendarMonthView): void {
           day.taskOverflowCount > 0
             ? t("calendar.taskOverflow", { count: day.taskOverflowCount })
             : "";
-        button.setAttribute(
-          "aria-label",
-          [
-            calendarDateLabel(day.date),
-            day.isToday ? t("calendar.today") : "",
-            t(status.label),
-            taskNames,
-            taskOverflowLabel,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        );
+        const accessibleBase = [
+          calendarDateLabel(day.date),
+          day.isToday ? t("calendar.today") : "",
+          t(status.label),
+          taskNames,
+        ].filter(Boolean).join(" · ");
+        button.dataset.calendarTaskAriaBase = accessibleBase;
+        button.dataset.calendarTaskOverflowBase = String(day.taskOverflowCount);
+        button.setAttribute("aria-label", [accessibleBase, taskOverflowLabel].filter(Boolean).join(" · "));
         button.setAttribute("aria-pressed", String(selected));
         const top = document.createElement("span");
         top.className = "calendar-day-top";
@@ -7090,7 +8064,7 @@ function renderCalendarGrid(month: CalendarMonthView): void {
         number.textContent = String(dayNumber);
         const todayLabel = document.createElement("small");
         if (day.isToday) setCopy(todayLabel, "calendar.today");
-        top.append(number, todayLabel);
+        top.append(number);
         const marker = document.createElement("span");
         marker.className = "calendar-day-marker";
         marker.dataset.availability = day.availability;
@@ -7115,10 +8089,12 @@ function renderCalendarGrid(month: CalendarMonthView): void {
         if (day.taskOverflowCount > 0) {
           setCopy(overflow, "calendar.taskOverflow", { count: day.taskOverflowCount });
         }
-        button.append(top, taskSummaries, overflow, marker);
+        top.append(marker, todayLabel, overflow);
+        button.append(top, taskSummaries);
         return button;
       }),
     );
+    updateCalendarTaskPreviewRows();
   }
   renderWorkspaceRailContext("calendar");
 }
@@ -8382,7 +9358,9 @@ function readTaskDraft(form: HTMLFormElement): TaskDraft {
     form.querySelector<HTMLInputElement>("[data-task-completion-date]")?.value ?? "";
   const completionTime =
     form.querySelector<HTMLInputElement>("[data-task-completion-time]")?.value ?? "";
-  return { name, content, date, time, listId, completionDate, completionTime };
+  const endDate = form.querySelector<HTMLInputElement>("[data-task-end-date]")?.value ?? "";
+  const endTime = form.querySelector<HTMLInputElement>("[data-task-end-time]")?.value ?? "";
+  return { name, content, date, time, endDate, endTime, listId, completionDate, completionTime };
 }
 
 function isBlankTaskDraft(draft: TaskDraft): boolean {
@@ -8391,6 +9369,8 @@ function isBlankTaskDraft(draft: TaskDraft): boolean {
     !draft.content &&
     !draft.date &&
     !draft.time &&
+    !draft.endDate &&
+    !draft.endTime &&
     !draft.completionDate &&
     !draft.completionTime
   );
@@ -8468,7 +9448,8 @@ function reconcileTaskCompletionDraft(
   }
 }
 
-function taskScheduleText(date: string | null, time: string | null): string {
+function taskScheduleText(date: string | null, time: string | null, end?: Readonly<{date: string; time: string}> | null): string {
+  if (date && time && end) return `${calendarDateLabel(date)} ${time} – ${end.date === date ? "" : `${calendarDateLabel(end.date)} `}${end.time}`;
   if (!date) return t("tasks.noDate");
   return time
     ? t("tasks.dateAt", { date: calendarDateLabel(date), time })
@@ -8515,8 +9496,8 @@ function taskChangeDescription(change: TaskChangeView): string {
   if (change.kind === "rescheduled") {
     return t("tasks.rescheduled", {
       changedAt: change.changedAt,
-      previous: taskScheduleText(change.previousDate, change.previousTime),
-      next: taskScheduleText(change.newDate, change.newTime),
+      previous: taskScheduleText(change.previousDate, change.previousTime, change.previousExecutionEnd),
+      next: taskScheduleText(change.newDate, change.newTime, change.newExecutionEnd),
       changeSource: taskChangeSourceText(change.source),
     });
   }
@@ -8644,7 +9625,7 @@ function renderTaskListScopeButtons(view: TasksView): void {
     setCopy(label, copyKey);
     const count = document.createElement("strong");
     count.textContent = String(
-      taskScopeCount(view.tasks, scope, "pending", view.currentDate, archivedListIds),
+      taskScopeCount(view.tasks, scope, "pending", currentTaskLivedDate ?? view.currentDate, archivedListIds),
     );
     button.append(label, count);
     if (scope === "all") {
@@ -8670,7 +9651,7 @@ function renderTaskListScopeButtons(view: TasksView): void {
         view.tasks,
         taskListScopeForId(list.id),
         "pending",
-        view.currentDate,
+        currentTaskLivedDate ?? view.currentDate,
         archivedListIds,
       ),
     );
@@ -8816,7 +9797,20 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
     : undefined;
   const editor = dialog ?? inlineEditor;
   if (!row || !editor) return false;
-  const open = dialog ? dialog.hidden : editor.hidden;
+  const open = dialog ? true : editor.hidden;
+  if (dialog) {
+    selectedTaskDetailId = taskId ?? null;
+    selectedTaskDetailBinding = currentTasksView?.targetBinding ?? null;
+    taskEditorDialogRoot?.querySelectorAll<HTMLElement>("[data-task-editor-dialog]").forEach(candidate => {
+      candidate.hidden = candidate !== dialog;
+    });
+    taskEditorDialogRoot?.toggleAttribute("hidden", false);
+    tasksList?.querySelectorAll<HTMLElement>("[data-task-editor-row]").forEach(candidate => {
+      const selected = candidate.dataset.taskEditorRow === taskId;
+      candidate.classList.toggle("is-selected", selected);
+      candidate.querySelectorAll("[data-task-editor-open]").forEach(button => button.setAttribute("aria-expanded", String(selected)));
+    });
+  }
   if (dialog) {
     dialog.hidden = !open;
   } else {
@@ -8866,6 +9860,7 @@ function taskEditor(
   setCopy(state, deleted ? "tasks.stateDeleted" : taskStateCopyKey(task.state));
   const stateActions = document.createElement("div");
   stateActions.className = "task-state-actions";
+  let taskCompletionToggle: HTMLLabelElement | null = null;
   const detailsButton = document.createElement("button");
   detailsButton.type = "button";
   detailsButton.className = "task-row-action task-editor-toggle";
@@ -8918,7 +9913,8 @@ function taskEditor(
         task.state === "completed" ? "tasks.reopen" : "tasks.complete",
       );
       completionLabel.append(completion, completionText);
-      stateActions.append(completionLabel);
+      taskCompletionToggle = completionLabel;
+      if (surface !== "tasks") stateActions.append(completionLabel);
     } else {
       const restore = document.createElement("button");
       restore.type = "button";
@@ -8967,14 +9963,14 @@ function taskEditor(
   const meta = document.createElement("p");
   meta.className = "task-row-meta";
   meta.append(source, document.createTextNode(" · "), document.createTextNode(listName));
-  meta.append(document.createTextNode(" · "), document.createTextNode(taskScheduleText(task.date, task.time)));
+  meta.append(document.createTextNode(" · "), document.createTextNode(taskScheduleText(task.date, task.time, task.executionEnd)));
   if (task.timePassed) {
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.timePassed")));
   } else if (task.overdue) {
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.overdue")));
   }
   titleLine.append(title, state);
-  if (task.content) {
+  if (task.content && surface !== "tasks") {
     const contentPreview = document.createElement("p");
     contentPreview.className = "task-row-content";
     contentPreview.textContent = task.content;
@@ -8982,6 +9978,7 @@ function taskEditor(
   } else {
     rowMain.append(titleLine, meta);
   }
+  if (surface === "tasks" && taskCompletionToggle) heading.append(taskCompletionToggle);
   heading.append(rowMain, stateActions);
 
   const editorForm = document.createElement("form");
@@ -9054,12 +10051,43 @@ function taskEditor(
   listCaption.append(list);
   listLabel.append(listCaption);
 
-  grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel);
+  const endDateLabel = document.createElement("label");
+  const endDateCaption = document.createElement("span");
+  setCopy(endDateCaption, "tasks.executionEndDate");
+  const endDate = document.createElement("input");
+  endDate.type = "date";
+  endDate.disabled = !editable;
+  endDate.value = draft?.endDate ?? task.executionEnd?.date ?? "";
+  endDate.dataset.taskEndDate = "";
+  endDateCaption.append(endDate);
+  endDateLabel.append(endDateCaption);
+  const endTimeLabel = document.createElement("label");
+  const endTimeCaption = document.createElement("span");
+  setCopy(endTimeCaption, "tasks.executionEndTime");
+  const endTime = document.createElement("input");
+  endTime.type = "time";
+  endTime.disabled = !editable;
+  endTime.value = draft?.endTime ?? task.executionEnd?.time ?? "";
+  endTime.dataset.taskEndTime = "";
+  endTimeCaption.append(endTime);
+  endTimeLabel.append(endTimeCaption);
+  const clearEnd = document.createElement("button");
+  clearEnd.type = "button";
+  clearEnd.className = "secondary-button";
+  clearEnd.disabled = !editable;
+  clearEnd.dataset.taskClearEnd = "";
+  setCopy(clearEnd, "tasks.clearExecutionEnd");
+  clearEnd.addEventListener("click", () => {
+    endDate.value = "";
+    endTime.value = "";
+    stashTaskSurfaceDraft(surface, editorForm);
+  });
+  grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd);
   const footer = document.createElement("div");
   footer.className = "task-editor-footer";
   const schedule = document.createElement("small");
   schedule.className = "task-meta";
-  schedule.textContent = taskScheduleText(task.date, task.time);
+  schedule.textContent = taskScheduleText(task.date, task.time, task.executionEnd);
   const save = document.createElement("button");
   save.type = "submit";
   save.disabled = !editable;
@@ -9074,7 +10102,7 @@ function taskEditor(
     const taskDate = document.createElement("p");
     taskDate.className = "task-meta";
     setCopy(taskDate, "tasks.taskDateDetails", {
-      schedule: taskScheduleText(task.date, task.time),
+      schedule: taskScheduleText(task.date, task.time, task.executionEnd),
     });
     const actual = document.createElement("p");
     actual.className = "task-meta";
@@ -9141,15 +10169,52 @@ function taskEditor(
     dialog.className = "task-editor-dialog";
     dialog.dataset.taskEditorDialog = task.id;
     dialog.dataset.taskEditorSurface = surface;
-    dialog.hidden = true;
+    dialog.hidden = selectedTaskDetailId !== task.id;
+    dialog.setAttribute("role", "region");
+    dialog.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
+    const detailTitle = document.createElement("h3");
+    detailTitle.textContent = task.name;
+    // Keep the existing management actions and provenance in selected details.
+    stateActions.querySelector(".task-completion-toggle")?.remove();
+    detailsButton.remove();
+    editorForm.prepend(detailTitle, meta, stateActions);
     dialog.append(editorForm);
     (taskEditorDialogRoot ?? document.body).append(dialog);
+  }
+  if (surface === "tasks") {
+    row.classList.toggle("is-selected", selectedTaskDetailId === task.id);
+    title.setAttribute("aria-expanded", String(selectedTaskDetailId === task.id));
+    const completion = document.createElement("label");
+    completion.className = "task-completion-toggle";
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.checked = task.state === "completed";
+    check.disabled = !writable || deleted || task.state === "abandoned";
+    if (!deleted && task.state !== "abandoned") {
+      check.dataset.taskStateAction = check.checked ? "pending" : "completed";
+      check.dataset.taskStateTask = task.id;
+    }
+    check.setAttribute("aria-label", `${t(check.checked ? "tasks.reopen" : "tasks.complete")} · ${task.name}`);
+    completion.append(check);
+    const scheduleText = document.createElement("small");
+    scheduleText.className = "task-row-schedule";
+    scheduleText.textContent = taskScheduleText(task.date, task.time, task.executionEnd);
+    heading.replaceChildren(completion, rowMain, scheduleText);
+    rowMain.replaceChildren(titleLine);
+    heading.addEventListener("click", event => {
+      if ((event.target as HTMLElement).closest("button,input,label")) return;
+      toggleTaskEditorDetails(title);
+    });
   }
   row.append(heading);
   if (!dialog) row.append(editorForm);
   const closeEditorDialog = (): void => {
     if (dialog) {
       dialog.hidden = true;
+      selectedTaskDetailId = null;
+      taskEditorDialogRoot?.toggleAttribute("hidden", true);
+      row.classList.remove("is-selected");
+      title.focus();
     } else {
       editorForm.hidden = true;
     }
@@ -9194,12 +10259,14 @@ function taskEditor(
     });
     editorForm.addEventListener("submit", (event) => {
       event.preventDefault();
+      event.stopPropagation();
       stashTaskEditDraft(editorForm);
       void pendingWrites.track(updateTask(task.id, editorForm, surface));
     });
     editorForm.querySelector<HTMLButtonElement>("[data-task-correct-completion]")?.addEventListener(
       "click",
-      () => {
+      (event) => {
+        event.stopPropagation();
         void pendingWrites.track(correctTaskCompletion(task.id, editorForm, surface));
       },
     );
@@ -9241,6 +10308,7 @@ function taskHistorySection(
       : Boolean(view.targetBinding) && view.state !== "error" && view.state !== "unconfigured" && taskOperationCount === 0;
     const includedTaskIds = new Set(openEditors);
     if (surface === "tasks" && taskFocusRequestId) includedTaskIds.add(taskFocusRequestId);
+    if (surface === "tasks" && selectedTaskDetailId) includedTaskIds.add(selectedTaskDetailId);
     const visibleGroups = taskHistoryGroups(tasks, limit, includedTaskIds);
     const visibleCount = visibleGroups.reduce((count, group) => count + group.tasks.length, 0);
     const groups = visibleGroups.map(group => {
@@ -9277,12 +10345,18 @@ function taskHistorySection(
 }
 
 function renderTasks(view: TasksView): void {
+  if (selectedTaskDetailBinding !== view.targetBinding) selectedTaskDetailId = null;
   currentTasksView = view;
+  selectedTaskDetailBinding = view.targetBinding;
+  if (taskFocusRequestId) selectedTaskDetailId = taskFocusRequestId;
   if (taskFocusRequestId) {
     const focused = view.tasks.find(task => task.id === taskFocusRequestId);
     if (focused) {
       taskStateScope = focused.deletedAt ? "deleted" : focused.state;
-      if (view.lists.some(list => list.id === focused.listId && list.archived)) taskScope = "archived";
+      const focusedList = taskListForId(view, focused.listId);
+      taskScope = focusedList?.archived ? "archived"
+        : focusedList?.isSystem ? "inbox"
+        : focusedList ? taskListScopeForId(focused.listId) : "all";
     }
   }
   const scopedListId = taskListIdFromScope(taskScope);
@@ -9303,8 +10377,8 @@ function renderTasks(view: TasksView): void {
     view.lists.filter((list) => list.archived).map((list) => list.id),
   );
   const todayGroups =
-    taskScope === "today" && view.currentDate
-      ? todayTaskGroups(view.tasks, view.currentDate, true, archivedListIds)
+    taskScope === "today" && (currentTaskLivedDate ?? view.currentDate)
+      ? todayTaskGroups(view.tasks, (currentTaskLivedDate ?? view.currentDate)!, true, archivedListIds)
       : null;
   const scopedTasks = todayGroups
     ? [...todayGroups.scheduled, ...todayGroups.overdue].filter(
@@ -9400,24 +10474,32 @@ function renderTasks(view: TasksView): void {
     if (taskCreateContent) taskCreateContent.value = draft?.content ?? "";
     if (taskCreateDate) {
       taskCreateDate.value =
-        draft?.date ?? (taskScope === "today" ? view.currentDate ?? "" : "");
+        draft?.date ?? (taskScope === "today" ? currentTaskLivedDate ?? view.currentDate ?? "" : "");
     }
     if (taskCreateTime) taskCreateTime.value = draft?.time ?? "";
+    if (taskCreateEndDate) taskCreateEndDate.value = draft?.endDate ?? "";
+    if (taskCreateEndTime) taskCreateEndTime.value = draft?.endTime ?? "";
     normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime);
   }
   taskCreateSubmit?.toggleAttribute(
     "disabled",
     !writable || taskScope === "archived",
   );
+  updateTaskCreationControls(view, taskOperationCount > 0);
   clearTaskEditorDialogs("tasks");
   const historyFilter = taskStateScope === "completed" || taskStateScope === "abandoned";
   const history = taskHistorySection(
     historyFilter ? visibleTasks : historyTasks, view, "tasks", !historyFilter,
+    new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
   );
   tasksList?.replaceChildren(
     ...(historyFilter ? [] : visibleTasks.map((task) => taskEditor(task, canOperate, view, "tasks"))),
     ...(history ? [history] : []),
   );
+  const selectedPanel = taskEditorDialogRoot?.querySelector<HTMLElement>(
+    `[data-task-editor-dialog="${CSS.escape(selectedTaskDetailId ?? "")}"]`,
+  );
+  taskEditorDialogRoot?.toggleAttribute("hidden", !selectedPanel);
   if (taskReturnToCollaborationButton) {
     taskReturnToCollaborationButton.hidden = !taskReturnToCollaborationSessionId;
   }
@@ -9455,7 +10537,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-date], [data-task-time], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
@@ -9550,7 +10632,10 @@ function updateTaskOperationState(delta: number): void {
     (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
   });
   updateTaskMutationControls(tasksList, canOperate, busy);
+  updateTaskMutationControls(taskEditorDialogRoot, canOperate, busy);
   updateTaskEditorOperationState("tasks", writable, busy);
+  if (currentTasksView) updateTaskCreationControls(currentTasksView, busy);
+  updateTodayTaskCreationControls();
   if (!busy && taskRefreshQueued) {
     taskRefreshQueued = false;
     if (currentWorkspaceDestination === "tasks") void refreshTasks();
@@ -9570,7 +10655,10 @@ async function refreshTasks(): Promise<void> {
     tasksStatus.dataset.state = "loading";
   }
   try {
-    const view = await window.__TAURI__.core.invoke<TasksView>("tasks_view");
+    const [view, clock] = await Promise.all([
+      window.__TAURI__.core.invoke<TasksView>("tasks_view"),
+      window.__TAURI__.core.invoke<TodayClockView>("today_clock"),
+    ]);
     if (
       !isCurrentTaskResponse(
         taskRequests,
@@ -9582,6 +10670,7 @@ async function refreshTasks(): Promise<void> {
     ) {
       return;
     }
+    currentTaskLivedDate = clock.livedDate;
     renderTasks(view);
   } catch (error) {
     if (
@@ -9605,208 +10694,287 @@ async function refreshTasks(): Promise<void> {
   }
 }
 
-async function createTask(): Promise<boolean> {
-  const loaded = currentTasksView;
+async function refreshTaskScheduleClock(): Promise<void> {
+  if (currentWorkspaceDestination !== "tasks" || taskOperationCount > 0) return;
+  const binding = currentTasksView?.targetBinding;
+  try {
+    const clock = await window.__TAURI__.core.invoke<TodayClockView>("today_clock");
+    if (currentWorkspaceDestination !== "tasks" || currentTasksView?.targetBinding !== binding || taskOperationCount > 0) return;
+    if (clock.livedDate !== currentTaskLivedDate) {
+      currentTaskLivedDate = clock.livedDate;
+      if (currentTasksView) renderTasks(currentTasksView);
+    }
+  } catch { /* Keep the last observed application date; never guess from UTC. */ }
+}
+
+function updateTaskCreationControls(view: TasksView, busy: boolean): void {
+  const binding = view.targetBinding;
+  const attempt = binding ? taskCreateAttempts.get(binding) : undefined;
+  const writable = Boolean(binding) && !["error", "unconfigured"].includes(view.state) &&
+    taskStateScope !== "deleted" && taskScope !== "archived";
+  taskQuickForm?.toggleAttribute("hidden", !writable);
+  if (taskQuickName) {
+    taskQuickName.disabled = busy || !writable || Boolean(attempt);
+    taskQuickName.value = binding ? taskQuickDrafts.get(binding) ?? "" : "";
+  }
+  const schedule = attempt?.origin === "quick" ? attempt.draft : binding ? taskQuickScheduleDrafts.get(binding) : undefined;
+  if (taskQuickDate) taskQuickDate.value = schedule?.date ?? currentTaskLivedDate ?? "";
+  if (taskQuickTime) taskQuickTime.value = schedule?.time ?? "";
+  [taskQuickDate, taskQuickTime, ...Array.from(taskQuickForm?.querySelectorAll<HTMLButtonElement>(".task-schedule-wrap button") ?? [])].forEach(field => {
+    if (field) field.disabled = busy || !writable || Boolean(attempt);
+  });
+  normalizeTaskDateTimeFields(taskQuickDate, taskQuickTime, busy || !writable || Boolean(attempt));
+  updateCompactScheduleLabel("task-quick", taskQuickDate, taskQuickTime);
+  taskQuickSubmit?.toggleAttribute("disabled", busy || !writable || Boolean(attempt));
+  taskNewButton?.toggleAttribute("disabled", busy || !writable || attempt?.origin === "quick");
+  taskQuickRecovery?.toggleAttribute("hidden", attempt?.origin !== "quick");
+  taskQuickRecheck?.toggleAttribute("disabled", busy || !binding);
+  taskQuickRetry?.toggleAttribute("disabled", busy || !writable || attempt?.phase !== "retry-ready");
+  taskQuickEndAttempt?.toggleAttribute("disabled", busy || !attempt || attempt.phase === "unverified");
+  taskCreateForm?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select").forEach(field => {
+    field.disabled = busy || !writable || Boolean(attempt);
+  });
+  if (!busy && !attempt) normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime, !writable);
+  taskCreateSubmit?.toggleAttribute("disabled", busy || !writable || Boolean(attempt));
+  taskCreateCancel?.toggleAttribute("disabled", busy);
+  taskCreateRecheck?.toggleAttribute("hidden", attempt?.origin !== "modal");
+  taskCreateRetry?.toggleAttribute("hidden", attempt?.origin !== "modal");
+  taskCreateEndAttempt?.toggleAttribute("hidden", attempt?.origin !== "modal");
+  taskCreateRecheck?.toggleAttribute("disabled", busy || !binding);
+  taskCreateRetry?.toggleAttribute("disabled", busy || !writable || attempt?.phase !== "retry-ready");
+  taskCreateEndAttempt?.toggleAttribute("disabled", busy || !attempt || attempt.phase === "unverified");
+  renderEndedTaskCreations(view);
+}
+
+function renderEndedTaskCreations(view: TasksView, region = taskEndedCreateRegion, key = view.targetBinding): void {
+  if (!region) return;
+  const ended = key ? taskEndedCreateAttempts.get(key) ?? [] : [];
+  region.hidden = ended.length === 0;
+  region.replaceChildren(...ended.map(attempt => {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    setCopy(summary, "tasks.endedSubmission", {name: attempt.draft.name});
+    const note = document.createElement("p");
+    setCopy(note, attempt.phase === "conflict" ? "tasks.endedConflict" : "tasks.endedAbsent");
+    const fields = document.createElement("dl");
+    const field = (key: InterfaceCopyKey, value: string) => {
+      const label = document.createElement("dt"); setCopy(label, key);
+      const content = document.createElement("dd"); content.textContent = value;
+      fields.append(label, content);
+    };
+    field("tasks.name", attempt.draft.name);
+    field("tasks.content", attempt.draft.content);
+    field("tasks.list", attempt.originalInput.listId === "inbox" ? t("tasks.inbox") : attempt.listName);
+    field("tasks.date", taskScheduleText(attempt.originalInput.date, attempt.originalInput.time, attempt.originalInput.executionEnd));
+    details.append(summary, note, fields);
+    if (view.tasks.some(task => task.id === attempt.originalInput.taskId)) {
+      const existing = document.createElement("button");
+      existing.type = "button"; existing.className = "secondary-button";
+      existing.disabled = taskOperationCount > 0;
+      setCopy(existing, "tasks.viewExisting");
+      existing.addEventListener("click", () => {
+        if (taskOperationCount > 0) return;
+        taskFocusRequestId = attempt.originalInput.taskId;
+        if (attempt.origin === "today") showWorkspaceDestination("tasks");
+        else if (currentTasksView) renderTasks(currentTasksView);
+      });
+      details.append(existing);
+    }
+    return details;
+  }));
+}
+
+function taskCreationContext(today = false) {
+  const surface: TaskSurface = today ? "today" : "tasks";
+  const loaded = taskSurfaceView(surface);
   const binding = loaded?.targetBinding;
-  const status = taskSurfaceStatus("tasks");
-  if (
-    !loaded ||
-    !binding ||
-    loaded.state === "error" ||
-    loaded.state === "unconfigured" ||
-    taskOperationCount > 0
-  ) {
-    setCopyError(status, "tasks.notSaved", t("tasks.refreshFirst"));
-    if (status) status.dataset.state = "error";
-    return false;
+  const date = today ? currentTodayView?.date ?? null : null;
+  const key = binding ? today && date ? todayTaskCreateDraftKey(binding, date) : binding : null;
+  return {surface, loaded, binding, date, key, requests: today ? todayTaskRequests : taskRequests};
+}
+
+function updateTodayTaskCreationControls(): void {
+  const {loaded, key} = taskCreationContext(true);
+  const attempt = key ? taskCreateAttempts.get(key) : undefined;
+  const writable = canMutateTodayTasks({todayOperationCount, taskOperationCount, hasTargetBinding: Boolean(loaded?.targetBinding), state: loaded?.state ?? "unconfigured", isPresentationCurrent: todayPresentationFresh});
+  const busy = taskOperationCount > 0;
+  todayTaskCreateForm?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>("input, textarea, select, button").forEach(field => field.disabled = busy || !writable || Boolean(attempt));
+  normalizeTaskDateTimeFields(todayTaskCreateDate, todayTaskCreateTime, busy || !writable || Boolean(attempt));
+  document.querySelector("#today-task-create-recovery")?.toggleAttribute("hidden", !attempt);
+  document.querySelector("#today-task-create-recheck")?.toggleAttribute("disabled", busy || !loaded?.targetBinding);
+  document.querySelector("#today-task-create-retry")?.toggleAttribute("disabled", busy || !writable || attempt?.phase !== "retry-ready");
+  document.querySelector("#today-task-create-end-attempt")?.toggleAttribute("disabled", busy || !attempt || attempt.phase === "unverified");
+  if (loaded) renderEndedTaskCreations(loaded, document.querySelector("#today-task-create-ended-attempts"), key);
+}
+
+function endTaskCreationAttempt(today = false): void {
+  const {surface, loaded, binding, key} = taskCreationContext(today);
+  const attempt = key ? taskCreateAttempts.get(key) : undefined;
+  if (!loaded || !binding || !key || !attempt || taskOperationCount > 0 || attempt.phase === "unverified") return;
+  taskEndedCreateAttempts.set(key, [...taskEndedCreateAttempts.get(key) ?? [], attempt]);
+  taskCreateAttempts.delete(key);
+  if (today) { todayTaskCreateDrafts.delete(key); todayTaskCreateForm?.reset(); }
+  else {
+    taskQuickDrafts.delete(binding); taskQuickScheduleDrafts.delete(binding);
+    taskCreateDrafts.delete(binding); taskQuickForm?.reset(); taskCreateForm?.reset();
+    taskCreateOpen = false; taskCreateDialog?.close();
   }
-  const name = taskCreateName?.value.trim() ?? "";
-  if (!name) {
-    setCopy(status, "tasks.enterName");
-    if (status) status.dataset.state = "error";
-    taskCreateName?.focus();
-    return false;
+  renderTaskSurface(surface, loaded);
+  setCopy(taskSurfaceStatus(surface), attempt.phase === "conflict" ? "tasks.endedConflict" : "tasks.endedAbsent");
+  (today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
+}
+
+function taskCreateAttemptMatches(task: TaskView, attempt: TaskCreateAttempt): boolean {
+  const input = attempt.input;
+  return task.id === input.taskId && task.name === input.name && task.content === input.content &&
+    task.date === input.date && task.time === input.time && task.listId === input.listId &&
+    (task.executionEnd?.date ?? null) === (input.executionEnd?.date ?? null) &&
+    (task.executionEnd?.time ?? null) === (input.executionEnd?.time ?? null);
+}
+
+function finishTaskCreation(binding: string, attempt: TaskCreateAttempt, view: TasksView): void {
+  const key = attempt.origin === "today" ? todayTaskCreateDraftKey(binding, attempt.surfaceDate!) : binding;
+  taskCreateAttempts.delete(key);
+  if (attempt.origin === "today") {
+    todayTaskCreateDrafts.delete(key); todayTaskCreateForm?.reset();
+  } else if (attempt.origin === "quick") {
+    taskQuickDrafts.delete(binding);
+    taskQuickScheduleDrafts.delete(binding);
+    taskQuickForm?.reset();
+  } else {
+    taskCreateDrafts.delete(binding);
+    taskCreateForm?.reset();
+    taskCreateOpen = false;
+    taskCreateDialog?.close();
   }
-  const normalized = normalizeTaskSchedule(
-    taskCreateDate?.value,
-    taskCreateTime?.value,
-  );
-  const content = taskCreateContent?.value ?? "";
-  const listId = taskCreateList?.value || "inbox";
-  const operationKey = JSON.stringify([binding, "create"]);
-  const taskId = stableTaskOperationId(operationKey, "manual-task");
-  const request = taskRequests.begin();
+  const surface = attempt.origin === "today" ? "today" : "tasks";
+  renderTaskSurface(surface, view);
+  const status = taskSurfaceStatus(surface);
+  setCopy(status, "tasks.saved");
+  if (status) status.dataset.state = "ready";
+}
+
+async function recheckTaskCreation(today = false): Promise<boolean> {
+  const {surface, loaded, binding, key, date, requests} = taskCreationContext(today);
+  const attempt = key ? taskCreateAttempts.get(key) : undefined;
+  if (!loaded || !binding || !key || !attempt || taskOperationCount > 0) return false;
+  const status = today ? todayTaskStatus : attempt.origin === "quick" ? tasksStatus : taskCreateStatus;
+  const request = requests.begin();
   updateTaskOperationState(1);
   try {
-    const view = await window.__TAURI__.core.invoke<TasksView>("create_task", {
-      input: {
-        targetBinding: binding,
-        expectedRevision: loaded.revision,
-        taskId,
-        name,
-        content: content.trim() || null,
-        date: normalized.date,
-        time: normalized.time,
-        listId,
-      },
-    });
-    const responseIsCurrent = taskSurfaceIsCurrent(
-      "tasks",
-      request,
-      binding,
-      view.targetBinding,
-      null,
-      loaded.revision,
-    );
-    const savedTask = view.tasks.find(
-      (task) =>
-        task.id === taskId &&
-        task.name === name &&
-        task.content === (content.trim() || null) &&
-        task.date === normalized.date &&
-        task.time === normalized.time &&
-        task.listId === listId,
-    );
-    const confirmed = taskMutationConfirmed(
-      responseIsCurrent,
-      view.state,
-      Boolean(savedTask),
-    );
-    if (confirmed) {
-      taskOperationIds.delete(operationKey);
-      taskCreateDrafts.delete(binding);
-      if (taskCreateForm) taskCreateForm.reset();
-      taskCreateOpen = false;
-      renderTaskSurface("tasks", view);
-      setCopy(status, "tasks.saved");
-      if (status) status.dataset.state = "ready";
-    } else if (responseIsCurrent) {
-      stashTaskCreateDraft();
-      renderTaskSurface("tasks", view);
-      setCopyError(
-        status,
-        "tasks.notSaved",
-        view.state === "error" ? view.message : t("tasks.confirmationFailed"),
-      );
-      if (status) status.dataset.state = "error";
+    const latest = await window.__TAURI__.core.invoke<TasksView>("tasks_view");
+    if (!taskSurfaceIsCurrent(surface, request, binding, latest.targetBinding, date, loaded.revision) ||
+      !["ready", "empty"].includes(latest.state)) throw Error(latest.message || t("tasks.confirmationFailed"));
+    const existing = latest.tasks.find(task => task.id === attempt.input.taskId);
+    if (existing && taskCreateAttemptMatches(existing, attempt)) {
+      finishTaskCreation(binding, attempt, latest);
+      return true;
     }
-    return view.state !== "error";
+    attempt.phase = existing ? "conflict" : "retry-ready";
+    if (!existing) attempt.input = {...attempt.input, expectedRevision: latest.revision};
+    renderTaskSurface(surface, latest);
+    setCopy(status, existing ? "tasks.createIdentityConflict" : "tasks.retryReady");
+    return false;
   } catch (error) {
-    if (taskSurfaceIsCurrent("tasks", request, binding, binding, null, loaded.revision)) {
-      stashTaskCreateDraft();
-      renderTaskSurface("tasks", loaded);
-      setCopyError(status, "tasks.notSaved", error);
-      if (status) status.dataset.state = "error";
-    }
+    attempt.phase = "unverified";
+    setCopyError(status, "tasks.createUnconfirmed", error);
+    if (status) status.dataset.state = "error";
     return false;
   } finally {
     updateTaskOperationState(-1);
+    if (!taskCreateAttempts.has(key)) (today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
   }
 }
 
-async function createTodayTask(): Promise<boolean> {
-  const todayView = currentTodayView;
-  const loaded = todayView?.tasks;
+async function createTask(quick = false, retry = false): Promise<boolean> {
+  const loaded = currentTasksView;
   const binding = loaded?.targetBinding;
-  const status = taskSurfaceStatus("today");
-  if (
-    !todayView ||
-    !loaded ||
-    !binding ||
-    !canMutateTodayTasks({
-      todayOperationCount,
-      taskOperationCount,
-      hasTargetBinding: Boolean(binding),
-      state: loaded.state,
-      isPresentationCurrent: todayPresentationFresh,
-    })
-  ) {
-    setCopyError(status, "tasks.notSaved", t("tasks.refreshFirst"));
-    if (status) status.dataset.state = "error";
-    return false;
+  const status = quick ? tasksStatus : taskCreateStatus;
+  if (!loaded || !binding || ["error", "unconfigured"].includes(loaded.state) || taskOperationCount > 0 ||
+    taskScope === "archived" || taskStateScope === "deleted") return false;
+  let attempt = taskCreateAttempts.get(binding);
+  if (attempt) {
+    if (!retry || attempt.phase !== "retry-ready" || attempt.origin !== (quick ? "quick" : "modal")) return false;
+  } else {
+    if (retry) return false;
+    const draft = quick ? {
+      name: taskQuickName?.value ?? "", content: "", date: taskQuickDate?.value ?? "",
+      time: taskQuickTime?.value ?? "", endDate: "", endTime: "", listId: taskCreateListDefault(loaded), completionDate: "", completionTime: "",
+    } : readTaskDraft(taskCreateForm!);
+    if (!draft.name.trim()) {
+      setCopy(status, "tasks.enterName");
+      if (status) status.dataset.state = "error";
+      (quick ? taskQuickName : taskCreateName)?.focus();
+      return false;
+    }
+    const normalized = normalizeTaskSchedule(draft.date, draft.time);
+    if ((draft.endDate || draft.endTime) && (!normalized.date || !normalized.time || !draft.endDate || !draft.endTime ||
+      `${draft.endDate}T${draft.endTime}` <= `${normalized.date}T${normalized.time}`)) {
+      setCopy(status, "tasks.invalidExecutionInterval");
+      return false;
+    }
+    const input: TaskCreateInput = {targetBinding: binding, expectedRevision: loaded.revision, taskId: localOperationId("manual-task"),
+      name: draft.name.trim(), content: draft.content.trim() || null, date: normalized.date, time: normalized.time,
+      listId: draft.listId || "inbox", executionEnd: draft.endDate && draft.endTime ? {date: draft.endDate, time: draft.endTime} : null};
+    attempt = {
+      origin: quick ? "quick" : "modal", draft, phase: "unverified", input, originalInput: input,
+      listName: taskListDisplayName(taskListForId(loaded, input.listId) ?? {id: input.listId, name: input.listId, isSystem: false, archived: false}, t("tasks.inbox")),
+    };
+    taskCreateAttempts.set(binding, attempt);
+    if (quick) taskQuickDrafts.set(binding, draft.name);
+    else taskCreateDrafts.set(binding, draft);
   }
-  const name = todayTaskCreateName?.value.trim() ?? "";
-  if (!name) {
-    setCopy(status, "tasks.enterName");
-    if (status) status.dataset.state = "error";
-    todayTaskCreateName?.focus();
-    return false;
-  }
-  const normalized = normalizeTaskSchedule(
-    todayTaskCreateDate?.value,
-    todayTaskCreateTime?.value,
-  );
-  const content = todayTaskCreateContent?.value ?? "";
-  const listId = todayTaskCreateList?.value || "inbox";
-  const operationKey = JSON.stringify([binding, "today-create", todayView.date]);
-  const taskId = stableTaskOperationId(operationKey, "manual-task");
-  const expectedDate = todayView.date;
-  const request = todayTaskRequests.begin();
+  return submitTaskCreation(attempt, loaded, binding);
+}
+
+async function submitTaskCreation(attempt: TaskCreateAttempt, loaded: TasksView, binding: string): Promise<boolean> {
+  const today = attempt.origin === "today";
+  compactScheduleTransactions.get(today ? "today-task-create" : "task-quick")?.invalidate();
+  const surface: TaskSurface = today ? "today" : "tasks";
+  const date = today ? attempt.surfaceDate ?? null : null;
+  const key = today ? todayTaskCreateDraftKey(binding, date!) : binding;
+  const status = today ? todayTaskStatus : attempt.origin === "quick" ? tasksStatus : taskCreateStatus;
+  attempt.phase = "unverified";
+  const request = (today ? todayTaskRequests : taskRequests).begin();
   updateTaskOperationState(1);
   try {
-    const view = await window.__TAURI__.core.invoke<TasksView>("create_task", {
-      input: {
-        targetBinding: binding,
-        expectedRevision: loaded.revision,
-        taskId,
-        name,
-        content: content.trim() || null,
-        date: normalized.date,
-        time: normalized.time,
-        listId,
-      },
-    });
-    const responseIsCurrent = taskSurfaceIsCurrent(
-      "today",
-      request,
-      binding,
-      view.targetBinding,
-      expectedDate,
-      loaded.revision,
-    );
-    const savedTask = view.tasks.find(
-      (task) =>
-        task.id === taskId &&
-        task.name === name &&
-        task.content === (content.trim() || null) &&
-        task.date === normalized.date &&
-        task.time === normalized.time &&
-        task.listId === listId,
-    );
-    const confirmed = taskMutationConfirmed(
-      responseIsCurrent,
-      view.state,
-      Boolean(savedTask),
-    );
-    if (confirmed) {
-      taskOperationIds.delete(operationKey);
-      todayTaskCreateDrafts.delete(todayTaskCreateDraftKey(binding, expectedDate));
-      if (todayTaskCreateForm) todayTaskCreateForm.reset();
-      renderTaskSurface("today", view);
-      setCopy(status, "tasks.saved");
-      if (status) status.dataset.state = "ready";
-    } else if (responseIsCurrent) {
-      stashTodayTaskCreateDraft();
-      renderTaskSurface("today", view);
-      setCopyError(
-        status,
-        "tasks.notSaved",
-        view.state === "error" ? view.message : t("tasks.confirmationFailed"),
-      );
-      if (status) status.dataset.state = "error";
+    const view = await window.__TAURI__.core.invoke<TasksView>("create_task", {input: attempt.input});
+    const responseIsCurrent = taskSurfaceIsCurrent(surface, request, binding, view.targetBinding, date, loaded.revision);
+    if (!taskMutationConfirmed(responseIsCurrent, view.state, view.tasks.some(task => taskCreateAttemptMatches(task, attempt)))) {
+      throw Error(view.state === "error" ? view.message : t("tasks.confirmationFailed"));
     }
-    return confirmed;
+    finishTaskCreation(binding, attempt, view);
+    return true;
   } catch (error) {
-    if (taskSurfaceIsCurrent("today", request, binding, binding, expectedDate, loaded.revision)) {
-      stashTodayTaskCreateDraft();
-      renderTaskSurface("today", loaded);
-      setCopyError(status, "tasks.notSaved", error);
+    if (taskSurfaceIsCurrent(surface, request, binding, binding, date, loaded.revision)) {
+      renderTaskSurface(surface, loaded);
+      setCopyError(status, "tasks.createUnconfirmed", error);
       if (status) status.dataset.state = "error";
     }
     return false;
   } finally {
     updateTaskOperationState(-1);
+    if (!taskCreateAttempts.has(key)) (today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
   }
+}
+
+async function createTodayTask(retry = false): Promise<boolean> {
+  const {loaded, binding, key, date} = taskCreationContext(true);
+  if (!loaded || !binding || !key || !date || !canMutateTodayTasks({todayOperationCount, taskOperationCount, hasTargetBinding: true, state: loaded.state, isPresentationCurrent: todayPresentationFresh})) return false;
+  let attempt = taskCreateAttempts.get(key);
+  if (attempt) {
+    if (!retry || attempt.phase !== "retry-ready") return false;
+  } else {
+    if (retry || !todayTaskCreateForm) return false;
+    const draft = readTaskDraft(todayTaskCreateForm);
+    if (!draft.name.trim()) { setCopy(todayTaskStatus, "tasks.enterName"); todayTaskCreateName?.focus(); return false; }
+    const normalized = normalizeTaskSchedule(draft.date, draft.time);
+    const input: TaskCreateInput = {targetBinding: binding, expectedRevision: loaded.revision, taskId: localOperationId("manual-task"), name: draft.name.trim(), content: draft.content.trim() || null, date: normalized.date, time: normalized.time, listId: draft.listId || "inbox", executionEnd: null};
+    attempt = {origin: "today", surfaceDate: date, draft, input, originalInput: input, phase: "unverified", listName: taskListDisplayName(taskListForId(loaded, input.listId) ?? {id: input.listId, name: input.listId, isSystem: false, archived: false}, t("tasks.inbox"))};
+    taskCreateAttempts.set(key, attempt);
+    todayTaskCreateDrafts.set(key, draft);
+  }
+  return submitTaskCreation(attempt, loaded, binding);
 }
 
 async function createCalendarTask(): Promise<boolean> {
@@ -10206,6 +11374,13 @@ async function updateTask(
     return false;
   }
   const normalized = normalizeTaskSchedule(draft.date, draft.time);
+  if ((draft.endDate || draft.endTime) && (!normalized.date || !normalized.time || !draft.endDate || !draft.endTime ||
+      `${draft.endDate}T${draft.endTime}` <= `${normalized.date}T${normalized.time}`)) {
+    setCopyError(status, "tasks.notSaved", t("tasks.invalidExecutionInterval"));
+    if (status) status.dataset.state = "error";
+    return false;
+  }
+  const executionEnd = draft.endDate && draft.endTime ? {date: draft.endDate, time: draft.endTime} : null;
   const listId = draft.listId ?? task.listId;
   const edit = {
     targetBinding: binding,
@@ -10214,6 +11389,7 @@ async function updateTask(
     content: draft.content.trim() || null,
     date: normalized.date,
     time: normalized.time,
+    executionEnd,
     listId,
   };
   const expectedDate =
@@ -10670,6 +11846,9 @@ function showWorkspaceDestination(
   dailyDate: string | null = null,
 ): void {
   const destinationChanged = currentWorkspaceDestination !== destination;
+  if (destinationChanged || (destination === "today" && selectedTodayDate !== dailyDate)) {
+    compactScheduleTransactions.forEach(transaction => transaction.invalidate());
+  }
   const leavingSettings = currentWorkspaceDestination === "settings" && destination !== "settings";
   const leavingToday = currentWorkspaceDestination === "today" && destination !== "today";
   const leavingTasks = currentWorkspaceDestination === "tasks" && destination !== "tasks";
@@ -10681,6 +11860,8 @@ function showWorkspaceDestination(
     destination === "today" &&
     (destinationChanged || selectedTodayDate !== dailyDate);
   if (leavingToday || changingTodaySelection) {
+    todayUnlocatedOverride = null;
+    todaySidebarReadingPosition = null;
     historicalHabitArrival.clear();
     todayPresentationRequests.invalidate();
     todayClockRequests.invalidate();
@@ -10860,6 +12041,9 @@ renderInterfaceLanguage({ interfaceLanguage: "zh" });
 syncWorkspaceViewportMode();
 window.addEventListener("resize", () => {
   syncWorkspaceViewportMode();
+  if (currentWorkspaceDestination === "calendar") {
+    updateCalendarTaskPreviewRows();
+  }
   if (
     currentWorkspaceDestination === "today" &&
     currentTodayView?.isToday &&
@@ -10868,6 +12052,7 @@ window.addEventListener("resize", () => {
     scheduleTodayAxisFollowScroll();
   }
 });
+installTodayAxisGestures();
 showWorkspaceDestination("today");
 
 selectTodayVaultButton?.addEventListener("click", () => {
@@ -10899,6 +12084,7 @@ function shiftDate(date: string, days: number): string {
 }
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEventListener("click", () => {
+  if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = true;
   collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, -1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
@@ -10906,6 +12092,7 @@ document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEv
 });
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-next")?.addEventListener("click", () => {
+  if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = true;
   collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, 1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
@@ -10913,12 +12100,14 @@ document.querySelector<HTMLButtonElement>("#collaboration-date-next")?.addEventL
 });
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-today")?.addEventListener("click", () => {
+  if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = false;
   collaborationActivityDate = "";
   void refreshCollaborationWorkspace();
 });
 
 collaborationDateInput?.addEventListener("change", () => {
+  if (collaborationSessionCreationAttempt || collaborationSessionCreationPromise) return;
   collaborationActivityDateExplicit = Boolean(collaborationDateInput.value);
   collaborationActivityDate = collaborationDateInput.value;
   void refreshCollaborationWorkspace();
@@ -10973,12 +12162,15 @@ collaborationReasoningEffortSelect?.addEventListener("change", () => {
   void saveCollaborationReasoningEffort();
 });
 
-collaborationMessageDraft?.addEventListener("input", () => {
+function handleCollaborationDraftInput(): void {
   const target = currentCollaborationVoiceTarget();
   if (target) collaborationSubmittedDrafts.delete(collaborationDraftKey(target.sessionId, target.targetDate));
+  collaborationSessionCreationError = null;
   stashCollaborationDraft();
   renderCollaborationWorkspace();
-});
+}
+
+collaborationMessageDraft?.addEventListener("input", handleCollaborationDraftInput);
 
 collaborationLongTermContent?.addEventListener("input", () => {
   const binding = collaborationLongTermContent.dataset.vaultBinding;
@@ -11036,13 +12228,14 @@ collaborationVoiceCancelButton?.addEventListener("click", () => {
   collaborationMessageDraft?.focus();
 });
 
-collaborationMessageDraft?.addEventListener("keydown", (event) => {
-  if (event.isComposing || event.keyCode === 229) return;
-  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-    event.preventDefault();
-    collaborationComposer?.requestSubmit();
-  }
-});
+if (collaborationMessageDraft && collaborationCommandMenu) {
+  collaborationCommandCompletion = initializeCollaborationCommandCompletion(
+    collaborationMessageDraft,
+    collaborationCommandMenu,
+    () => t("collaboration.personalRetroCommand"),
+    () => collaborationComposer?.requestSubmit(),
+  );
+}
 
 collaborationComposer?.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -11179,17 +12372,28 @@ taskFilter?.addEventListener("change", () => {
 });
 
 taskNewButton?.addEventListener("click", () => {
+  if (taskOperationCount > 0 || taskNewButton?.disabled) return;
+  const binding = currentTasksView?.targetBinding;
+  if (taskCreateStatus && (!binding || !taskCreateAttempts.has(binding))) setRawText(taskCreateStatus, "");
   taskCreateOpen = true;
   if (currentTasksView) renderTasks(currentTasksView);
+  taskCreateDialog?.showModal();
   taskCreateName?.focus();
 });
 
-taskCreateCancel?.addEventListener("click", () => {
+taskCreateCancel?.addEventListener("click", () => taskCreateDialog?.close());
+taskCreateDialog?.addEventListener("cancel", (event) => {
+  if (taskOperationCount > 0) event.preventDefault();
+});
+taskCreateDialog?.addEventListener("close", () => {
   taskCreateOpen = false;
   const binding = currentTasksView?.targetBinding;
-  if (binding) taskCreateDrafts.delete(binding);
-  taskCreateForm?.reset();
+  if (binding && !taskCreateAttempts.has(binding)) {
+    taskCreateDrafts.delete(binding);
+    taskCreateForm?.reset();
+  }
   if (currentTasksView) renderTasks(currentTasksView);
+  taskNewButton?.focus();
 });
 
 taskNewListButton?.addEventListener("click", () => {
@@ -11206,6 +12410,88 @@ taskListsManagementClose?.addEventListener("click", () => {
 refreshTasksButton?.addEventListener("click", () => {
   if (taskOperationCount === 0) void refreshTasks();
 });
+
+function updateCompactScheduleLabel(prefix: string, date: HTMLInputElement | null, time: HTMLInputElement | null): void {
+  compactScheduleTransactions.get(prefix)?.validateContext();
+  const button = document.querySelector<HTMLButtonElement>(`#${prefix}-schedule`);
+  if (!button) return;
+  const selectedDate = date?.value || null;
+  const todayDate = prefix === "today-task-create"
+    ? currentTodayView?.isToday ? currentTodayView.date : null
+    : currentTaskLivedDate;
+  const visibleDate = selectedDate === null
+    ? t("tasks.noDate")
+    : selectedDate === todayDate ? t("tasks.scheduleToday") : calendarDateLabel(selectedDate);
+  const visibleLabel = time?.value ? `${visibleDate} · ${time.value}` : visibleDate;
+  const visibleLabelElement = button.querySelector<HTMLElement>(".task-schedule-label");
+  if (visibleLabelElement) visibleLabelElement.textContent = visibleLabel;
+  const accessibleLabel = t("tasks.scheduleSummary", {schedule: taskScheduleText(selectedDate, time?.value || null)});
+  button.title = accessibleLabel;
+  button.setAttribute("aria-label", accessibleLabel);
+  button.dataset.scheduled = String(Boolean(date?.value));
+}
+
+function bindCompactSchedule(prefix: string, date: HTMLInputElement | null, time: HTMLInputElement | null, baseDate: () => string | null, stash: () => void): void {
+  const button = document.querySelector<HTMLButtonElement>(`#${prefix}-schedule`);
+  const picker = document.querySelector<HTMLElement>(`#${prefix}-schedule-picker`);
+  if (!button || !picker || !date || !time) return;
+  let original: {date: string; time: string} | null = null;
+  const context = () => prefix === "task-quick"
+    ? `${currentWorkspaceDestination}:${currentTasksView?.targetBinding ?? ""}:${taskScope}:${currentTaskLivedDate ?? ""}`
+    : `${currentWorkspaceDestination}:${currentTodayView?.tasks.targetBinding ?? ""}:${currentTodayView?.date ?? ""}`;
+  let originalContext: string | null = null;
+  const positionPicker = () => {
+    if (picker.hidden) return;
+    const anchor = button.getBoundingClientRect();
+    const bounds = picker.getBoundingClientRect();
+    picker.style.left = `${Math.max(16, Math.min(anchor.right - bounds.width, window.innerWidth - bounds.width - 16))}px`;
+    picker.style.top = `${Math.max(16, Math.min(anchor.bottom + 6 + bounds.height <= window.innerHeight - 16 ? anchor.bottom + 6 : anchor.top - bounds.height - 6, window.innerHeight - bounds.height - 16))}px`;
+  };
+  window.addEventListener("resize", positionPicker);
+  document.addEventListener("scroll", positionPicker, {capture: true, passive: true});
+  const invalidate = () => {
+    original = null; originalContext = null;
+    picker.hidden = true; button.setAttribute("aria-expanded", "false");
+  };
+  compactScheduleTransactions.set(prefix, {invalidate, validateContext: () => {
+    if (originalContext !== null && originalContext !== context()) invalidate();
+  }});
+  button.closest("form")?.addEventListener("reset", invalidate);
+  const close = (apply: boolean) => {
+    if (!apply && original) { date.value = original.date; time.value = original.time; }
+    invalidate();
+    normalizeTaskDateTimeFields(date, time); stash(); updateCompactScheduleLabel(prefix, date, time); button.focus();
+  };
+  button.addEventListener("click", () => {
+    if (!picker.hidden) { close(false); return; }
+    original = {date: date.value, time: time.value}; originalContext = context();
+    picker.hidden = false; button.setAttribute("aria-expanded", "true"); positionPicker(); date.focus();
+  });
+  ["today", "tomorrow", "undated"].forEach(preset => document.querySelector(`#${prefix}-${preset}`)?.addEventListener("click", () => {
+    const base = baseDate();
+    date.value = preset === "undated" ? "" : base ? shiftDate(base, preset === "tomorrow" ? 1 : 0) : "";
+    normalizeTaskDateTimeFields(date, time); stash(); updateCompactScheduleLabel(prefix, date, time);
+  }));
+  document.querySelector(`#${prefix}-schedule-apply`)?.addEventListener("click", () => close(true));
+  document.querySelector(`#${prefix}-schedule-cancel`)?.addEventListener("click", () => close(false));
+  picker.addEventListener("keydown", event => {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(false); }
+    if (event.key === "Enter" && (event.target === date || event.target === time) && !event.isComposing) { event.preventDefault(); close(true); }
+  });
+  date.addEventListener("change", () => { normalizeTaskDateTimeFields(date, time); stash(); updateCompactScheduleLabel(prefix, date, time); });
+  time.addEventListener("change", () => { stash(); updateCompactScheduleLabel(prefix, date, time); });
+  // Pointer dismissal is a cancel; no Task command occurs in this adapter.
+  document.addEventListener("pointerdown", event => {
+    if (!picker.hidden && !(event.target instanceof Node && button.parentElement?.contains(event.target))) close(false);
+  });
+}
+
+function stashQuickSchedule(): void {
+  const binding = currentTasksView?.targetBinding;
+  if (binding && taskQuickDate && taskQuickTime) taskQuickScheduleDrafts.set(binding, {date: taskQuickDate.value, time: taskQuickTime.value});
+}
+bindCompactSchedule("task-quick", taskQuickDate, taskQuickTime, () => currentTaskLivedDate, stashQuickSchedule);
+bindCompactSchedule("today-task-create", todayTaskCreateDate, todayTaskCreateTime, () => currentTodayView?.date ?? null, stashTodayTaskCreateDraft);
 
 taskCreateDate?.addEventListener("change", () => {
   normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime);
@@ -11226,8 +12512,31 @@ taskCreateList?.addEventListener("change", () => {
   stashTaskCreateDraft();
 });
 taskCreateForm?.addEventListener("input", stashTaskCreateDraft);
+[taskQuickForm, taskCreateForm, todayTaskCreateForm].forEach((form) => {
+  form?.addEventListener("compositionstart", () => composingTaskCreateForms.add(form));
+  form?.addEventListener("compositionend", () => composingTaskCreateForms.delete(form));
+  form?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.isComposing || event.keyCode === 229 || composingTaskCreateForms.has(form))) {
+      event.preventDefault();
+    }
+  });
+});
+taskQuickName?.addEventListener("input", () => {
+  const binding = currentTasksView?.targetBinding;
+  if (binding && taskQuickName) taskQuickDrafts.set(binding, taskQuickName.value);
+});
+[taskQuickEndAttempt, taskCreateEndAttempt].forEach(button => button?.addEventListener("click", () => endTaskCreationAttempt()));
+[taskQuickRecheck, taskCreateRecheck].forEach(button => button?.addEventListener("click", () => void pendingWrites.track(recheckTaskCreation())));
+taskQuickRetry?.addEventListener("click", () => void pendingWrites.track(createTask(true, true)));
+taskCreateRetry?.addEventListener("click", () => void pendingWrites.track(createTask(false, true)));
+taskQuickForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (taskQuickForm && composingTaskCreateForms.has(taskQuickForm)) return;
+  void pendingWrites.track(createTask(true));
+});
 taskCreateForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (taskCreateForm && composingTaskCreateForms.has(taskCreateForm)) return;
   stashTaskCreateDraft();
   void pendingWrites.track(createTask());
 });
@@ -11522,16 +12831,18 @@ todayTaskCreateList?.addEventListener("change", () => {
   if (selected && todayTaskCreateSubmit) {
     setRawText(
       todayTaskCreateSubmit,
-      selected.id === "inbox"
-        ? t("tasks.add")
-        : t("tasks.addToList", { list: selected.name }),
+      t("tasks.quickAdd"),
     );
   }
   stashTodayTaskCreateDraft();
 });
 todayTaskCreateForm?.addEventListener("input", stashTodayTaskCreateDraft);
+document.querySelector("#today-task-create-recheck")?.addEventListener("click", () => void pendingWrites.track(recheckTaskCreation(true)));
+document.querySelector("#today-task-create-retry")?.addEventListener("click", () => void pendingWrites.track(createTodayTask(true)));
+document.querySelector("#today-task-create-end-attempt")?.addEventListener("click", () => endTaskCreationAttempt(true));
 todayTaskCreateForm?.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (todayTaskCreateForm && composingTaskCreateForms.has(todayTaskCreateForm)) return;
   stashTodayTaskCreateDraft();
   void pendingWrites.track(createTodayTask());
 });
@@ -11839,7 +13150,7 @@ todayPhaseButtons.forEach((button, index) => {
 
 todayLocateNowButton?.addEventListener("click", () => scrollTodayAxisToNow());
 
-workspaceInformation?.addEventListener("scroll", () => {
+[workspaceInformation, todayAxisScrollSurface].forEach((surface) => surface?.addEventListener("scroll", () => {
   if (
     currentWorkspaceDestination === "today" &&
     currentTodayView?.isToday &&
@@ -11847,17 +13158,19 @@ workspaceInformation?.addEventListener("scroll", () => {
   ) {
     todayAxisFollowState = onManualScroll(todayAxisFollowState);
   }
-}, { passive: true });
+}, { passive: true }));
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     void refreshTodayClock();
+    void refreshTaskScheduleClock();
     if (currentWorkspaceDestination === "habits") void refreshHabits();
   }
 });
 
 window.setInterval(() => {
   void refreshTodayClock();
+  if (document.visibilityState === "visible") void refreshTaskScheduleClock();
   if (document.visibilityState === "visible" && currentWorkspaceDestination === "habits") {
     void refreshHabits();
   }
