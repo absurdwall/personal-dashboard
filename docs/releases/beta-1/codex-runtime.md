@@ -18,7 +18,7 @@ curl -fsSL https://chatgpt.com/codex/install.sh | sh -s -- --release 0.160.0
 Then open a new Terminal and check:
 
 ```sh
-codex --version
+"$HOME/.local/bin/codex" --version
 ```
 
 The expected version is `codex-cli 0.160.0`. The official installer puts `codex`

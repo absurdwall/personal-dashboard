@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "captureDate": "2026-10-17",
+  "product": "Personal Dashboard",
+  "displayVersion": "1.0.0 Beta 1",
+  "build": "5.0.1",
+  "sourceCommit": "72a96980c081e5fb23010e6ef5ff128a16ed9185",
+  "host": "macOS 27.0.1 arm64",
+  "method": "Existing exact-PID packaged-acceptance window exporter; real candidate, dedicated synthetic Sample Space; no image edits",
+  "finalCandidateRefreshRequired": true,
+  "assets": [
+    {
+      "path": "../../assets/today.png",
+      "sha256": "b8ade6325000fe8a33b408b2b1aeb6ff96f9d338ab6976063d8efaf0bda51310",
+      "bytes": 887494,
+      "width": 3104,
+      "height": 2104,
+      "visuallyInspected": true
+    },
+    {
+      "path": "../../assets/tasks.png",
+      "sha256": "047ce6b0eb2ec2b1eb7b1883b65a9f2f255c743ea4a9f9f4daefc2766f96dda7",
+      "bytes": 729714,
+      "width": 3104,
+      "height": 2104,
+      "visuallyInspected": true
+    },
+    {
+      "path": "../../assets/habits.png",
+      "sha256": "2dc4c2265abcbc5f732bfb22996a0f0416a66c0f83565e0c493e5bfc73d9fc57",
+      "bytes": 774560,
+      "width": 3104,
+      "height": 2104,
+      "visuallyInspected": true
+    }
+  ]
+}

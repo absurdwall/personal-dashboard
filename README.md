@@ -1,7 +1,53 @@
 # Personal Dashboard
 
-Personal Dashboard 2.0 is a private, offline, local-first Daily Record reader
-with Today, Calendar, and Habits destinations.
+把任务、每日安排、日历和习惯放在一个本地优先的 Mac 工作台里。可以先使用自己的本地资料，需要时再连接 Codex 进行在线 AI 协作。无需 Obsidian 或滴答，本地功能不要求 AI 账号。
+
+A local-first Mac workspace for Tasks, daily plans, Calendar and Habits, with optional online AI through a separately installed Codex. Local use needs no AI account, Obsidian or Dida.
+
+## 1.0.0 Beta 1 · 候选预览 / Candidate preview
+
+**尚未公开发布，下载尚未开放。Not publicly released; downloads are closed.**
+首轮为 Apple Silicon / arm64。实际测试主机 macOS 27.0.1；包内 12.0 是最低元数据，较低系统尚未验证。本地 ad-hoc 签名，未 Apple 公证。计划 tag 为 v1.0.0-beta.1；具体候选、build 和校验和见发行说明，公开发布须另行确认。
+
+The first beta targets Apple Silicon Macs. Tested on macOS 27.0.1; lower systems are unvalidated despite the 12.0 package metadata. Locally ad-hoc signed, not notarized. The intended tag is v1.0.0-beta.1. Exact candidate/build/checksum details are in the release notes; publication requires separate approval.
+
+- [网页预览 / Website source](docs/index.html) · [中文安装指南](docs/guide/installation.zh.md) · [English installation](docs/guide/installation.en.md)
+- [中文完整手册](docs/guide/manual.zh.md) · [English manual](docs/guide/manual.en.md)
+- [隐私与资料](docs/guide/privacy.zh.md) · [Privacy and files](docs/guide/privacy.en.md)
+- [已知限制](docs/guide/limitations.zh.md) · [Known limitations](docs/guide/limitations.en.md)
+- [发行说明](docs/guide/release-notes.zh.md) · [Release notes](docs/guide/release-notes.en.md) · [候选打包证据 / Package evidence](docs/releases/beta-1/packaging.md)
+
+## 快速开始 / Quick start
+
+下载开放后：核对明确版本的 DMG 与 SHA256SUMS，拖入“应用程序”，推出 DMG 再打开。首次系统放行按安装指南操作。选择“新建个人空间…”，选位置并命名新文件夹；创建一个任务、一个习惯，再保存一句记录。退出后重开并逐项读回。只浏览日期不会创建日记。
+
+After downloads open: verify the versioned DMG and SHA256SUMS, drag into Applications, eject the DMG and launch the installed copy. Follow the installation guide for the system opening flow. Create a personal space by choosing a location and new folder name. Add one Task, one Habit and a short note, then quit/reopen and read them back. Browsing dates does not create records.
+
+可选 AI：自行安装已核对的独立 Codex CLI 0.160.0，再从 Dashboard 设置中登录自己的 ChatGPT。App 使用独立连接资料，不保证继承其他客户端登录。听写在线处理，先成为可编辑草稿，由你发送；自动早间安排默认关闭，仅 App 运行期间工作。真实模型/麦克风、独立账号及全新 macOS 用户的未执行项见限制，不把协议检查当作完整 AI 验收。
+
+For optional AI, install the checked standalone Codex CLI 0.160.0, then sign in to your own ChatGPT from Dashboard Settings. Dashboard uses independent connection data. Dictation is online editable draft input; automatic morning planning defaults off and runs only while the app is running. See limitations for unperformed real-model, microphone, independent-account and clean-user checks.
+
+## 本地网页评审 / Local website review
+
+无需新增依赖或构建网站服务。静态页面已提交；开发者修改指南 Markdown 后可以重新生成并检查链接：
+
+The static pages are checked in. No additional dependencies or website service are needed. After editing guide Markdown, rebuild and check the local publication boundary:
+
+~~~sh
+node scripts/site/build.mjs
+node scripts/site/check.mjs
+python3 -m http.server 8769 --bind 127.0.0.1 --directory docs
+~~~
+
+打开 http://127.0.0.1:8769/；中英文切换、截图、手册和待确认下载状态均可本地评审。这里没有启用 Pages、部署工作流或公开下载。
+
+Open http://127.0.0.1:8769/ to review both languages, real synthetic screenshots, guides and the closed download gate. Pages, deployment workflows and public downloads are not enabled.
+
+## 开发者与历史工程记录 / Developer and historical records
+
+以下保留原有 2.0 工程、恢复与 cutover 记录，作为历史来源。它们不是当前用户安装手册；当前功能与发行状态以上述 Beta 手册和具体候选证据为准。
+
+The following original 2.0 engineering, recovery and cutover sections are retained as historical records. They are not the current user installation guide. Current behavior and release status are described in the Beta guides and candidate evidence above.
 
 ## Build and install the Mac application
 

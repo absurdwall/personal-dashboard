@@ -1,0 +1,35 @@
+# Known limitations and validation
+
+[Product](../index.html) · [Installation](installation.html) · [Complete manual](manual.html) · [Release notes](release-notes.html)
+
+This first invited beta is a release candidate, not a public release. An invitation is not access control: future public pages, source and downloads can also be accessible to others.
+
+## Checked in this run
+
+On Apple Silicon macOS 27.0.1, isolated synthetic checks covered local business saves/readback, actual quit/relaunch of the previous version, persistent Tasks/Habits/minimal Daily Records and preferences; the new candidate's empty-space creation and local first use; discovery of standalone Codex 0.160.0 with an independent signed-out profile; automation off by default, enabling without a nonexistent old schedule, and a visible signed-out failure. Automated coverage also checks conflicts, drafts, deduplication, runtime compatibility, versioning and package structure.
+
+See the [packaging evidence](../releases/beta-1/packaging.md) for signature, architecture, DMG contents and hashes. These checks do not stand in for unperformed real-user or service acceptance.
+
+## Not yet performed
+
+- Clean macOS-user/other-machine installation and independent ChatGPT-account login: deferred with the maintainer's agreement in this run; not passed.
+- Browser download, quarantine, system opening and anonymous readback of the final public assets.
+- Real model changes with independent readback, real Chinese/English/mixed microphone quality, and the complete live-AI automatic morning-plan flow in this run.
+- Systems below tested macOS 27.0.1. The 12.0 package minimum metadata is not validated support.
+- Complete final-candidate replacement, backup/restore and upgrade acceptance. Later results must name their exact build and bytes.
+
+## Known candidate issues
+
+Current screenshots show build 5.0.1. Without an external snapshot, some English Habits coverage metadata still appears in Chinese; an empty-snapshot message can also be misleading for first use. These will be reviewed together before publication and affected screenshots refreshed. You do not need an external snapshot to create local Habits. A fix or automated test does not turn an unperformed acceptance check into a pass.
+
+## Boundaries
+
+- Apple Silicon Mac only. No Intel, Universal, Windows or mobile release.
+- Local signature, no notarization and no automatic update system.
+- External Codex installation; account, model, quota and online-service availability are conditional. Not every ChatGPT account or arbitrary Codex version is guaranteed to work.
+- Dictation is online draft input. Explicit Cancel discards that input. It is not live voice conversation.
+- Automation checks only while the app process runs. Sleep, quit or failures may prevent it; no wake-up or precise-time delivery guarantee.
+- No new-user Dida onboarding or app-managed cloud sync. Verify local, external and cloud results independently.
+- Recovery material is not a complete backup. Conflicts are not automatically merged and arbitrary downgrades are not guaranteed format-compatible.
+
+Redact [feedback](privacy.html) and include the exact version/build, macOS, chip and reproduction steps.
