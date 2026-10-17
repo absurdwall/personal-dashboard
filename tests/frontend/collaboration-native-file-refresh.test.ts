@@ -114,6 +114,7 @@ test("opening Tasks during a Collaboration turn keeps the source watch and reque
   const navigation = stripTypeScriptTypes(rest.slice(0, /^}\n/m.exec(rest)!.index + 2));
   const context = vm.createContext({collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false, currentWorkspaceDestination: "collaboration", selectedTodayDate: null,
     currentCollaborationSession: { id: "session", targetDate: "2026-10-08", runState: "thinking" }, collaborationStatusTimer: 17,
+    compactScheduleTransactions: new Map(),
     cancelCollaborationVoiceCaptureForSelectionChange() {}, stashCollaborationDraft() {},
     renderDailyPlanReturnNavigation() {}, renderWorkspaceNavigationLanguage() {}, renderWorkspaceContextStatus() {}, renderWorkspaceFeatureArea() {}, renderWorkspaceRailContext() {},
     workspaceDestinationDetails: { tasks: { title: "Tasks", description: "Existing Tasks" } },

@@ -88,7 +88,7 @@ test("chat context opens and closes in place while session controls retain their
       if (this.id === "collaboration-layout") return { width: available, top: 100, bottom: 500 };
       if (this.id === "collaboration-primary-layout") return { width: available, top: 110, bottom: 490 };
       if (this.id === "collaboration-chat-pane") return { width: available - 232, top: 110, bottom: 490 };
-      if (this.id === "collaboration-composer") return { width: 500, top: 400, bottom: 480 };
+      if (this.id === "collaboration-composer") return { width: 500, height: 80, top: 400, bottom: 480 };
       if (this.id === "collaboration-chat-heading") return { width: 500, top: 115, bottom: 145 };
       return { width: available };
     }
@@ -141,8 +141,8 @@ test("chat context opens and closes in place while session controls retain their
     assert.equal(context.hidden, true, "migration keeps Current Work collapsed in the initial conversation view");
     assert.equal(contextToggle.attributes.get("aria-expanded"), "false");
     assert.equal(stored.get("personal-dashboard.collaboration-panels.v1"), oldRoomyChoice, "migration preserves the legacy preference record");
-    assert.equal(context.style.top, "42px");
-    assert.equal(context.style.bottom, "97px");
+    assert.equal(parseFloat(context.style.top) + 110 + chat.clientTop, 145 + 4, "context starts below the chat heading");
+    assert.ok(parseFloat(context.style.paddingBottom) >= 80 + 16, "context content reserves the composer height plus breathing room");
     contextToggle.click();
     assert.equal(context.hidden, false, "Current Work remains available by explicit disclosure");
     contextToggle.click();

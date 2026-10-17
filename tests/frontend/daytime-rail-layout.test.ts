@@ -23,13 +23,19 @@ test('Daytime keeps the shared time axis in the reading column and notes below t
   const tasks = nodes.find(n => n.attrs.includes('class="day-task-panel"'));
   const notes = nodes.find(n => n.attrs.includes('class="today-update-rail"'));
   assert.ok(tasks && notes);
-  assert.equal(notes.parent, tasks.parent, 'Daily note and Day tasks must share the same right column');
+  const side = nodes.find(n => n.attrs.includes('id="today-side-region"'));
+  assert.ok(side);
+  const isInside = (node: typeof tasks, parent: typeof side) => {
+    for (let current = node?.parent; current; current = current.parent) if (current === parent) return true;
+    return false;
+  };
+  assert.ok(isInside(tasks, side) && isInside(notes, side), 'Daily note and Day tasks share the docked right column');
   assert.ok(nodes.indexOf(notes) > nodes.indexOf(tasks), 'Notes must follow tasks');
   const axis = nodes.find(n => n.attrs.includes('id="today-continuous-axis"'));
   assert.ok(axis);
   let ancestor = axis.parent;
   while (ancestor) {
-    assert.notEqual(ancestor, tasks.parent, "Timeline must remain outside the right rail");
+    assert.notEqual(ancestor, side, "Timeline must remain outside the right rail");
     ancestor = ancestor.parent;
   }
 });

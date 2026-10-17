@@ -10995,12 +10995,13 @@ button.habit-cell:focus-visible {
 }
 
 #task-quick-schedule {
-  min-width: 4.6rem;
-  width: auto;
+  min-width: 126px;
+  max-width: 184px;
+  width: fit-content;
   padding-inline: 0.35rem;
 }
 
-#task-quick-schedule .task-schedule-label { max-width: 4rem; }
+#task-quick-schedule .task-schedule-label { max-width: none; }
 
 .task-quick-properties-panel {
   position: absolute;
@@ -11790,3 +11791,12 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 .tasks-create-dialog.calendar-task-create-dialog {
   width: min(30rem, calc(100vw - 2rem));
 }
+
+/* Issue #66: a column header must not treat the horizontal intro basis as height. */
+@media (max-width: 680px) {
+  .collaboration-header > div:first-child { flex-basis: auto; }
+}
+
+/* Issue #66: retain readable entry and schedule targets in the docked Today rail. */
+.today-task-create-form .task-compact-row { flex-wrap: wrap; column-gap: 0.125rem; }
+.today-task-create-form .task-compact-row > input { flex: 1 0 120px; min-height: 32px; }

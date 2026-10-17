@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderer } from "./task-history-harness.ts";
+import { Element, renderer } from "./task-history-harness.ts";
 import * as presentation from "../../frontend/task-presentation.ts";
 
 const pending = { id: "pending", name: "pending", listId: "inbox", state: "pending", deletedAt: null, date: null };
@@ -100,7 +100,7 @@ test("history expansion reads current write availability and pagination keeps ed
   const r = renderer();
   let created = 0;
   const permissions: boolean[] = [];
-  r.taskEditor = (task: any, writable: boolean) => { created++; permissions.push(writable); return { tagName: "task", id: task.id }; };
+  r.taskEditor = (task: any, writable: boolean) => { created++; permissions.push(writable); return Object.assign(new Element("task"), {id: task.id}); };
   r.taskOperationCount = 1;
   r.renderTasks(view(Array.from({ length: 35 }, (_, i) => ({ ...completed, id: `done-${i}` }))));
   r.taskOperationCount = 0;
