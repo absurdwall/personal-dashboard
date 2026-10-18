@@ -6,7 +6,7 @@
 
 **Not publicly released. Downloads are closed.** This content is for a concrete candidate review. Website hosting, the release tag and downloadable assets require the maintainer's confirmation. The parent specification and final release ticket stay open until actual publication.
 
-The release display is **1.0.0 Beta 1**, numeric version **1.0.0**, current declared build **5.0.3**, and intended tag `v1.0.0-beta.1`. The Apple Silicon / arm64 asset is `Personal-Dashboard_1.0.0-beta.1_arm64.dmg` with `SHA256SUMS`. Application identity remains `com.tortillaflat.personal-dashboard`; public numbering does not create another personal-data identity.
+The release display is **1.0.0 Beta 1**, numeric version **1.0.0**, current declared build **5.0.4**, and intended tag `v1.0.0-beta.1`. The Apple Silicon / arm64 asset is `Personal-Dashboard_1.0.0-beta.1_arm64.dmg` with `SHA256SUMS`. Application identity remains `com.tortillaflat.personal-dashboard`; public numbering does not create another personal-data identity.
 
 ## Prepared in this round
 
@@ -18,15 +18,17 @@ The release display is **1.0.0 Beta 1**, numeric version **1.0.0**, current decl
 
 ## Candidate mapping
 
-The initial build 5.0.1 review package came from source `72a96980c081e5fb23010e6ef5ff128a16ed9185`. Screenshots on this site use that candidate with isolated synthetic data. It is not the final public asset. Build 5.0.3 is now declared for the repaired final candidate and awaits its source-bound build and acceptance after review. Build 5.0.2 from source `7eac9b7eb7c475616115889f7e84f4cd2862fd58` passed static package checks, then native QA found a remaining empty-Habits header subtitle. [Its actual receipt](../releases/beta-1/candidate-5.0.2.json) is preserved. Both older candidates remain unchanged.
-
-Initial review DMG SHA-256:
+Build **5.0.3** was actually built from clean source `e8ddeb8aab2d6d7bfc74d805839b633c9065af45` and passed all ten static package checks. Its DMG is **5,508,256 bytes** with SHA-256:
 
 ```text
-097ad1a814c6a30ad954b8bd2c627cdf5383459983dac94450bc5e40603490e4
+d1471e872db7cec648da9564b543c8aca9b545abe3b3557a7530849c35473190
 ```
 
-This hash identifies only that initial package, not a later rebuilt release. Once downloads open, verify the actual bytes against SHA256SUMS on the same explicit tag. There is no download link here yet. Detailed bytes, signature and resources are recorded in the [packaging evidence](../releases/beta-1/packaging.md).
+The [actual package receipt](../releases/beta-1/candidate-5.0.3.json) binds source, toolchain, signed resources and actual hashes. The App's compiled source remains the commit above; later evidence, screenshots and documentation do not silently change the package identity. The three current website images are actual build 5.0.3 native captures, visually inspected and bound to source/executable/hash [provenance](../releases/beta-1/screenshots.json). Same-user functional, restart, isolated 4.0.7 upgrade and manual recovery checks passed on 5.0.3; see the [native receipt](../releases/beta-1/native-5.0.3.json). The user then requested compact Settings category/action buttons and spacing when Vault actions wrap. Build 5.0.4 is prepared for this visual-only repair; its package and desktop/narrow confirmation are pending. The unchanged business-page images stay honestly labeled 5.0.3. Full functional suites are not repeated for the small Settings-only change.
+
+Initial build 5.0.1 came from `72a96980c081e5fb23010e6ef5ff128a16ed9185`. Build 5.0.2 came from `7eac9b7eb7c475616115889f7e84f4cd2862fd58`; it passed package checks and actual same-user Task/Habit/note/conflict/restart checks, but native QA found a remaining empty-Habits header subtitle. [Its package receipt](../releases/beta-1/candidate-5.0.2.json) and [native observations](../releases/beta-1/native-5.0.2.json) remain historical; the defect was repaired for 5.0.3. Neither earlier package is overwritten or relabeled. Initial image hashes remain in the [historical receipt](../releases/beta-1/screenshots-5.0.1.json); current images were actually recaptured from 5.0.3.
+
+Downloads are still closed. Once authorized downloads open, compare the actual bytes with SHA256SUMS from the same explicit tag. No download link is present here. Signature, resources and historical hashes are in the [packaging evidence](../releases/beta-1/packaging.md).
 
 ## Final preparation
 
@@ -36,4 +38,4 @@ The final source repairs local-Habit fixed metadata, first-Habit guidance and pe
 
 The tested host is Apple Silicon macOS 27.0.1. Package metadata declares macOS 12.0, but lower systems have not been validated. No Intel, Windows or mobile package, automatic updater or Apple notarization is included.
 
-[Known limitations](limitations.html) distinguishes real-model, microphone, clean-user, independent-account and final-public-download acceptance. Historical success, a protocol handshake or automated tests do not fill those gaps. Public numeric numbering restarts at 1.0.0 after internal 4.0.7, while the current declared build advances to 5.0.3 and identity/data locations remain stable. Check the relevant candidate's actual replacement/data-retention results; arbitrary downgrades are not guaranteed.
+[Known limitations](limitations.html) distinguishes real-model, microphone, clean-user, independent-account and final-public-download acceptance. Historical success, a protocol handshake or automated tests do not fill those gaps. Public numeric numbering restarts at 1.0.0 after internal 4.0.7, while the current declared build advances to 5.0.4 and identity/data locations remain stable. Check the relevant candidate's actual replacement/data-retention results; arbitrary downgrades are not guaranteed.

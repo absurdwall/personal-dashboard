@@ -13,7 +13,7 @@ package declarations agree with it:
 | --- | --- |
 | Product display | Personal Dashboard · 1.0.0 Beta 1 |
 | Bundle numeric version | 1.0.0 |
-| Bundle build | 5.0.3 |
+| Bundle build | 5.0.4 |
 | Intended release tag | v1.0.0-beta.1 |
 | Stable application identity | com.tortillaflat.personal-dashboard |
 | Architecture | arm64 / aarch64-apple-darwin |
@@ -22,7 +22,7 @@ package declarations agree with it:
 | Minimum OS metadata | macOS 12.0; lower-system runtime acceptance not performed |
 
 The public numbering starts at 1.0.0; the build advances from the previous
-internal 4.0.7 through review candidates 5.0.1 and 5.0.2 to current declared 5.0.3. Apple documents a numeric build with at most four digits
+internal 4.0.7 through review candidates 5.0.1 and 5.0.2 to current declared 5.0.4. Apple documents a numeric build with at most four digits
 in its first component, then two digits in each remaining component. This
 mapping preserves an increasing build without changing the application identity
 or the existing default application-data directory. It does not establish an
@@ -44,7 +44,7 @@ output directory under `.noindex`, and an external `.noindex` Cargo cache:
 
 ```sh
 CARGO_TARGET_DIR=/absolute/cache.noindex/target npm run build:beta -- \
-  --output /absolute/candidates.noindex/build-5.0.3
+  --output /absolute/candidates.noindex/build-5.0.4
 ```
 
 The wrapper refuses an existing output, an uncommitted source tree or a cache
@@ -85,7 +85,7 @@ into both assets and feature. Ordinary product dictation remains available.
 To repeat static verification:
 
 ```sh
-node scripts/release/validate-beta.mjs --candidate /absolute/candidates.noindex/build-5.0.3
+node scripts/release/validate-beta.mjs --candidate /absolute/candidates.noindex/build-5.0.4
 ```
 
 The verifier checks metadata, executable permissions, arm64, system-only dynamic
@@ -125,13 +125,44 @@ Dashboard ChatGPT login; see [runtime evidence](codex-runtime.md). The checked
 Codex 0.160.0 binary has minimum OS metadata 11.0, which is not a lower-OS or
 all-account support guarantee for Dashboard/AI.
 
-## Current final-candidate preparation
+## Current preparation: build 5.0.4
 
-Build 5.0.3 is declared for the final candidate. Its package has not been built
-or accepted yet: the committed repairs and independent review precede that build.
-The [final acceptance record](acceptance.md) will bind its actual source/hash and
-root-owned native results. Initial build 5.0.1 remains historical below; its hashes
-cannot validate build 5.0.3.
+Build 5.0.4 is declared for a user-requested Settings-only sizing/wrap repair.
+It has not been built. Build 5.0.3 completed actual functional, restart, isolated
+4.0.7 upgrade and manual backup/recovery checks; its bytes and native receipt
+remain the baseline. The requested repair retains behavior and requires a new
+source-bound package plus a desktop/narrow visual confirmation, not a full
+repeat of the business suites. [Current acceptance](acceptance.md).
+
+## Preserved accepted functional baseline: build 5.0.3
+
+The 5.0.3 candidate was built from clean committed source
+`e8ddeb8aab2d6d7bfc74d805839b633c9065af45`, tree
+`63da1b0196bc8b6d9cc071919801dff04a22e8d3`, on macOS 27.0.1 arm64.
+All ten actual static checks passed. The source manifest is embedded before
+signing and the executable contains that exact commit. Later evidence-only
+documentation and screenshot commits do not change the candidate or imply it
+contains a later repository head.
+
+| Actual identity | Value |
+| --- | --- |
+| DMG bytes | 5,508,256 |
+| DMG SHA-256 | `d1471e872db7cec648da9564b543c8aca9b545abe3b3557a7530849c35473190` |
+| Executable SHA-256 | `512c4b71af8be6f7e6b9bacda63d8acd34e1eaf271070e825ec4b1a69228b06d` |
+| 387-file App inventory SHA-256 | `1ac68e1c81df323559d64fb69fa199cf820aa07343cf613bb1c1775958147bcf` |
+| Cargo inventory SHA-256 | `403aa737609cbfa7f41b07965aeb7f5d5e7502fda5850a050e25b3f3b3808942` |
+| Rust runtime inventory SHA-256 | `8adba1633961a1ef3e3f37bbc8d9be10c06cd0ec9249890afc093cee96278874` |
+
+The signed App includes 196 Cargo runtime crates / 372 license documents and
+7 Rust standard-library/compiler-builtins documents from exact toolchain commit
+`8bab26f4f68e0e26f0bb7960be334d5b520ea452` (Rust 1.97.1). Metadata,
+executable/architecture, system dynamic dependencies, strict ad-hoc hardened
+signature, source/resource identity, no private paths/diagnostic/runtime/data
+residuals, both legal inventories, read-only DMG and matching mounted App all
+passed. The [actual package receipt](candidate-5.0.3.json) records the results.
+Its [native receipt](native-5.0.3.json) records actual first use, conflicts,
+restart, upgrade and recovery. The [acceptance record](acceptance.md) retains
+unperformed checks separately. Initial 5.0.1 and 5.0.2 bytes are preserved unchanged below.
 
 ## Preserved build 5.0.2 review candidate
 

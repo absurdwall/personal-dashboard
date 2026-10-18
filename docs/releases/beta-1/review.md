@@ -93,5 +93,46 @@ snapshot. The bounded source repair uses the existing local-empty capability
 condition and retains explicit coverage, error and unconfigured behavior.
 The existing rendered first-use test failed on the old English subtitle, then
 passed in both languages after the correction; the error cases also passed
-(**2 tests**). Build 5.0.3 is now declared but has not been built. The new delta
-awaits review and the complete native-QA batch before build authorization.
+(**2 tests**). At this source-review checkpoint, build 5.0.3 was declared but
+not yet built; delta review and the native-QA batch preceded build authorization.
+The subsequent independent reports and actual package receipt follow.
+
+## Independent Standards resolution
+
+Resolution review of commit `9e3f7660b27d7d6ad6346c90acc3f2463096a6f7`, limited to `scripts/prepare-frontend.mjs` and `tests/frontend/frontend-artifacts.test.ts`.
+
+**The single P2 finding is resolved.** The script removes arbitrary output selection, validates all arguments before cleanup, and fixes the only deletion target to the repository-owned `dist` directory. `--output ..` and other unknown arguments now throw before reaching `rm`. The fixture regression checks rejected destinations/unknown arguments preserve ancestor, source, unowned-directory and existing-dist sentinels. The staging regression retains diagnostic opt-in and stale diagnostic removal coverage.
+
+No concrete remainder of the original finding was identified. This was read-only source inspection of the specified commit; no tests, builds, GitHub or GUI actions were performed. Previously reported test results were supplied by the parent and were not rerun here. No broader review or release-acceptance conclusion is implied.
+
+## Independent Spec review of the native subtitle delta
+
+0 actionable Spec findings for `git diff 7eac9b7...f6c009e3b80799ed68d692be64dfba95e4a5feb3`.
+
+The native-QA repair is within #116: “空历史是正常状态” and “中英文使用中性产品术语,” and #117's existing-function/necessary-first-use boundary. `frontend/main.ts:10642` changes only the subtitle selection, using the same existing writable-local-empty guard as the first-Habit help. Explicit display/source ranges retain first priority; unconfigured, read-error and catalog-error states retain their prior subtitle and actionable body. The new translation is fixed product copy and leaves user-authored records untouched. The rendered regression now checks both language subtitles and continued error/coverage behavior; I inspected but did not rerun it.
+
+The build declaration consistently advances to 5.0.3 in release authority, Tauri configuration, site and current guides. The separately preserved 5.0.2 receipt retains its actual source, build and hashes; 5.0.1 screenshots retain their historical identity. Current final hashes/results remain null or notRun, and the native subtitle verification remains pending. This matches #116's “每个重新分发的构建都可区分” and requirement to distinguish passed/unperformed evidence. The no-runtime check remains notRun, so available ChatGPT fallback is not misreported as runtime absence. Publication remains unauthorized with no open download.
+
+No scope expansion, regression or new status misclaim identified in this delta. Read-only inspection only: no build/test, GUI, GitHub write, private-profile access or repository edits.
+
+## Actual package after review
+
+The reviewed repair was integrated at `e8ddeb8aab2d6d7bfc74d805839b633c9065af45`
+and used as the exact clean compiled source for build 5.0.3. All ten static
+package checks passed; see [candidate receipt](candidate-5.0.3.json). Subsequent
+evidence/documentation/screenshot commits preserve those exact App bytes.
+Native results and the later user-requested Settings-only build declaration are
+recorded below; public downloads stay closed.
+
+## User-requested Settings-only polish after native acceptance
+
+Build 5.0.3 completed actual local business, conflict, signed-out runtime, restart,
+isolated 4.0.7 replacement and manual recovery checks; see the
+[native receipt](native-5.0.3.json). The user then requested smaller Settings
+category/action controls and spacing between wrapped Data & Vault actions.
+This bounded CSS/markup repair keeps IDs, behavior, focus/disabled states and
+other pages unchanged. The user explicitly requested no excessive testing:
+production frontend build passed, with no new unit/CSS-pattern tests or repeat
+of full frontend/Rust/native business suites. Current build 5.0.4 is declared;
+its actual package validation and desktop/narrow visual check remain pending.
+The emitted 5.0.3 package and business-page screenshots are preserved honestly.

@@ -11,7 +11,7 @@ website/manual and real acceptance results before confirming public release.
    review findings in the integration PR, retain unrelated user records, and
    commit a clean source tree before building.
 2. Use `release.json` for display/numeric/build/tag/architecture/assets. The final
-   preparation declares build 5.0.3. Generate a new candidate from that exact
+   preparation declares build 5.0.4. Generate a new candidate from that exact
    committed source with the existing build wrapper and shared external cache;
    keep the initial 5.0.1 bytes and receipt historical.
 3. Retain the exact App, DMG, SHA256SUMS, signed resource manifest, actual package
@@ -71,9 +71,10 @@ website/manual and real acceptance results before confirming public release.
 
 ## Final values to bind before publication
 
-The current [acceptance record](acceptance.json) intentionally has null final
-source/hash/URL fields. Fill them from the actual candidate and actual published
-readback; do not prewrite success or invent URLs. Record the exact asset IDs,
+The current [acceptance record](acceptance.json) retains actual build 5.0.3
+source/native/hash receipts and declares the Settings-only build 5.0.4 pending;
+its final package and public URL fields remain null. Fill pending native and public
+readback fields only from actual results; do not prewrite success or invent URLs. Record the exact asset IDs,
 source reachability, Pages/Release URLs, anonymous checksum and Gatekeeper result
 in the completed publication receipt.
 

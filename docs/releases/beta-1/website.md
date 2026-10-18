@@ -26,27 +26,40 @@ recapture affected screenshots rather than silently relabel these images.
 
 ## Candidate and screenshot mapping
 
-The preview describes **1.0.0 Beta 1**, current declared build **5.0.3**, intended
-tag v1.0.0-beta.1. The actual screenshot candidate was built from
-72a96980c081e5fb23010e6ef5ff128a16ed9185; its signed manifest was read directly.
-The initial DMG's exact bytes and SHA-256 remain in [packaging.md](packaging.md).
+The preview describes **1.0.0 Beta 1**, current declaration **5.0.4**, intended
+tag v1.0.0-beta.1. The actual 5.0.3 business-page screenshot candidate has compiled source
+`e8ddeb8aab2d6d7bfc74d805839b633c9065af45`; the executable SHA-256 is
+`512c4b71af8be6f7e6b9bacda63d8acd34e1eaf271070e825ec4b1a69228b06d`.
+The [package receipt](candidate-5.0.3.json) passed all ten static checks. Native
+first use, restart, isolated upgrade and recovery passed on 5.0.3. The current
+5.0.4 declaration covers only the user-requested Settings control sizing/wrap
+repair; build and desktop/narrow visual confirmation remain pending. The three
+unchanged business-page images retain their actual 5.0.3 identity. Later website/evidence commits
+do not change the embedded App source or candidate bytes.
 
-All three product images are direct window captures from that native App,
-using a separate synthetic profile and Sample Space. Only synthetic Task,
-Habit, plan and note examples were present. No account/settings/private path
-panel, menu history, personal Vault or personal login appears in the images.
-The captured PNGs retain native alpha/shadow margins and were not regenerated
-or retouched. [screenshots.json](screenshots.json) records source, build,
-dimensions, actual hashes and inspected bytes. These are candidate illustrations,
-not installed sample data, AI output acceptance or final-package certification.
+All three current product images are actual window captures from build 5.0.3,
+with a fresh isolated profile and synthetic Sample Space. They show only synthetic
+Task, Habit, plan and note examples. No account/settings/private path panel, menu
+history, personal Vault or login appears. Native alpha/shadow margins remain;
+there was no image generation, retouching or relabeling. The fixed English category
+and local-Habit coverage text are visible. Chinese plan-period labels inside the
+synthetic record remain user-authored content.
 
-The English Habits image retains the initial 5.0.1 screenshot identity. The
-bounded copy repairs are implemented for declared final build 5.0.3; its actual
-build/native checks and refreshed captures are still pending. Historical images
-are not relabeled as the repaired candidate.
-No live AI/microphone result was invented to fill a screenshot.
+[screenshots.json](screenshots.json) binds source/tree, executable and signed
+manifest SHA-256, capture date, dimensions and actual image bytes. All three
+images were visually inspected; their hashes, PNG dimensions and source manifest
+were independently rechecked before copying into `docs/assets`. The screenshot
+process normally quit, and no auth file was present before or after. This is
+candidate illustration, not live AI/microphone or clean-user acceptance.
 
-## Documentation reconciliation
+The original #119 delivery used initial build 5.0.1 from
+`72a96980c081e5fb23010e6ef5ff128a16ed9185`. Its original image hashes and
+repository commit remain in [screenshots-5.0.1.json](screenshots-5.0.1.json);
+paths in that historical receipt refer to the named historical repository commit.
+The 5.0.1 and 5.0.2 packages remain preserved. Their hashes do not validate the
+new images or build 5.0.3.
+
+## Original #119 documentation reconciliation
 
 The manual draft was audited against merged behavior, with these corrections:
 
@@ -70,7 +83,7 @@ Apple's current opening page were re-read; the pinned CLI invocation is backed
 by the separately recorded actual 0.160.0 installation, not inferred from a
 generic latest installer.
 
-## Checks actually performed
+## Original #119 checks actually performed
 
 - Local publication checker initially failed for absent pages/assets, then
   passed with **6 bilingual pages and 179 real local links/assets**. It checks
@@ -95,3 +108,13 @@ repository. The local preview server is retained for the integration review.
 Final anonymous asset access, public download, Gatekeeper, live AI/microphone
 and user-accepted clean-environment deferrals remain with #120; this ticket
 does not establish public release or authorize closing #116/#120.
+
+## Final 5.0.3 evidence refresh
+
+All three replacement image files were inspected and their actual hashes, byte
+counts and PNG dimensions matched the final-candidate provenance. The exact
+compiled source, executable and signed manifest also matched build 5.0.3.
+Static site regeneration and its real local link/asset checks pass with the
+download control closed. Final browser inspection and native acceptance are
+tracked separately in [acceptance.md](acceptance.md); this refresh does not
+claim public release, live AI or clean-user acceptance.

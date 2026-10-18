@@ -210,8 +210,10 @@
                       <p data-i18n="settings.compatibleVault">新建空白个人空间，或选择已有兼容 Vault。无需安装 Obsidian；已有 Vault 需要 .obsidian 与 life/Journal/Daily 格式目录。</p>
                       <p id="settings-vault-path" class="settings-vault-path" data-i18n="settings.noVault">尚未选择 Vault。</p>
                       <p id="settings-vault-status" class="settings-status" role="status" aria-live="polite" data-i18n="settings.waitingLocal">等待读取本地状态。</p>
-                      <button id="settings-create-space" type="button" data-i18n="settings.createSpace">新建个人空间…</button>
-                      <button id="settings-select-vault" type="button" data-i18n="settings.changeVault">更换 Vault…</button>
+                      <div class="background-image-actions">
+                        <button id="settings-create-space" type="button" data-i18n="settings.createSpace">新建个人空间…</button>
+                        <button id="settings-select-vault" type="button" class="secondary-button" data-i18n="settings.changeVault">更换 Vault…</button>
+                      </div>
                     </div>
                     <div class="setting-row">
                       <h3 data-i18n="settings.driveHeading">使用 Google Drive 中的 Vault</h3>
