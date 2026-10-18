@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "displayVersion": "1.0.0 Beta 1",
   "version": "1.0.0",
-  "build": "5.0.2",
+  "build": "5.0.3",
   "target": "aarch64-apple-darwin",
   "candidate": {
-    "status": "waiting-for-review-fix-verification-before-build",
+    "status": "waiting-for-native-qa-batch-and-delta-review-before-build",
     "sourceCommit": null,
     "appInventorySha256": null,
     "executableSha256": null,
@@ -70,7 +70,7 @@
     },
     "siteStaticCheck": {
       "bilingualPages": 6,
-      "localLinksAndAssets": 183,
+      "localLinksAndAssets": 185,
       "downloadGate": "closed"
     },
     "finalBrowserAndImageRefresh": "pending",
@@ -85,7 +85,18 @@
         "skipped": 0
       },
       "diagnosticThenProductionBuild": "passed",
-      "parentVerification": "pending"
+      "parentVerification": "passed before build 5.0.2"
+    },
+    "nativeSubtitleRepair": {
+      "affectedRenderedTests": {
+        "passed": 2,
+        "failed": 0
+      },
+      "redObserved": true,
+      "finalCandidateNativeVerification": "pending"
     }
-  }
+  },
+  "historicalCandidateReceipts": [
+    "candidate-5.0.2.json"
+  ]
 }

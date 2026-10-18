@@ -1297,6 +1297,7 @@ const interfaceCopies = {
   "habits.futureBoundary": { zh: "未来日期不能记录已经发生的事实。", en: "Facts that already happened cannot be recorded on a future date." },
   "habits.range": { zh: "12 周显示窗口 · {display} · 来源覆盖 · {range}", en: "12-week display · {display} · Source coverage · {range}" },
   "habits.waitingSnapshot": { zh: "等待有效的 bounded snapshot。", en: "Waiting for a valid bounded snapshot." },
+  "habits.localEmptySubtitle": { zh: "添加第一个本地习惯。", en: "Create your first local habit." },
   "habits.noHabitsYet": { zh: "尚无习惯。", en: "No habits yet." },
   "habits.localEmptyHelp": { zh: "点击“添加习惯”开始。本地习惯无需外部快照或滴答。", en: "Choose Add habit to begin. Local habits do not require an external snapshot or Dida." },
   "habits.noHabitsSnapshot": { zh: "尚无可显示的 Habits 快照。", en: "No Habits snapshot is available to display." },

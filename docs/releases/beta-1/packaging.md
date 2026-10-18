@@ -13,7 +13,7 @@ package declarations agree with it:
 | --- | --- |
 | Product display | Personal Dashboard · 1.0.0 Beta 1 |
 | Bundle numeric version | 1.0.0 |
-| Bundle build | 5.0.2 |
+| Bundle build | 5.0.3 |
 | Intended release tag | v1.0.0-beta.1 |
 | Stable application identity | com.tortillaflat.personal-dashboard |
 | Architecture | arm64 / aarch64-apple-darwin |
@@ -22,7 +22,7 @@ package declarations agree with it:
 | Minimum OS metadata | macOS 12.0; lower-system runtime acceptance not performed |
 
 The public numbering starts at 1.0.0; the build advances from the previous
-internal 4.0.7 to initial 5.0.1 and current declared 5.0.2. Apple documents a numeric build with at most four digits
+internal 4.0.7 through review candidates 5.0.1 and 5.0.2 to current declared 5.0.3. Apple documents a numeric build with at most four digits
 in its first component, then two digits in each remaining component. This
 mapping preserves an increasing build without changing the application identity
 or the existing default application-data directory. It does not establish an
@@ -44,7 +44,7 @@ output directory under `.noindex`, and an external `.noindex` Cargo cache:
 
 ```sh
 CARGO_TARGET_DIR=/absolute/cache.noindex/target npm run build:beta -- \
-  --output /absolute/candidates.noindex/build-5.0.2
+  --output /absolute/candidates.noindex/build-5.0.3
 ```
 
 The wrapper refuses an existing output, an uncommitted source tree or a cache
@@ -85,7 +85,7 @@ into both assets and feature. Ordinary product dictation remains available.
 To repeat static verification:
 
 ```sh
-node scripts/release/validate-beta.mjs --candidate /absolute/candidates.noindex/build-5.0.2
+node scripts/release/validate-beta.mjs --candidate /absolute/candidates.noindex/build-5.0.3
 ```
 
 The verifier checks metadata, executable permissions, arm64, system-only dynamic
@@ -127,11 +127,28 @@ all-account support guarantee for Dashboard/AI.
 
 ## Current final-candidate preparation
 
-Build 5.0.2 is declared for the final candidate. Its package has not been built
+Build 5.0.3 is declared for the final candidate. Its package has not been built
 or accepted yet: the committed repairs and independent review precede that build.
 The [final acceptance record](acceptance.md) will bind its actual source/hash and
 root-owned native results. Initial build 5.0.1 remains historical below; its hashes
-cannot validate build 5.0.2.
+cannot validate build 5.0.3.
+
+## Preserved build 5.0.2 review candidate
+
+Build 5.0.2 was actually built from clean source
+`7eac9b7eb7c475616115889f7e84f4cd2862fd58` and passed all ten static
+package checks on macOS 27.0.1 arm64. The DMG is **5,508,466 bytes**, SHA-256
+`cb9f719725e26e50ad53c7fa7d34082dd5f66a9c40b9c506e64f85fdb210d523`.
+Its 387-file App includes 196 Cargo runtime crates / 372 license documents and
+7 Rust standard-library/compiler-builtins documents. The exact toolchain,
+App/executable/legal hashes and actual static report are retained in
+[candidate-5.0.2.json](candidate-5.0.2.json).
+
+Native first-use QA found that the writable empty Habits header still said it
+was waiting for an external bounded snapshot despite the repaired local-first
+body. The source correction advances the next candidate to build 5.0.3. Both
+older candidates remain unchanged; static validation is not final native or
+publication acceptance. Root-owned functional checks on 5.0.2 remain separate.
 
 ## Acceptance boundary
 
