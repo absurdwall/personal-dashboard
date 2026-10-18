@@ -13,7 +13,7 @@ package declarations agree with it:
 | --- | --- |
 | Product display | Personal Dashboard · 1.0.0 Beta 1 |
 | Bundle numeric version | 1.0.0 |
-| Bundle build | 5.0.1 |
+| Bundle build | 5.0.2 |
 | Intended release tag | v1.0.0-beta.1 |
 | Stable application identity | com.tortillaflat.personal-dashboard |
 | Architecture | arm64 / aarch64-apple-darwin |
@@ -22,7 +22,7 @@ package declarations agree with it:
 | Minimum OS metadata | macOS 12.0; lower-system runtime acceptance not performed |
 
 The public numbering starts at 1.0.0; the build advances from the previous
-internal 4.0.7 to 5.0.1. Apple documents a numeric build with at most four digits
+internal 4.0.7 to initial 5.0.1 and current declared 5.0.2. Apple documents a numeric build with at most four digits
 in its first component, then two digits in each remaining component. This
 mapping preserves an increasing build without changing the application identity
 or the existing default application-data directory. It does not establish an
@@ -37,16 +37,19 @@ included in `Contents/Resources/release-manifest.json` before signing.
 ## Build and verify
 
 Use an Apple Silicon Mac with the existing repository build prerequisites and
-locked dependencies installed. Commit source changes first. Choose a **new**
+locked dependencies installed. The checked Rust toolchain is 1.97.1, source
+commit `8bab26f4f68e0e26f0bb7960be334d5b520ea452`; exact-commit compiler-builtins
+notices are retained for that toolchain. Commit source changes first. Choose a **new**
 output directory under `.noindex`, and an external `.noindex` Cargo cache:
 
 ```sh
 CARGO_TARGET_DIR=/absolute/cache.noindex/target npm run build:beta -- \
-  --output /absolute/candidates.noindex/build-5.0.1
+  --output /absolute/candidates.noindex/build-5.0.2
 ```
 
 The wrapper refuses an existing output, an uncommitted source tree or a cache
-outside `.noindex`. It generates a source-bound manifest, collects licenses,
+outside `.noindex`. A fresh external cache is created before the candidate output
+is consumed; an unusable cache fails without occupying that output. It generates a source-bound manifest, collects licenses,
 remaps source/Cargo/Rust toolchain/cache paths, and uses Tauri's native App and
 DMG bundlers with `--locked`. It copies the exact App/DMG into the candidate
 output and verifies the resulting bytes. A changed redistributable candidate
@@ -64,6 +67,16 @@ App includes `THIRD_PARTY_LICENSES/ACKNOWLEDGMENTS.md`, its dependency/source
 inventory and full license documents. These grants cover dependencies; this
 work does not invent a license for the application source.
 
+Rust's precompiled standard library is separate from that Cargo closure. The
+wrapper also preserves the installed toolchain's `COPYRIGHT-library.html` and
+full MIT/Apache/Unicode/BSD/LLVM terms, plus the exact Rust source revision's
+compiler-builtins 0.1.160 license. Its manifest records compiler commit/target
+and every document hash; the signed source manifest binds both legal inventories.
+The upstream standard-library corpus includes other-target/build notices and
+is not represented as an exact Darwin-only package census. The 15 MB compiler
+copyright corpus is not bundled. A missing or mismatched runtime notice fails
+the build preparation; no license document is silently invented or downloaded.
+
 Production frontend staging is recreated before compilation, excludes the
 voice diagnostic HTML/JS, and native diagnostic IPC requires the explicit
 `diagnostic-voice-gate` feature. The existing diagnostic acceptance script opts
@@ -72,12 +85,13 @@ into both assets and feature. Ordinary product dictation remains available.
 To repeat static verification:
 
 ```sh
-node scripts/release/validate-beta.mjs --candidate /absolute/candidates.noindex/build-5.0.1
+node scripts/release/validate-beta.mjs --candidate /absolute/candidates.noindex/build-5.0.2
 ```
 
 The verifier checks metadata, executable permissions, arm64, system-only dynamic
 links, strict ad-hoc signature validity, source manifest, license-file hashes,
-private-path/diagnostic/runtime/data absence and actual SHA-256. It mounts the
+private-path/diagnostic/runtime/data absence, both Cargo and Rust-runtime license
+inventories, and actual SHA-256. It mounts the
 DMG read-only without browsing, confirms the Applications link and byte-identical
 App inventory, then detaches. `SHA256SUMS` identifies the DMG; the separate App
 inventory hash describes its files and modes, not a standard hash of a directory.
@@ -110,6 +124,14 @@ Obsidian. Optional AI uses a separately installed compatible Codex and your own
 Dashboard ChatGPT login; see [runtime evidence](codex-runtime.md). The checked
 Codex 0.160.0 binary has minimum OS metadata 11.0, which is not a lower-OS or
 all-account support guarantee for Dashboard/AI.
+
+## Current final-candidate preparation
+
+Build 5.0.2 is declared for the final candidate. Its package has not been built
+or accepted yet: the committed repairs and independent review precede that build.
+The [final acceptance record](acceptance.md) will bind its actual source/hash and
+root-owned native results. Initial build 5.0.1 remains historical below; its hashes
+cannot validate build 5.0.2.
 
 ## Acceptance boundary
 

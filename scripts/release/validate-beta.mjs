@@ -58,6 +58,14 @@ for(const crate of licenses.crates) {
   assert(crate.documents.length>0,`Missing license documents for ${crate.name}`);
   for(const document of crate.documents) assert(sha(readFileSync(join(app,'Contents/Resources/THIRD_PARTY_LICENSES',document.path)))===document.sha256,`License hash mismatch for ${crate.name}`);
 }
+const runtimeNoticeDirectory=join(app,'Contents/Resources/THIRD_PARTY_LICENSES/rust-standard-library');
+const runtimeManifestBytes=readFileSync(join(runtimeNoticeDirectory,'manifest.json'));
+const runtimeNotices=JSON.parse(runtimeManifestBytes);
+assert(runtimeNotices.rustcCommit===manifest.toolchain.rustcCommit && runtimeNotices.rustcVersion===manifest.toolchain.rustc && runtimeNotices.target===release.target,'Rust runtime notice identity differs from the built source manifest');
+assert(runtimeNotices.documents.length>=7,'Rust runtime notice corpus is incomplete');
+assert(sha(runtimeManifestBytes)===manifest.licenses.rustRuntimeInventorySha256,'Rust runtime inventory differs from the signed source manifest');
+assert(sha(readFileSync(join(app,'Contents/Resources/THIRD_PARTY_LICENSES/runtime-dependencies.json')))===manifest.licenses.cargoInventorySha256,'Cargo inventory differs from the signed source manifest');
+for(const document of runtimeNotices.documents){const bytes=readFileSync(join(runtimeNoticeDirectory,document.path));assert(bytes.length===document.bytes && sha(bytes)===document.sha256,`Rust runtime notice mismatch: ${document.path}`);}
 run('/usr/bin/hdiutil',['verify',dmg]);
 const mount=join(candidate,'mount.noindex');mkdirSync(mount,{recursive:true});
 let mounted=false;
@@ -79,6 +87,6 @@ const executableSha256=sha(readFileSync(executable)),dmgSha256=sha(readFileSync(
 const appInventorySha256=sha(JSON.stringify(rows));
 writeFileSync(join(candidate,'app-inventory.json'),JSON.stringify(rows,null,2)+'\n');
 writeFileSync(join(candidate,release.checksumAsset),`${dmgSha256}  ${release.dmgAsset}\n`);
-const report={schemaVersion:1,sourceCommit:manifest.sourceCommit,release,checkedAtUtc:new Date().toISOString(),host:{system:run('/usr/bin/sw_vers',['-productVersion']),build:run('/usr/bin/sw_vers',['-buildVersion']),architecture:run('/usr/bin/uname',['-m'])},checks:{bundleMetadata:'passed',architecture:'passed',dynamicDependencies:'passed',adHocSignature:'passed',privatePathAndDiagnosticScan:'passed',licenseDocuments:'passed',readOnlyDmgMount:'passed',applicationsLink:'passed',mountedAppMatchesCandidate:'passed'},dynamicDependencies,dmgEntries,licenseCrates:licenses.crates.length,hashes:{executableSha256,appInventorySha256,dmgSha256,licenseManifestSha256:sha(readFileSync(join(app,'Contents/Resources/THIRD_PARTY_LICENSES/runtime-dependencies.json')))},notRun:['fresh macOS user installation (accepted deferral)','independent ChatGPT login (accepted deferral)','Internet-quarantine Gatekeeper installation','lower macOS runtime acceptance','replacement installation and data continuity','real model, microphone and automatic morning planning']};
+const report={schemaVersion:1,sourceCommit:manifest.sourceCommit,release,checkedAtUtc:new Date().toISOString(),host:{system:run('/usr/bin/sw_vers',['-productVersion']),build:run('/usr/bin/sw_vers',['-buildVersion']),architecture:run('/usr/bin/uname',['-m'])},checks:{bundleMetadata:'passed',architecture:'passed',dynamicDependencies:'passed',adHocSignature:'passed',privatePathAndDiagnosticScan:'passed',licenseDocuments:'passed',rustRuntimeNotices:'passed',readOnlyDmgMount:'passed',applicationsLink:'passed',mountedAppMatchesCandidate:'passed'},dynamicDependencies,dmgEntries,licenseCrates:licenses.crates.length,rustRuntimeDocuments:runtimeNotices.documents.length,hashes:{executableSha256,appInventorySha256,dmgSha256,licenseManifestSha256:sha(readFileSync(join(app,'Contents/Resources/THIRD_PARTY_LICENSES/runtime-dependencies.json')))},notRun:['fresh macOS user installation (accepted deferral)','independent ChatGPT login (accepted deferral)','Internet-quarantine Gatekeeper installation','lower macOS runtime acceptance','replacement installation and data continuity','physical network-disconnection test','real model, microphone and automatic morning planning']};
 writeFileSync(join(candidate,'package-validation.json'),JSON.stringify(report,null,2)+'\n');
 console.log(JSON.stringify(report,null,2));

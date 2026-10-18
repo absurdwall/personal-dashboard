@@ -7024,8 +7024,7 @@ function shortRecordArticle(record: ShortRecordView, editable = true): HTMLEleme
   const body = document.createElement("p");
   body.textContent = record.text;
   const meta = document.createElement("small");
-  setCopy(meta, "today.recordMeta", {
-    category: t(record.category === "exercise" ? "today.exercise" : "today.ordinaryRecord"),
+  setCopy(meta, record.category === "exercise" ? "today.exerciseRecordMeta" : "today.ordinaryRecordMeta", {
     date: record.date,
     createdAt: record.createdAt,
   });
@@ -9840,8 +9839,7 @@ function habitExerciseRecordArticle(record: ShortRecordView): HTMLElement {
   const text = document.createElement("p");
   text.textContent = record.text;
   const meta = document.createElement("small");
-  setCopy(meta, "today.recordMeta", {
-    category: t("today.exercise"),
+  setCopy(meta, "today.exerciseRecordMeta", {
     date: record.date,
     createdAt: record.createdAt,
   });
@@ -10616,6 +10614,8 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
       ? applicationMessage(view.catalogError)
       : t("habits.add");
   }
+  const localEmpty = view.state === "missing" && view.habits.length === 0 &&
+    Boolean(view.catalogTargetBinding) && !view.catalogError && !view.readError;
   renderWorkspaceRailContext("habits");
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   if (habitsStatus) {
@@ -10631,6 +10631,8 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
       setCopy(habitsStatus, "habits.namesConfigInvalid");
     } else if (view.readError) {
       setCopyError(habitsStatus, "habits.loadFailed", view.readError);
+    } else if (localEmpty) {
+      setCopy(habitsStatus, "habits.localEmptyHelp");
     } else {
       setAppMessage(habitsStatus, view.message);
     }
@@ -10657,11 +10659,13 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
     if (habitsEmptyHeading) {
       setCopy(
         habitsEmptyHeading,
-        view.state === "unconfigured" ? "settings.noVault" : "habits.noHabitsSnapshot",
+        view.state === "unconfigured" ? "settings.noVault" : localEmpty ? "habits.noHabitsYet" : "habits.noHabitsSnapshot",
       );
     }
     if (view.readError) {
       setCopyError(habitsEmptyCopy, "habits.loadFailed", view.readError);
+    } else if (localEmpty) {
+      setCopy(habitsEmptyCopy, "habits.localEmptyHelp");
     } else {
       setAppMessage(habitsEmptyCopy, view.message);
     }

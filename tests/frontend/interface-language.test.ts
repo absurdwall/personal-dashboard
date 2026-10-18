@@ -598,3 +598,18 @@ test("actual native Dida readback diagnostic suffix localizes while exact source
   assert.equal(localizeCollaborationDiagnostic(native, "en"), native);
   assert.equal(localizeCollaborationDiagnostic(native, "zh"), `${localizeCollaborationDiagnostic(prefix, "zh")} 来源对象 ID：source-id-a, source-id-b。`);
 });
+
+test('local-only Habit fixed metadata changes language without translating unknown personal text', () => {
+  const messages = [
+    ['本地完成按 lived day 记录；外部来源覆盖仍未知。', 'Local completions are recorded by lived day; external source coverage remains unknown.'],
+    ['Habits 来源快照尚未生成；本地 Habit 定义与完成记录可独立使用。', 'No Habit source snapshot has been generated. Local Habit definitions and completions remain available.'],
+  ];
+  for (const [source, expected] of messages) {
+    assert.equal(localizeApplicationMessage(source, 'en'), expected);
+    assert.equal(localizeApplicationMessage(source, 'zh'), source);
+  }
+  assert.equal(localizeHabitCoverageLabel('Dashboard 本地完成；外部来源覆盖未知', 'en'), 'Dashboard local completions; external source coverage unknown');
+  assert.equal(localizeHabitCoverageLabel('Dashboard 本地完成；外部来源覆盖未知', 'zh'), 'Dashboard 本地完成；外部来源覆盖未知');
+  assert.equal(localizeHabitCoverageLabel('My own 日常记录 · 3 个 complete 日期', 'en'), 'My own 日常记录 · 3 complete dates');
+  assert.equal(localizeApplicationMessage('My own 本地完成按 lived day 记录；外部来源覆盖仍未知。', 'en'), 'My own 本地完成按 lived day 记录；外部来源覆盖仍未知。');
+});

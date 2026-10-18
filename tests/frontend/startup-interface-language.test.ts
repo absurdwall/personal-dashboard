@@ -14,6 +14,11 @@ test('persisted English startup refreshes existing axis controls and derived tim
     execFileSync(join(root,'node_modules/.bin/tsc'),['--module','commonjs','--outDir',directory],{cwd:root});
     const modules=Object.fromEntries(readdirSync(directory).filter(name=>name.endsWith('.js')).map(name=>['./'+name,readFileSync(join(directory,name),'utf8')]));
     const view=JSON.parse(readFileSync(new URL('./fixtures/plan-time-views.json',import.meta.url),'utf8')).loaded;
+    view.daytime.shortRecords=['ordinary','exercise'].map((category,index)=>({
+      id:'saved-note-'+index,date:view.date,category,createdAt:'2026-09-12T09:00:00-04:00',
+      text:'用户原文 日常记录 · Keep exact 健身 '+index,changes:[],needsReview:false,
+    }));
+    view.evening.recordSupplements=structuredClone(view.daytime.shortRecords);
     const base=view.timeAxis.currentArrangement[0];
     view.timeAxis.currentArrangement=[
       {...base,planId:'opaque-range-a',planPrecision:'exactRange',startMinute:780,endMinute:840,text:'13:00–14:00 保留原文甲'},
@@ -58,7 +63,7 @@ test('persisted English startup refreshes existing axis controls and derived tim
       const start=dialog.querySelector('input[type=time]');start.value='16:35';
       const before={language:document.documentElement.lang,end:end.getAttribute('aria-label'),time:link.querySelector('.today-axis-marker-time').textContent};
       releaseLanguage();await until(()=>document.documentElement.lang==='en'&&document.querySelector('#runtime-status')?.dataset.state==='ready');
-      const snapshot=()=>({end:end.getAttribute('aria-label'),endTitle:end.title,reveal:reveal.getAttribute('aria-label'),revealTitle:reveal.title,time:link.querySelector('.today-axis-marker-time').textContent,mode:precision.value,start:start.value,aria:link.getAttribute('aria-label'),approximate:document.querySelector('[data-plan-id="opaque-approximate"] .today-axis-marker-time').textContent,unlocated:document.querySelector('#today-axis-arrangement-unlocated-entry-0 .today-axis-entry-time-label').textContent});
+      const snapshot=()=>({shortRecordMeta:[...document.querySelectorAll('.today-short-record small')].map(node=>node.textContent),shortRecordBodies:[...document.querySelectorAll('.today-short-record > p')].map(node=>node.textContent),end:end.getAttribute('aria-label'),endTitle:end.title,reveal:reveal.getAttribute('aria-label'),revealTitle:reveal.title,time:link.querySelector('.today-axis-marker-time').textContent,mode:precision.value,start:start.value,aria:link.getAttribute('aria-label'),approximate:document.querySelector('[data-plan-id="opaque-approximate"] .today-axis-marker-time').textContent,unlocated:document.querySelector('#today-axis-arrangement-unlocated-entry-0 .today-axis-entry-time-label').textContent});
       const english=snapshot();
       const retained={link:document.querySelector('[data-plan-id="opaque-broad"] .today-axis-marker-link')===link,dialog:document.querySelector('dialog.plan-time-editor')===dialog,open:dialog.open,controls:dialog.contains(precision)&&dialog.contains(start),front:marker.classList.contains('is-stack-front'),focused:dialog.contains(document.activeElement),scroll:surface.scrollTop===scroll};
       document.querySelector('#workspace-language').click();await until(()=>document.documentElement.lang==='zh-CN');const chinese=snapshot();
@@ -69,6 +74,10 @@ test('persisted English startup refreshes existing axis controls and derived tim
     assert.equal(result.before.language,'zh-CN');
     assert.ok(result.before.end.includes('调整计划结束'));
     assert.equal(result.before.time,'午后');
+    assert.deepEqual(result.english.shortRecordMeta.map((text:string)=>text.split(' · ')[0]),['Daily note','Exercise','Daily note','Exercise']);
+    assert.deepEqual(result.chinese.shortRecordMeta.map((text:string)=>text.split(' · ')[0]),['日常记录','健身','日常记录','健身']);
+    assert.deepEqual(result.english.shortRecordBodies,['用户原文 日常记录 · Keep exact 健身 0','用户原文 日常记录 · Keep exact 健身 1','用户原文 日常记录 · Keep exact 健身 0','用户原文 日常记录 · Keep exact 健身 1']);
+    assert.deepEqual(result.chinese.shortRecordBodies,result.english.shortRecordBodies);
     assert.equal(result.english.end,'Adjust plan end (drag or click to edit)');
     assert.equal(result.english.endTitle,result.english.end);
     assert.match(result.english.reveal,/^Show next item \(\d+ total\)$/);
