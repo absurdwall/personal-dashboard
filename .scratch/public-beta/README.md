@@ -1,6 +1,6 @@
 # 首次受邀 Beta：准备记录
 
-> **历史归档（2026-10-17）**：本目录保留首次 Beta 发布前的准备记录。下文及其他文件中的未认领、未实施、未发布、票据 open 等表述均为当时快照，不代表当前状态。#116–#120 已在实际发布后关闭。
+> **历史归档（2026-10-17）**：本目录保留首次 Beta 发布前的准备记录。下文及其他文件中的未认领、未实施、未发布、票据 open 等表述均为当时快照，不代表当前状态。本轮已完成实际发布，#116–#120 现均已关闭。
 > 当前交付与未覆盖项见[验收记录](../../docs/releases/beta-1/acceptance.md)和[实际发布结果](../../docs/releases/beta-1/publication-result.json)；GitHub Issues 继续拥有实时状态。原始正文保留如下。
 
 - Canonical spec: [PDBETA-SPEC-01 / GitHub #116](https://github.com/absurdwall/personal-dashboard/issues/116)
