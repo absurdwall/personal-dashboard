@@ -1,119 +1,135 @@
-# Final Beta 1 candidate acceptance (#120)
+# Beta 1 candidate acceptance (#120)
 
-Status: **preparation; no final build or publication yet**. The current release
-authority declares **1.0.0 Beta 1 · numeric 1.0.0 · build 5.0.3**, arm64,
-`com.tortillaflat.personal-dashboard`, intended tag `v1.0.0-beta.1`.
-The exact source commit, App/DMG bytes and native results will be added after
-independent review and the source-bound build. They are not inferred here.
+Status: **Settings-only polish prepared for build 5.0.4; not built or published**.
+The release authority declares **1.0.0 Beta 1 · numeric 1.0.0 · build 5.0.4**,
+arm64, `com.tortillaflat.personal-dashboard`, intended tag `v1.0.0-beta.1`.
+The emitted build 5.0.3 is the actual functional acceptance baseline. Its App was
+compiled from `e8ddeb8aab2d6d7bfc74d805839b633c9065af45`; later evidence and
+image commits do not make that App contain a later repository head.
 
 [Machine-readable status](acceptance.json) · [Release authority](../../../release.json)
-· [Packaging and initial candidate history](packaging.md) · [Publication runbook](publication.md)
+· [Packaging/history](packaging.md) · [Publication runbook](publication.md)
 · [External runtime](codex-runtime.md) · [Image identity](screenshots.json)
 · [Independent integration review](review.md)
 
-## Evidence already observed on the initial candidate
+## Current bounded Settings repair
 
-These are same-account, isolated synthetic observations on initial build 5.0.1,
-source `72a96980c081e5fb23010e6ef5ff128a16ed9185`, Apple Silicon macOS 27.0.1.
-They are retained historical evidence, not final-build certification or a clean
-macOS-user installation.
+The user found oversized Settings category labels and action buttons, plus the
+Data & Vault buttons touching after wrapping. The repair changes only Settings
+navigation/button sizing and spacing, reuses the existing wrapping action group,
+and makes existing-Vault selection a secondary action. IDs, behavior, focus,
+disabled states, other pages and accent swatches remain intact. The private
+before screenshot was inspected and is not published because it contains a
+private path. Production frontend build passed. No new tests or full
+frontend/Rust/native-business rerun was added, as the user explicitly requested
+a simple visual fix without excessive checks. Actual build 5.0.4 static package
+validation and one desktop/narrow visual confirmation remain pending.
 
-| Initial-candidate observation | Observed result |
+## Actual build 5.0.3 package baseline
+
+- Compiled source `e8ddeb8aab2d6d7bfc74d805839b633c9065af45`;
+  tree `63da1b0196bc8b6d9cc071919801dff04a22e8d3`; tracked source clean at build.
+- DMG `Personal-Dashboard_1.0.0-beta.1_arm64.dmg`: **5,508,256 bytes**;
+  SHA-256 `d1471e872db7cec648da9564b543c8aca9b545abe3b3557a7530849c35473190`.
+- App inventory SHA-256 `1ac68e1c81df323559d64fb69fa199cf820aa07343cf613bb1c1775958147bcf`;
+  executable SHA-256 `512c4b71af8be6f7e6b9bacda63d8acd34e1eaf271070e825ec4b1a69228b06d`.
+- [Package receipt](candidate-5.0.3.json): all **10 static checks passed**,
+  including strict ad-hoc hardened-runtime signature, arm64/system-only dynamic
+  links, signed source/legal manifests, no private paths/diagnostic fixtures or
+  bundled Codex, read-only DMG integrity, Applications link and identical mounted
+  App. Local signature remains unnotarized.
+- Rust 1.97.1 exact commit `8bab26f4f68e0e26f0bb7960be334d5b520ea452`,
+  Tauri CLI 2.11.4. The 387-file App has 196 Cargo runtime crates / 372 license
+  documents plus 7 standard-library/compiler-builtins documents; signed legal
+  inventories and all document hashes passed.
+- Independent Standards review: the single P2 was fixed and independently
+  confirmed resolved (**0 remaining**). Original Spec and native-subtitle delta:
+  **0 actionable findings**. Full reports remain in [review.md](review.md).
+
+## Actual build 5.0.3 native acceptance
+
+These checks used isolated synthetic data on the same macOS user, Apple Silicon
+macOS 27.0.1. They do not represent a new macOS account or public download.
+The [actual native receipt](native-5.0.3.json) binds the build/source/hash.
+
+| Executed check | Observed result on build 5.0.3 |
 | --- | --- |
-| Native create-space panel | Four compatibility directories, zero files before the first save |
-| Task created/edited | Same saved object and ID read across Today, Tasks and Calendar |
-| Local Habit without external snapshot | Created, completed, withdrawn and re-completed |
-| First minimal Daily Record | Saved; browsing another date did not manufacture a record |
-| Real external-file conflict | Stale save refused; draft retained; refresh/retry retained original, external and new content |
-| Normal Quit/relaunch | Task, checked Habit and notes read back; nine Vault file byte hashes unchanged |
-| Standalone Codex 0.160.0 | Detected by the actual App in an isolated signed-out profile; no model or sign-in pass |
-| Morning automation | Default off; enable required no fictitious old schedule; missing-login failure stayed visibly failed |
+| Read-only DMG; copied App; eject before launch | Copied inventories matched all 387 files; launched copied bytes |
+| Empty personal space | Four directories, zero files before saving |
+| Empty Habits and English note category | Correct local-first subtitle/help in both languages; English category retained after restart; user Chinese prose preserved |
+| Task create/edit | Same Task shared across Today, Tasks and Calendar |
+| Local Habit | Created, completed, withdrawn and re-completed; completion survived restart |
+| Daily Record/conflict | Saved note; actual stale external-file save rejected; draft/original/external/new text retained after retry; browsing tomorrow created no record |
+| Standalone Codex 0.160.0 | Detected in signed-out profile, zero auth files; local use worked |
+| Automatic plan | Default off; enabled without fictitious old handoff; actual missing-login failure remained visibly failed and did not change Daily Record; left off |
+| Normal Quit/relaunch | Eight Vault file hashes unchanged |
+| Internal 4.0.7 replacement | Same isolated copied App location; stable identity; Task/Habit/note and English/Lilac preferences retained; seven of eight baseline files byte-identical |
+| Expected settings migration | Only legacy `externalSchedulePresent=true` added; remaining collaboration JSON exactly equal |
+| Backup/recovery | Closed App/process exit verified; whole space including hidden files and App data copied/restored; native folder picker selected new recovery folder; Task/Habit/record visible, Lilac retained; recovered bytes unchanged after another restart |
 
-Initial App/DMG signatures, content and actual hashes are recorded in
-[packaging.md](packaging.md). The known copy defects observed there are repaired
-in the final source; delayed-English startup and both empty-Habit/error states
-are regression-tested. Final native verification remains pending.
+The formal Applications installation was not replaced. This functional baseline
+is retained for the subsequent Settings-only visual repair; those full business
+flows are not claimed as repeated on build 5.0.4.
 
-## Preserved 5.0.2 review candidate
+## Images and earlier candidate history
 
-Build 5.0.2 was built from clean source `7eac9b7eb7c475616115889f7e84f4cd2862fd58`
-and passed ten actual static package checks. Its exact source, toolchain, bytes
-and hashes are in [candidate-5.0.2.json](candidate-5.0.2.json). Native QA found a
-remaining misleading subtitle above Add habit in a fresh writable space. The
-bounded bilingual correction is regression-tested in source; the current
-candidate declaration advances to 5.0.3. The emitted 5.0.2 bytes are preserved,
-not relabeled; its remaining functional native checks are in progress separately.
+The three current business-page images are actual **5.0.3** captures with an
+isolated synthetic Sample Space. Source/executable/signed-manifest identity,
+actual PNG hashes, bytes and dimensions were checked, and all were visually
+inspected. They remain labeled 5.0.3; the Settings-only change does not relabel
+them as new 5.0.4 captures. [Current provenance](screenshots.json) and
+[original #119 image receipt](screenshots-5.0.1.json) keep the identities separate.
 
-## Final source and package binding
+Initial build 5.0.1 source `72a96980c081e5fb23010e6ef5ff128a16ed9185` and its
+original package/native evidence remain historical in [packaging.md](packaging.md).
+Build 5.0.2 source `7eac9b7eb7c475616115889f7e84f4cd2862fd58` passed ten static
+checks and real Task/Habit/note/conflict/restart checks, but retained the misleading
+empty-Habits subtitle. Its [package](candidate-5.0.2.json) and
+[native receipt](native-5.0.2.json) record that failure rather than passing it.
+All three emitted candidates remain unchanged.
 
-- Source commit: **not assigned to a built final candidate yet**.
-- App / DMG / SHA-256 / signed manifest: **not built yet**.
-- Independent integration review: **completed** at `3d94af1`; Standards P2
-  arbitrary frontend-output deletion fixed and independently verified before the
-  5.0.2 build. The subsequent native-QA subtitle delta awaits review and final build.
-- Candidate screenshots: initial 5.0.1 images retained; affected final captures
-  and their actual source/build/hash receipt are **pending**.
-- External runtime baseline: official standalone 0.160.0 install, protocol
-  declaration and real initialize handshake already observed separately.
-- Final toolchain: Rust 1.97.1, source commit
-  `8bab26f4f68e0e26f0bb7960be334d5b520ea452`; the source retains the exact
-  compiler-builtins notice and packages the selected toolchain's official
-  standard-library notice corpus. Final signed-resource hashes are pending.
+## Source checks actually run before the visual-only repair
 
-## Source preparation checks actually run
+- Full frontend suite: **557 passed**, zero failures/skips. Affected rendered
+  Habits tests repeated after the guard and subtitle repairs: **2 passed**,
+  including observed red-to-green subtitle failure and retained error/coverage.
+- Rust library: **110 passed, 6 gated tests ignored**. Ignored live checks are
+  not passed. These suites were not repeated for the Settings-only repair.
+- Artifact ownership regression: **2 passed**. Actual diagnostic then production
+  build passed; production retained no voice-gate assets.
+- Package preparation/localization boundaries: **22 passed**. Fresh-cache checks
+  used empty disposable fixtures, not a second Rust cache.
+- Official standalone Codex 0.160.0 installation, schema declaration and actual
+  initialize handshake passed separately; no model/login/microphone implication.
+- Current site static check and image provenance checks passed, with the download
+  gate closed. Final visual/browser evidence remains separate.
 
-- Full frontend suite: **557 passed**, no failures or skips. After the final
-  missing-source-read guard was tightened, its affected rendered Habits tests
-  were repeated: **2 passed**. After native QA on 5.0.2, the same rendered tests
-  were extended to assert both-language header subtitles and retained errors:
-  **2 passed** following an observed red failure. This does not certify an unbuilt App.
-- Rust library suite: **110 passed, 6 explicitly gated tests ignored**. No ignored
-  live-service check is treated as a pass.
-- Production frontend build and release/helper JavaScript syntax checks: passed.
-  After review, frontend artifact boundary tests: **2 passed**; actual diagnostic
-  build followed by production build passed with no diagnostic assets retained.
-- Package preparation/localization helper boundary checks: **22 passed** (also
-  included in the full frontend suite). Fresh-cache tests create only empty
-  temporary fixture directories, not a second Rust build cache.
-- Actual selected-toolchain runtime notice preparation: **7 documents** collected
-  with exact Rust source commit and verified compiler-builtins supplement. Final
-  signed-resource/DMG verification has not run.
-- Static site regeneration/check: **6 bilingual pages, 185 actual local links
-  and assets**, declared build 5.0.3 and download gate still closed. Final browser
-  layout and affected image refresh remain separate pending checks.
+## Unperformed and deferred checks
 
-## Final native and installation matrix
-
-| Check | Final-build status |
+| Check | Status |
 | --- | --- |
-| Read-only mount; exact App copy into an owned non-indexed installation location; eject; verify running copied bytes | Not run |
-| Empty personal-space creation; local Tasks/Habits/record; independent source readback | Not run |
-| Local first use with a genuinely absent runtime | Not run; empty PATH alone does not prove absence of installed fallbacks |
-| Local first use with an unauthenticated runtime | Not run |
-| Repaired English startup metadata and bilingual local-Habit guidance | Not run |
-| Real conflict, retained draft and external/original content | Not run |
-| Normal Quit/relaunch persistence | Not run |
-| Isolated internal 4.0.7 replacement; stable identity and saved preferences/data | Not run |
-| Closed-app backup to a new recovery folder; select/reopen/read back | Not run |
-| Clean macOS-user / another test machine installation | Not run; user accepted deferral for this run |
-| Independent own ChatGPT account sign-in | Not run; user accepted deferral for this run |
-| Real model modification and independent business readback | Not run |
+| Genuinely absent-runtime native use | Not run: installed ChatGPT fallback exists; empty PATH does not establish absence |
+| Physical network disconnection | Not run; signed-out saves are different evidence |
+| Clean macOS-user / another machine | Not run; user accepted deferral |
+| Independent own ChatGPT account login | Not run; user accepted deferral |
+| Real model modification with independent saved-source readback | Not run |
 | Real Chinese, English and mixed microphone recognition | Not run |
-| Full live-AI automatic morning-plan save/readback | Not run |
-| Physical network disconnection | Not run; no-runtime/no-login saves are different evidence |
-| Lower macOS versions | Not run; 12.0 is deployment metadata, current host is 27.0.1 |
-| Public browser asset download, Internet quarantine, Gatekeeper opening and anonymous readback | Not run; requires approved actual publication |
+| Live AI automatic morning-plan save/readback | Not run; only actual signed-out failure exercised |
+| Lower macOS | Not run; 12.0 is metadata, tested host 27.0.1 |
+| Public download/quarantine/Gatekeeper/anonymous readback | Not run; requires approval and actual publication |
+| Build 5.0.4 package/desktop+narrow Settings confirmation | Pending actual build |
 
-The root workflow owns actual final native execution and will replace individual
-rows only with source/package-bound evidence. A model reply is not business-save
-proof. A local launch or temporary HOME is not a clean-user or quarantined-download
-pass. Accepted deferrals remain unperformed, not passed.
+## Retained work and publication boundary
 
-## Publication boundary
+Two shared #117 worktrees remain retained: supported archive attempts returned
+to active attachments without a concrete error. Tracked trees are clean, heads
+reachable from integration, and no unique user work was found. No archive guard
+or metadata was bypassed. Exact-path Launch Services cleanup and final cache
+accounting await completion of acceptance. Original untracked
+`.scratch/public-beta/` support records remain preserved.
 
-The user has not authorized public release of this specific final candidate and
-content. Pages, the release tag, prerelease and public asset/download activation
-remain unperformed. The website download control stays disabled. Review the exact
-candidate, website/manual, restrictions, acceptance and remaining gaps first.
-The parent specification and final release issue stay open until actual approved
-publication and verification. No invitation is sent by this workflow.
+The user has not authorized public release of the specific final candidate.
+Pages, tag, prerelease and download activation remain unperformed; the website
+download control stays disabled. Present the exact final bytes, webpage/manual,
+actual results and remaining gaps for confirmation. #116 and #120 remain open
+until actual approved publication and verification. No invitations are sent.

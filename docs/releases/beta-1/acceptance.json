@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "displayVersion": "1.0.0 Beta 1",
   "version": "1.0.0",
-  "build": "5.0.3",
+  "build": "5.0.4",
   "target": "aarch64-apple-darwin",
   "candidate": {
-    "status": "waiting-for-native-qa-batch-and-delta-review-before-build",
+    "status": "settings-only-polish-prepared-awaiting-build",
     "sourceCommit": null,
     "appInventorySha256": null,
     "executableSha256": null,
@@ -32,12 +32,18 @@
     "liveAutomaticMorningPlan": "notRun",
     "physicalNetworkDisconnection": "notRun",
     "lowerMacOS": "notRun",
-    "publicAnonymousDownloadQuarantineGatekeeper": "notRun"
+    "publicAnonymousDownloadQuarantineGatekeeper": "notRun",
+    "genuinelyAbsentRuntimeNative": "notRun-installed-ChatGPT-fallback-exists"
   },
   "images": {
     "receipt": "screenshots.json",
-    "currentBuild": "5.0.1",
-    "finalRefreshRequired": true
+    "currentBuild": "5.0.3",
+    "finalRefreshRequired": false,
+    "sourceCommit": "e8ddeb8aab2d6d7bfc74d805839b633c9065af45",
+    "visuallyInspected": true,
+    "actualHashesVerified": true,
+    "description": "Actual 5.0.3 unchanged business-page captures; not relabeled as 5.0.4 Settings screenshots.",
+    "retainedForSettingsOnlyBuild": "5.0.4"
   },
   "publication": {
     "authorized": false,
@@ -70,10 +76,10 @@
     },
     "siteStaticCheck": {
       "bilingualPages": 6,
-      "localLinksAndAssets": 185,
+      "localLinksAndAssets": 199,
       "downloadGate": "closed"
     },
-    "finalBrowserAndImageRefresh": "pending",
+    "finalBrowserAndImageRefresh": "images-inspected-and-hashes-verified; final browser pending",
     "reviewRepair": {
       "reviewHead": "3d94af1094b65375de0f5cd717861f3162934a39",
       "standardsFindings": 1,
@@ -85,7 +91,8 @@
         "skipped": 0
       },
       "diagnosticThenProductionBuild": "passed",
-      "parentVerification": "passed before build 5.0.2"
+      "parentVerification": "passed before build 5.0.2",
+      "remainingFindings": 0
     },
     "nativeSubtitleRepair": {
       "affectedRenderedTests": {
@@ -93,10 +100,38 @@
         "failed": 0
       },
       "redObserved": true,
-      "finalCandidateNativeVerification": "pending"
+      "finalCandidateNativeVerification": "passed-on-5.0.3-both-languages",
+      "specDeltaFindings": 0
+    },
+    "settingsPolish": {
+      "frontendBuild": "passed",
+      "newTests": "none-user-requested-small-visual-fix",
+      "actualBeforeImage": "inspected privately; excluded because it contains a private path",
+      "desktopAndNarrowVisualConfirmation": "pending"
     }
   },
   "historicalCandidateReceipts": [
-    "candidate-5.0.2.json"
-  ]
+    "candidate-5.0.2.json",
+    "native-5.0.2.json",
+    "candidate-5.0.3.json",
+    "native-5.0.3.json"
+  ],
+  "cleanup": {
+    "status": "pending-final-native-cleanup",
+    "retainedSharedWorktrees": [
+      "public-beta-117",
+      "public-beta-117-runtime"
+    ],
+    "reason": "Supported archive attempts returned to active shared attachments without a concrete error; no archive guard bypassed; clean heads reachable from integration."
+  },
+  "functionalBaseline": {
+    "build": "5.0.3",
+    "sourceCommit": "e8ddeb8aab2d6d7bfc74d805839b633c9065af45",
+    "packageReceipt": "candidate-5.0.3.json",
+    "nativeReceipt": "native-5.0.3.json",
+    "status": "bounded-same-user-functional-upgrade-recovery-checks-passed",
+    "subsequentScope": "Settings-only CSS/markup sizing and wrap gap; no behavior change",
+    "repeatDecision": "User explicitly requested a small fix without excessive testing; no full functional/Rust/frontend suite repeat for Settings polish."
+  },
+  "settingsVisualCheck": "pending-actual-5.0.4-desktop-and-narrow-confirmation"
 }

@@ -4909,11 +4909,14 @@ body {
 .settings-navigation button {
   width: 100%;
   margin-bottom: 0.35rem;
-  padding: 0.7rem 0.75rem;
+  padding: 8px 10px;
   border: 0;
   border-radius: 0.4rem;
   background: transparent;
   color: #3c4741;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
   text-align: left;
 }
 
@@ -4926,6 +4929,15 @@ body {
   width: 100%;
   max-width: 47.5rem;
   padding: 1.9rem;
+}
+
+.settings-content button:not([data-accent-color]) {
+  min-height: 32px;
+  max-width: 100%;
+  padding: 7px 11px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .settings-content h2,
