@@ -1,7 +1,7 @@
 # Final Beta 1 candidate acceptance (#120)
 
 Status: **preparation; no final build or publication yet**. The current release
-authority declares **1.0.0 Beta 1 · numeric 1.0.0 · build 5.0.2**, arm64,
+authority declares **1.0.0 Beta 1 · numeric 1.0.0 · build 5.0.3**, arm64,
 `com.tortillaflat.personal-dashboard`, intended tag `v1.0.0-beta.1`.
 The exact source commit, App/DMG bytes and native results will be added after
 independent review and the source-bound build. They are not inferred here.
@@ -34,13 +34,23 @@ Initial App/DMG signatures, content and actual hashes are recorded in
 in the final source; delayed-English startup and both empty-Habit/error states
 are regression-tested. Final native verification remains pending.
 
+## Preserved 5.0.2 review candidate
+
+Build 5.0.2 was built from clean source `7eac9b7eb7c475616115889f7e84f4cd2862fd58`
+and passed ten actual static package checks. Its exact source, toolchain, bytes
+and hashes are in [candidate-5.0.2.json](candidate-5.0.2.json). Native QA found a
+remaining misleading subtitle above Add habit in a fresh writable space. The
+bounded bilingual correction is regression-tested in source; the current
+candidate declaration advances to 5.0.3. The emitted 5.0.2 bytes are preserved,
+not relabeled; its remaining functional native checks are in progress separately.
+
 ## Final source and package binding
 
 - Source commit: **not assigned to a built final candidate yet**.
 - App / DMG / SHA-256 / signed manifest: **not built yet**.
 - Independent integration review: **completed** at `3d94af1`; Standards P2
-  arbitrary frontend-output deletion fixed and affected checks passed. Parent
-  verification of the repair remains pending before final build.
+  arbitrary frontend-output deletion fixed and independently verified before the
+  5.0.2 build. The subsequent native-QA subtitle delta awaits review and final build.
 - Candidate screenshots: initial 5.0.1 images retained; affected final captures
   and their actual source/build/hash receipt are **pending**.
 - External runtime baseline: official standalone 0.160.0 install, protocol
@@ -54,7 +64,9 @@ are regression-tested. Final native verification remains pending.
 
 - Full frontend suite: **557 passed**, no failures or skips. After the final
   missing-source-read guard was tightened, its affected rendered Habits tests
-  were repeated: **2 passed**. This does not certify an unbuilt App.
+  were repeated: **2 passed**. After native QA on 5.0.2, the same rendered tests
+  were extended to assert both-language header subtitles and retained errors:
+  **2 passed** following an observed red failure. This does not certify an unbuilt App.
 - Rust library suite: **110 passed, 6 explicitly gated tests ignored**. No ignored
   live-service check is treated as a pass.
 - Production frontend build and release/helper JavaScript syntax checks: passed.
@@ -66,8 +78,8 @@ are regression-tested. Final native verification remains pending.
 - Actual selected-toolchain runtime notice preparation: **7 documents** collected
   with exact Rust source commit and verified compiler-builtins supplement. Final
   signed-resource/DMG verification has not run.
-- Static site regeneration/check: **6 bilingual pages, 183 actual local links
-  and assets**, declared build 5.0.2 and download gate still closed. Final browser
+- Static site regeneration/check: **6 bilingual pages, 185 actual local links
+  and assets**, declared build 5.0.3 and download gate still closed. Final browser
   layout and affected image refresh remain separate pending checks.
 
 ## Final native and installation matrix

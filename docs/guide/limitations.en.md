@@ -21,7 +21,7 @@ See the [packaging evidence](../releases/beta-1/packaging.md) for signature, arc
 
 ## Candidate and image identity
 
-Current images remain real captures of initial build 5.0.1. The declared final build is 5.0.2; the bounded copy repairs are implemented in source and await final-package/native verification. Affected captures will be refreshed with their actual source/hash receipt. No image is silently relabeled. Local Habits do not require an external snapshot. The [final acceptance record](../releases/beta-1/acceptance.md) keeps package and native results separate from these historical illustrations.
+Current images remain real captures of initial build 5.0.1. The declared final build is 5.0.3; the bounded copy repairs are implemented in source and await final-package/native verification. Affected captures will be refreshed with their actual source/hash receipt. No image is silently relabeled. Local Habits do not require an external snapshot. The [final acceptance record](../releases/beta-1/acceptance.md) keeps package and native results separate from these historical illustrations.
 
 ## Boundaries
 

@@ -11,7 +11,7 @@ website/manual and real acceptance results before confirming public release.
    review findings in the integration PR, retain unrelated user records, and
    commit a clean source tree before building.
 2. Use `release.json` for display/numeric/build/tag/architecture/assets. The final
-   preparation declares build 5.0.2. Generate a new candidate from that exact
+   preparation declares build 5.0.3. Generate a new candidate from that exact
    committed source with the existing build wrapper and shared external cache;
    keep the initial 5.0.1 bytes and receipt historical.
 3. Retain the exact App, DMG, SHA256SUMS, signed resource manifest, actual package

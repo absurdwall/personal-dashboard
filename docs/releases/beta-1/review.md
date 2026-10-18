@@ -82,3 +82,16 @@ bc267b9 test: verify and record actual beta DMG candidate bytes (#118)
 faf05cb feat: prepare reviewed final beta candidate and bounded repairs (#120)
 3d94af1 Merge final beta acceptance preparation (#120)
 ```
+
+## Subsequent native-QA delta
+
+After the review finding was independently confirmed resolved, build 5.0.2
+actually passed all ten package checks from clean source `7eac9b7`. Its actual
+[receipt](candidate-5.0.2.json) is preserved. Native first-use QA then found that
+the writable empty Habits header subtitle still waited for an external bounded
+snapshot. The bounded source repair uses the existing local-empty capability
+condition and retains explicit coverage, error and unconfigured behavior.
+The existing rendered first-use test failed on the old English subtitle, then
+passed in both languages after the correction; the error cases also passed
+(**2 tests**). Build 5.0.3 is now declared but has not been built. The new delta
+awaits review and the complete native-QA batch before build authorization.

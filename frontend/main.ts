@@ -10641,9 +10641,11 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   if (habitsRange) {
     const rangeKey = view.displayRangeLabel && view.rangeLabel
       ? "habits.range"
-      : view.catalogRevision && view.state === "missing"
-        ? "habits.localOnlyRange"
-        : "habits.waitingSnapshot";
+      : localEmpty
+        ? "habits.localEmptySubtitle"
+        : view.catalogRevision && view.state === "missing"
+          ? "habits.localOnlyRange"
+          : "habits.waitingSnapshot";
     setCopy(
       habitsRange,
       rangeKey,
