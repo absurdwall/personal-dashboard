@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "allOwnedAppsQuitBeforeCleanup": true,
+  "ownedTemporaryBundlesProcessed": 11,
+  "unregisterCommands": [
+    {
+      "ownedBundle": "build-5.0.1/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "build-5.0.2/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "build-5.0.3/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "build-5.0.4/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "final-native/Applications/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "final-native-5.0.3/Applications/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "upgrade-baseline/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "upgrade-baseline/before-final-5.0.3.noindex/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "upgrade-baseline/previous-internal-4.0.7.noindex/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "upgrade-baseline/unlaunched-build-5.0.2.noindex/Personal Dashboard.app",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "shared-release-cache/App",
+      "exitCode": 1
+    },
+    {
+      "ownedBundle": "shared-release-cache/App",
+      "exitCode": 1
+    }
+  ],
+  "remainingOwnedAppRegistrationEntries": 0,
+  "historicalDmgVolumeRecords": 4,
+  "historicalDmgNote": "LaunchServices retains disk-image history only; no App path remains and hdiutil reports no active owned image. Global database left intact.",
+  "activeOwnedMountedImages": 0,
+  "temporaryBundlesUnderNoindex": true,
+  "formalApplicationsBundle": "preserved-not-replaced-or-unregistered",
+  "rebuildableCacheRemovedBytesApprox": 5863759872,
+  "cacheAfterBytes": 0,
+  "retained": "All4candidates/manifests/validation/logs; native3/visual4evidence; synthetic backups/recovery; standalone runtime",
+  "worktreeCleanup": "118/118licenses/119archived;117and117runtime retained by app shared references, clean and reachable, no guard bypass;120 archive after merge"
+}

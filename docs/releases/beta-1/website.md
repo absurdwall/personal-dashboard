@@ -32,8 +32,9 @@ tag v1.0.0-beta.1. The actual 5.0.3 business-page screenshot candidate has compi
 `512c4b71af8be6f7e6b9bacda63d8acd34e1eaf271070e825ec4b1a69228b06d`.
 The [package receipt](candidate-5.0.3.json) passed all ten static checks. Native
 first use, restart, isolated upgrade and recovery passed on 5.0.3. The current
-5.0.4 declaration covers only the user-requested Settings control sizing/wrap
-repair; build and desktop/narrow visual confirmation remain pending. The three
+5.0.4 candidate covers only the user-requested Settings control sizing/wrap
+repair; all ten actual static package checks and one actual desktop/narrow
+Settings visual confirmation passed. The three
 unchanged business-page images retain their actual 5.0.3 identity. Later website/evidence commits
 do not change the embedded App source or candidate bytes.
 
@@ -118,3 +119,12 @@ Static site regeneration and its real local link/asset checks pass with the
 download control closed. Final browser inspection and native acceptance are
 tracked separately in [acceptance.md](acceptance.md); this refresh does not
 claim public release, live AI or clean-user acceptance.
+
+## Separate Settings evidence for build 5.0.4
+
+The [public-safe Settings image](../../assets/settings.png) is an actual capture
+from build 5.0.4 source `eb49860e634bb5af4c25a21bd901ed9613abf84a`, with no
+selected personal Vault or account/home path. Its actual hash/dimensions were
+verified and the image independently viewed. [Separate provenance](settings-5.0.4.json)
+records the one desktop/narrow Settings round and normal Quit. The three landing
+page business images stay labeled as actual 5.0.3 captures; no image is relabeled.

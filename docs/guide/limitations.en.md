@@ -10,6 +10,8 @@ On Apple Silicon macOS 27.0.1, isolated synthetic checks covered local business 
 
 See the [packaging evidence](../releases/beta-1/packaging.md) for signature, architecture, DMG contents and hashes. These checks do not stand in for unperformed real-user or service acceptance.
 
+Build 5.0.4 source `eb49860e634bb5af4c25a21bd901ed9613abf84a` passed all ten static package checks and one actual Settings desktop/narrow visual round. The full same-user business/restart/upgrade/recovery baseline remains build 5.0.3; it was not relabeled as repeated on 5.0.4.
+
 ## Not yet performed
 
 - Clean macOS-user/other-machine installation and independent ChatGPT-account login: deferred with the maintainer's agreement in this run; not passed.
@@ -17,11 +19,10 @@ See the [packaging evidence](../releases/beta-1/packaging.md) for signature, arc
 - Real model changes with independent readback, real Chinese/English/mixed microphone quality, and the complete live-AI automatic morning-plan flow in this run.
 - Physical network-disconnection testing has not been run. Signed-out local saves are separate evidence. A genuinely absent-runtime native test was not run because an installed ChatGPT fallback remained available; empty PATH does not prove its absence.
 - Systems below tested macOS 27.0.1. The 12.0 package minimum metadata is not validated support.
-- Build 5.0.4 package checks and desktop/narrow Settings sizing/wrap confirmation are pending. Actual first-use, restart, isolated 4.0.7 replacement and manual backup/recovery passed on the preserved 5.0.3 baseline; those functional suites are not repeated for the user-requested visual-only Settings repair.
 
 ## Candidate and image identity
 
-Current images are three real native captures of build 5.0.3 with isolated synthetic data. Build 5.0.3 was built from exact source `e8ddeb8aab2d6d7bfc74d805839b633c9065af45` and passed all ten static package checks. Its [native receipt](../releases/beta-1/native-5.0.3.json) records first use, restart, isolated upgrade and recovery. Current declaration 5.0.4 is a Settings-only visual correction; its build and visual check are pending. Their actual source/executable/image hashes were verified against [provenance](../releases/beta-1/screenshots.json); historical 5.0.1 image identity remains separately recorded. No image was silently relabeled. Local Habits do not require an external snapshot. The [final acceptance record](../releases/beta-1/acceptance.md) keeps package and native results separate from these historical illustrations.
+Current images are three real native captures of build 5.0.3 with isolated synthetic data. Build 5.0.3 was built from exact source `e8ddeb8aab2d6d7bfc74d805839b633c9065af45` and passed all ten static package checks. Its [native receipt](../releases/beta-1/native-5.0.3.json) records first use, restart, isolated upgrade and recovery. Current declaration 5.0.4 is a Settings-only visual correction; its ten static package checks and one desktop/narrow Settings visual confirmation passed. Full native business/upgrade/recovery suites were not repeated for this visual-only delta; their actual 5.0.3 baseline remains separate. Their actual source/executable/image hashes were verified against [provenance](../releases/beta-1/screenshots.json); historical 5.0.1 image identity remains separately recorded. No image was silently relabeled. Local Habits do not require an external snapshot. The [final acceptance record](../releases/beta-1/acceptance.md) keeps package and native results separate from these historical illustrations.
 
 ## Boundaries
 

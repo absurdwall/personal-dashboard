@@ -1,6 +1,6 @@
 # Beta 1 candidate acceptance (#120)
 
-Status: **Settings-only polish prepared for build 5.0.4; not built or published**.
+Status: **build 5.0.4 prepared; awaiting publication approval; not published**.
 The release authority declares **1.0.0 Beta 1 · numeric 1.0.0 · build 5.0.4**,
 arm64, `com.tortillaflat.personal-dashboard`, intended tag `v1.0.0-beta.1`.
 The emitted build 5.0.3 is the actual functional acceptance baseline. Its App was
@@ -22,8 +22,33 @@ disabled states, other pages and accent swatches remain intact. The private
 before screenshot was inspected and is not published because it contains a
 private path. Production frontend build passed. No new tests or full
 frontend/Rust/native-business rerun was added, as the user explicitly requested
-a simple visual fix without excessive checks. Actual build 5.0.4 static package
-validation and one desktop/narrow visual confirmation remain pending.
+a simple visual fix without excessive checks. Build 5.0.4 passed all ten actual
+static package checks. One actual native Settings round passed at 960 × 720 and
+820 × 720: smaller category/action text and padding, separated wrapped Vault
+actions, compact Save schedule; normal Quit verified. The
+[public-safe after image](../../assets/settings.png) and [visual receipt](settings-5.0.4.json)
+contain no selected personal Vault, account or home path.
+
+## Exact build 5.0.4 candidate
+
+- Compiled clean source `eb49860e634bb5af4c25a21bd901ed9613abf84a`;
+  tree `f433bfbb86a4881bc739cd829e78181af6d6c00f`.
+- DMG: **5,508,881 bytes**, SHA-256
+  `0f06f139365a1465fbf2b13d21d59513a262f7a058f2642bac621db73207b041`.
+- Executable SHA-256
+  `b3d80a76ec5bd47cbfe6c01fd13243f7e254e351f95d4b447e939c9b70dac956`.
+- 387-file App inventory SHA-256
+  `bbfbfefc1d7f8e8ea80ae27316fa2c224fb592413923eff1ef152d5d73a25477`.
+- [Actual package receipt](candidate-5.0.4.json): metadata/arm64/system dynamic
+  links, strict ad-hoc hardened-runtime signature, source/resource identity,
+  private-path/diagnostic/runtime scan, both legal inventories, read-only DMG,
+  Applications link and matching App all passed. Same 196 crates / 372 Cargo
+  license documents and 7 std/builtins documents, all hashes verified.
+
+The App contains the exact compiled source above. Subsequent evidence, image
+and documentation commits do not make it contain a later repository head.
+The complete functional acceptance below remains honestly bound to build 5.0.3;
+it was not repeated or relabeled as 5.0.4 behavior testing.
 
 ## Actual build 5.0.3 package baseline
 
@@ -86,7 +111,7 @@ Build 5.0.2 source `7eac9b7eb7c475616115889f7e84f4cd2862fd58` passed ten static
 checks and real Task/Habit/note/conflict/restart checks, but retained the misleading
 empty-Habits subtitle. Its [package](candidate-5.0.2.json) and
 [native receipt](native-5.0.2.json) record that failure rather than passing it.
-All three emitted candidates remain unchanged.
+All four emitted candidates remain preserved unchanged.
 
 ## Source checks actually run before the visual-only repair
 
@@ -117,15 +142,25 @@ All three emitted candidates remain unchanged.
 | Live AI automatic morning-plan save/readback | Not run; only actual signed-out failure exercised |
 | Lower macOS | Not run; 12.0 is metadata, tested host 27.0.1 |
 | Public download/quarantine/Gatekeeper/anonymous readback | Not run; requires approval and actual publication |
-| Build 5.0.4 package/desktop+narrow Settings confirmation | Pending actual build |
 
 ## Retained work and publication boundary
 
 Two shared #117 worktrees remain retained: supported archive attempts returned
 to active attachments without a concrete error. Tracked trees are clean, heads
 reachable from integration, and no unique user work was found. No archive guard
-or metadata was bypassed. Exact-path Launch Services cleanup and final cache
-accounting await completion of acceptance. Original untracked
+or metadata was bypassed. The #120 checkout awaits supported archive after its
+final integration handoff.
+
+[Actual cleanup receipt](cleanup.json): all owned Apps quit; exact-path
+unregistration processed 11 owned temporary bundles (including canonical aliases
+where applicable), and inspection found **zero owned App registration entries**
+and **zero active owned disk images**. Four non-App disk-image history records
+remain in Launch Services. No global registry purge was performed and no claim
+of a globally empty registry is made. The formal Applications bundle was neither
+replaced nor unregistered. The owned rebuildable cache was removed: approximately
+**5.46 GiB freed**, target absent / **0 bytes** afterward. All four candidate
+bytes/manifests/validations/logs, native/visual evidence, synthetic backup/recovery
+and standalone runtime remain retained. The original nine untracked
 `.scratch/public-beta/` support records remain preserved.
 
 The user has not authorized public release of the specific final candidate.

@@ -125,14 +125,30 @@ Dashboard ChatGPT login; see [runtime evidence](codex-runtime.md). The checked
 Codex 0.160.0 binary has minimum OS metadata 11.0, which is not a lower-OS or
 all-account support guarantee for Dashboard/AI.
 
-## Current preparation: build 5.0.4
+## Actual final candidate: build 5.0.4
 
-Build 5.0.4 is declared for a user-requested Settings-only sizing/wrap repair.
-It has not been built. Build 5.0.3 completed actual functional, restart, isolated
-4.0.7 upgrade and manual backup/recovery checks; its bytes and native receipt
-remain the baseline. The requested repair retains behavior and requires a new
-source-bound package plus a desktop/narrow visual confirmation, not a full
-repeat of the business suites. [Current acceptance](acceptance.md).
+Build 5.0.4 contains the user-requested Settings-only sizing/wrap repair.
+It was built from clean source `eb49860e634bb5af4c25a21bd901ed9613abf84a`,
+tree `f433bfbb86a4881bc739cd829e78181af6d6c00f`, and passed all ten actual
+static package checks. Later evidence-only commits do not change this exact
+compiled source or candidate bytes.
+
+| Actual build 5.0.4 identity | Value |
+| --- | --- |
+| DMG bytes | 5,508,881 |
+| DMG SHA-256 | `0f06f139365a1465fbf2b13d21d59513a262f7a058f2642bac621db73207b041` |
+| Executable SHA-256 | `b3d80a76ec5bd47cbfe6c01fd13243f7e254e351f95d4b447e939c9b70dac956` |
+| 387-file App inventory SHA-256 | `bbfbfefc1d7f8e8ea80ae27316fa2c224fb592413923eff1ef152d5d73a25477` |
+
+The [actual receipt](candidate-5.0.4.json) retains metadata/arm64/system-library,
+strict ad-hoc hardened signature, source/resource, no private paths/diagnostic
+or runtime residuals, 196 crates/372 license documents plus 7 std/builtins
+notices, read-only DMG, Applications link and identical mounted-App checks.
+The legal inventory hashes and exact Rust 1.97.1 toolchain remain as recorded
+below. One actual [Settings desktop/narrow visual round](settings-5.0.4.json)
+passed; [public-safe after image](../../assets/settings.png). Build 5.0.3 remains
+the complete functional/restart/upgrade/recovery baseline, not a claim of those
+suites being repeated for this small visual-only change. [Acceptance](acceptance.md).
 
 ## Preserved accepted functional baseline: build 5.0.3
 

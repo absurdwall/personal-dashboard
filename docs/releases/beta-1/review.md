@@ -133,6 +133,32 @@ category/action controls and spacing between wrapped Data & Vault actions.
 This bounded CSS/markup repair keeps IDs, behavior, focus/disabled states and
 other pages unchanged. The user explicitly requested no excessive testing:
 production frontend build passed, with no new unit/CSS-pattern tests or repeat
-of full frontend/Rust/native business suites. Current build 5.0.4 is declared;
-its actual package validation and desktop/narrow visual check remain pending.
+of full frontend/Rust/native business suites. At that source-repair checkpoint,
+build 5.0.4 was declared and its package/visual checks were still pending.
+Their subsequently observed results follow.
 The emitted 5.0.3 package and business-page screenshots are preserved honestly.
+
+## Actual final Settings package and visual confirmation
+
+Build 5.0.4 was compiled from clean `eb49860e634bb5af4c25a21bd901ed9613abf84a`
+and passed all ten automatic package checks; [actual receipt](candidate-5.0.4.json).
+One actual native Settings round at 960 × 720 and 820 × 720 confirmed smaller
+category/action controls, separated wrapped Vault actions and compact Save
+schedule. Normal Quit was verified. The [visual receipt](settings-5.0.4.json)
+and [public-safe after image](../../assets/settings.png) retain that evidence.
+No full functional suite was repeated, as requested by the user; the exact 5.0.3
+functional baseline remains separately bound. Later commits only add evidence,
+images and documentation. Public release is still awaiting approval.
+
+## Final handoff cleanup
+
+The [cleanup receipt](cleanup.json) records 11 owned temporary bundles processed,
+zero owned App registration entries, zero active owned images, and approximately
+5.46 GiB owned cache removed (0 bytes afterward). Four non-App disk-image history
+records remain; no global Launch Services database purge was used. The formal
+installation, all four candidates, synthetic recovery/evidence and standalone
+runtime are preserved. Two clean, integration-reachable shared #117 worktrees
+remain under the App's supported lifecycle guard; no guard was bypassed. The
+#120 checkout awaits archive after handoff. No product source or candidate byte
+changed in this final evidence-only update. #116 and #120 remain open; downloads stay disabled pending explicit
+publication approval and actual release.

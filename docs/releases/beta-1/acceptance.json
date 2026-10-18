@@ -5,24 +5,29 @@
   "build": "5.0.4",
   "target": "aarch64-apple-darwin",
   "candidate": {
-    "status": "settings-only-polish-prepared-awaiting-build",
-    "sourceCommit": null,
-    "appInventorySha256": null,
-    "executableSha256": null,
-    "dmgSha256": null,
-    "packageValidation": null
+    "status": "prepared-awaiting-publication-approval",
+    "sourceCommit": "eb49860e634bb5af4c25a21bd901ed9613abf84a",
+    "appInventorySha256": "bbfbfefc1d7f8e8ea80ae27316fa2c224fb592413923eff1ef152d5d73a25477",
+    "executableSha256": "b3d80a76ec5bd47cbfe6c01fd13243f7e254e351f95d4b447e939c9b70dac956",
+    "dmgSha256": "0f06f139365a1465fbf2b13d21d59513a262f7a058f2642bac621db73207b041",
+    "packageValidation": "candidate-5.0.4.json",
+    "sourceTree": "f433bfbb86a4881bc739cd829e78181af6d6c00f",
+    "licenseManifestSha256": "403aa737609cbfa7f41b07965aeb7f5d5e7502fda5850a050e25b3f3b3808942",
+    "dmgBytes": 5508881,
+    "appInventoryFiles": 387,
+    "compiledSourceUnchangedByLaterEvidenceCommits": true
   },
   "finalNativeChecks": {
-    "copiedDmgApp": "notRun",
-    "localFirstUse": "notRun",
-    "independentBusinessReadback": "notRun",
-    "noRuntimeLocalUse": "notRun",
-    "signedOutLocalUse": "notRun",
-    "bilingualRepairs": "notRun",
-    "conflictAndDraftRetention": "notRun",
-    "normalQuitAndRelaunch": "notRun",
-    "internal407Replacement": "notRun",
-    "backupAndRecovery": "notRun"
+    "copiedDmgApp": "notRepeatedOn504-see-actual503-baseline",
+    "localFirstUse": "notRepeatedOn504-see-actual503-baseline",
+    "independentBusinessReadback": "notRepeatedOn504-see-actual503-baseline",
+    "noRuntimeLocalUse": "notRun-installed-ChatGPT-fallback",
+    "signedOutLocalUse": "notRepeatedOn504-see-actual503-baseline",
+    "bilingualRepairs": "notRepeatedOn504-see-actual503-baseline",
+    "conflictAndDraftRetention": "notRepeatedOn504-see-actual503-baseline",
+    "normalQuitAndRelaunch": "notRepeatedOn504-see-actual503-baseline",
+    "internal407Replacement": "notRepeatedOn504-see-actual503-baseline",
+    "backupAndRecovery": "notRepeatedOn504-see-actual503-baseline"
   },
   "unperformed": {
     "cleanMacOSUser": "user-accepted-deferral",
@@ -76,10 +81,10 @@
     },
     "siteStaticCheck": {
       "bilingualPages": 6,
-      "localLinksAndAssets": 199,
+      "localLinksAndAssets": 203,
       "downloadGate": "closed"
     },
-    "finalBrowserAndImageRefresh": "images-inspected-and-hashes-verified; final browser pending",
+    "finalBrowserAndImageRefresh": "5.0.3-business-images-and-5.0.4-Settings-image-inspected-and-hash-verified; website-browser-check-separate",
     "reviewRepair": {
       "reviewHead": "3d94af1094b65375de0f5cd717861f3162934a39",
       "standardsFindings": 1,
@@ -107,7 +112,7 @@
       "frontendBuild": "passed",
       "newTests": "none-user-requested-small-visual-fix",
       "actualBeforeImage": "inspected privately; excluded because it contains a private path",
-      "desktopAndNarrowVisualConfirmation": "pending"
+      "desktopAndNarrowVisualConfirmation": "passed-one-native-round-on-5.0.4"
     }
   },
   "historicalCandidateReceipts": [
@@ -117,12 +122,22 @@
     "native-5.0.3.json"
   ],
   "cleanup": {
-    "status": "pending-final-native-cleanup",
+    "status": "owned-registrations-and-cache-cleaned; shared-worktree-leftovers-retained",
     "retainedSharedWorktrees": [
       "public-beta-117",
       "public-beta-117-runtime"
     ],
-    "reason": "Supported archive attempts returned to active shared attachments without a concrete error; no archive guard bypassed; clean heads reachable from integration."
+    "reason": "Supported archive attempts returned to active shared attachments without a concrete error; no archive guard bypassed; clean heads reachable from integration.",
+    "receipt": "cleanup.json",
+    "ownedTemporaryBundlesProcessed": 11,
+    "remainingOwnedAppRegistrationEntries": 0,
+    "historicalDmgVolumeRecords": 4,
+    "activeOwnedMountedImages": 0,
+    "cacheRemovedBytesApprox": 5863759872,
+    "cacheAfterBytes": 0,
+    "formalApplicationsBundle": "preserved-not-replaced-or-unregistered",
+    "retainedArtifacts": "All four candidates, manifests, validations, logs, native/visual evidence, synthetic backups/recovery and standalone runtime retained",
+    "final120Worktree": "pending-supported-archive-after-integration-handoff"
   },
   "functionalBaseline": {
     "build": "5.0.3",
@@ -133,5 +148,13 @@
     "subsequentScope": "Settings-only CSS/markup sizing and wrap gap; no behavior change",
     "repeatDecision": "User explicitly requested a small fix without excessive testing; no full functional/Rust/frontend suite repeat for Settings polish."
   },
-  "settingsVisualCheck": "pending-actual-5.0.4-desktop-and-narrow-confirmation"
+  "settingsVisualCheck": {
+    "status": "passed-one-actual-native-round",
+    "receipt": "settings-5.0.4.json",
+    "desktopWindow": "960x720",
+    "narrowWindow": "820x720",
+    "normalQuit": "passed",
+    "businessSuiteRerun": false
+  },
+  "finalNativeChecksScope": "Full business/upgrade/recovery baseline passed on 5.0.3; intentionally not repeated for 5.0.4 Settings-only delta. See functionalBaseline and settingsVisualCheck."
 }
