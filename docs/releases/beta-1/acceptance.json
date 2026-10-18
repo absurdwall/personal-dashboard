@@ -5,7 +5,7 @@
   "build": "5.0.2",
   "target": "aarch64-apple-darwin",
   "candidate": {
-    "status": "waiting-for-independent-review-before-build",
+    "status": "waiting-for-review-fix-verification-before-build",
     "sourceCommit": null,
     "appInventorySha256": null,
     "executableSha256": null,
@@ -73,6 +73,19 @@
       "localLinksAndAssets": 183,
       "downloadGate": "closed"
     },
-    "finalBrowserAndImageRefresh": "pending"
+    "finalBrowserAndImageRefresh": "pending",
+    "reviewRepair": {
+      "reviewHead": "3d94af1094b65375de0f5cd717861f3162934a39",
+      "standardsFindings": 1,
+      "specFindings": 0,
+      "standardsResolution": "arbitrary output removed; unknown arguments rejected before cleanup",
+      "affectedFrontendArtifactTests": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "diagnosticThenProductionBuild": "passed",
+      "parentVerification": "pending"
+    }
   }
 }
