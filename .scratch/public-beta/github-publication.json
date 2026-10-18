@@ -1,0 +1,183 @@
+{
+  "repository": "absurdwall/personal-dashboard",
+  "parent": 116,
+  "status": "confirmed",
+  "tickets": [
+    {
+      "key": "PDBETA-01",
+      "title": "[PDBETA-01] 首次使用 local check 与必要补齐",
+      "file": "issues/01-local-check.md",
+      "blocked_by_key": null,
+      "number": 117,
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/117",
+      "database_id": 5901965553,
+      "body_sha256": "6a88f4e860bf702935608767fa422c1e0b2ad91043c914dffc3670a68d99adce",
+      "parent_linked": true
+    },
+    {
+      "key": "PDBETA-02",
+      "title": "[PDBETA-02] Beta DMG 打包",
+      "file": "issues/02-beta-dmg.md",
+      "blocked_by_key": "PDBETA-01",
+      "number": 118,
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/118",
+      "database_id": 5901966381,
+      "body_sha256": "1d3880adec5bd06def3eadbb75b4921fd780bc3bddcb92618e6d4335144c5087",
+      "parent_linked": true,
+      "blocker_linked": true
+    },
+    {
+      "key": "PDBETA-03",
+      "title": "[PDBETA-03] 双语网页与完整手册",
+      "file": "issues/03-site-and-manual.md",
+      "blocked_by_key": "PDBETA-02",
+      "number": 119,
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/119",
+      "database_id": 5901967257,
+      "body_sha256": "8354f40d254ebf8c6dab31143c20dab611b319d01e91bb548a55e50404054729",
+      "parent_linked": true,
+      "blocker_linked": true
+    },
+    {
+      "key": "PDBETA-04",
+      "title": "[PDBETA-04] 最终验收与首次 Beta 发布",
+      "file": "issues/04-acceptance-and-release.md",
+      "blocked_by_key": "PDBETA-03",
+      "number": 120,
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/120",
+      "database_id": 5901968142,
+      "body_sha256": "5eb6baea3352dccbc85d99db049404e8f3011bbb966d6501bb3184aad3897e8c",
+      "parent_linked": true,
+      "blocker_linked": true
+    }
+  ],
+  "writes": [
+    {
+      "kind": "create",
+      "key": "PDBETA-01",
+      "started_at": "2026-10-17T18:57:12.452872+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:13.318749+00:00"
+    },
+    {
+      "kind": "link_parent",
+      "key": "PDBETA-01",
+      "started_at": "2026-10-17T18:57:15.423803+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:16.034155+00:00"
+    },
+    {
+      "kind": "create",
+      "key": "PDBETA-02",
+      "started_at": "2026-10-17T18:57:18.139220+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:19.019505+00:00"
+    },
+    {
+      "kind": "link_parent",
+      "key": "PDBETA-02",
+      "started_at": "2026-10-17T18:57:21.124593+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:21.697747+00:00"
+    },
+    {
+      "kind": "create",
+      "key": "PDBETA-03",
+      "started_at": "2026-10-17T18:57:23.800844+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:24.620598+00:00"
+    },
+    {
+      "kind": "link_parent",
+      "key": "PDBETA-03",
+      "started_at": "2026-10-17T18:57:26.725663+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:27.416012+00:00"
+    },
+    {
+      "kind": "create",
+      "key": "PDBETA-04",
+      "started_at": "2026-10-17T18:57:29.521061+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:30.417746+00:00"
+    },
+    {
+      "kind": "link_parent",
+      "key": "PDBETA-04",
+      "started_at": "2026-10-17T18:57:32.522802+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:33.093909+00:00"
+    },
+    {
+      "kind": "link_blocker",
+      "key": "PDBETA-02",
+      "started_at": "2026-10-17T18:57:35.197858+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:35.771029+00:00"
+    },
+    {
+      "kind": "link_blocker",
+      "key": "PDBETA-03",
+      "started_at": "2026-10-17T18:57:37.874140+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:38.446329+00:00"
+    },
+    {
+      "kind": "link_blocker",
+      "key": "PDBETA-04",
+      "started_at": "2026-10-17T18:57:40.549151+00:00",
+      "state": "confirmed",
+      "completed_at": "2026-10-17T18:57:41.146536+00:00"
+    }
+  ],
+  "parent_body_sha256": "d49e81cac1177d76c2b3aa5a6037b01bf16061d73e011557bc818160372ae227",
+  "verified_at": "2026-10-17T18:58:04.794161+00:00",
+  "verification": [
+    {
+      "key": "PDBETA-01",
+      "number": 117,
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/117",
+      "parent": 116,
+      "blocked_by": [],
+      "body_verified": true,
+      "state": "OPEN",
+      "assigned": false
+    },
+    {
+      "key": "PDBETA-02",
+      "number": 118,
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/118",
+      "parent": 116,
+      "blocked_by": [
+        117
+      ],
+      "body_verified": true,
+      "state": "OPEN",
+      "assigned": false
+    },
+    {
+      "key": "PDBETA-03",
+      "number": 119,
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/119",
+      "parent": 116,
+      "blocked_by": [
+        118
+      ],
+      "body_verified": true,
+      "state": "OPEN",
+      "assigned": false
+    },
+    {
+      "key": "PDBETA-04",
+      "number": 120,
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/120",
+      "parent": 116,
+      "blocked_by": [
+        119
+      ],
+      "body_verified": true,
+      "state": "OPEN",
+      "assigned": false
+    }
+  ]
+}
