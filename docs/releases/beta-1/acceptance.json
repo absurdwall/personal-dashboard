@@ -144,7 +144,19 @@
     "cacheAfterBytes": 0,
     "formalApplicationsBundle": "preserved-not-replaced-or-unregistered",
     "retainedArtifacts": "All four candidates, manifests, validations, logs, native/visual evidence, synthetic backups/recovery and standalone runtime retained",
-    "final120Worktree": "pending-supported-archive-after-integration-handoff"
+    "final120Worktree": "pending-supported-archive-after-integration-handoff",
+    "postPublication": {
+      "time": "2026-10-18T00:56:01.607118+00:00",
+      "ownedFinderWindowClosed": true,
+      "exactOwnedAppPathsUnregistered": 5,
+      "remainingOwnedAppRegistrationEntries": 0,
+      "formalAppUntouchedByUnregistration": true,
+      "formalAppRunning": true,
+      "publicDownloadTestAppNormallyQuit": true,
+      "allOwnedDiskImagesEjected": true,
+      "candidatesAndBackupsRetained": true,
+      "twoShared117WorktreesRetained": true
+    }
   },
   "functionalBaseline": {
     "build": "5.0.3",

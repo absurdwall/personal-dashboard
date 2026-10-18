@@ -74,5 +74,17 @@
       "state": "CLOSED",
       "closedAtUtc": "2026-10-18T00:55:09Z"
     }
+  },
+  "postPublicationCleanup": {
+    "time": "2026-10-18T00:56:01.607118+00:00",
+    "ownedFinderWindowClosed": true,
+    "exactOwnedAppPathsUnregistered": 5,
+    "remainingOwnedAppRegistrationEntries": 0,
+    "formalAppUntouchedByUnregistration": true,
+    "formalAppRunning": true,
+    "publicDownloadTestAppNormallyQuit": true,
+    "allOwnedDiskImagesEjected": true,
+    "candidatesAndBackupsRetained": true,
+    "twoShared117WorktreesRetained": true
   }
 }

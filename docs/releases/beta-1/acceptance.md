@@ -197,3 +197,8 @@ No application rebuild or full business suite rerun occurred. All remaining
 deferrals/unperformed checks above retain their exact scope. No invitations were
 sent. GitHub readback confirms #120 closed at 2026-10-18 00:54:44 UTC and #116
 closed at 00:55:09 UTC, following the actual publication receipt.
+
+After public-opening checks, the owned Finder window was closed and five owned
+App paths re-registered during browsing were unregistered exactly; inspection
+confirmed zero owned App registration entries and all owned DMGs ejected, while
+the formal 5.0.4 App remained running and the two shared #117 worktrees retained.
