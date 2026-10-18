@@ -2692,3 +2692,68 @@ date: 2026-08-10
         .text
         .contains("旧记录"));
 }
+
+#[test]
+fn new_personal_space_is_empty_compatible_and_does_not_create_browsed_records() {
+    let parent = TempDirectory::new("new-personal-space");
+    let target = parent.path().join("My Space");
+    let selected = Rc::new(RefCell::new(None));
+    let application = TodayApplication::new(MutableSelection(selected.clone()), NoSelection, FixedClock);
+    let result = application.create_personal_space_at(&target).unwrap();
+    assert_eq!(selected.borrow().as_ref(), Some(&target));
+    assert!(result.view.tasks.tasks.is_empty());
+    assert_eq!(result.view.vault_availability, VaultAvailability::Available);
+    assert_eq!(fs::read_dir(target.join("life/Journal/Daily")).unwrap().count(), 0);
+    let reread = application_for(&target).read_date("2026-08-09").unwrap();
+    assert_eq!(reread.vault_availability, VaultAvailability::Available);
+    assert_eq!(fs::read_dir(target.join("life/Journal/Daily")).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(&target).unwrap().count(), 2);
+}
+
+#[test]
+fn new_personal_space_preserves_existing_data_and_selection_on_failure_or_cancel() {
+    let parent = TempDirectory::new("new-space-safety");
+    let existing = parent.path().join("existing");
+    fs::create_dir(&existing).unwrap();
+    fs::write(existing.join("user-note.md"), "Keep this user text").unwrap();
+    let previous = parent.path().join("previous");
+    fs::create_dir(&previous).unwrap();
+    prepare_compatible_vault(&previous);
+    let selected = Rc::new(RefCell::new(Some(previous.clone())));
+    let app = TodayApplication::new(MutableSelection(selected.clone()), NoSelection, FixedClock);
+    let error = app.create_personal_space_at(&existing).unwrap_err();
+    assert!(error.contains("never converted or overwritten"));
+    assert_eq!(fs::read_to_string(existing.join("user-note.md")).unwrap(), "Keep this user text");
+    assert!(!existing.join(".obsidian").exists());
+    assert_eq!(selected.borrow().as_ref(), Some(&previous));
+    let cancelled = app.create_personal_space_in_language(personal_dashboard_lib::interface_language::InterfaceLanguage::En).unwrap();
+    assert!(!cancelled.changed);
+    assert_eq!(selected.borrow().as_ref(), Some(&previous));
+    assert!(app.create_personal_space_at(&parent.path().join("gone/new-space")).is_err());
+    assert!(!parent.path().join("gone").exists());
+    assert_eq!(selected.borrow().as_ref(), Some(&previous));
+}
+
+#[test]
+fn new_personal_space_selection_failure_removes_only_its_empty_structure() {
+    let parent = TempDirectory::new("new-space-settings-failure");
+    let destination = parent.path().join("new-space");
+    let selected = Rc::new(RefCell::new(None));
+    let app = TodayApplication::new(FailingSaveSelection { selected: selected.clone() }, NoSelection, FixedClock);
+    assert!(app.create_personal_space_at(&destination).unwrap_err().contains("disk full"));
+    assert!(!destination.exists());
+    assert!(selected.borrow().is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn new_personal_space_read_only_parent_is_recoverable() {
+    use std::os::unix::fs::PermissionsExt;
+    let parent = TempDirectory::new("new-space-read-only");
+    fs::set_permissions(parent.path(), fs::Permissions::from_mode(0o500)).unwrap();
+    let target = parent.path().join("new-space");
+    let result = application_for(&target).create_personal_space_at(&target);
+    fs::set_permissions(parent.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(result.unwrap_err().contains("writable location"));
+    assert!(!target.exists());
+}

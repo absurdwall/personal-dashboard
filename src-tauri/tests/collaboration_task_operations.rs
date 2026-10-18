@@ -1244,7 +1244,7 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.5.1");
+    assert_eq!(binding["skillVersion"], "1.5.2");
     assert_eq!(binding["toolSetVersion"], "1.4.1");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
@@ -1612,6 +1612,7 @@ fn enabled_automation(time: &str) -> DailyPlanAutomationSettings {
         enabled: true,
         time: time.into(),
         external_schedule_handoff_confirmed: true,
+        external_schedule_present: true,
     }
 }
 
@@ -1634,6 +1635,7 @@ fn automation_requires_confirmation_that_the_previous_schedule_was_handed_off() 
             enabled: true,
             time: "07:00".into(),
             external_schedule_handoff_confirmed: false,
+            external_schedule_present: true,
         })
         .unwrap_err();
     assert!(error.contains("previous morning-plan schedule is disabled"));
@@ -1655,14 +1657,40 @@ fn automation_requires_confirmation_that_the_previous_schedule_was_handed_off() 
         enabled: true,
         time: "06:00".into(),
         external_schedule_handoff_confirmed: false,
+        external_schedule_present: true,
     };
     store.save(&legacy_settings).unwrap();
+    // Restore an actual older document: this field did not exist before beta.
+    let path = directory.path().join("collaboration/collaboration.json");
+    let mut legacy_document: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    legacy_document["settings"]["dailyPlanAutomation"].as_object_mut().unwrap().remove("externalSchedulePresent");
+    fs::write(&path, serde_json::to_vec_pretty(&legacy_document).unwrap()).unwrap();
     let legacy_run = application.check_daily_plan_automation().unwrap();
+    assert!(legacy_run.settings.external_schedule_present, "old settings must retain the handoff guard");
     assert!(
         legacy_run.current_run.is_none(),
         "restored or migrated settings cannot run before the handoff is confirmed"
     );
     assert!(application.list_sessions("2026-09-27").unwrap().is_empty());
+}
+
+#[test]
+fn fresh_personal_space_can_enable_automation_without_a_fictitious_external_handoff() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("fresh-vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "06:00");
+    let (application, _, _, _) = new_automatic_application(
+        &directory, &vault, MutableContext::new("fresh-vault"), clock, None,
+    );
+    assert!(!application.daily_plan_automation().unwrap().settings.enabled);
+    let enabled = application.update_daily_plan_automation(DailyPlanAutomationSettings {
+        enabled: true,
+        time: "23:00".into(),
+        ..DailyPlanAutomationSettings::default()
+    }).unwrap();
+    assert!(enabled.settings.enabled);
+    assert!(!enabled.settings.external_schedule_handoff_confirmed);
 }
 
 fn wait_for_finish(application: &CollaborationApplication, session_id: &str, vault: &str) {
@@ -7946,7 +7974,7 @@ fn personal_retro_reads_three_real_histories_for_complete_lived_days_without_bus
     assert_eq!(explicit.usage_bindings.len(),2);
     for binding in &explicit.usage_bindings {
         assert_eq!(binding.skill_name,"personal-dashboard-collaboration");
-        assert_eq!(binding.skill_version,"1.5.1");
+        assert_eq!(binding.skill_version,"1.5.2");
         assert_eq!(binding.registered_tools.iter().filter(|tool|*tool=="dashboard_read_history").count(),1);
     }
     if let Ok(destination)=std::env::var("PDCR_RETRO_EVIDENCE_DIR") {

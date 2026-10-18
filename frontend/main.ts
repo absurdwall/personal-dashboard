@@ -128,6 +128,9 @@ type ApplicationIdentity = Readonly<{
   productName: string;
   featureArea: string;
   boundaryMessage: string;
+  displayVersion: string;
+  build: string;
+  sourceCommit: string;
 }>;
 
 declare global {
@@ -1063,6 +1066,7 @@ type DailyPlanAutomationSettings = Readonly<{
   enabled: boolean;
   time: string;
   externalScheduleHandoffConfirmed: boolean;
+  externalSchedulePresent: boolean;
 }>;
 
 type DailyPlanAutomationRunView = Readonly<{
@@ -1331,6 +1335,8 @@ const collaborationRefreshConnectionButton = document.querySelector<HTMLButtonEl
 const collaborationConnectButton = document.querySelector<HTMLButtonElement>("#collaboration-connect-chatgpt");
 const collaborationAutomaticPlanEnabled = document.querySelector<HTMLInputElement>("#collaboration-automatic-plan-enabled");
 const collaborationAutomaticPlanTime = document.querySelector<HTMLInputElement>("#collaboration-automatic-plan-time");
+const collaborationExternalSchedulePresent = document.querySelector<HTMLInputElement>("#collaboration-external-schedule-present");
+const collaborationExternalHandoffRow = document.querySelector<HTMLElement>("#collaboration-external-handoff-row");
 const collaborationExternalScheduleHandoffConfirmed = document.querySelector<HTMLInputElement>("#collaboration-external-handoff-confirmed");
 const collaborationExternalScheduleBoundary = document.querySelector<HTMLElement>("#collaboration-external-schedule-boundary");
 const collaborationSaveAutomaticPlanSettingsButton = document.querySelector<HTMLButtonElement>("#collaboration-save-automatic-plan-settings");
@@ -1348,6 +1354,8 @@ const removeBackgroundImageButton = document.querySelector<HTMLButtonElement>(
 const backgroundImageStatus = document.querySelector<HTMLElement>("#background-image-status");
 const settingsVaultPath = document.querySelector<HTMLElement>("#settings-vault-path");
 const settingsVaultStatus = document.querySelector<HTMLElement>("#settings-vault-status");
+const settingsCreateSpaceButton = document.querySelector<HTMLButtonElement>("#settings-create-space");
+const createTodaySpaceButton = document.querySelector<HTMLButtonElement>("#create-today-space");
 const settingsSelectVaultButton = document.querySelector<HTMLButtonElement>(
   "#settings-select-vault",
 );
@@ -2465,7 +2473,7 @@ function renderCollaborationConnection(): void {
   let summary: string;
   let state: string;
   if (connection.error) {
-    summary = connection.error;
+    summary = localizeCollaborationDiagnostic(connection.error, currentInterfaceLanguage);
     state = "error";
   } else if (connection.authMode && connection.authMode !== "chatgpt") {
     summary = t("collaboration.connectionWrongAuth");
@@ -2478,7 +2486,7 @@ function renderCollaborationConnection(): void {
     state = "ready";
   }
   if (!connection.error && !connection.readOnlyTextTurnsAvailable) {
-    summary += ` · ${connection.textTurnUnavailableReason ?? t("collaboration.turnBlocked")}`;
+    summary += ` · ${connection.textTurnUnavailableReason ? localizeCollaborationDiagnostic(connection.textTurnUnavailableReason, currentInterfaceLanguage) : t("collaboration.turnBlocked")}`;
   }
   setRawText(collaborationConnectionStatus, summary);
   if (collaborationConnectionStatus) collaborationConnectionStatus.dataset.state = state;
@@ -2511,7 +2519,7 @@ function renderCollaborationConnection(): void {
     } else {
       setRawText(
         collaborationTurnCapability,
-        connection.textTurnUnavailableReason ?? t("collaboration.turnBlocked"),
+        connection.textTurnUnavailableReason ? localizeCollaborationDiagnostic(connection.textTurnUnavailableReason, currentInterfaceLanguage) : t("collaboration.turnBlocked"),
       );
       collaborationTurnCapability.dataset.state = "unavailable";
     }
@@ -2573,15 +2581,19 @@ function renderDailyPlanAutomation(view: DailyPlanAutomationView | null): void {
   if (collaborationAutomaticPlanTime) {
     collaborationAutomaticPlanTime.value = view.settings.time;
   }
+  if (collaborationExternalSchedulePresent) collaborationExternalSchedulePresent.checked = view.settings.externalSchedulePresent;
+  if (collaborationExternalHandoffRow) collaborationExternalHandoffRow.hidden = !view.settings.externalSchedulePresent;
   if (collaborationExternalScheduleHandoffConfirmed) {
     collaborationExternalScheduleHandoffConfirmed.checked =
       view.settings.externalScheduleHandoffConfirmed;
   }
   setCopy(
     collaborationExternalScheduleBoundary,
-    view.settings.externalScheduleHandoffConfirmed
-      ? "collaboration.externalScheduleHandoffComplete"
-      : "collaboration.externalScheduleHandoffPending",
+    !view.settings.externalSchedulePresent
+      ? "collaboration.externalScheduleAbsent"
+      : view.settings.externalScheduleHandoffConfirmed
+        ? "collaboration.externalScheduleHandoffComplete"
+        : "collaboration.externalScheduleHandoffPending",
   );
 
   const run = view.currentRun;
@@ -2648,6 +2660,7 @@ async function saveDailyPlanAutomationSettings(): Promise<void> {
     time,
     externalScheduleHandoffConfirmed:
       collaborationExternalScheduleHandoffConfirmed?.checked ?? false,
+    externalSchedulePresent: collaborationExternalSchedulePresent?.checked ?? false,
   };
   if (collaborationSaveAutomaticPlanSettingsButton) {
     collaborationSaveAutomaticPlanSettingsButton.disabled = true;
@@ -4343,7 +4356,7 @@ function renderCollaborationMemory(
   if (collaborationRoutineReferenceMessage) {
     setRawText(
       collaborationRoutineReferenceMessage,
-      `${collaborationMemorySourceStateLabel(memory.routineReference.state)} · ${memory.routineReference.message}`,
+      `${collaborationMemorySourceStateLabel(memory.routineReference.state)} · ${memory.routineReference.state === "missing" ? t("collaboration.routineOptionalMissing") : memory.routineReference.message}`,
     );
   }
   if (collaborationRoutineReferenceContent) {
@@ -7011,8 +7024,7 @@ function shortRecordArticle(record: ShortRecordView, editable = true): HTMLEleme
   const body = document.createElement("p");
   body.textContent = record.text;
   const meta = document.createElement("small");
-  setCopy(meta, "today.recordMeta", {
-    category: t(record.category === "exercise" ? "today.exercise" : "today.ordinaryRecord"),
+  setCopy(meta, record.category === "exercise" ? "today.exerciseRecordMeta" : "today.ordinaryRecordMeta", {
     date: record.date,
     createdAt: record.createdAt,
   });
@@ -7331,6 +7343,7 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
   }
   if (selectTodayVaultButton) {
     selectTodayVaultButton.hidden = view.vaultAvailability === "available";
+    if (createTodaySpaceButton) createTodaySpaceButton.hidden = view.vaultAvailability === "available";
   }
 
   const ready = view.state === "ready";
@@ -7917,6 +7930,8 @@ function updateTodayOperationState(delta: number): void {
     "disabled",
     busy || taskBusy || vaultSelectionInProgress,
   );
+  createTodaySpaceButton?.toggleAttribute("disabled", busy || taskBusy || vaultSelectionInProgress);
+  settingsCreateSpaceButton?.toggleAttribute("disabled", busy || taskBusy || vaultSelectionInProgress);
   refreshTodayButton?.toggleAttribute("disabled", busy || taskBusy);
   todayDaytimeForm?.querySelector("button")?.toggleAttribute("disabled", busy || taskBusy);
   todayEveningForm?.querySelector("button")?.toggleAttribute("disabled", busy || taskBusy);
@@ -8280,7 +8295,7 @@ async function refreshTodayClock(): Promise<void> {
   updateTodayTimeAxisClock(historical, null);
 }
 
-async function selectTodayVault(): Promise<void> {
+async function selectTodayVault(createSpace = false): Promise<void> {
   if (vaultSelectionInProgress) {
     return;
   }
@@ -8324,7 +8339,7 @@ async function selectTodayVault(): Promise<void> {
     const selectionOutcome = await selectVaultAndRefresh(
       () =>
         window.__TAURI__.core.invoke<VaultSelectionResult<TodayView>>(
-          "select_today_vault",
+          createSpace ? "create_today_space" : "select_today_vault",
           { interfaceLanguage: currentInterfaceLanguage },
         ),
       {
@@ -8360,7 +8375,7 @@ async function selectTodayVault(): Promise<void> {
     if (selectionOutcome === "changed" || selectionOutcome === "reconciled") restoreUnboundComposer();
   } catch (error) {
     if (vaultSelectionRequests.isCurrent(selectionRequest)) {
-      renderVaultSelectionError(error);
+      renderVaultSelectionError(error, createSpace);
     }
   } finally {
     collaborationVaultSwitchDraftWrites = null;
@@ -8371,11 +8386,12 @@ async function selectTodayVault(): Promise<void> {
   }
 }
 
-function renderVaultSelectionError(error: unknown): void {
+function renderVaultSelectionError(error: unknown, createSpace = false): void {
+  const errorCopy = createSpace ? "settings.spaceCreationError" : "settings.vaultSelectionError";
   if (currentWorkspaceDestination === "tasks") {
     taskRequests.invalidate();
     if (tasksStatus) {
-      setCopyError(tasksStatus, "settings.vaultSelectionError", error);
+      setCopyError(tasksStatus, errorCopy, error);
       tasksStatus.dataset.state = "error";
     }
     return;
@@ -8391,21 +8407,21 @@ function renderVaultSelectionError(error: unknown): void {
     habitDateRequests.invalidate();
     habitCompletionRequests.invalidate();
     if (habitsStatus) {
-      setCopyError(habitsStatus, "settings.vaultSelectionError", error);
+      setCopyError(habitsStatus, errorCopy, error);
       habitsStatus.dataset.state = "error";
     }
     return;
   }
   if (currentWorkspaceDestination === "settings") {
     if (settingsVaultStatus) {
-      setCopyError(settingsVaultStatus, "settings.vaultSelectionError", error);
+      setCopyError(settingsVaultStatus, errorCopy, error);
       settingsVaultStatus.dataset.state = "error";
     }
     return;
   }
   todayPresentationRequests.invalidate();
   if (todayStatus) {
-    setCopyError(todayStatus, "settings.vaultSelectionError", error);
+    setCopyError(todayStatus, errorCopy, error);
     todayStatus.dataset.state = "error";
   }
 }
@@ -9823,8 +9839,7 @@ function habitExerciseRecordArticle(record: ShortRecordView): HTMLElement {
   const text = document.createElement("p");
   text.textContent = record.text;
   const meta = document.createElement("small");
-  setCopy(meta, "today.recordMeta", {
-    category: t("today.exercise"),
+  setCopy(meta, "today.exerciseRecordMeta", {
     date: record.date,
     createdAt: record.createdAt,
   });
@@ -10599,6 +10614,8 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
       ? applicationMessage(view.catalogError)
       : t("habits.add");
   }
+  const localEmpty = view.state === "missing" && view.habits.length === 0 &&
+    Boolean(view.catalogTargetBinding) && !view.catalogError && !view.readError;
   renderWorkspaceRailContext("habits");
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   if (habitsStatus) {
@@ -10614,6 +10631,8 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
       setCopy(habitsStatus, "habits.namesConfigInvalid");
     } else if (view.readError) {
       setCopyError(habitsStatus, "habits.loadFailed", view.readError);
+    } else if (localEmpty) {
+      setCopy(habitsStatus, "habits.localEmptyHelp");
     } else {
       setAppMessage(habitsStatus, view.message);
     }
@@ -10622,9 +10641,11 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   if (habitsRange) {
     const rangeKey = view.displayRangeLabel && view.rangeLabel
       ? "habits.range"
-      : view.catalogRevision && view.state === "missing"
-        ? "habits.localOnlyRange"
-        : "habits.waitingSnapshot";
+      : localEmpty
+        ? "habits.localEmptySubtitle"
+        : view.catalogRevision && view.state === "missing"
+          ? "habits.localOnlyRange"
+          : "habits.waitingSnapshot";
     setCopy(
       habitsRange,
       rangeKey,
@@ -10640,11 +10661,13 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
     if (habitsEmptyHeading) {
       setCopy(
         habitsEmptyHeading,
-        view.state === "unconfigured" ? "settings.noVault" : "habits.noHabitsSnapshot",
+        view.state === "unconfigured" ? "settings.noVault" : localEmpty ? "habits.noHabitsYet" : "habits.noHabitsSnapshot",
       );
     }
     if (view.readError) {
       setCopyError(habitsEmptyCopy, "habits.loadFailed", view.readError);
+    } else if (localEmpty) {
+      setCopy(habitsEmptyCopy, "habits.localEmptyHelp");
     } else {
       setAppMessage(habitsEmptyCopy, view.message);
     }
@@ -15178,6 +15201,11 @@ async function connectToApplication(): Promise<void> {
     document.querySelectorAll<HTMLElement>("[data-product-name]").forEach((element) => {
       element.textContent = identity.productName;
     });
+    document.querySelectorAll<HTMLElement>("[data-release-version]").forEach((element) => {
+      if (identity.displayVersion && identity.build) {
+        element.textContent = `${identity.displayVersion} · ${identity.build}`;
+      }
+    });
     renderWorkspaceFeatureArea(currentWorkspaceDestination);
     try {
       const preferences = await window.__TAURI__.core.invoke<AppearancePreferences>(
@@ -16673,3 +16701,12 @@ window.addEventListener("resize", positionTodayAxisTaskPopup);
 todayAxisScrollSurface?.addEventListener("scroll", positionTodayAxisFactPopup, { passive: true });
 workspaceInformation?.addEventListener("scroll", positionTodayAxisFactPopup, { passive: true });
 window.addEventListener("resize", positionTodayAxisFactPopup);
+
+settingsCreateSpaceButton?.addEventListener("click", () => { void selectTodayVault(true); });
+createTodaySpaceButton?.addEventListener("click", () => { void selectTodayVault(true); });
+
+collaborationExternalSchedulePresent?.addEventListener("change", () => {
+  if (collaborationExternalHandoffRow) collaborationExternalHandoffRow.hidden = !collaborationExternalSchedulePresent.checked;
+  setCopy(collaborationExternalScheduleBoundary, collaborationExternalSchedulePresent.checked
+    ? "collaboration.externalScheduleHandoffPending" : "collaboration.externalScheduleAbsent");
+});

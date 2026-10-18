@@ -68,6 +68,13 @@ pub enum TodayWorkspaceSelectionState {
 pub trait TodayWorkspaceExchange {
     fn select_vault(&self) -> Result<Option<PathBuf>, String>;
 
+    fn new_personal_space_destination(
+        &self,
+        _interface_language: InterfaceLanguage,
+    ) -> Result<Option<PathBuf>, String> {
+        Ok(None)
+    }
+
     fn select_vault_in_language(
         &self,
         _interface_language: InterfaceLanguage,
@@ -3808,7 +3815,7 @@ where
                 vault_name: None,
                 vault_path: None,
                 vault_availability: VaultAvailability::Unconfigured,
-                message: "请选择 Tortilla Flat vault，以读取 Daily Record。".into(),
+                message: "请选择 兼容 Vault，以读取 Daily Record。".into(),
                 revision: None,
                 target_binding: None,
                 baseline: MorningBaselineView::missing(),
@@ -3831,6 +3838,43 @@ where
         } else {
             self.reload_vault(&vault, date.to_owned())
         }
+    }
+
+    /// Create only a new, empty data directory. Existing folders are never converted.
+    pub fn create_personal_space_in_language(
+        &self,
+        interface_language: InterfaceLanguage,
+    ) -> Result<VaultSelectionResult, String> {
+        let Some(destination) = self.exchange.new_personal_space_destination(interface_language)? else {
+            return Ok(VaultSelectionResult { view: self.read()?, changed: false });
+        };
+        self.create_personal_space_at(&destination)
+    }
+
+    pub fn create_personal_space_at(&self, destination: &Path) -> Result<VaultSelectionResult, String> {
+        fs::create_dir(destination).map_err(|error| {
+            format!("Could not create personal space: {error}. Choose a new folder name in a writable location. Existing folders are never converted or overwritten; the previous selection is unchanged.")
+        })?;
+        let mut created = vec![destination.to_path_buf()];
+        let result = (|| {
+            for relative in [".obsidian", "life", "life/Journal", "life/Journal/Daily"] {
+                let directory = destination.join(relative);
+                fs::create_dir(&directory)
+                    .map_err(|error| format!("Could not prepare the personal space: {error}"))?;
+                created.push(directory);
+            }
+            let view = self.reload_vault(destination, self.clock.current_lived_date())?;
+            self.persistence.save_selected_vault(destination)?;
+            Ok(VaultSelectionResult { view, changed: true })
+        })();
+        if result.is_err() {
+            // Remove only empty directories created by this operation. Concurrently
+            // added user content must survive even when setup or selection fails.
+            for directory in created.iter().rev() {
+                let _ = fs::remove_dir(directory);
+            }
+        }
+        result.map_err(|error: String| format!("{error}. Personal space setup did not complete; the previous selection is unchanged. Any newly added content was preserved."))
     }
 
     pub fn select_vault(&self) -> Result<VaultSelectionResult, String> {
@@ -4083,7 +4127,7 @@ where
         let vault = self
             .persistence
             .load_selected_vault()?
-            .ok_or_else(|| "请先选择 Tortilla Flat vault，再保存简短记录。".to_string())?;
+            .ok_or_else(|| "请先选择 兼容 Vault，再保存简短记录。".to_string())?;
         validate_compatible_vault(&vault)
             .map_err(|error| format!("{error}；草稿仍保留，未写入任何内容。"))?;
         let path = canonical_record_path(&vault, date)?;
@@ -4784,7 +4828,7 @@ where
             .unwrap_or_else(|| self.clock.current_lived_date());
         self.validate_event_date(&date)?;
         let vault = self.persistence.load_selected_vault()?.ok_or_else(|| {
-            "请先选择 Tortilla Flat vault，再更新今天的 Daily Record。".to_string()
+            "请先选择 兼容 Vault，再更新今天的 Daily Record。".to_string()
         })?;
         validate_compatible_vault(&vault).map_err(|error| format!("{error}；未写入任何内容。"))?;
         let path = canonical_record_path(&vault, &date)?;
@@ -4987,7 +5031,7 @@ pub(crate) fn validate_compatible_vault(vault: &Path) -> Result<(), String> {
         return Err("所选 Vault 文件夹不可用".into());
     }
     if !vault.join(".obsidian").is_dir() || !vault.join("life/Journal/Daily").is_dir() {
-        return Err("Vault 不兼容：需要 Obsidian Vault 标记和 life/Journal/Daily 目录".into());
+        return Err("Vault 不兼容：需要 .obsidian 格式标记与 life/Journal/Daily 目录；无需安装 Obsidian".into());
     }
     Ok(())
 }

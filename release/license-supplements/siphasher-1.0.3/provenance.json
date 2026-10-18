@@ -1,0 +1,23 @@
+{
+  "name": "siphasher",
+  "version": "1.0.3",
+  "license": "MIT/Apache-2.0",
+  "commit": "451f67d73a772cba325728109bbfa247750ed076",
+  "documents": [
+    {
+      "file": "COPYING",
+      "sourcePath": "COPYING",
+      "url": "https://raw.githubusercontent.com/jedisct1/rust-siphash/451f67d73a772cba325728109bbfa247750ed076/COPYING",
+      "sha256": "c962ee4d1d05ddc138b202b2540219ebc57893fcf97b364852094a9a94ce1365"
+    },
+    {
+      "file": "LICENSE-MIT.txt",
+      "sourcePath": "LICENSE-MIT.txt",
+      "url": "https://opensource.org/license/mit",
+      "sha256": "21785883212d06d2c262b7e9f73f92ae7a03a7f2fe86809d7c7ad9bd6961d265",
+      "declaredBy": "https://raw.githubusercontent.com/jedisct1/rust-siphash/451f67d73a772cba325728109bbfa247750ed076/COPYING",
+      "transformation": "License paragraphs extracted as plain text from official HTML without changing their wording",
+      "sourceSha256": "beb7f17f7aa655327ccc53ab0a2ce5d3733c1f53a1f9591d7bf87aac9cb01e95"
+    }
+  ]
+}

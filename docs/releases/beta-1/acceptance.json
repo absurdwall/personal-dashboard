@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "displayVersion": "1.0.0 Beta 1",
+  "version": "1.0.0",
+  "build": "5.0.4",
+  "target": "aarch64-apple-darwin",
+  "candidate": {
+    "status": "prepared-awaiting-publication-approval",
+    "sourceCommit": "eb49860e634bb5af4c25a21bd901ed9613abf84a",
+    "appInventorySha256": "bbfbfefc1d7f8e8ea80ae27316fa2c224fb592413923eff1ef152d5d73a25477",
+    "executableSha256": "b3d80a76ec5bd47cbfe6c01fd13243f7e254e351f95d4b447e939c9b70dac956",
+    "dmgSha256": "0f06f139365a1465fbf2b13d21d59513a262f7a058f2642bac621db73207b041",
+    "packageValidation": "candidate-5.0.4.json",
+    "sourceTree": "f433bfbb86a4881bc739cd829e78181af6d6c00f",
+    "licenseManifestSha256": "403aa737609cbfa7f41b07965aeb7f5d5e7502fda5850a050e25b3f3b3808942",
+    "dmgBytes": 5508881,
+    "appInventoryFiles": 387,
+    "compiledSourceUnchangedByLaterEvidenceCommits": true
+  },
+  "finalNativeChecks": {
+    "copiedDmgApp": "notRepeatedOn504-see-actual503-baseline",
+    "localFirstUse": "notRepeatedOn504-see-actual503-baseline",
+    "independentBusinessReadback": "notRepeatedOn504-see-actual503-baseline",
+    "noRuntimeLocalUse": "notRun-installed-ChatGPT-fallback",
+    "signedOutLocalUse": "notRepeatedOn504-see-actual503-baseline",
+    "bilingualRepairs": "notRepeatedOn504-see-actual503-baseline",
+    "conflictAndDraftRetention": "notRepeatedOn504-see-actual503-baseline",
+    "normalQuitAndRelaunch": "notRepeatedOn504-see-actual503-baseline",
+    "internal407Replacement": "notRepeatedOn504-see-actual503-baseline",
+    "backupAndRecovery": "notRepeatedOn504-see-actual503-baseline"
+  },
+  "unperformed": {
+    "cleanMacOSUser": "user-accepted-deferral",
+    "independentChatGPTLogin": "user-accepted-deferral",
+    "realModelModification": "notRun",
+    "realChineseEnglishMixedMicrophone": "notRun",
+    "liveAutomaticMorningPlan": "notRun",
+    "physicalNetworkDisconnection": "notRun",
+    "lowerMacOS": "notRun",
+    "publicAnonymousDownloadQuarantineGatekeeper": "notRun",
+    "genuinelyAbsentRuntimeNative": "notRun-installed-ChatGPT-fallback-exists"
+  },
+  "images": {
+    "receipt": "screenshots.json",
+    "currentBuild": "5.0.3",
+    "finalRefreshRequired": false,
+    "sourceCommit": "e8ddeb8aab2d6d7bfc74d805839b633c9065af45",
+    "visuallyInspected": true,
+    "actualHashesVerified": true,
+    "description": "Actual 5.0.3 unchanged business-page captures; not relabeled as 5.0.4 Settings screenshots.",
+    "retainedForSettingsOnlyBuild": "5.0.4"
+  },
+  "publication": {
+    "authorized": true,
+    "status": "authorized-awaiting-actual-publication-verification",
+    "tag": "v1.0.0-beta.1",
+    "pagesUrl": null,
+    "releaseUrl": null,
+    "anonymousAssetVerification": "notRun",
+    "approvalReceipt": "publication-approval.md",
+    "configuredPagesUrl": "https://absurdwall.github.io/personal-dashboard/"
+  },
+  "sourcePreparationChecks": {
+    "frontendSuite": {
+      "passed": 557,
+      "failed": 0,
+      "skipped": 0
+    },
+    "finalAffectedRenderedHabits": {
+      "passed": 2,
+      "failed": 0
+    },
+    "rustLibrary": {
+      "passed": 110,
+      "failed": 0,
+      "ignored": 6
+    },
+    "frontendBuild": "passed",
+    "releaseHelperSyntax": "passed",
+    "actualToolchainNoticePreparation": {
+      "documents": 7,
+      "rustcCommit": "8bab26f4f68e0e26f0bb7960be334d5b520ea452"
+    },
+    "siteStaticCheck": {
+      "bilingualPages": 6,
+      "localLinksAndAssets": 203,
+      "downloadGate": "closed"
+    },
+    "finalBrowserAndImageRefresh": "5.0.3-business-images-and-5.0.4-Settings-image-inspected-and-hash-verified; website-browser-check-separate",
+    "reviewRepair": {
+      "reviewHead": "3d94af1094b65375de0f5cd717861f3162934a39",
+      "standardsFindings": 1,
+      "specFindings": 0,
+      "standardsResolution": "arbitrary output removed; unknown arguments rejected before cleanup",
+      "affectedFrontendArtifactTests": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "diagnosticThenProductionBuild": "passed",
+      "parentVerification": "passed before build 5.0.2",
+      "remainingFindings": 0
+    },
+    "nativeSubtitleRepair": {
+      "affectedRenderedTests": {
+        "passed": 2,
+        "failed": 0
+      },
+      "redObserved": true,
+      "finalCandidateNativeVerification": "passed-on-5.0.3-both-languages",
+      "specDeltaFindings": 0
+    },
+    "settingsPolish": {
+      "frontendBuild": "passed",
+      "newTests": "none-user-requested-small-visual-fix",
+      "actualBeforeImage": "inspected privately; excluded because it contains a private path",
+      "desktopAndNarrowVisualConfirmation": "passed-one-native-round-on-5.0.4"
+    }
+  },
+  "historicalCandidateReceipts": [
+    "candidate-5.0.2.json",
+    "native-5.0.2.json",
+    "candidate-5.0.3.json",
+    "native-5.0.3.json"
+  ],
+  "cleanup": {
+    "status": "owned-registrations-and-cache-cleaned; shared-worktree-leftovers-retained",
+    "retainedSharedWorktrees": [
+      "public-beta-117",
+      "public-beta-117-runtime"
+    ],
+    "reason": "Supported archive attempts returned to active shared attachments without a concrete error; no archive guard bypassed; clean heads reachable from integration.",
+    "receipt": "cleanup.json",
+    "ownedTemporaryBundlesProcessed": 11,
+    "remainingOwnedAppRegistrationEntries": 0,
+    "historicalDmgVolumeRecords": 4,
+    "activeOwnedMountedImages": 0,
+    "cacheRemovedBytesApprox": 5863759872,
+    "cacheAfterBytes": 0,
+    "formalApplicationsBundle": "preserved-not-replaced-or-unregistered",
+    "retainedArtifacts": "All four candidates, manifests, validations, logs, native/visual evidence, synthetic backups/recovery and standalone runtime retained",
+    "final120Worktree": "pending-supported-archive-after-integration-handoff"
+  },
+  "functionalBaseline": {
+    "build": "5.0.3",
+    "sourceCommit": "e8ddeb8aab2d6d7bfc74d805839b633c9065af45",
+    "packageReceipt": "candidate-5.0.3.json",
+    "nativeReceipt": "native-5.0.3.json",
+    "status": "bounded-same-user-functional-upgrade-recovery-checks-passed",
+    "subsequentScope": "Settings-only CSS/markup sizing and wrap gap; no behavior change",
+    "repeatDecision": "User explicitly requested a small fix without excessive testing; no full functional/Rust/frontend suite repeat for Settings polish."
+  },
+  "settingsVisualCheck": {
+    "status": "passed-one-actual-native-round",
+    "receipt": "settings-5.0.4.json",
+    "desktopWindow": "960x720",
+    "narrowWindow": "820x720",
+    "normalQuit": "passed",
+    "businessSuiteRerun": false
+  },
+  "finalNativeChecksScope": "Full business/upgrade/recovery baseline passed on 5.0.3; intentionally not repeated for 5.0.4 Settings-only delta. See functionalBaseline and settingsVisualCheck."
+}

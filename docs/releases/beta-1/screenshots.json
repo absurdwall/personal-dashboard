@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "captureDateLocal": "2026-10-17",
+  "timeZone": "America/New_York",
+  "product": "Personal Dashboard",
+  "displayVersion": "1.0.0 Beta 1",
+  "build": "5.0.3",
+  "sourceCommit": "e8ddeb8aab2d6d7bfc74d805839b633c9065af45",
+  "sourceTree": "63da1b0196bc8b6d9cc071919801dff04a22e8d3",
+  "host": "macOS 27.0.1 arm64",
+  "executableSha256": "512c4b71af8be6f7e6b9bacda63d8acd34e1eaf271070e825ec4b1a69228b06d",
+  "signedReleaseManifestSha256": "23d70b540b5cfec1ea2a6ac04070aa0507b9b57eb4962657f50ee9be6f59874c",
+  "method": "Existing exact-process packaged-acceptance native window exporter; actual candidate, fresh isolated profile and synthetic Sample Space. No image generation or retouching.",
+  "syntheticOnly": true,
+  "accountPanelsCaptured": false,
+  "authFilePresentBeforeOrAfter": false,
+  "normalQuitVerified": true,
+  "formalAppUntouched": true,
+  "fixedEnglishCopyChecks": [
+    "Daily note visible; fixed Chinese ordinary-note category absent",
+    "No Habit source snapshot has been generated. Local Habit definitions and completions remain available.",
+    "Local completions are recorded by lived day; external source coverage remains unknown.",
+    "Dashboard local completions; external source coverage unknown"
+  ],
+  "finalCandidateRefreshRequired": false,
+  "assets": [
+    {
+      "path": "../../assets/today.png",
+      "sha256": "de06da9a68bb44c9680b25a22c38d56b5f8d2856cd50f8df5e9c8eebef237e86",
+      "bytes": 888954,
+      "width": 3104,
+      "height": 2104,
+      "captureModifiedAtUtc": "2026-10-18T00:16:26.535920+00:00",
+      "visuallyInspected": true
+    },
+    {
+      "path": "../../assets/tasks.png",
+      "sha256": "dab24a1be53f053a4dc36d3a1e372cb8044444547dee0b8ee461ab754bfd140e",
+      "bytes": 729898,
+      "width": 3104,
+      "height": 2104,
+      "captureModifiedAtUtc": "2026-10-18T00:16:35.438510+00:00",
+      "visuallyInspected": true
+    },
+    {
+      "path": "../../assets/habits.png",
+      "sha256": "a6c536799ddc5d77bd8b2e1a1a05d7fb2cba549e449a90d23928c3ff754056ce",
+      "bytes": 771077,
+      "width": 3104,
+      "height": 2104,
+      "captureModifiedAtUtc": "2026-10-18T00:16:44.539136+00:00",
+      "visuallyInspected": true
+    }
+  ],
+  "limits": [
+    "Real AI login/model/microphone and clean macOS-user installation not exercised by screenshot capture.",
+    "This is candidate screenshot provenance, not public release approval or final browser proof.",
+    "Source Chinese plan-period labels are synthetic record content and intentionally preserved."
+  ],
+  "privateEvidenceExcluded": [
+    "Fresh app profile and copied synthetic files",
+    "Raw AX dumps, which can include system menu history"
+  ],
+  "historicalReceipt": "screenshots-5.0.1.json",
+  "currentDeclaredBuild": "5.0.4",
+  "retentionReason": "Actual build 5.0.3 business-page captures are retained unchanged for the Settings-only 5.0.4 polish; they are not relabeled as captures from build 5.0.4."
+}

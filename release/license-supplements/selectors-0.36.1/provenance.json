@@ -1,0 +1,23 @@
+{
+  "name": "selectors",
+  "version": "0.36.1",
+  "license": "MPL-2.0",
+  "commit": "635e1a19d02960588a00e189bd4bd5bdb150ec3d",
+  "documents": [
+    {
+      "file": "LICENSE-header.txt",
+      "sourcePath": "LICENSE-header.txt",
+      "url": "https://raw.githubusercontent.com/servo/stylo/635e1a19d02960588a00e189bd4bd5bdb150ec3d/selectors/lib.rs",
+      "sha256": "766674381e88a468d55e07de3596987391cf0e8beebe51baf4fddf11078785b3",
+      "sourceSha256": "d54c6e13e9e952dac17d209171df8657e3cae93beaddace4906150cdec8d02e9",
+      "transformation": "Verbatim leading three-line MPL license notice extracted from the exact-commit upstream selectors/lib.rs; module declarations omitted."
+    },
+    {
+      "file": "LICENSE-MPL-2.0.txt",
+      "sourcePath": "LICENSE-MPL-2.0.txt",
+      "url": "https://www.mozilla.org/media/MPL/2.0/index.txt",
+      "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+      "declaredBy": "https://raw.githubusercontent.com/servo/stylo/635e1a19d02960588a00e189bd4bd5bdb150ec3d/selectors/lib.rs"
+    }
+  ]
+}

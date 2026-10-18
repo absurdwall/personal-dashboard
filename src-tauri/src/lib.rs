@@ -29,6 +29,7 @@ pub mod task_adapter;
 pub mod tasks;
 pub mod today;
 
+#[cfg(feature = "diagnostic-voice-gate")]
 #[tauri::command]
 fn collaboration_voice_gate_fixture() -> Result<Vec<u8>, String> {
     if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_none() {
@@ -43,7 +44,7 @@ fn collaboration_voice_gate_fixture() -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "diagnostic-voice-gate"))]
 fn voice_gate_microphone_authorization() -> &'static str {
     objc2::runtime::AnyClass::get(c"AVCaptureDevice")
         .map(|class| {
@@ -61,6 +62,7 @@ fn voice_gate_microphone_authorization() -> &'static str {
         .unwrap_or("class-unavailable")
 }
 
+#[cfg(feature = "diagnostic-voice-gate")]
 #[tauri::command]
 async fn collaboration_voice_gate_request_microphone(
     app: tauri::AppHandle,
@@ -101,6 +103,7 @@ async fn collaboration_voice_gate_request_microphone(
     }
 }
 
+#[cfg(feature = "diagnostic-voice-gate")]
 #[tauri::command]
 fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), String> {
     let path = std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT")
@@ -297,17 +300,25 @@ type DesktopTaskApplication = TaskApplication<FileTodayWorkspacePersistence, Sys
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ApplicationIdentity {
-    product_name: &'static str,
+    product_name: String,
+    display_version: String,
+    build: String,
+    source_commit: &'static str,
     feature_area: &'static str,
     boundary_message: &'static str,
 }
 
 #[tauri::command]
 fn application_identity() -> ApplicationIdentity {
+    let release: serde_json::Value = serde_json::from_str(include_str!("../../release.json"))
+        .expect("checked release declaration");
     ApplicationIdentity {
-        product_name: "Personal Dashboard",
+        product_name: release["productName"].as_str().expect("release product name").into(),
+        display_version: release["displayVersion"].as_str().expect("release display version").into(),
+        build: release["build"].as_str().expect("release build").into(),
+        source_commit: option_env!("PERSONAL_DASHBOARD_SOURCE_COMMIT").unwrap_or("development"),
         feature_area: "Daily records and habits",
-        boundary_message: "Local Rust application ready · Offline",
+        boundary_message: "Local-first personal management · Online AI optional",
     }
 }
 
@@ -968,6 +979,14 @@ fn set_historical_habit_completion(
 }
 
 #[tauri::command]
+async fn create_today_space(
+    application: State<'_, DesktopTodayApplication>,
+    interface_language: InterfaceLanguage,
+) -> Result<VaultSelectionResult, String> {
+    application.create_personal_space_in_language(interface_language)
+}
+
+#[tauri::command]
 async fn select_today_vault(
     application: State<'_, DesktopTodayApplication>,
     interface_language: InterfaceLanguage,
@@ -1184,8 +1203,11 @@ pub fn run() {
             collaboration_session,
             collaboration_record_refresh,
             collaboration_submit_message,
+            #[cfg(feature = "diagnostic-voice-gate")]
             collaboration_voice_gate_fixture,
+            #[cfg(feature = "diagnostic-voice-gate")]
             collaboration_voice_runtime_gate,
+            #[cfg(feature = "diagnostic-voice-gate")]
             collaboration_voice_gate_request_microphone,
             collaboration_dictation_start,
             collaboration_dictation_poll,
@@ -1244,6 +1266,7 @@ pub fn run() {
             set_local_habit_completion,
             set_historical_habit_completion,
             select_today_vault,
+            create_today_space,
             edit_plan_time,
             append_daytime_update,
             add_dated_note,
@@ -1273,8 +1296,11 @@ pub fn run() {
         collaboration_session,
         collaboration_record_refresh,
         collaboration_submit_message,
+        #[cfg(feature = "diagnostic-voice-gate")]
         collaboration_voice_gate_fixture,
+        #[cfg(feature = "diagnostic-voice-gate")]
         collaboration_voice_runtime_gate,
+        #[cfg(feature = "diagnostic-voice-gate")]
         collaboration_voice_gate_request_microphone,
         collaboration_dictation_start,
         collaboration_dictation_poll,
@@ -1331,6 +1357,7 @@ pub fn run() {
         set_local_habit_completion,
         set_historical_habit_completion,
         select_today_vault,
+        create_today_space,
         edit_plan_time,
         append_daytime_update,
         add_dated_note,

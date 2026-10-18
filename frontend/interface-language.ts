@@ -134,7 +134,7 @@ const interfaceCopies = {
   "settings.restoreBoundary": { zh: "只恢复外观偏好，不清理 Vault 或个人记录。", en: "Restores appearance only; Vault data and personal records remain unchanged." },
   "settings.recordsOwnership": { zh: "你的记录仍属于自己选择的本地文件夹，无需 Dashboard 账号。", en: "Your records remain in the local folder you choose. No Dashboard account is required." },
   "settings.currentVault": { zh: "当前 Vault", en: "Current Vault" },
-  "settings.compatibleVault": { zh: "兼容 Vault 需要 Obsidian Vault 标记与 life/Journal/Daily 目录。", en: "A compatible Vault needs an Obsidian Vault marker and a life/Journal/Daily folder." },
+  "settings.compatibleVault": { zh: "新建空白个人空间，或选择已有兼容 Vault。无需安装 Obsidian；已有 Vault 需要 .obsidian 与 life/Journal/Daily 格式目录。", en: "Create an empty personal space or choose an existing compatible Vault. Obsidian is not required; existing Vaults need .obsidian and life/Journal/Daily format directories." },
   "settings.noVault": { zh: "尚未选择 Vault。", en: "No Vault selected." },
   "settings.vaultAvailable": { zh: "本地位置可用；这里只确认 Mac 文件状态，不代表 Google Drive 已完成云端同步。", en: "The local location is available. This confirms only the Mac file state, not completed Google Drive cloud sync." },
   "settings.vaultUnconfigured": { zh: "尚未配置本地 Vault。", en: "No local Vault is configured." },
@@ -147,7 +147,7 @@ const interfaceCopies = {
   "settings.vaultNotSwitchedAfterSaveFailure": { zh: "当前保存失败，Vault 尚未切换；草稿与更正状态仍保留。", en: "The current save failed, so the Vault was not switched. Drafts and correction state are preserved." },
   "settings.vaultSelectionError": { zh: "无法选择 Vault：{error}", en: "Could not choose a Vault: {error}" },
   "settings.waitingLocal": { zh: "等待读取本地状态。", en: "Waiting for local status." },
-  "settings.changeVault": { zh: "更换 Vault…", en: "Change Vault…" },
+  "settings.changeVault": { zh: "选择已有兼容 Vault…", en: "Choose existing compatible Vault…" },
   "settings.driveHeading": { zh: "使用 Google Drive 中的 Vault", en: "Use a Vault in Google Drive" },
   "settings.driveIntro": { zh: "先让 Google Drive 桌面客户端把整个 Vault 保持为 Mac 上可用的本地文件夹，再在这里选择它。", en: "First make the whole Vault locally available through Google Drive for desktop, then choose it here." },
   "settings.driveStepSignIn": { zh: "在 Google Drive 桌面客户端登录。", en: "Sign in with Google Drive for desktop." },
@@ -188,6 +188,8 @@ const interfaceCopies = {
   "collaboration.automaticPlanNeedsReview": { zh: "自动运行中断或保存结果待核对；检查协作会话与 Daily Record 后再重试。", en: "The automatic run was interrupted or its save needs checking. Review the collaboration session and Daily Record before retrying." },
   "collaboration.automaticPlanStopped": { zh: "自动运行已停止。", en: "The automatic run was stopped." },
   "collaboration.automaticPlanUnavailable": { zh: "当前协作或 Daily Record 服务不可用；未运行自动计划。", en: "Collaboration or Daily Record planning is unavailable; no automatic plan ran." },
+  "collaboration.externalSchedulePresent": { zh: "我已有其他自动早间安排日程。", en: "I already use another automatic morning-plan schedule." },
+  "collaboration.externalScheduleAbsent": { zh: "没有旧日程时，无需交接。Dashboard 仅在 App 运行期间检查；退出后不执行。", en: "No handoff is needed without an existing schedule. Dashboard checks only while the App runs; it does not run after quitting." },
   "collaboration.externalScheduleHandoffConfirmed": { zh: "我已在 App 之外单独检查或暂停旧的定时任务。", en: "I have separately reviewed or paused the existing external scheduled task." },
   "collaboration.externalScheduleHandoffPending": { zh: "Dashboard 不会查看或修改外部 scheduled task。确认交接前，旧流程仍可能运行并造成重复写入。", en: "Dashboard does not inspect or change external scheduled tasks. Until you confirm the handoff, the old flow may still run and create a duplicate." },
   "collaboration.externalScheduleHandoffComplete": { zh: "你已在 App 中标记交接完成；Dashboard 仍未修改外部 scheduled task。", en: "You marked the handoff complete in the App. Dashboard still has not changed the external scheduled task." },
@@ -217,7 +219,8 @@ const interfaceCopies = {
   "collaboration.longTermLoaded": { zh: "已读取现有背景；保存时会检查版本。", en: "Existing background loaded; the source revision is checked on save." },
   "collaboration.longTermSaved": { zh: "已更新现有 life/Self.md 文档。", en: "Updated the existing life/Self.md document." },
   "collaboration.longTermSaveFailed": { zh: "长期背景未保存：{error}", en: "Long-term background was not saved: {error}" },
-  "collaboration.longTermMissing": { zh: "未找到现有背景文档；Dashboard 不会创建另一份个人档案。", en: "Existing background document not found. Dashboard will not create a second profile." },
+  "collaboration.longTermMissing": { zh: "尚未添加可选长期背景；仍可使用 Task、Habit 和 Daily Record。", en: "No optional long-term background has been added. Task, Habit and Daily Record work remains available." },
+  "collaboration.routineOptionalMissing": { zh: "尚未安装可选日常工作流参考；Dashboard 操作仍可使用。", en: "No optional daily workflow reference is installed. Dashboard operations remain available." },
   "collaboration.longTermSource": { zh: "来源：{path}", en: "Source: {path}" },
   "collaboration.memorySourceReady": { zh: "已读取", en: "Loaded" },
   "collaboration.memorySourceMissing": { zh: "未找到", en: "Not found" },
@@ -675,7 +678,7 @@ const interfaceCopies = {
   "calendar.daytimeDetail": { zh: "{count} 条日间记录 · 默认打开当日进展", en: "{count} daytime records · Opens daytime progress" },
   "calendar.errorIsolation": { zh: "这一天的异常不会阻断其他日期。", en: "An error on this day does not block other dates." },
   "calendar.vaultNotSelected": { zh: "尚未选择 Vault", en: "No Vault selected" },
-  "calendar.chooseVaultInToday": { zh: "请先到 Today 选择 Tortilla Flat Vault。", en: "Choose a Tortilla Flat Vault from Today first." },
+  "calendar.chooseVaultInToday": { zh: "请先在 Today 新建个人空间或选择兼容 Vault。", en: "Choose a compatible Vault from Today first." },
   "calendar.readOnly": { zh: "Calendar 浏览不会创建文件。", en: "Browsing Calendar does not create files." },
   "calendar.blankDate": { zh: "空白日期", en: "Blank date" },
   "calendar.blankCopy": { zh: "没有 Daily Record；保持空白，不制造补记义务。", en: "There is no Daily Record. The date stays blank without creating a catch-up obligation." },
@@ -688,7 +691,7 @@ const interfaceCopies = {
   "calendar.selected": { zh: "已选择 {date}。", en: "Selected {date}." },
   "calendar.dateFailed": { zh: "无法读取 {date}；其他日期仍可选择。", en: "Could not read {date}; other dates remain selectable." },
   "calendar.previewStatus": { zh: "选择日期可预览摘要；Calendar 浏览不会修改 Daily Record。", en: "Choose a date to preview its summary. Calendar browsing does not modify Daily Records." },
-  "calendar.connectStatus": { zh: "尚未选择 Vault；请先到 Today 连接 Tortilla Flat Vault。", en: "No Vault selected. Connect a Tortilla Flat Vault from Today first." },
+  "calendar.connectStatus": { zh: "尚未选择 Vault；请先在 Today 新建个人空间或选择兼容 Vault。", en: "No Vault selected. Connect a compatible Vault from Today first." },
   "calendar.loadingNewVault": { zh: "正在读取新 Vault 的 Calendar…", en: "Loading Calendar from the new Vault…" },
   "calendar.taskSection": { zh: "选中日期 · 任务", en: "SELECTED DATE · TASKS" },
   "calendar.taskHeading": { zh: "这一天的任务", en: "Tasks for this day" },
@@ -706,6 +709,8 @@ const interfaceCopies = {
   "calendar.weekFri": { zh: "周五", en: "Fri" },
   "calendar.weekSat": { zh: "周六", en: "Sat" },
   "today.actions": { zh: "Today 操作", en: "Today workspace actions" },
+  "settings.spaceCreationError": { zh: "无法新建个人空间：{error}", en: "Could not create a personal space: {error}" },
+  "settings.createSpace": { zh: "新建个人空间…", en: "Create personal space…" },
   "today.selectVault": { zh: "选择 Vault…", en: "Choose Vault…" },
   "today.refresh": { zh: "刷新", en: "Refresh" },
   "today.loading": { zh: "正在读取今天的早间计划…", en: "Loading today's morning plan…" },
@@ -1101,9 +1106,9 @@ const interfaceCopies = {
   "today.noInitialEvidence": { zh: "尚未记录当前计划依据。", en: "No current plan evidence has been recorded." },
   "today.morningHandoff": { zh: "早间交接", en: "MORNING HANDOFF" },
   "today.needsRecord": { zh: "Today 需要一份 Daily Record。", en: "Today needs a Daily Record." },
-  "today.runMorning": { zh: "请让 Codex 运行早间流程，然后回到这里刷新 Today。", en: "Ask Codex to run the morning flow, then return here and refresh Today." },
-  "today.connectVault": { zh: "连接 Tortilla Flat Vault。", en: "Connect a Tortilla Flat Vault." },
-  "today.connectVaultCopy": { zh: "只需选择一次 Vault 文件夹。Personal Dashboard 只保存这个工作区设置，并直接读取规范 Daily Record。", en: "Choose the Vault folder once. Personal Dashboard saves only this workspace setting and reads canonical Daily Records directly." },
+  "today.runMorning": { zh: "保存一句记录即可创建当天记录；也可在协作中请求初始计划。", en: "Save a short note to create this day's record, or request an initial plan in Collaboration." },
+  "today.connectVault": { zh: "新建个人空间或选择兼容 Vault。", en: "Connect a compatible Vault." },
+  "today.connectVaultCopy": { zh: "新建时选择位置并命名文件夹，或选择已有兼容 Vault。无需安装 Obsidian。", en: "Choose a location and folder name for a new space, or select an existing compatible Vault. Obsidian is not required." },
   "today.repairRecord": { zh: "今天的 Daily Record 需要修复。", en: "Today's Daily Record needs repair." },
   "today.openRecordFirst": { zh: "请先打开可记录的日期，并填写一句内容。", en: "Open a writable date and enter a short note first." },
   "today.correctionSaved": { zh: "更正及修改记录已写入 Daily Record。", en: "The correction and change history were saved to the Daily Record." },
@@ -1120,6 +1125,8 @@ const interfaceCopies = {
   "today.revisedDirection": { zh: "接下来这样安排", en: "Revised direction" },
   "today.correctThis": { zh: "更正这条", en: "Correct this note" },
   "today.changeHistory": { zh: "修改记录 · {count}", en: "Change history · {count}" },
+  "today.ordinaryRecordMeta": { zh: "日常记录 · 目标 {date} · 记录于 {createdAt}", en: "Daily note · For {date} · Recorded {createdAt}" },
+  "today.exerciseRecordMeta": { zh: "健身 · 目标 {date} · 记录于 {createdAt}", en: "Exercise · For {date} · Recorded {createdAt}" },
   "today.recordMeta": { zh: "{category} · 目标 {date} · 记录于 {createdAt}", en: "{category} · For {date} · Recorded {createdAt}" },
   "count.timeBlocks": { zh: "{count} 个时间块", en: "{count} time blocks" },
   "count.knownDirections": { zh: "{known} 条已知 · {directions} 条修订方向", en: "{known} known · {directions} revised directions" },
@@ -1290,6 +1297,9 @@ const interfaceCopies = {
   "habits.futureBoundary": { zh: "未来日期不能记录已经发生的事实。", en: "Facts that already happened cannot be recorded on a future date." },
   "habits.range": { zh: "12 周显示窗口 · {display} · 来源覆盖 · {range}", en: "12-week display · {display} · Source coverage · {range}" },
   "habits.waitingSnapshot": { zh: "等待有效的 bounded snapshot。", en: "Waiting for a valid bounded snapshot." },
+  "habits.localEmptySubtitle": { zh: "添加第一个本地习惯。", en: "Create your first local habit." },
+  "habits.noHabitsYet": { zh: "尚无习惯。", en: "No habits yet." },
+  "habits.localEmptyHelp": { zh: "点击“添加习惯”开始。本地习惯无需外部快照或滴答。", en: "Choose Add habit to begin. Local habits do not require an external snapshot or Dida." },
   "habits.noHabitsSnapshot": { zh: "尚无可显示的 Habits 快照。", en: "No Habits snapshot is available to display." },
   "habits.noGoalExcluded": { zh: " {count} 个无目标习惯未计入分母。", en: " {count} habits without goals are excluded from the denominator." },
   "habits.loadingLocal": { zh: "正在读取本地 Habits 快照…", en: "Loading the local Habits snapshot…" },
@@ -1334,8 +1344,10 @@ export function formatInterfaceMonth(
 }
 
 const englishApplicationMessages: Readonly<Record<string, string>> = {
-  "请选择 Tortilla Flat vault，以读取 Daily Record。":
-    "Choose a Tortilla Flat Vault to read Daily Records.",
+  "本地完成按 lived day 记录；外部来源覆盖仍未知。": "Local completions are recorded by lived day; external source coverage remains unknown.",
+  "Habits 来源快照尚未生成；本地 Habit 定义与完成记录可独立使用。": "No Habit source snapshot has been generated. Local Habit definitions and completions remain available.",
+  "请选择 兼容 Vault，以读取 Daily Record。":
+    "Choose a compatible Vault to read Daily Records.",
   "当前 Vault 文件夹不可用。请检查本地位置，或重新选择 Vault。":
     "The current Vault folder is unavailable. Check the local location or choose another Vault.",
   "这份 Daily Record 有效，但当前安排尚未写入。":
@@ -1357,8 +1369,8 @@ const englishApplicationMessages: Readonly<Record<string, string>> = {
     "Loaded the separately saved morning baseline.",
   "要更正的记录已经变化。草稿仍保留；请重新读取该日期后重试。":
     "The record being corrected has changed. The draft is preserved; reload that date and try again.",
-  "请选择 Tortilla Flat vault，以读取 Habits 快照。":
-    "Choose a Tortilla Flat Vault to read the Habits snapshot.",
+  "请选择 兼容 Vault，以读取 Habits 快照。":
+    "Choose a compatible Vault to read the Habits snapshot.",
   "尚无 Habits 快照。Dashboard 不会自动生成数据；请在每日流程按需生成后刷新。":
     "No Habits snapshot exists. Dashboard does not generate data automatically; generate one from the daily flow and refresh.",
   "正在显示过期的有效快照；数据不是实时读数。":
@@ -1619,12 +1631,12 @@ const englishApplicationErrors: Readonly<Record<string, string>> = {
     "The short note to correct could not be found. Refresh and confirm that the entry still exists.",
   "不能在未来日期记录已经发生的事实。请选择今天或过去日期。":
     "A fact that has already happened cannot be recorded on a future date. Choose today or a past date.",
-  "请先选择 Tortilla Flat vault，再保存简短记录。":
-    "Choose a Tortilla Flat Vault before saving a short note.",
+  "请先选择 兼容 Vault，再保存简短记录。":
+    "Choose a compatible Vault before saving a short note.",
   "Vault 或日期保存目标已经变化。草稿仍保留；请返回原日期或刷新后再保存。":
     "The Vault or date save target has changed. The draft is preserved; return to the original date or refresh before saving.",
-  "请先选择 Tortilla Flat vault，再更新今天的 Daily Record。":
-    "Choose a Tortilla Flat Vault before updating today's Daily Record.",
+  "请先选择 兼容 Vault，再更新今天的 Daily Record。":
+    "Choose a compatible Vault before updating today's Daily Record.",
   "今天还没有 Daily Record。请先让 Codex 运行早间流程，然后刷新 Today。":
     "Today has no Daily Record yet. Run the morning flow with Codex, then refresh Today.",
   "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。":
@@ -2111,6 +2123,7 @@ function englishTaskDiagnostic(message: string): string | null {
 const englishErrorFragments: readonly Readonly<[string, string]>[] = [
   ["Vault 不兼容：", "Incompatible Vault: "],
   ["需要 Obsidian Vault 标记和 life/Journal/Daily 目录", "an Obsidian Vault marker and life/Journal/Daily directory are required"],
+  ["需要 .obsidian 格式标记与 life/Journal/Daily 目录；无需安装 Obsidian", "the .obsidian format marker and life/Journal/Daily directory are required; installing Obsidian is not required"],
   ["所选 Vault 文件夹不可用", "The selected Vault folder is unavailable"],
   ["当前 Vault 文件夹不可用。请检查本地位置，或重新选择 Vault。", "The current Vault folder is unavailable. Check the local location or choose another Vault."],
   ["无法读取 Habits 快照：", "Could not read the Habits snapshot: "],
@@ -2340,6 +2353,18 @@ export function localizeApplicationError(
     return language === "zh" ? error : "Document saved, but the readback changed; read the record again to verify.";
   }
   const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
+  if (language === "zh") {
+    if (applicationDiagnostic === "Codex CLI was not found. Install the documented standalone Codex CLI, then refresh the connection. Local features remain available.") return "找不到 Codex CLI。请按文档自行安装独立 Codex CLI，再刷新连接。本地功能仍可使用。";
+    const runtimeUnavailable = /^No compatible Codex CLI could start\. Install or update the documented standalone Codex CLI, then refresh\. Last check: ([\s\S]+)$/.exec(applicationDiagnostic);
+    if (runtimeUnavailable) return `没有可启动的兼容 Codex CLI。请按文档安装或更新独立 Codex CLI，再刷新连接。最近检查：${runtimeUnavailable[1]}`;
+    const creation = /^Could not create personal space: ([\s\S]+)\. Choose a new folder name in a writable location\. Existing folders are never converted or overwritten; the previous selection is unchanged\.$/.exec(applicationDiagnostic);
+    if (creation) return `无法新建个人空间：${creation[1]}。请在可写位置使用新的文件夹名称。不会转换或覆盖已有文件夹；原有选择未更改。`;
+    const incomplete = /^([\s\S]+)\. Personal space setup did not complete; the previous selection is unchanged\. Any newly added content was preserved\.$/.exec(applicationDiagnostic);
+    if (incomplete) return `${localizeApplicationError(incomplete[1], language)}。个人空间初始化未完成；原有选择未更改，新加入的内容仍保留。`;
+    const preparing = /^Could not prepare the personal space: ([\s\S]+)$/.exec(applicationDiagnostic);
+    if (preparing) return `无法准备个人空间：${preparing[1]}`;
+    if (applicationDiagnostic === "The new personal space location is unavailable.") return "新个人空间的位置不可用。请重新选择可用位置。";
+  }
   const knownCollaborationDiagnostic = chineseApplicationErrors[applicationDiagnostic];
   if (knownCollaborationDiagnostic) {
     return language === "zh" ? knownCollaborationDiagnostic : applicationDiagnostic;
@@ -2572,6 +2597,7 @@ export function localizeHabitCoverageLabel(
   language: InterfaceLanguage,
 ): string {
   if (language === "zh") return label;
+  if (label === "Dashboard 本地完成；外部来源覆盖未知") return "Dashboard local completions; external source coverage unknown";
   return label.replace(/ · (\d+) 个 complete 日期$/, " · $1 complete dates");
 }
 

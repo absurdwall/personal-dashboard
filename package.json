@@ -1,7 +1,7 @@
 {
   "name": "personal-dashboard",
   "private": true,
-  "version": "4.0.7",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "build": "node scripts/prepare-frontend.mjs && tsc",
@@ -14,7 +14,9 @@
     "accept:mac": "scripts/acceptance/macos-packaged-launch.sh",
     "accept:cutover": "scripts/acceptance/tauri-only-source.sh && scripts/acceptance/macos-cutover-workflow.sh",
     "tauri": "tauri",
-    "prototype:experience": "node .scratch/personal-dashboard-experience/prototype/serve.mjs"
+    "prototype:experience": "node .scratch/personal-dashboard-experience/prototype/serve.mjs",
+    "build:voice-gate": "node scripts/prepare-frontend.mjs --diagnostic-voice-gate && tsc -p tsconfig.voice-gate.json",
+    "build:beta": "node scripts/release/build-beta.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",

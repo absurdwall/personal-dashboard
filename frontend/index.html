@@ -173,6 +173,7 @@
                 </nav>
                 <div class="settings-content">
                   <section data-settings-panel="appearance" aria-labelledby="settings-heading">
+                    <p class="settings-introduction" data-release-version></p>
                     <h2 id="settings-heading" class="destination-heading" data-i18n="settings.appearance">外观</h2>
                     <p class="settings-introduction" data-i18n="settings.localPreference">保存在这台 Mac，不随 Vault 切换。</p>
                     <div class="setting-row">
@@ -206,10 +207,13 @@
                     <p class="settings-introduction" data-i18n="settings.recordsOwnership">你的记录仍属于自己选择的本地文件夹，无需 Dashboard 账号。</p>
                     <div class="setting-row">
                       <h3 data-i18n="settings.currentVault">当前 Vault</h3>
-                      <p data-i18n="settings.compatibleVault">兼容 Vault 需要 Obsidian Vault 标记与 life/Journal/Daily 目录。</p>
+                      <p data-i18n="settings.compatibleVault">新建空白个人空间，或选择已有兼容 Vault。无需安装 Obsidian；已有 Vault 需要 .obsidian 与 life/Journal/Daily 格式目录。</p>
                       <p id="settings-vault-path" class="settings-vault-path" data-i18n="settings.noVault">尚未选择 Vault。</p>
                       <p id="settings-vault-status" class="settings-status" role="status" aria-live="polite" data-i18n="settings.waitingLocal">等待读取本地状态。</p>
-                      <button id="settings-select-vault" type="button" data-i18n="settings.changeVault">更换 Vault…</button>
+                      <div class="background-image-actions">
+                        <button id="settings-create-space" type="button" data-i18n="settings.createSpace">新建个人空间…</button>
+                        <button id="settings-select-vault" type="button" class="secondary-button" data-i18n="settings.changeVault">更换 Vault…</button>
+                      </div>
                     </div>
                     <div class="setting-row">
                       <h3 data-i18n="settings.driveHeading">使用 Google Drive 中的 Vault</h3>
@@ -263,6 +267,10 @@
                       <label for="collaboration-automatic-plan-time" data-i18n="collaboration.automaticPlanTime">Local trigger time</label>
                       <input id="collaboration-automatic-plan-time" type="time" value="06:00">
                       <label class="automatic-plan-toggle">
+                        <input id="collaboration-external-schedule-present" type="checkbox">
+                        <span data-i18n="collaboration.externalSchedulePresent">I already use another automatic morning-plan schedule.</span>
+                      </label>
+                      <label id="collaboration-external-handoff-row" class="automatic-plan-toggle" hidden>
                         <input id="collaboration-external-handoff-confirmed" type="checkbox">
                         <span data-i18n="collaboration.externalScheduleHandoffConfirmed">I have separately reviewed or paused the existing external scheduled task.</span>
                       </label>
@@ -825,6 +833,7 @@
                   <p id="today-date" class="today-page-date">Today</p>
                   <div class="today-actions" aria-label="Today 操作" data-i18n-aria-label="today.actions">
                     <button id="today-return-to-collaboration" type="button" class="secondary-button" data-i18n="collaboration.returnToConversation" hidden>返回协作会话</button>
+                    <button id="create-today-space" type="button" class="secondary-button" data-i18n="settings.createSpace">新建个人空间…</button>
                     <button id="select-today-vault" type="button" class="secondary-button" data-i18n="today.selectVault">
                       选择 Vault…
                     </button>

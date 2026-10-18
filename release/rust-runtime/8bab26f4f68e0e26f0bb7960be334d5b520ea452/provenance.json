@@ -1,0 +1,7 @@
+{
+  "rustcCommit": "8bab26f4f68e0e26f0bb7960be334d5b520ea452",
+  "compilerBuiltinsVersion": "0.1.160",
+  "file": "compiler-builtins-LICENSE.txt",
+  "sourceUrl": "https://raw.githubusercontent.com/rust-lang/rust/8bab26f4f68e0e26f0bb7960be334d5b520ea452/library/compiler-builtins/LICENSE.txt",
+  "sha256": "ab6eec6caf0fa5775e411c7a8bc6a45c4ef2956b0980b157ab74fc5cd62a928b"
+}

@@ -9,8 +9,12 @@ The installed application for reading and making bounded updates to Daily Record
 _Avoid_: Exercise Habit Tracker, generic habit engine
 
 **Selected vault**:
-The Tortilla Flat Obsidian vault explicitly chosen as the source of canonical Daily Records, canonical local habit completions, and the derived habit snapshot. It remains user-owned data outside the application-data directory.
+The user-owned compatible folder explicitly chosen as the source of canonical Daily Records, Tasks, local Habit definitions and completions, and the derived Habit snapshot. It remains outside the application-data directory and may be a newly created personal space or an existing compatible Vault.
 _Avoid_: App database, imported vault
+
+**Personal space**:
+A user-owned folder prepared by Personal Dashboard for its local records. A new space starts without personal records, background or credentials. Its `.obsidian` format marker provides Vault compatibility; running or installing Obsidian is not a prerequisite.
+_Avoid_: Dashboard account, demo Vault, maintainer Vault
 
 **Daily Record**:
 The canonical Markdown record for one lived day in the selected vault.

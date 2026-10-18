@@ -1,0 +1,23 @@
+{
+  "build": "5.0.4",
+  "sourceCommit": "eb49860e634bb5af4c25a21bd901ed9613abf84a",
+  "dmgSha256": "0f06f139365a1465fbf2b13d21d59513a262f7a058f2642bac621db73207b041",
+  "scope": "One actual native Settings visual round only; no business suite rerun per user request",
+  "selectedAccent": "Lilac",
+  "categoryNavigationSmaller": true,
+  "actionButtonTextAndPaddingSmaller": true,
+  "dataVaultNormal960x720": "visuallyInspected-noOverlap",
+  "dataVaultNarrow820x720": "visuallyInspected-wrappedRowsHaveGap",
+  "saveSchedule": "visuallyInspected-smallerTextAndPadding",
+  "noPersonalVaultSelected": true,
+  "publicSafeSettingsImage": "../../assets/settings.png",
+  "sha256": "1045657397f3d4dc8b91e1a220f1c25fc8da75802abe8391452a13ffd91624bf",
+  "normalQuit": true,
+  "imageBytes": 595392,
+  "imageWidth": 2144,
+  "imageHeight": 1664,
+  "method": "Actual native Settings window from candidate 5.0.4; one desktop/narrow visual round, no image retouching or business-suite rerun.",
+  "executableSha256": "b3d80a76ec5bd47cbfe6c01fd13243f7e254e351f95d4b447e939c9b70dac956",
+  "imageIndependentlyInspected": true,
+  "imageHashVerified": true
+}
