@@ -12,10 +12,11 @@ See the [packaging evidence](https://github.com/absurdwall/personal-dashboard/bl
 
 Build 5.0.4 source `eb49860e634bb5af4c25a21bd901ed9613abf84a` passed all ten static package checks and one actual Settings desktop/narrow visual round. The full same-user business/restart/upgrade/recovery baseline remains build 5.0.3; it was not relabeled as repeated on 5.0.4.
 
+The public versioned DMG and checksum returned anonymous HTTP 200 and matched the approved bytes. A signed-out browser download carried real quarantine; Finder copied the matching App, the DMG was ejected, and macOS initially blocked this unnotarized App. The user completed per-App Open Anyway and password confirmation; the exact copy displayed a native window and normally quit. No quarantine removal or global Gatekeeper change was used. This was the existing macOS user and existing profile after Gatekeeper relaunched without the requested isolation overrides; no business edits/model calls were requested. It is not clean-user/another-machine acceptance. The formal local 4.0.7 installation was separately backed up and updated to exact 5.0.4, with selected-Vault settings unchanged. [Actual publication receipt](https://github.com/absurdwall/personal-dashboard/issues/120#issuecomment-6243939512).
+
 ## Not yet performed
 
 - Clean macOS-user/other-machine installation and independent ChatGPT-account login: deferred with the maintainer's agreement in this run; not passed.
-- Browser download, quarantine, system opening and anonymous readback of the final public assets.
 - Real model changes with independent readback, real Chinese/English/mixed microphone quality, and the complete live-AI automatic morning-plan flow in this run.
 - Physical network-disconnection testing has not been run. Signed-out local saves are separate evidence. A genuinely absent-runtime native test was not run because an installed ChatGPT fallback remained available; empty PATH does not prove its absence.
 - Systems below tested macOS 27.0.1. The 12.0 package minimum metadata is not validated support.

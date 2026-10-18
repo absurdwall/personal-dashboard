@@ -8,6 +8,10 @@
 
 The release display is **1.0.0 Beta 1**, numeric version **1.0.0**, current declared build **5.0.4**, and intended tag `v1.0.0-beta.1`. The Apple Silicon / arm64 asset is `Personal-Dashboard_1.0.0-beta.1_arm64.dmg` with `SHA256SUMS`. Application identity remains `com.tortillaflat.personal-dashboard`; public numbering does not create another personal-data identity.
 
+## Actual publication verification
+
+The versioned prerelease and website are published. Anonymous DMG/checksum downloads matched the approved bytes. Manual Pages run 39083969135 succeeded on merged main `8953512`; all 22 allowlisted files matched source, internal agent/evidence paths stayed unpublished, and both-language navigation worked. The public browser download retained quarantine through Finder copy/eject. After the initial macOS block, the user completed per-App Open Anyway/password confirmation; the exact copied App displayed a native window and normally quit. This was the existing macOS user/profile, not a clean-user test, with no business edits/model calls requested. Formal local 4.0.7 → 5.0.4 replacement was backed up, matched all 387 files and retained selected-Vault settings. [Complete actual receipt](https://github.com/absurdwall/personal-dashboard/issues/120#issuecomment-6243939512). All other unperformed checks below remain unperformed.
+
 ## Prepared in this round
 
 - Empty personal-space creation and existing compatible Vault selection; independent local Tasks, Habits and minimal Daily Records.

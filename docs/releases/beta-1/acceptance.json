@@ -5,7 +5,7 @@
   "build": "5.0.4",
   "target": "aarch64-apple-darwin",
   "candidate": {
-    "status": "prepared-awaiting-publication-approval",
+    "status": "published-and-public-chain-verified",
     "sourceCommit": "eb49860e634bb5af4c25a21bd901ed9613abf84a",
     "appInventorySha256": "bbfbfefc1d7f8e8ea80ae27316fa2c224fb592413923eff1ef152d5d73a25477",
     "executableSha256": "b3d80a76ec5bd47cbfe6c01fd13243f7e254e351f95d4b447e939c9b70dac956",
@@ -18,7 +18,7 @@
     "compiledSourceUnchangedByLaterEvidenceCommits": true
   },
   "finalNativeChecks": {
-    "copiedDmgApp": "notRepeatedOn504-see-actual503-baseline",
+    "copiedDmgApp": "passed-public-download-quarantine-Finder-copy-eject-native-open-normal-quit-on-existing-user",
     "localFirstUse": "notRepeatedOn504-see-actual503-baseline",
     "independentBusinessReadback": "notRepeatedOn504-see-actual503-baseline",
     "noRuntimeLocalUse": "notRun-installed-ChatGPT-fallback",
@@ -37,7 +37,6 @@
     "liveAutomaticMorningPlan": "notRun",
     "physicalNetworkDisconnection": "notRun",
     "lowerMacOS": "notRun",
-    "publicAnonymousDownloadQuarantineGatekeeper": "notRun",
     "genuinelyAbsentRuntimeNative": "notRun-installed-ChatGPT-fallback-exists"
   },
   "images": {
@@ -52,13 +51,19 @@
   },
   "publication": {
     "authorized": true,
-    "status": "authorized-awaiting-actual-publication-verification",
+    "status": "published-and-public-chain-verified",
     "tag": "v1.0.0-beta.1",
-    "pagesUrl": null,
-    "releaseUrl": null,
-    "anonymousAssetVerification": "notRun",
+    "pagesUrl": "https://absurdwall.github.io/personal-dashboard/",
+    "releaseUrl": "https://github.com/absurdwall/personal-dashboard/releases/tag/v1.0.0-beta.1",
+    "anonymousAssetVerification": "passed-actual-public-bytes",
     "approvalReceipt": "publication-approval.md",
-    "configuredPagesUrl": "https://absurdwall.github.io/personal-dashboard/"
+    "configuredPagesUrl": "https://absurdwall.github.io/personal-dashboard/",
+    "actualReceipt": "publication-result.json",
+    "releaseId": 416155531,
+    "dmgAssetId": 652036328,
+    "checksumAssetId": 652036329,
+    "firstSuccessfulPagesRun": 39083969135,
+    "publicBrowserQuarantineFinderEjectOpening": "passed-on-existing-macOS-user-with-user-confirmed-per-App-Open-Anyway"
   },
   "sourcePreparationChecks": {
     "frontendSuite": {
@@ -139,7 +144,19 @@
     "cacheAfterBytes": 0,
     "formalApplicationsBundle": "preserved-not-replaced-or-unregistered",
     "retainedArtifacts": "All four candidates, manifests, validations, logs, native/visual evidence, synthetic backups/recovery and standalone runtime retained",
-    "final120Worktree": "pending-supported-archive-after-integration-handoff"
+    "final120Worktree": "pending-supported-archive-after-integration-handoff",
+    "postPublication": {
+      "time": "2026-10-18T00:56:01.607118+00:00",
+      "ownedFinderWindowClosed": true,
+      "exactOwnedAppPathsUnregistered": 5,
+      "remainingOwnedAppRegistrationEntries": 0,
+      "formalAppUntouchedByUnregistration": true,
+      "formalAppRunning": true,
+      "publicDownloadTestAppNormallyQuit": true,
+      "allOwnedDiskImagesEjected": true,
+      "candidatesAndBackupsRetained": true,
+      "twoShared117WorktreesRetained": true
+    }
   },
   "functionalBaseline": {
     "build": "5.0.3",
@@ -158,5 +175,25 @@
     "normalQuit": "passed",
     "businessSuiteRerun": false
   },
-  "finalNativeChecksScope": "Full business/upgrade/recovery baseline passed on 5.0.3; intentionally not repeated for 5.0.4 Settings-only delta. See functionalBaseline and settingsVisualCheck."
+  "finalNativeChecksScope": "Full business/upgrade/recovery baseline passed on 5.0.3; intentionally not repeated for 5.0.4 Settings-only delta. See functionalBaseline and settingsVisualCheck.",
+  "formalLocalUpdate": {
+    "fromVersion": "4.0.7",
+    "toBuild": "5.0.4",
+    "oldAppAndPrivateAppDataBackedUp": true,
+    "all387InstalledFilesMatchedApprovedCandidate": true,
+    "renderedVersionVerified": "1.0.0 Beta 1 \u00b7 5.0.4",
+    "selectedVaultSettingsByteIdentical": true,
+    "personalVaultNotReplaced": true,
+    "formalAppRunning": true
+  },
+  "nativeIssueClosure": {
+    "120": {
+      "state": "CLOSED",
+      "closedAtUtc": "2026-10-18T00:54:44Z"
+    },
+    "116": {
+      "state": "CLOSED",
+      "closedAtUtc": "2026-10-18T00:55:09Z"
+    }
+  }
 }
