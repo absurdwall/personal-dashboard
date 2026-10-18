@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "status": "prepared-awaiting-publication-approval",
+  "sourceCommit": "eb49860e634bb5af4c25a21bd901ed9613abf84a",
+  "sourceTree": "f433bfbb86a4881bc739cd829e78181af6d6c00f",
+  "release": {
+    "schemaVersion": 1,
+    "productName": "Personal Dashboard",
+    "displayVersion": "1.0.0 Beta 1",
+    "version": "1.0.0",
+    "build": "5.0.4",
+    "tag": "v1.0.0-beta.1",
+    "identifier": "com.tortillaflat.personal-dashboard",
+    "target": "aarch64-apple-darwin",
+    "architecture": "arm64",
+    "minimumSystemVersion": "12.0",
+    "appAsset": "Personal Dashboard.app",
+    "dmgAsset": "Personal-Dashboard_1.0.0-beta.1_arm64.dmg",
+    "checksumAsset": "SHA256SUMS"
+  },
+  "toolchain": {
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "rustcCommit": "8bab26f4f68e0e26f0bb7960be334d5b520ea452",
+    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+    "node": "v24.12.0",
+    "tauri": "tauri-cli 2.11.4"
+  },
+  "licenses": {
+    "cargoInventorySha256": "403aa737609cbfa7f41b07965aeb7f5d5e7502fda5850a050e25b3f3b3808942",
+    "rustRuntimeInventorySha256": "8adba1633961a1ef3e3f37bbc8d9be10c06cd0ec9249890afc093cee96278874"
+  },
+  "dmgBytes": 5508881,
+  "appInventoryFiles": 387,
+  "cargoLicenseDocuments": 372,
+  "packageValidation": {
+    "schemaVersion": 1,
+    "sourceCommit": "eb49860e634bb5af4c25a21bd901ed9613abf84a",
+    "release": {
+      "schemaVersion": 1,
+      "productName": "Personal Dashboard",
+      "displayVersion": "1.0.0 Beta 1",
+      "version": "1.0.0",
+      "build": "5.0.4",
+      "tag": "v1.0.0-beta.1",
+      "identifier": "com.tortillaflat.personal-dashboard",
+      "target": "aarch64-apple-darwin",
+      "architecture": "arm64",
+      "minimumSystemVersion": "12.0",
+      "appAsset": "Personal Dashboard.app",
+      "dmgAsset": "Personal-Dashboard_1.0.0-beta.1_arm64.dmg",
+      "checksumAsset": "SHA256SUMS"
+    },
+    "checkedAtUtc": "2026-10-18T00:28:40.954Z",
+    "host": {
+      "system": "27.0.1",
+      "build": "26A434",
+      "architecture": "arm64"
+    },
+    "checks": {
+      "bundleMetadata": "passed",
+      "architecture": "passed",
+      "dynamicDependencies": "passed",
+      "adHocSignature": "passed",
+      "privatePathAndDiagnosticScan": "passed",
+      "licenseDocuments": "passed",
+      "rustRuntimeNotices": "passed",
+      "readOnlyDmgMount": "passed",
+      "applicationsLink": "passed",
+      "mountedAppMatchesCandidate": "passed"
+    },
+    "dynamicDependencies": [
+      "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+      "/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO",
+      "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit",
+      "/System/Library/Frameworks/UserNotifications.framework/Versions/A/UserNotifications",
+      "/System/Library/Frameworks/WebKit.framework/Versions/A/WebKit",
+      "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/ApplicationServices",
+      "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+      "/System/Library/Frameworks/Carbon.framework/Versions/A/Carbon",
+      "/System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo",
+      "/usr/lib/libSystem.B.dylib",
+      "/usr/lib/libiconv.2.dylib",
+      "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+      "/usr/lib/libobjc.A.dylib",
+      "/System/Library/Frameworks/ColorSync.framework/Versions/A/ColorSync",
+      "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices"
+    ],
+    "dmgEntries": [
+      ".DS_Store",
+      ".VolumeIcon.icns",
+      "Applications",
+      "Personal Dashboard.app"
+    ],
+    "licenseCrates": 196,
+    "rustRuntimeDocuments": 7,
+    "hashes": {
+      "executableSha256": "b3d80a76ec5bd47cbfe6c01fd13243f7e254e351f95d4b447e939c9b70dac956",
+      "appInventorySha256": "bbfbfefc1d7f8e8ea80ae27316fa2c224fb592413923eff1ef152d5d73a25477",
+      "dmgSha256": "0f06f139365a1465fbf2b13d21d59513a262f7a058f2642bac621db73207b041",
+      "licenseManifestSha256": "403aa737609cbfa7f41b07965aeb7f5d5e7502fda5850a050e25b3f3b3808942"
+    },
+    "notRun": [
+      "fresh macOS user installation (accepted deferral)",
+      "independent ChatGPT login (accepted deferral)",
+      "Internet-quarantine Gatekeeper installation",
+      "lower macOS runtime acceptance",
+      "replacement installation and data continuity",
+      "physical network-disconnection test",
+      "real model, microphone and automatic morning planning"
+    ]
+  },
+  "sourceBinding": "Compiled from this exact clean source. Later evidence/documentation/image commits do not alter or relabel these application bytes.",
+  "settingsVisualReceipt": "settings-5.0.4.json",
+  "functionalBaseline": {
+    "build": "5.0.3",
+    "sourceCommit": "e8ddeb8aab2d6d7bfc74d805839b633c9065af45",
+    "receipt": "native-5.0.3.json",
+    "notRepeatedOn504": "Full native business, upgrade and recovery checks were not repeated for the Settings-only visual delta, as requested by the user."
+  }
+}
