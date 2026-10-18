@@ -20,7 +20,7 @@ Install **1.0.0 Beta 1**, build **5.0.4**: [Apple Silicon DMG](https://github.co
 
 This beta is locally ad-hoc signed. It has no verified Developer ID and is not notarized. If macOS blocks it and you trust its source and intact bytes, first try opening it, then follow **System Settings → Privacy & Security → Open Anyway** and the system confirmation. Follow [Apple's current instructions](https://support.apple.com/en-us/102445) for the options on your system.
 
-Managed devices may prohibit an exception; contact the administrator. For damaged-app, malware or signature warnings, or a missing override, retain the exact warning, check the download/version and report it. Keep Gatekeeper enabled. The real public-download/quarantine/Gatekeeper chain has not yet passed this run's acceptance; see [limitations](limitations.html).
+Managed devices may prohibit an exception; contact the administrator. For damaged-app, malware or signature warnings, or a missing override, retain the exact warning, check the download/version and report it. Keep Gatekeeper enabled. The actual public-download quarantine/Finder/eject/per-App opening chain was checked on the existing macOS user; after the initial block, the user completed Open Anyway/password confirmation. This is not clean-user acceptance; see [limitations](limitations.html).
 
 ## Create your personal space
 

@@ -8,6 +8,10 @@
 
 发行显示名为 **1.0.0 Beta 1**，数值版本 **1.0.0**，当前声明 build **5.0.4**，计划 tag 为 `v1.0.0-beta.1`。只有 Apple Silicon / arm64 的 `Personal-Dashboard_1.0.0-beta.1_arm64.dmg`，配套 `SHA256SUMS`。应用身份保持 `com.tortillaflat.personal-dashboard`，不因公开版本重新建立个人资料。
 
+## 实际发布验证
+
+明确版本的预发行与网站已公开，匿名下载的 DMG/校验和匹配批准字节。Pages 手动运行 39083969135 在合并 main `8953512` 上成功，22 个白名单文件匹配源码，内部 agent/证据路径未上传，双语导航实际可用。公开浏览器下载经 Finder 复制、推出后仍保留 quarantine；macOS 起初阻止打开，用户完成单 App“仍要打开”及密码确认后，精确复制的 App 显示原生窗口并正常退出。此流程使用已有 macOS 用户/资料，不是全新用户验收，未请求业务修改或模型调用。正式本机 4.0.7 → 5.0.4 已先备份，387 文件匹配，选定 Vault 设置不变。[完整实际记录](https://github.com/absurdwall/personal-dashboard/issues/120#issuecomment-6243939512)。其余未执行检查仍按下文保留。
+
 ## 本轮准备
 
 - 空白个人空间创建与已有兼容 Vault 选择；任务、习惯与最小日记录独立保存。
