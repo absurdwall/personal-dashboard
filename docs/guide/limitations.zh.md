@@ -2,13 +2,13 @@
 
 [产品介绍](../index.html) · [安装指南](installation.html) · [完整手册](manual.html) · [发行说明](release-notes.html)
 
-这是首次受邀 Beta 的发布候选，尚未公开发布。小范围邀请不构成访问控制；将来公开的网页、源码和下载也可能被其他人访问。
+这是首次受邀 Beta，请先阅读以下限制。小范围邀请不构成访问控制；公开网页、源码和下载也可被其他人访问。
 
 ## 已完成的本轮检查
 
 已在 Apple Silicon、macOS 27.0.1 上用隔离合成资料检查：本地业务保存与读回、原有版本的真正退出重开、Task/Habit/最小日记录持久化、偏好保留；新候选的空白个人空间创建与本地首用；独立 Codex 0.160.0 被发现且保持未登录；自动安排默认关闭，无旧日程时可以主动启用，未登录失败如实显示。另有自动化的冲突、草稿、去重、运行时兼容、版本与静态包检查。
 
-候选包的签名、架构、DMG 内容及校验记录见[打包证据](../releases/beta-1/packaging.md)。这些检查不代替未运行的真实用户或服务验收。
+候选包的签名、架构、DMG 内容及校验记录见[打包证据](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/packaging.md)。这些检查不代替未运行的真实用户或服务验收。
 
 build 5.0.4 源码 `eb49860e634bb5af4c25a21bd901ed9613abf84a` 的十项静态包检查与一次实际 Settings 桌面/窄窗视觉确认通过。完整同用户业务/重启/升级/恢复基线仍绑定 5.0.3，没有重标为在 5.0.4 重跑。
 
@@ -22,7 +22,7 @@ build 5.0.4 源码 `eb49860e634bb5af4c25a21bd901ed9613abf84a` 的十项静态包
 
 ## 候选与图片身份
 
-当前三张图片来自真实 build 5.0.3 原生窗口和隔离合成资料。build 5.0.3 已从精确源码 `e8ddeb8aab2d6d7bfc74d805839b633c9065af45` 构建，十项静态包检查通过，其[原生记录](../releases/beta-1/native-5.0.3.json)覆盖首用、重启、隔离升级与恢复。当前声明 5.0.4 仅修正 Settings 视觉尺寸，十项静态包检查与一次 Settings 桌面/窄窗视觉确认通过；此次视觉小修没有重跑完整原生业务/升级/恢复，真实 5.0.3 基线分别保留。实际源码、可执行文件和图片哈希已按[来源记录](../releases/beta-1/screenshots.json)核对，初始 5.0.1 图片身份另按历史保留，没有静默重标。本地 Habit 无需外部快照。[最终验收记录](../releases/beta-1/acceptance.md)将真实包及原生结果与这些历史图片分别列明。
+当前三张图片来自真实 build 5.0.3 原生窗口和隔离合成资料。build 5.0.3 已从精确源码 `e8ddeb8aab2d6d7bfc74d805839b633c9065af45` 构建，十项静态包检查通过，其[原生记录](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/native-5.0.3.json)覆盖首用、重启、隔离升级与恢复。当前声明 5.0.4 仅修正 Settings 视觉尺寸，十项静态包检查与一次 Settings 桌面/窄窗视觉确认通过；此次视觉小修没有重跑完整原生业务/升级/恢复，真实 5.0.3 基线分别保留。实际源码、可执行文件和图片哈希已按[来源记录](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/screenshots.json)核对，初始 5.0.1 图片身份另按历史保留，没有静默重标。本地 Habit 无需外部快照。[最终验收记录](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/acceptance.md)将真实包及原生结果与这些历史图片分别列明。
 
 ## 使用边界
 

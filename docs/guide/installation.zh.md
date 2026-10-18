@@ -2,7 +2,7 @@
 
 [产品介绍](../index.html) · [完整手册](manual.html) · [已知限制](limitations.html) · [发行说明](release-notes.html)
 
-当前为 **1.0.0 Beta 1** 的本地候选，尚未获得公开发布确认，下载暂未开放。以下步骤供审核与开放后的首次使用；不要把本页当作已有公开下载。
+安装 **1.0.0 Beta 1**，build **5.0.4**：[Apple Silicon DMG](https://github.com/absurdwall/personal-dashboard/releases/download/v1.0.0-beta.1/Personal-Dashboard_1.0.0-beta.1_arm64.dmg) · [SHA256SUMS](https://github.com/absurdwall/personal-dashboard/releases/download/v1.0.0-beta.1/SHA256SUMS)。
 
 ## 先确认条件
 
@@ -13,7 +13,7 @@
 
 ## 安装 DMG
 
-1. 下载开放后，在明确的 `v1.0.0-beta.1` 发行中取得 `Personal-Dashboard_1.0.0-beta.1_arm64.dmg` 与 `SHA256SUMS`；不要使用 latest 代替指定 Beta。
+1. 在明确的 `v1.0.0-beta.1` 发行中取得 `Personal-Dashboard_1.0.0-beta.1_arm64.dmg` 与 `SHA256SUMS`；不要使用 latest 代替指定 Beta。
 2. 在下载目录中执行 `shasum -a 256 Personal-Dashboard_1.0.0-beta.1_arm64.dmg`，将结果与同一发行的 SHA256SUMS 核对。校验和验证字节一致性，不证明开发者身份或安全性。
 3. 打开 DMG，把 **Personal Dashboard** 拖到 **Applications / 应用程序**，等待复制完成。
 4. 推出 DMG，再从“应用程序”打开 App。不要一直运行挂载盘里的副本。
@@ -52,4 +52,4 @@ curl -fsSL https://chatgpt.com/codex/install.sh | sh -s -- --release 0.160.0
 
 Dashboard 不内附、自动下载或代装 Codex。安装任意 ChatGPT/Codex App 不等于安装了这里检查过的 CLI；运行时还需要通过 Dashboard 的协议与启动检查。独立安装、schema 与启动握手已本地核实；新账号登录、真实模型写入及中英麦克风质量仍未完成本轮验收，不保证所有账号可用。
 
-来源：[OpenAI 官方 Codex CLI 文档](https://learn.chatgpt.com/docs/codex/cli)。固定 `--release` 参数已在本轮隔离安装中实际核对，详见[工程运行时记录](../releases/beta-1/codex-runtime.md)。继续阅读[协作与听写手册](manual.html)。
+来源：[OpenAI 官方 Codex CLI 文档](https://learn.chatgpt.com/docs/codex/cli)。固定 `--release` 参数已在本轮隔离安装中实际核对，详见[工程运行时记录](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/codex-runtime.md)。继续阅读[协作与听写手册](manual.html)。

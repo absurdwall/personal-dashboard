@@ -4,14 +4,14 @@
 
 A local-first Mac workspace for Tasks, daily plans, Calendar and Habits, with optional online AI through a separately installed Codex. Local use needs no AI account, Obsidian or Dida.
 
-## 1.0.0 Beta 1 · 候选预览 / Candidate preview
+## 1.0.0 Beta 1 · build 5.0.4
 
-**尚未公开发布，下载尚未开放。Not publicly released; downloads are closed.**
-首轮为 Apple Silicon / arm64。实际测试主机 macOS 27.0.1；包内 12.0 是最低元数据，较低系统尚未验证。本地 ad-hoc 签名，未 Apple 公证。计划 tag 为 v1.0.0-beta.1；具体候选、build 和校验和见发行说明，公开发布须另行确认。
+[下载 DMG / Download](https://github.com/absurdwall/personal-dashboard/releases/download/v1.0.0-beta.1/Personal-Dashboard_1.0.0-beta.1_arm64.dmg) · [SHA256SUMS](https://github.com/absurdwall/personal-dashboard/releases/download/v1.0.0-beta.1/SHA256SUMS) · [Website](https://absurdwall.github.io/personal-dashboard/)
+首轮为 Apple Silicon / arm64。实际测试主机 macOS 27.0.1；包内 12.0 是最低元数据，较低系统尚未验证。本地 ad-hoc 签名，未 Apple 公证。发行 tag 为 v1.0.0-beta.1；具体 build、校验和与实际验证范围见发行说明。
 
-The first beta targets Apple Silicon Macs. Tested on macOS 27.0.1; lower systems are unvalidated despite the 12.0 package metadata. Locally ad-hoc signed, not notarized. The intended tag is v1.0.0-beta.1. Exact candidate/build/checksum details are in the release notes; publication requires separate approval.
+The first beta targets Apple Silicon Macs. Tested on macOS 27.0.1; lower systems are unvalidated despite the 12.0 package metadata. Locally ad-hoc signed, not notarized. The release tag is v1.0.0-beta.1. Exact build/checksum details and validation scope are in the release notes.
 
-- [网页预览 / Website source](docs/index.html) · [中文安装指南](docs/guide/installation.zh.md) · [English installation](docs/guide/installation.en.md)
+- [网页源码 / Website source](docs/index.html) · [中文安装指南](docs/guide/installation.zh.md) · [English installation](docs/guide/installation.en.md)
 - [中文完整手册](docs/guide/manual.zh.md) · [English manual](docs/guide/manual.en.md)
 - [隐私与资料](docs/guide/privacy.zh.md) · [Privacy and files](docs/guide/privacy.en.md)
 - [已知限制](docs/guide/limitations.zh.md) · [Known limitations](docs/guide/limitations.en.md)
@@ -19,9 +19,9 @@ The first beta targets Apple Silicon Macs. Tested on macOS 27.0.1; lower systems
 
 ## 快速开始 / Quick start
 
-下载开放后：核对明确版本的 DMG 与 SHA256SUMS，拖入“应用程序”，推出 DMG 再打开。首次系统放行按安装指南操作。选择“新建个人空间…”，选位置并命名新文件夹；创建一个任务、一个习惯，再保存一句记录。退出后重开并逐项读回。只浏览日期不会创建日记。
+核对明确版本的 DMG 与 SHA256SUMS，拖入“应用程序”，推出 DMG 再打开。首次系统放行按安装指南操作。选择“新建个人空间…”，选位置并命名新文件夹；创建一个任务、一个习惯，再保存一句记录。退出后重开并逐项读回。只浏览日期不会创建日记。
 
-After downloads open: verify the versioned DMG and SHA256SUMS, drag into Applications, eject the DMG and launch the installed copy. Follow the installation guide for the system opening flow. Create a personal space by choosing a location and new folder name. Add one Task, one Habit and a short note, then quit/reopen and read them back. Browsing dates does not create records.
+Verify the versioned DMG and SHA256SUMS, drag into Applications, eject the DMG and launch the installed copy. Follow the installation guide for the system opening flow. Create a personal space by choosing a location and new folder name. Add one Task, one Habit and a short note, then quit/reopen and read them back. Browsing dates does not create records.
 
 可选 AI：自行安装已核对的独立 Codex CLI 0.160.0，再从 Dashboard 设置中登录自己的 ChatGPT。App 使用独立连接资料，不保证继承其他客户端登录。听写在线处理，先成为可编辑草稿，由你发送；自动早间安排默认关闭，仅 App 运行期间工作。真实模型/麦克风、独立账号及全新 macOS 用户的未执行项见限制，不把协议检查当作完整 AI 验收。
 

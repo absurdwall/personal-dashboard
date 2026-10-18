@@ -2,7 +2,7 @@
 
 [Product](../index.html) · [Complete manual](manual.html) · [Known limitations](limitations.html) · [Release notes](release-notes.html)
 
-The **1.0.0 Beta 1** candidate is awaiting publication approval. Downloads are not open. These instructions describe the reviewed path for use after release; this page is not an existing public download.
+Install **1.0.0 Beta 1**, build **5.0.4**: [Apple Silicon DMG](https://github.com/absurdwall/personal-dashboard/releases/download/v1.0.0-beta.1/Personal-Dashboard_1.0.0-beta.1_arm64.dmg) · [SHA256SUMS](https://github.com/absurdwall/personal-dashboard/releases/download/v1.0.0-beta.1/SHA256SUMS).
 
 ## Check the requirements
 
@@ -13,7 +13,7 @@ The **1.0.0 Beta 1** candidate is awaiting publication approval. Downloads are n
 
 ## Install the DMG
 
-1. Once downloads are approved, obtain `Personal-Dashboard_1.0.0-beta.1_arm64.dmg` and `SHA256SUMS` from the exact `v1.0.0-beta.1` release. Do not substitute a latest link for this prerelease.
+1. Obtain `Personal-Dashboard_1.0.0-beta.1_arm64.dmg` and `SHA256SUMS` from the exact `v1.0.0-beta.1` release. Do not substitute a latest link for this prerelease.
 2. In the download folder, run `shasum -a 256 Personal-Dashboard_1.0.0-beta.1_arm64.dmg` and compare with that release's SHA256SUMS. A checksum verifies matching bytes, not developer identity or safety.
 3. Open the DMG, drag **Personal Dashboard** into **Applications**, and wait for copying to finish.
 4. Eject the DMG, then open the copy in Applications. Do not keep running the mounted copy.
@@ -52,4 +52,4 @@ Start with a synthetic change, such as “Add a local Task for today: Read one p
 
 Dashboard does not bundle, download or install Codex. Installing an arbitrary ChatGPT/Codex app is not the same as this checked standalone CLI; Dashboard also checks protocol and startup compatibility. The independent install, schema and initialization handshake were checked locally. Fresh-account login, real model writes and multilingual microphone quality have not passed this run's acceptance; not every account is guaranteed to work.
 
-Source: [official OpenAI Codex CLI documentation](https://learn.chatgpt.com/docs/codex/cli). The pinned `--release` argument was actually checked in an isolated install; see the [engineering runtime record](../releases/beta-1/codex-runtime.md). Continue with [Collaboration and dictation in the manual](manual.html).
+Source: [official OpenAI Codex CLI documentation](https://learn.chatgpt.com/docs/codex/cli). The pinned `--release` argument was actually checked in an isolated install; see the [engineering runtime record](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/codex-runtime.md). Continue with [Collaboration and dictation in the manual](manual.html).

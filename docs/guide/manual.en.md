@@ -1,6 +1,6 @@
 # Complete user manual
 
-This is a local release candidate awaiting approval. Downloads are not open. [Install and start](installation.html) · [Privacy and files](privacy.html) · [Known limitations](limitations.html) · [Release notes](release-notes.html)
+Personal Dashboard **1.0.0 Beta 1**, build **5.0.4**, for Apple Silicon Mac. [Install and start](installation.html) · [Privacy and files](privacy.html) · [Known limitations](limitations.html) · [Release notes](release-notes.html)
 
 ## Meet Personal Dashboard
 
