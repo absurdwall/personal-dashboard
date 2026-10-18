@@ -9,6 +9,7 @@ independent review and the source-bound build. They are not inferred here.
 [Machine-readable status](acceptance.json) · [Release authority](../../../release.json)
 · [Packaging and initial candidate history](packaging.md) · [Publication runbook](publication.md)
 · [External runtime](codex-runtime.md) · [Image identity](screenshots.json)
+· [Independent integration review](review.md)
 
 ## Evidence already observed on the initial candidate
 
@@ -37,7 +38,9 @@ are regression-tested. Final native verification remains pending.
 
 - Source commit: **not assigned to a built final candidate yet**.
 - App / DMG / SHA-256 / signed manifest: **not built yet**.
-- Independent integration review: **pending**.
+- Independent integration review: **completed** at `3d94af1`; Standards P2
+  arbitrary frontend-output deletion fixed and affected checks passed. Parent
+  verification of the repair remains pending before final build.
 - Candidate screenshots: initial 5.0.1 images retained; affected final captures
   and their actual source/build/hash receipt are **pending**.
 - External runtime baseline: official standalone 0.160.0 install, protocol
@@ -55,6 +58,8 @@ are regression-tested. Final native verification remains pending.
 - Rust library suite: **110 passed, 6 explicitly gated tests ignored**. No ignored
   live-service check is treated as a pass.
 - Production frontend build and release/helper JavaScript syntax checks: passed.
+  After review, frontend artifact boundary tests: **2 passed**; actual diagnostic
+  build followed by production build passed with no diagnostic assets retained.
 - Package preparation/localization helper boundary checks: **22 passed** (also
   included in the full frontend suite). Fresh-cache tests create only empty
   temporary fixture directories, not a second Rust build cache.
@@ -71,7 +76,8 @@ are regression-tested. Final native verification remains pending.
 | --- | --- |
 | Read-only mount; exact App copy into an owned non-indexed installation location; eject; verify running copied bytes | Not run |
 | Empty personal-space creation; local Tasks/Habits/record; independent source readback | Not run |
-| Local first use with no runtime and with an unauthenticated runtime | Not run |
+| Local first use with a genuinely absent runtime | Not run; empty PATH alone does not prove absence of installed fallbacks |
+| Local first use with an unauthenticated runtime | Not run |
 | Repaired English startup metadata and bilingual local-Habit guidance | Not run |
 | Real conflict, retained draft and external/original content | Not run |
 | Normal Quit/relaunch persistence | Not run |

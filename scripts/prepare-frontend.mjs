@@ -1,15 +1,18 @@
 import { copyFile, mkdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve, parse } from "node:path";
+import { dirname, join } from "node:path";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const frontendDirectory = join(repositoryRoot, "frontend");
 const arguments_ = process.argv.slice(2);
-const outputIndex = arguments_.indexOf("--output");
-const outputDirectory = outputIndex === -1 ? join(repositoryRoot, "dist") : resolve(arguments_[outputIndex + 1]);
-if (outputDirectory === parse(outputDirectory).root || outputDirectory === resolve(repositoryRoot) || outputDirectory === resolve(frontendDirectory)) {
-  throw Error("Refusing to replace a source/root directory with frontend build output");
+// Only this repository's generated dist directory is owned by this script.
+// Validate arguments before cleanup; callers cannot select a deletion target.
+for (const argument of arguments_) {
+  if (argument !== "--diagnostic-voice-gate") {
+    throw Error(`Unknown frontend build argument: ${argument}`);
+  }
 }
+const outputDirectory = join(repositoryRoot, "dist");
 const diagnostic = arguments_.includes("--diagnostic-voice-gate");
 // dist is generated. Recreate it so a diagnostic build cannot leak stale assets
 // into a later production candidate.
