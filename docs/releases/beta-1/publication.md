@@ -5,13 +5,26 @@ automation**. No Pages workflow/configuration or public Release is activated by
 checking in this file. The user's explicit boundary is to review concrete package,
 website/manual and real acceptance results before confirming public release.
 
+## Actual publication completed
+
+[Canonical receipt](https://github.com/absurdwall/personal-dashboard/issues/120#issuecomment-6243939512)
+and [sanitized result](publication-result.json) record the actual prerelease,
+anonymous exact-byte assets, first successful Pages run 39083969135, all 22
+allowlisted files matching merged main, and the real browser quarantine/Finder/
+eject/per-App Gatekeeper opening chain. The existing-user flow initially blocked;
+the user personally completed Open Anyway/password confirmation. It is not a
+clean-user pass. The formal App was also updated to the exact 5.0.4 bytes with
+backup and unchanged selected-Vault settings. App source remains `eb49860`.
+The runbook below remains procedure/history; publication is no longer pending.
+
 ## Approval received
 
 The user has now explicitly authorized the exact build 5.0.4 publication, PR #121
 merge and local formal-App replacement. [Approval/configuration receipt](publication-approval.md).
 The manual main-only workflow publishes the explicit visitor-site subset rather
 than the entire `docs/` tree. Dispatch only after the owner verifies anonymous
-Release asset hashes. Actual public success and tracker closure remain pending.
+Release asset hashes. This was the approval-stage boundary; actual publication
+and native issue closure have now completed as recorded above.
 The preparation steps below are retained as the review procedure/history.
 
 ## Prepare the review checkpoint

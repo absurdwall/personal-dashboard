@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "status": "published-and-public-chain-verified",
+  "canonicalReceipt": "https://github.com/absurdwall/personal-dashboard/issues/120#issuecomment-6243939512",
+  "displayVersion": "1.0.0 Beta 1",
+  "build": "5.0.4",
+  "compiledSource": "eb49860e634bb5af4c25a21bd901ed9613abf84a",
+  "mergedMain": "89535125a0871a60d29daf2ca0d92d73dd8a46c1",
+  "tag": "v1.0.0-beta.1",
+  "tagPointsToCompiledSource": true,
+  "compiledSourceReachableFromMain": true,
+  "release": {
+    "url": "https://github.com/absurdwall/personal-dashboard/releases/tag/v1.0.0-beta.1",
+    "id": 416155531,
+    "prerelease": true,
+    "draft": false,
+    "dmgAssetId": 652036328,
+    "checksumAssetId": 652036329,
+    "anonymousAssetHttpStatus": 200,
+    "bytes": 5508881,
+    "dmgSha256": "0f06f139365a1465fbf2b13d21d59513a262f7a058f2642bac621db73207b041",
+    "checksumFileMatched": true,
+    "githubAssetDigestMatched": true
+  },
+  "pages": {
+    "url": "https://absurdwall.github.io/personal-dashboard/",
+    "firstSuccessfulRun": 39083969135,
+    "runUrl": "https://github.com/absurdwall/personal-dashboard/actions/runs/39083969135",
+    "status": "success",
+    "sourceCommit": "89535125a0871a60d29daf2ca0d92d73dd8a46c1",
+    "anonymousFilesHttp200AndByteIdentical": 22,
+    "testedInternalAgentAndEvidencePathsHttpStatus": 404,
+    "bothLanguageSwitchAndManualNavigationVerified": true
+  },
+  "publicBrowserOpening": {
+    "releaseBrowserSignedOut": true,
+    "downloadFromPublishedWebsite": true,
+    "downloadHashMatched": true,
+    "actualQuarantinePresent": true,
+    "finderCopyFromReadOnlyDmg": true,
+    "copiedAppQuarantineRetained": true,
+    "all387CopiedFilesMatched": true,
+    "ejectedBeforeOpening": true,
+    "initialGatekeeperResult": "blocked: Apple could not verify this unnotarized App",
+    "userAuthorizedPerAppOpenAnyway": true,
+    "userCompletedPasswordConfirmation": true,
+    "actualCopiedExecutableAndNativeWindowVerified": true,
+    "normalQuitAndExitVerified": true,
+    "globalGatekeeperChanged": false,
+    "quarantineRemoved": false,
+    "sameExistingMacOSUser": true,
+    "actualProfile": "Existing profile: Gatekeeper relaunch did not preserve initially requested isolated overrides",
+    "businessEditsOrModelCallsRequested": false,
+    "testCopyUnregistered": true
+  },
+  "formalLocalUpdate": {
+    "fromVersion": "4.0.7",
+    "toBuild": "5.0.4",
+    "oldAppAndPrivateAppDataBackedUp": true,
+    "all387InstalledFilesMatchedApprovedCandidate": true,
+    "renderedVersionVerified": "1.0.0 Beta 1 \u00b7 5.0.4",
+    "selectedVaultSettingsByteIdentical": true,
+    "personalVaultNotReplaced": true,
+    "formalAppRunning": true
+  },
+  "limits": "Same-user opening only, not clean-user or other-machine acceptance. Full business/restart/isolated-upgrade/manual-recovery baseline remains build 5.0.3, not repeated on 5.0.4. All prior non-public-chain deferrals/unperformed items remain unchanged.",
+  "privateEvidenceExcluded": "No raw AX, private screenshots, account/profile paths, process IDs, quarantine identifiers or private backups are copied into this receipt.",
+  "nativeIssueClosure": {
+    "120": {
+      "state": "CLOSED",
+      "closedAtUtc": "2026-10-18T00:54:44Z"
+    },
+    "116": {
+      "state": "CLOSED",
+      "closedAtUtc": "2026-10-18T00:55:09Z"
+    }
+  }
+}

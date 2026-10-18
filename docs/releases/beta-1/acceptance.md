@@ -1,6 +1,6 @@
 # Beta 1 candidate acceptance (#120)
 
-Status: **build 5.0.4 prepared; publication authorized; actual public verification pending**.
+Status: **build 5.0.4 prepared; published; actual public download/opening chain verified**.
 The release authority declares **1.0.0 Beta 1 · numeric 1.0.0 · build 5.0.4**,
 arm64, `com.tortillaflat.personal-dashboard`, intended tag `v1.0.0-beta.1`.
 The emitted build 5.0.3 is the actual functional acceptance baseline. Its App was
@@ -141,7 +141,6 @@ All four emitted candidates remain preserved unchanged.
 | Real Chinese, English and mixed microphone recognition | Not run |
 | Live AI automatic morning-plan save/readback | Not run; only actual signed-out failure exercised |
 | Lower macOS | Not run; 12.0 is metadata, tested host 27.0.1 |
-| Public download/quarantine/Gatekeeper/anonymous readback | Not run; requires approval and actual publication |
 
 ## Retained work and publication boundary
 
@@ -156,18 +155,45 @@ unregistration processed 11 owned temporary bundles (including canonical aliases
 where applicable), and inspection found **zero owned App registration entries**
 and **zero active owned disk images**. Four non-App disk-image history records
 remain in Launch Services. No global registry purge was performed and no claim
-of a globally empty registry is made. The formal Applications bundle was neither
-replaced nor unregistered. The owned rebuildable cache was removed: approximately
+of a globally empty registry is made. At that pre-publication cleanup checkpoint the formal Applications bundle had
+not been replaced or unregistered; the later authorized update is recorded below. The owned rebuildable cache was removed: approximately
 **5.46 GiB freed**, target absent / **0 bytes** afterward. All four candidate
 bytes/manifests/validations/logs, native/visual evidence, synthetic backup/recovery
 and standalone runtime remain retained. The original nine untracked
 `.scratch/public-beta/` support records remain preserved.
 
-The user explicitly authorized publishing this exact build 5.0.4, the website/manual,
-PR #121 merge and local formal-App replacement. [Approval and deployment boundary](publication-approval.md).
-The site source now uses exact-version DMG/checksum links. The main-only workflow
-is manual; its artifact contains only the reviewed visitor-site allowlist. The
-owner dispatches it after anonymous Release asset hashes match. Actual Release,
-site, quarantine/Gatekeeper and anonymous readback results remain separate pending
-evidence; approval/configuration is not a publication pass. #116 and #120 remain
-open until actual publication and verification. No invitations are sent.
+## Actual publication and formal local update
+
+[Canonical posted receipt](https://github.com/absurdwall/personal-dashboard/issues/120#issuecomment-6243939512)
+· [Sanitized machine-readable result](publication-result.json).
+
+PR #121 merged at `89535125a0871a60d29daf2ca0d92d73dd8a46c1`.
+The public [prerelease](https://github.com/absurdwall/personal-dashboard/releases/tag/v1.0.0-beta.1)
+is not a draft; Release ID 416155531, DMG asset 652036328, checksum asset 652036329.
+The tag points to the unchanged compiled source `eb49860`, reachable from main.
+Anonymous DMG/SHA256SUMS downloads returned 200 and matched the approved exact
+bytes/hash; GitHub's asset digest matched. [Pages run 39083969135](https://github.com/absurdwall/personal-dashboard/actions/runs/39083969135)
+succeeded on merged main. All 22 published allowlisted files returned anonymous
+200 and matched that source; tested internal agent/evidence paths returned 404.
+Both-language switching and project-prefix manual navigation actually worked at
+[the public website](https://absurdwall.github.io/personal-dashboard/).
+
+A signed-out browser downloaded the public DMG, with real quarantine and matching
+SHA-256. Finder copied all 387 matching App files from a read-only mount to an
+owned nonindexed location; quarantine remained, and the DMG was ejected before
+opening. macOS initially blocked the ad-hoc/unnotarized App. The user authorized
+per-App Open Anyway and personally completed password/OK confirmation. The exact
+copied executable displayed a native window, then normally quit with exit verified.
+No quarantine removal or global Gatekeeper change occurred. This was the existing
+macOS user: Gatekeeper's relaunch lost requested isolated overrides and actually
+opened the existing profile, with no business edits/model calls requested. It is
+not clean-user/another-machine evidence. The test copy was quit and unregistered.
+
+The formal 4.0.7 App normally quit; its App and private application data were
+backed up. The formal installation now matches all 387 approved 5.0.4 files;
+actual launch/rendered `1.0.0 Beta 1 · 5.0.4` was verified and remains running.
+Selected-Vault settings stayed byte-identical; the personal Vault was not replaced.
+No application rebuild or full business suite rerun occurred. All remaining
+deferrals/unperformed checks above retain their exact scope. No invitations were
+sent. GitHub readback confirms #120 closed at 2026-10-18 00:54:44 UTC and #116
+closed at 00:55:09 UTC, following the actual publication receipt.
