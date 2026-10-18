@@ -24,6 +24,6 @@ For cloud folders, your selected desktop client handles uploads and sync. A loca
 
 ## Website and feedback
 
-This static page adds no analytics, ads, external fonts, tracking scripts or form service. The language preference is kept only in your browser's local storage; no sign-in is required. GitHub and official-help links leave this page and use those services' rules. Public website hosting has not been enabled.
+This static page adds no analytics, ads, external fonts, tracking scripts or form service. The language preference is kept only in your browser's local storage; no sign-in is required. GitHub and official-help links leave this page and use those services' rules. The static website is hosted on GitHub Pages; downloading the app uses GitHub Releases. Those services handle their own request logs.
 
 Use synthetic reproductions in [GitHub feedback](https://github.com/absurdwall/personal-dashboard/issues). Redact accounts, email addresses, names, private paths, records and tokens. Do not upload the whole personal space, app-data directory, credentials or unredacted system logs. System menus can expose unrelated history; capture only the necessary app area.

@@ -1,6 +1,6 @@
 # 完整使用手册
 
-当前为待确认的本地发布候选，尚未开放下载。[安装与首用](installation.html) · [隐私与资料](privacy.html) · [已知限制](limitations.html) · [发行说明](release-notes.html)
+Personal Dashboard **1.0.0 Beta 1**，build **5.0.4**，面向 Apple Silicon Mac。[安装与首用](installation.html) · [隐私与资料](privacy.html) · [已知限制](limitations.html) · [发行说明](release-notes.html)
 
 ## 认识 Personal Dashboard
 

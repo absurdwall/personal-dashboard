@@ -5,6 +5,15 @@ automation**. No Pages workflow/configuration or public Release is activated by
 checking in this file. The user's explicit boundary is to review concrete package,
 website/manual and real acceptance results before confirming public release.
 
+## Approval received
+
+The user has now explicitly authorized the exact build 5.0.4 publication, PR #121
+merge and local formal-App replacement. [Approval/configuration receipt](publication-approval.md).
+The manual main-only workflow publishes the explicit visitor-site subset rather
+than the entire `docs/` tree. Dispatch only after the owner verifies anonymous
+Release asset hashes. Actual public success and tracker closure remain pending.
+The preparation steps below are retained as the review procedure/history.
+
 ## Prepare the review checkpoint
 
 1. Finish the bounded source repairs and independent integration review. Resolve
@@ -40,7 +49,7 @@ website/manual and real acceptance results before confirming public release.
 2. Prepare any required Pages workflow/configuration and download activation in
    the protected-main integration PR. Never write main directly. Prefer an
    explicit manual dispatch and a main-only, buildless upload of the approved
-   static `docs/` directory. Limit permissions to the actual Pages requirement;
+   explicit reviewed visitor-site allowlist. Limit permissions to the actual Pages requirement;
    no new host/service/dependency is introduced. No active workflow is included
    before this boundary.
 3. Merge through the PR with retained source reachability. Confirm the App's

@@ -2,13 +2,13 @@
 
 [Product](../index.html) · [Installation](installation.html) · [Complete manual](manual.html) · [Release notes](release-notes.html)
 
-This first invited beta is a release candidate, not a public release. An invitation is not access control: future public pages, source and downloads can also be accessible to others.
+This is an invited beta with the limitations below. An invitation is not access control: public pages, source and downloads are accessible to others.
 
 ## Checked in this run
 
 On Apple Silicon macOS 27.0.1, isolated synthetic checks covered local business saves/readback, actual quit/relaunch of the previous version, persistent Tasks/Habits/minimal Daily Records and preferences; the new candidate's empty-space creation and local first use; discovery of standalone Codex 0.160.0 with an independent signed-out profile; automation off by default, enabling without a nonexistent old schedule, and a visible signed-out failure. Automated coverage also checks conflicts, drafts, deduplication, runtime compatibility, versioning and package structure.
 
-See the [packaging evidence](../releases/beta-1/packaging.md) for signature, architecture, DMG contents and hashes. These checks do not stand in for unperformed real-user or service acceptance.
+See the [packaging evidence](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/packaging.md) for signature, architecture, DMG contents and hashes. These checks do not stand in for unperformed real-user or service acceptance.
 
 Build 5.0.4 source `eb49860e634bb5af4c25a21bd901ed9613abf84a` passed all ten static package checks and one actual Settings desktop/narrow visual round. The full same-user business/restart/upgrade/recovery baseline remains build 5.0.3; it was not relabeled as repeated on 5.0.4.
 
@@ -22,7 +22,7 @@ Build 5.0.4 source `eb49860e634bb5af4c25a21bd901ed9613abf84a` passed all ten sta
 
 ## Candidate and image identity
 
-Current images are three real native captures of build 5.0.3 with isolated synthetic data. Build 5.0.3 was built from exact source `e8ddeb8aab2d6d7bfc74d805839b633c9065af45` and passed all ten static package checks. Its [native receipt](../releases/beta-1/native-5.0.3.json) records first use, restart, isolated upgrade and recovery. Current declaration 5.0.4 is a Settings-only visual correction; its ten static package checks and one desktop/narrow Settings visual confirmation passed. Full native business/upgrade/recovery suites were not repeated for this visual-only delta; their actual 5.0.3 baseline remains separate. Their actual source/executable/image hashes were verified against [provenance](../releases/beta-1/screenshots.json); historical 5.0.1 image identity remains separately recorded. No image was silently relabeled. Local Habits do not require an external snapshot. The [final acceptance record](../releases/beta-1/acceptance.md) keeps package and native results separate from these historical illustrations.
+Current images are three real native captures of build 5.0.3 with isolated synthetic data. Build 5.0.3 was built from exact source `e8ddeb8aab2d6d7bfc74d805839b633c9065af45` and passed all ten static package checks. Its [native receipt](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/native-5.0.3.json) records first use, restart, isolated upgrade and recovery. Current declaration 5.0.4 is a Settings-only visual correction; its ten static package checks and one desktop/narrow Settings visual confirmation passed. Full native business/upgrade/recovery suites were not repeated for this visual-only delta; their actual 5.0.3 baseline remains separate. Their actual source/executable/image hashes were verified against [provenance](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/screenshots.json); historical 5.0.1 image identity remains separately recorded. No image was silently relabeled. Local Habits do not require an external snapshot. The [final acceptance record](https://github.com/absurdwall/personal-dashboard/blob/main/docs/releases/beta-1/acceptance.md) keeps package and native results separate from these historical illustrations.
 
 ## Boundaries
 

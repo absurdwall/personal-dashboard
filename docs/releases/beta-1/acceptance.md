@@ -1,6 +1,6 @@
 # Beta 1 candidate acceptance (#120)
 
-Status: **build 5.0.4 prepared; awaiting publication approval; not published**.
+Status: **build 5.0.4 prepared; publication authorized; actual public verification pending**.
 The release authority declares **1.0.0 Beta 1 · numeric 1.0.0 · build 5.0.4**,
 arm64, `com.tortillaflat.personal-dashboard`, intended tag `v1.0.0-beta.1`.
 The emitted build 5.0.3 is the actual functional acceptance baseline. Its App was
@@ -163,8 +163,11 @@ bytes/manifests/validations/logs, native/visual evidence, synthetic backup/recov
 and standalone runtime remain retained. The original nine untracked
 `.scratch/public-beta/` support records remain preserved.
 
-The user has not authorized public release of the specific final candidate.
-Pages, tag, prerelease and download activation remain unperformed; the website
-download control stays disabled. Present the exact final bytes, webpage/manual,
-actual results and remaining gaps for confirmation. #116 and #120 remain open
-until actual approved publication and verification. No invitations are sent.
+The user explicitly authorized publishing this exact build 5.0.4, the website/manual,
+PR #121 merge and local formal-App replacement. [Approval and deployment boundary](publication-approval.md).
+The site source now uses exact-version DMG/checksum links. The main-only workflow
+is manual; its artifact contains only the reviewed visitor-site allowlist. The
+owner dispatches it after anonymous Release asset hashes match. Actual Release,
+site, quarantine/Gatekeeper and anonymous readback results remain separate pending
+evidence; approval/configuration is not a publication pass. #116 and #120 remain
+open until actual publication and verification. No invitations are sent.
