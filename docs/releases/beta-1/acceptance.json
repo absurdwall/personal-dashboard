@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "displayVersion": "1.0.0 Beta 1",
+  "version": "1.0.0",
+  "build": "5.0.2",
+  "target": "aarch64-apple-darwin",
+  "candidate": {
+    "status": "waiting-for-independent-review-before-build",
+    "sourceCommit": null,
+    "appInventorySha256": null,
+    "executableSha256": null,
+    "dmgSha256": null,
+    "packageValidation": null
+  },
+  "finalNativeChecks": {
+    "copiedDmgApp": "notRun",
+    "localFirstUse": "notRun",
+    "independentBusinessReadback": "notRun",
+    "noRuntimeLocalUse": "notRun",
+    "signedOutLocalUse": "notRun",
+    "bilingualRepairs": "notRun",
+    "conflictAndDraftRetention": "notRun",
+    "normalQuitAndRelaunch": "notRun",
+    "internal407Replacement": "notRun",
+    "backupAndRecovery": "notRun"
+  },
+  "unperformed": {
+    "cleanMacOSUser": "user-accepted-deferral",
+    "independentChatGPTLogin": "user-accepted-deferral",
+    "realModelModification": "notRun",
+    "realChineseEnglishMixedMicrophone": "notRun",
+    "liveAutomaticMorningPlan": "notRun",
+    "physicalNetworkDisconnection": "notRun",
+    "lowerMacOS": "notRun",
+    "publicAnonymousDownloadQuarantineGatekeeper": "notRun"
+  },
+  "images": {
+    "receipt": "screenshots.json",
+    "currentBuild": "5.0.1",
+    "finalRefreshRequired": true
+  },
+  "publication": {
+    "authorized": false,
+    "status": "notPublished",
+    "tag": "v1.0.0-beta.1",
+    "pagesUrl": null,
+    "releaseUrl": null,
+    "anonymousAssetVerification": "notRun"
+  },
+  "sourcePreparationChecks": {
+    "frontendSuite": {
+      "passed": 557,
+      "failed": 0,
+      "skipped": 0
+    },
+    "finalAffectedRenderedHabits": {
+      "passed": 2,
+      "failed": 0
+    },
+    "rustLibrary": {
+      "passed": 110,
+      "failed": 0,
+      "ignored": 6
+    },
+    "frontendBuild": "passed",
+    "releaseHelperSyntax": "passed",
+    "actualToolchainNoticePreparation": {
+      "documents": 7,
+      "rustcCommit": "8bab26f4f68e0e26f0bb7960be334d5b520ea452"
+    },
+    "siteStaticCheck": {
+      "bilingualPages": 6,
+      "localLinksAndAssets": 183,
+      "downloadGate": "closed"
+    },
+    "finalBrowserAndImageRefresh": "pending"
+  }
+}

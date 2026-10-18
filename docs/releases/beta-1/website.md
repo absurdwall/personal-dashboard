@@ -26,7 +26,7 @@ recapture affected screenshots rather than silently relabel these images.
 
 ## Candidate and screenshot mapping
 
-The preview describes **1.0.0 Beta 1**, current declared build **5.0.1**, intended
+The preview describes **1.0.0 Beta 1**, current declared build **5.0.2**, intended
 tag v1.0.0-beta.1. The actual screenshot candidate was built from
 72a96980c081e5fb23010e6ef5ff128a16ed9185; its signed manifest was read directly.
 The initial DMG's exact bytes and SHA-256 remain in [packaging.md](packaging.md).
@@ -40,9 +40,10 @@ or retouched. [screenshots.json](screenshots.json) records source, build,
 dimensions, actual hashes and inspected bytes. These are candidate illustrations,
 not installed sample data, AI output acceptance or final-package certification.
 
-The current English Habits screenshot truthfully shows the known fixed-copy
-gap, disclosed on the site and limitations page. #120 will repair the bounded
-copy issues, advance the build and refresh affected captures/candidate notes.
+The English Habits image retains the initial 5.0.1 screenshot identity. The
+bounded copy repairs are implemented for declared final build 5.0.2; its actual
+build/native checks and refreshed captures are still pending. Historical images
+are not relabeled as the repaired candidate.
 No live AI/microphone result was invented to fill a screenshot.
 
 ## Documentation reconciliation

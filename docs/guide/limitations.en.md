@@ -15,12 +15,13 @@ See the [packaging evidence](../releases/beta-1/packaging.md) for signature, arc
 - Clean macOS-user/other-machine installation and independent ChatGPT-account login: deferred with the maintainer's agreement in this run; not passed.
 - Browser download, quarantine, system opening and anonymous readback of the final public assets.
 - Real model changes with independent readback, real Chinese/English/mixed microphone quality, and the complete live-AI automatic morning-plan flow in this run.
+- Physical network-disconnection testing has not been run. Local saves without a runtime or login are separate checks, not evidence of physical offline testing.
 - Systems below tested macOS 27.0.1. The 12.0 package minimum metadata is not validated support.
 - Complete final-candidate replacement, backup/restore and upgrade acceptance. Later results must name their exact build and bytes.
 
-## Known candidate issues
+## Candidate and image identity
 
-Current screenshots show build 5.0.1. Without an external snapshot, some English Habits coverage metadata still appears in Chinese; an empty-snapshot message can also be misleading for first use. These will be reviewed together before publication and affected screenshots refreshed. You do not need an external snapshot to create local Habits. A fix or automated test does not turn an unperformed acceptance check into a pass.
+Current images remain real captures of initial build 5.0.1. The declared final build is 5.0.2; the bounded copy repairs are implemented in source and await final-package/native verification. Affected captures will be refreshed with their actual source/hash receipt. No image is silently relabeled. Local Habits do not require an external snapshot. The [final acceptance record](../releases/beta-1/acceptance.md) keeps package and native results separate from these historical illustrations.
 
 ## Boundaries
 

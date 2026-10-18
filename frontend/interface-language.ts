@@ -1125,6 +1125,8 @@ const interfaceCopies = {
   "today.revisedDirection": { zh: "接下来这样安排", en: "Revised direction" },
   "today.correctThis": { zh: "更正这条", en: "Correct this note" },
   "today.changeHistory": { zh: "修改记录 · {count}", en: "Change history · {count}" },
+  "today.ordinaryRecordMeta": { zh: "日常记录 · 目标 {date} · 记录于 {createdAt}", en: "Daily note · For {date} · Recorded {createdAt}" },
+  "today.exerciseRecordMeta": { zh: "健身 · 目标 {date} · 记录于 {createdAt}", en: "Exercise · For {date} · Recorded {createdAt}" },
   "today.recordMeta": { zh: "{category} · 目标 {date} · 记录于 {createdAt}", en: "{category} · For {date} · Recorded {createdAt}" },
   "count.timeBlocks": { zh: "{count} 个时间块", en: "{count} time blocks" },
   "count.knownDirections": { zh: "{known} 条已知 · {directions} 条修订方向", en: "{known} known · {directions} revised directions" },
@@ -1295,6 +1297,8 @@ const interfaceCopies = {
   "habits.futureBoundary": { zh: "未来日期不能记录已经发生的事实。", en: "Facts that already happened cannot be recorded on a future date." },
   "habits.range": { zh: "12 周显示窗口 · {display} · 来源覆盖 · {range}", en: "12-week display · {display} · Source coverage · {range}" },
   "habits.waitingSnapshot": { zh: "等待有效的 bounded snapshot。", en: "Waiting for a valid bounded snapshot." },
+  "habits.noHabitsYet": { zh: "尚无习惯。", en: "No habits yet." },
+  "habits.localEmptyHelp": { zh: "点击“添加习惯”开始。本地习惯无需外部快照或滴答。", en: "Choose Add habit to begin. Local habits do not require an external snapshot or Dida." },
   "habits.noHabitsSnapshot": { zh: "尚无可显示的 Habits 快照。", en: "No Habits snapshot is available to display." },
   "habits.noGoalExcluded": { zh: " {count} 个无目标习惯未计入分母。", en: " {count} habits without goals are excluded from the denominator." },
   "habits.loadingLocal": { zh: "正在读取本地 Habits 快照…", en: "Loading the local Habits snapshot…" },
@@ -1339,6 +1343,8 @@ export function formatInterfaceMonth(
 }
 
 const englishApplicationMessages: Readonly<Record<string, string>> = {
+  "本地完成按 lived day 记录；外部来源覆盖仍未知。": "Local completions are recorded by lived day; external source coverage remains unknown.",
+  "Habits 来源快照尚未生成；本地 Habit 定义与完成记录可独立使用。": "No Habit source snapshot has been generated. Local Habit definitions and completions remain available.",
   "请选择 兼容 Vault，以读取 Daily Record。":
     "Choose a compatible Vault to read Daily Records.",
   "当前 Vault 文件夹不可用。请检查本地位置，或重新选择 Vault。":
@@ -2590,6 +2596,7 @@ export function localizeHabitCoverageLabel(
   language: InterfaceLanguage,
 ): string {
   if (language === "zh") return label;
+  if (label === "Dashboard 本地完成；外部来源覆盖未知") return "Dashboard local completions; external source coverage unknown";
   return label.replace(/ · (\d+) 个 complete 日期$/, " · $1 complete dates");
 }
 
