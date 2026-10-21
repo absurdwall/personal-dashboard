@@ -6,6 +6,9 @@ import type { DictationAudioSource, DictationInvoke } from "./collaboration-dict
 export async function captureDiagnosticDictationFixture(invoke: DictationInvoke, localMicrophonePreflight = false): Promise<DictationAudioSource> {
   const bytes = await invoke<number[]>("collaboration_voice_gate_fixture", {});
   if (localMicrophonePreflight) {
+    const authorization = await invoke<string>("collaboration_voice_gate_request_microphone", {})
+      .catch(() => "unavailable");
+    if (authorization !== "authorized") throw new Error("capture-unavailable");
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
     let local: MediaStream | undefined;
     // Same-document capture access can affect WebKit ICE filtering. This stream
