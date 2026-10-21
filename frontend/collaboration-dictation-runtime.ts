@@ -20,7 +20,7 @@ export interface CodexDictationRuntime {
   start(inputId: string, onEvent: (event: CodexDictationEvent) => void, signal: AbortSignal): Promise<CodexDictationCapture>;
 }
 export type DictationInvoke = <T>(command: string, args: Record<string, unknown>) => Promise<T>;
-export type DictationAudioSource = Readonly<{ stream: MediaStream; start?(): void; release?(): void }>;
+export type DictationAudioSource = Readonly<{ stream: MediaStream; diagnostic?: boolean; start?(): void; release?(): void }>;
 export type DictationDiagnostic = Readonly<Record<string, boolean | string>>;
 
 function diagnosticFailure(error: unknown): string {
@@ -101,6 +101,30 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     let drainFailed = false;
     let zeroAttached = false;
     let rejectConnecting: (() => void) | undefined;
+    let diagnosticStatsTimer: ReturnType<typeof setTimeout> | undefined;
+    const snapshotConnection = () => {
+      if (!audioSource?.diagnostic || !peer) return;
+      const currentPeer = peer;
+      const state = (value: unknown, allowed: string[]) => typeof value === "string" && allowed.includes(value) ? value : "unknown";
+      this.report({
+        connectionState:state(currentPeer.connectionState,["new","connecting","connected","disconnected","failed","closed"]),
+        iceConnectionState:state(currentPeer.iceConnectionState,["new","checking","connected","completed","failed","disconnected","closed"]),
+        iceGatheringState:state(currentPeer.iceGatheringState,["new","gathering","complete"]),
+      });
+      // Never await diagnostics or let statistics failure delay capture cleanup.
+      try {
+        void currentPeer.getStats().then(stats => {
+          const pairs: Array<{state?:string;requestsSent?:number;responsesReceived?:number}> = [];
+          stats.forEach(value => { if (value.type === "candidate-pair") pairs.push(value); });
+          this.report({statsAvailable:true,icePairPresent:pairs.length>0,
+            icePairChecking:pairs.some(pair=>pair.state==="in-progress"),
+            icePairSucceeded:pairs.some(pair=>pair.state==="succeeded"),
+            icePairFailed:pairs.some(pair=>pair.state==="failed"),
+            iceRequestsSent:pairs.some(pair=>Number(pair.requestsSent??0)>0),
+            iceResponsesReceived:pairs.some(pair=>Number(pair.responsesReceived??0)>0)});
+        }).catch(() => this.report({statsAvailable:false}));
+      } catch { this.report({statsAvailable:false}); }
+    };
     const releaseCapture = () => {
       captureStopped = true;
       stream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
@@ -176,6 +200,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
       if (closeTimer) clearTimeout(closeTimer);
       if (terminalTimer) clearTimeout(terminalTimer);
       if (pollTimer) clearInterval(pollTimer);
+      if (diagnosticStatsTimer) clearTimeout(diagnosticStatsTimer);
       if (channel) {
         channel.onmessage = null;
         channel.onclose = null;
@@ -197,6 +222,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     signal.addEventListener("abort", abort, {once:true});
     const fail = (failure: string) => {
       if (disposed || failed) return;
+      snapshotConnection();
       failed = true;
       this.report({failure:diagnosticFailure(failure)});
       releaseCapture();
@@ -301,6 +327,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const settle = (error?: Error) => {
           if (timer) clearTimeout(timer);
+          if (diagnosticStatsTimer) clearTimeout(diagnosticStatsTimer);
           signal.removeEventListener("abort", onAbort);
           dataChannel.onopen = null;
           rejectConnecting = undefined;
@@ -309,6 +336,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         const onAbort = () => settle(new DOMException("Cancelled", "AbortError"));
         rejectConnecting = onAbort;
         timer = setTimeout(() => settle(new Error("dictation-connection-timeout")), 15_000);
+        if (audioSource?.diagnostic) diagnosticStatsTimer = setTimeout(snapshotConnection, 14_000);
         dataChannel.onopen = () => settle();
         signal.addEventListener("abort", onAbort, {once:true});
       });
@@ -347,6 +375,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         cancel: async () => {stopRequested=true;await cleanup();},
       };
     } catch (error) {
+      snapshotConnection();
       this.report({failure:diagnosticFailure(error)});
       await cleanup();
       throw error;
