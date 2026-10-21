@@ -47,7 +47,7 @@ function webKit(script:string,width=1280,height=720):any {
       function require(name){if(cache[name])return cache[name];const exports={};cache[name]=exports;new Function('exports','require',modules[name])(exports,require);return exports;}
       const sourceFixture=${readFileSync(new URL('./fixtures/compact-calendar-view.json',import.meta.url),'utf8')};
       let selectedView=null,commands=[];
-      window.__TAURI__={core:{invoke:async(command,args)=>{commands.push({command,args});if(command==='read_daily_view' || command==='today_view')return selectedView;throw Error('Unexpected native command '+command);}}};
+      window.__TAURI__={core:{invoke:async(command,args)=>{commands.push({command,args});if(command==='read_daily_view' || command==='today_view')return selectedView;if(command==='today_clock')return {date:sourceFixture.selected.date,livedDate:sourceFixture.selected.date,time:'09:30'};if(command==='sleep_records')return {targetBinding:'synthetic-calendar',revision:null,records:[]};throw Error('Unexpected native command '+command);}}};
       const addWindowListener=window.addEventListener.bind(window);
       window.addEventListener=(type,listener,options)=>{if(type!=='focus')addWindowListener(type,listener,options);};
       require('./main.js');
@@ -228,7 +228,7 @@ test('clicking the overflow date reads the full authoritative Daily Record and a
   assert.equal(result.start,'23:30');assert.equal(result.endDate,'2026-09-10');assert.equal(result.endTime,'00:45');
   assert.ok(result.schedule.includes('23:30') && result.schedule.includes('00:45'));
   assert.deepEqual(result.commands.filter((item:any)=>item.command==='read_daily_view'),[{command:'read_daily_view',args:{date:'2026-09-09'}}]);
-  assert.ok(result.commands.every((item:any)=>['read_daily_view','today_view'].includes(item.command)),'date details must read the shared sources without writes');
+  assert.ok(result.commands.every((item:any)=>['read_daily_view','today_view','today_clock','sleep_records'].includes(item.command)),'date details must read the shared sources without writes');
 });
 
 test('Calendar task previews open a compact editor without selecting another date; create uses the selected date in one modal',{skip:process.platform!=='darwin'},()=>{
