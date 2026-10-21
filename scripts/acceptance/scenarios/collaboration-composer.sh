@@ -31,8 +31,10 @@ run_collaboration_composer_scenario() {
   run_driver press "Stop dictation" 10
   run_driver wait-text "$marker" 30
   run_driver wait-text "Start dictation" 30
+  run_driver assert-state "Start dictation|enabled" 30
   run_driver assert-absent-text "Microphone stopped · Finishing transcript" 2
   run_driver assert-absent-text "Transcription ready. Review or edit" 2
+  run_driver assert-absent-text "completeness is unconfirmed" 2
   # Verify actual saved draft and absence of an automatic message before editing.
   node - "$file" "$marker" <<'NODE'
 const fs=require('node:fs');const [path,marker]=process.argv.slice(2);
