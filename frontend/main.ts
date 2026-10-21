@@ -7326,7 +7326,9 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
 
 function renderToday(view: TodayView, preserveTaskEditors = false): void {
   void (async () => {
-    const date = view.isToday ? (await window.__TAURI__.core.invoke<TodayClockView>("today_clock")).date : view.date;
+    const date = view.isToday
+      ? window.__TAURI__.core.invoke<TodayClockView>("today_clock").then(clock => clock.date)
+      : view.date;
     await refreshSleepSummary(date);
   })().catch(() => {});
   closeTodayAxisTaskPopup(false, false);

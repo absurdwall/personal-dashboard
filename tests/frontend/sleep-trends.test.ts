@@ -114,3 +114,64 @@ test('sleep history pages beyond thirty days and missing records never become ze
  assert.equal(result.beforeOld,false);assert.match(result.afterOld,/2026-06-01/);
  assert.equal(result.points,0);assert.equal(result.dates,14);assert.match(result.stats,/0 valid samples.*Average —/);assert.equal(result.overflow,false);assert.deepEqual(result.errors,[]);
 });
+
+
+test('a delayed current-day clock cannot replace the selected historical sleep summary', {skip:process.platform!=='darwin'},()=>{
+ const result=probe(969,`
+ responses.sleep_records={targetBinding:'sleep-vault',revision:null,records:[]};
+ const invoke=window.__TAURI__.core.invoke;
+ let releaseClock;
+ let delayClock=true;
+ window.__TAURI__.core.invoke=async(command,args)=>{
+   if(command==='today_clock'&&delayClock){delayClock=false;return new Promise(resolve=>{releaseClock=()=>resolve({date:view.date,livedDate:view.date,time:'09:30'});});}
+   if(command==='calendar_month')return {...month,year:2026,month:8,days:[{...month.days[0],date:'2026-08-09',inMonth:true,availability:'missing'}]};
+   if(['read_daily_view','daily_view'].includes(command)&&args?.date)return {...structuredClone(view),date:args.date,isToday:false};
+   return invoke(command,args);
+ };
+ await until(()=>!document.querySelector('#refresh-today').disabled);
+ document.querySelector('#refresh-today').click();
+ await until(()=>releaseClock);
+ document.querySelector('[data-workspace-destination="calendar"]').click();
+ await until(()=>document.querySelector('button[data-calendar-date="2026-08-09"]'));
+ document.querySelector('button[data-calendar-date="2026-08-09"]').click();
+ await until(()=>document.querySelector('#calendar-summary-heading').textContent.includes('9')&&!document.querySelector('#calendar-open-day').disabled);
+ document.querySelector('#calendar-open-day').click();
+ await until(()=>document.querySelector('#today-sleep-summary button')?.textContent.includes('2026-08-09'));
+ releaseClock();
+ await new Promise(resolve=>setTimeout(resolve,30));
+ const summary=document.querySelector('#today-sleep-summary button').textContent;
+ document.querySelector('#today-sleep-summary button').click();
+ await until(()=>document.querySelector('.sleep-editor input[type="date"]'));
+ return JSON.stringify({summary,date:document.querySelector('.sleep-editor input[type="date"]').value,errors:window.probeErrors});
+ `);
+ assert.match(result.summary,/2026-08-09/);assert.equal(result.date,'2026-08-09');assert.deepEqual(result.errors,[]);
+});
+
+test('changing the selected Vault invalidates an earlier sleep calendar lookup', {skip:process.platform!=='darwin'},()=>{
+ const result=probe(969,`
+ responses.sleep_records={targetBinding:'sleep-vault-a',revision:null,records:[]};
+ const invoke=window.__TAURI__.core.invoke;
+ let releaseClock;
+ let delayClock=true;
+ window.__TAURI__.core.invoke=async(command,args)=>{
+   if(command==='today_clock'&&delayClock){delayClock=false;return new Promise(resolve=>{releaseClock=()=>resolve({date:view.date,livedDate:view.date,time:'09:30'});});}
+   if(command==='select_today_vault'){
+     responses.sleep_records={targetBinding:'sleep-vault-b',revision:null,records:[]};
+     return {changed:true,view:{...structuredClone(view),date:'2026-08-09',isToday:false,targetBinding:'vault-b',tasks:{...view.tasks,targetBinding:'tasks-vault-b'}}};
+   }
+   return invoke(command,args);
+ };
+ await until(()=>!document.querySelector('#refresh-today').disabled);
+ document.querySelector('#refresh-today').click();
+ await until(()=>releaseClock);
+ document.querySelector('#select-today-vault').click();
+ await until(()=>document.querySelector('#today-sleep-summary button')?.textContent.includes('2026-08-09'));
+ releaseClock();
+ await new Promise(resolve=>setTimeout(resolve,30));
+ const summary=document.querySelector('#today-sleep-summary button').textContent;
+ document.querySelector('#today-sleep-summary button').click();
+ await until(()=>document.querySelector('.sleep-editor input[type="date"]'));
+ return JSON.stringify({summary,date:document.querySelector('.sleep-editor input[type="date"]').value,errors:window.probeErrors});
+ `);
+ assert.match(result.summary,/2026-08-09/);assert.equal(result.date,'2026-08-09');assert.deepEqual(result.errors,[]);
+});
