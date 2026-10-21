@@ -6746,7 +6746,10 @@ run_live_daily_cycle_scenario() {
   echo "Boundary: the packaged app wrote the canonical Markdown through Tauri IPC without an app-owned life ledger"
 }
 
+source "$script_directory/scenarios/task-saved-readback.sh"
+
 case "$acceptance_scenario" in
+  task-saved-readback) run_task_saved_readback_scenario ;;
   shell) run_shell_scenario ;;
   direct) run_direct_record_scenario ;;
   state-semantics) run_state_semantics_scenario ;;
