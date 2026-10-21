@@ -91,6 +91,8 @@ function chart(parent: HTMLElement, points: readonly Sample[], metric: SleepMetr
   const namespace = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(namespace, "svg");
   svg.setAttribute("viewBox", "0 0 700 90");
+  svg.setAttribute("preserveAspectRatio", "none");
+  if (points.length > 7) svg.style.minWidth = `${points.length * 32}px`;
   svg.setAttribute("aria-label", label(metric, copy) + copy("时间趋势；缺失或非单点不连线", " trend; missing or non-point times have gaps"));
   svg.setAttribute("role", "img");
   parent.append(svg);
@@ -122,6 +124,7 @@ function chart(parent: HTMLElement, points: readonly Sample[], metric: SleepMetr
   }
   const dates = element("div", parent); dates.className = "sleep-chart-dates";
   dates.style.setProperty("--sleep-days", String(points.length));
+  if (points.length > 7) dates.style.minWidth = `${points.length * 32}px`;
   for (const point of points) {
     const node = button(dates, `${point.label}\n${point.date.slice(5)}`, () => onDate(point.date));
     node.dataset.sleepDate = point.date;

@@ -23,7 +23,8 @@ test('Habits exposes seven-day sleep curves with gaps and a shared metric detail
  const result=probe(969,setup+`
  const onset=document.querySelector('[data-sleep-trend="sleepOnset"]');
  const up=document.querySelector('[data-sleep-trend="getUp"]');
- const before={rows:document.querySelectorAll('[data-sleep-trend]').length,points:onset.querySelectorAll('circle').length,segments:onset.querySelectorAll('[data-sleep-segment]').length,dates:onset.querySelectorAll('[data-sleep-date]').length,weekly:document.querySelector('#habits-summary-total').textContent,habit:document.querySelector('#habits-weekly-list').textContent,status:document.querySelector('#habits-status').textContent,overflow:document.documentElement.scrollWidth>innerWidth};
+ const dot=onset.querySelector('circle').getBoundingClientRect(),day=onset.querySelector('[data-sleep-date="2026-08-09"]').getBoundingClientRect();
+ const before={alignment:Math.abs(dot.left+dot.width/2-day.left-day.width/2),rows:document.querySelectorAll('[data-sleep-trend]').length,points:onset.querySelectorAll('circle').length,segments:onset.querySelectorAll('[data-sleep-segment]').length,dates:onset.querySelectorAll('[data-sleep-date]').length,weekly:document.querySelector('#habits-summary-total').textContent,habit:document.querySelector('#habits-weekly-list').textContent,status:document.querySelector('#habits-status').textContent,overflow:document.documentElement.scrollWidth>innerWidth};
  up.querySelector('[data-sleep-date="2026-08-10"]').click();
  await until(()=>document.querySelector('.sleep-editor [data-sleep-statistics]'));
  const dialog=document.querySelector('.sleep-editor');
@@ -32,17 +33,19 @@ test('Habits exposes seven-day sleep curves with gaps and a shared metric detail
  const onsetStatistics=dialog.querySelector('[data-sleep-statistics]').textContent;
  dialog.querySelector('[data-sleep-days="30"]').click();
  const range=dialog.querySelector('[data-sleep-range]').textContent;
+ const detailDot=dialog.querySelector('.sleep-detail-chart circle').getBoundingClientRect(),detailDay=dialog.querySelector('.sleep-detail-chart [data-sleep-date="2026-08-09"]').getBoundingClientRect();
+ const rangeAlignment=Math.abs(detailDot.left+detailDot.width/2-detailDay.left-detailDay.width/2);
  dialog.querySelector('[data-sleep-metric="duration"]').click();
  const duration=dialog.querySelector('[data-sleep-statistics]').textContent;
  const old=dialog.querySelector('[data-sleep-history-date="2026-06-01"]');
  const historical=old.textContent;old.click();
  await until(()=>document.querySelector('.sleep-editor input[type="date"]')?.value==='2026-06-01');
- return JSON.stringify({before,getUp,onsetStatistics,range,duration,historical,oldDate:document.querySelector('.sleep-editor input[type="date"]').value,errors:window.probeErrors});
+ return JSON.stringify({before,getUp,onsetStatistics,range,rangeAlignment,duration,historical,oldDate:document.querySelector('.sleep-editor input[type="date"]').value,errors:window.probeErrors});
  `);
- assert.equal(result.before.rows,2);assert.equal(result.before.points,2);assert.equal(result.before.segments,1);assert.equal(result.before.dates,7);
+ assert.ok(result.before.alignment<1,'each plotted point must align with its date');assert.equal(result.before.rows,2);assert.equal(result.before.points,2);assert.equal(result.before.segments,1);assert.equal(result.before.dates,7);
  assert.equal(result.before.weekly,'2 / 3');assert.match(result.before.habit,/Synthetic reading/);assert.equal(result.before.overflow,false);
  assert.equal(result.getUp.metric,'getUp');assert.deepEqual(result.getUp.fields,['Sleep onset · Time','Get-up time · Time']);assert.match(result.getUp.statistics,/2.*07:45/);assert.match(result.getUp.statistics,/1 approximate/);
- assert.match(result.onsetStatistics,/2.*00:00/);assert.match(result.range,/2026-07-12.*2026-08-10/);assert.match(result.duration,/2.*7h 45m/);
+ assert.match(result.onsetStatistics,/2.*00:00/);assert.match(result.range,/2026-07-12.*2026-08-10/);assert.ok(result.rangeAlignment<1,'thirty-day points must align with their dates');assert.match(result.duration,/2.*7h 45m/);
  assert.match(result.historical,/2026-06-01.*23:00.*07:00.*8h 0m/);assert.equal(result.oldDate,'2026-06-01');assert.deepEqual(result.errors,[]);
 });
 

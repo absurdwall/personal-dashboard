@@ -11848,7 +11848,8 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 .sleep-detail-toolbar button, .sleep-period-navigation button, .sleep-history-navigation button { padding: 5px 9px; font-size: .77rem; color: inherit; background: var(--parity-surface, #fff); border: 1px solid var(--parity-border, #ddd); }
 .sleep-detail-toolbar button[aria-pressed=true] { font-weight: 700; color: var(--parity-accent-strong, #214e43); background: var(--parity-accent-soft, #e7f0eb); }
 .sleep-insights { margin-top: 14px; }
-.sleep-detail-chart .sleep-chart-dates { overflow-x: auto; grid-template-columns: repeat(var(--sleep-days), minmax(32px, 1fr)); }
+.sleep-detail-chart { overflow-x: auto; }
+.sleep-detail-chart .sleep-chart-dates { grid-template-columns: repeat(var(--sleep-days), minmax(32px, 1fr)); }
 .sleep-history { display: grid; gap: 4px; }
 .sleep-history button { text-align: left; font-size: .77rem; font-weight: 400; padding: 7px; background: var(--parity-surface, #fff); color: inherit; border: 1px solid var(--parity-border, #ddd); }
 .sleep-history button[aria-current=true] { font-weight: 700; }
