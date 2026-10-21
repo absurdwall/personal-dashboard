@@ -1,4 +1,4 @@
-import { configureSleepLanguage, refreshSleepSummary } from "./sleep.js";
+import { configureSleepLanguage, refreshSleepSummary, refreshSleepHabits, refreshSleepSurfaces, resetSleepPresentation } from "./sleep.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
@@ -1962,6 +1962,8 @@ if (todayLayoutForResize) new ResizeObserver(() => updateTodayUnlocatedPresentat
 
 function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
   currentInterfaceLanguage = preferences.interfaceLanguage;
+  configureSleepLanguage(() => currentInterfaceLanguage);
+  if (currentHabitSnapshot || currentTodayView) refreshSleepSurfaces();
   applyInterfaceLanguage(currentInterfaceLanguage);
   document.querySelectorAll<HTMLAnchorElement>(".today-axis-marker-link").forEach((link) => {
     const time = link.querySelector<HTMLElement>(".today-axis-marker-time");
@@ -2078,6 +2080,7 @@ function resetVaultScopedWorkspaceState(): void {
   expandedTaskFolderIds.clear();
   taskRefreshQueued = false;
   currentHabitSnapshot = null;
+  resetSleepPresentation();
   selectedHabitDetailKey = null;
   currentHabitDetailHistory = null;
   habitDetailLoading = false;
@@ -3781,6 +3784,7 @@ type CollaborationRefreshContext = Readonly<{ sessionId: string; executionId: st
 async function refreshCanonicalDateProjections(targetDate: string, evidence?: CollaborationRefreshContext): Promise<string | null> {
   if (vaultSelectionInProgress) return null;
   const vaultRevision = collaborationVaultSelectionRevision;
+  refreshSleepSurfaces();
   const [year, month] = targetDate.split("-").map(Number);
   const todayRequest = window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date: targetDate })
     .then((value) => ({ ok: true as const, value }))
@@ -7309,7 +7313,6 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
 }
 
 function renderToday(view: TodayView, preserveTaskEditors = false): void {
-  configureSleepLanguage(() => currentInterfaceLanguage);
   void (async () => {
     const date = view.isToday ? (await window.__TAURI__.core.invoke<TodayClockView>("today_clock")).date : view.date;
     await refreshSleepSummary(date);
@@ -10757,6 +10760,8 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
 }
 
 async function refreshHabits(): Promise<void> {
+  configureSleepLanguage(() => currentInterfaceLanguage);
+  void refreshSleepHabits();
   const request = habitSnapshotRequests.begin();
   if (habitsStatus) {
     setCopy(habitsStatus, "habits.loadingLocal");
