@@ -48,3 +48,33 @@ test('Task refresh and navigation show saved values rather than an older editor'
   assert.deepEqual(result.returned,latest);
   assert.deepEqual(result.errors,[]);
 });
+
+test('saving a Daily Record note reloads open Today Task fields from canonical values', {skip:process.platform !== 'darwin'}, () => {
+  const result = probe(969, `
+    const form=()=>document.querySelector('[data-task-editor="note-refresh-task"][data-task-surface="today"]');
+    await until(()=>document.querySelector('[data-task-editor-open="note-refresh-task"]'));
+    document.querySelector('[data-task-editor-open="note-refresh-task"]').click();
+    await until(()=>form()&&!form().hidden);
+    const edit=form().querySelector('[data-task-content]');edit.value='UNSAVED stale Task content';edit.dispatchEvent(new Event('input',{bubbles:true}));
+    document.querySelector('#today-evening-content').value='Independent unsent Daily Record review';
+    const latest=structuredClone(view);latest.tasks={...view.tasks,revision:'task-revision-new',tasks:[{...view.tasks.tasks[0],content:'LATEST canonical Task content'}]};
+    const invoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      if(command==='add_dated_note'){calls.push({command,args});return latest;}
+      return invoke(command,args);
+    };
+    document.querySelector('#today-daytime-content').value='Synthetic Daily Record note';
+    document.querySelector('#today-daytime-content').dispatchEvent(new Event('input',{bubbles:true}));
+    document.querySelector('#save-daytime-update').click();
+    await until(()=>calls.some(call=>call.command==='add_dated_note'));
+    await new Promise(resolve=>setTimeout(resolve,30));
+    const taskForm=form();if(taskForm?.hidden)document.querySelector('[data-task-editor-open="note-refresh-task"]').click();
+    return JSON.stringify({content:form()?.querySelector('[data-task-content]').value,review:document.querySelector('#today-evening-content').value,note:document.querySelector('#today-daytime-content').value,errors:window.probeErrors});
+  `,true,758,{},`
+    view.tasks={...view.tasks,state:'ready',revision:'task-revision-old',tasks:[{id:'note-refresh-task',name:'Daily note refresh Task',content:'Original canonical Task content',date:view.date,time:'10:00',executionEnd:null,listId:'inbox',parentTaskId:null,priority:null,tagIds:[],state:'pending',deletedAt:null,completion:null,source:{kind:'manual',reference:null},changes:[]}]};
+  `);
+  assert.equal(result.content,'LATEST canonical Task content');
+  assert.equal(result.review,'Independent unsent Daily Record review');
+  assert.equal(result.note,'');
+  assert.deepEqual(result.errors,[]);
+});

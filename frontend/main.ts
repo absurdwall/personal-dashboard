@@ -7283,36 +7283,18 @@ function renderDatedNoteComposer(view: TodayView): void {
   }
 }
 
-function captureTodayTaskEditors(view: TodayView): Set<string> {
+function openTodayTaskEditorIds(view: TodayView): Set<string> {
   const open = new Set<string>();
   const previous = currentTodayView;
-  const binding = previous?.tasks.targetBinding;
-  if (!previous || !binding || previous.date !== view.date || binding !== view.tasks.targetBinding) {
-    return open;
-  }
+  if (!previous || previous.date !== view.date || previous.tasks.targetBinding !== view.tasks.targetBinding) return open;
   for (const form of taskEditorForms("today")) {
     const id = form.dataset.taskEditor;
-    const task = previous.tasks.tasks.find((candidate) => candidate.id === id);
-    if (form.hidden || !id || !task || !view.tasks.tasks.some((candidate) => candidate.id === id)) continue;
-    open.add(id);
-    const draft = readTaskDraft(form);
-    const key = taskDraftKey(binding, id);
-    if (
-      draft.name !== task.name || draft.content !== (task.content ?? "") ||
-      draft.date !== (task.date ?? "") || draft.time !== (task.time ?? "") ||
-      draft.endDate !== (task.executionEnd?.date ?? "") || draft.endTime !== (task.executionEnd?.time ?? "") ||
-      draft.listId !== task.listId || draft.completionDate !== (task.completion?.completedOn ?? "") ||
-      draft.completionTime !== (task.completion?.completedTime ?? "")
-    ) {
-      taskEditDrafts.set(key, draft);
-    } else {
-      taskEditDrafts.delete(key);
-    }
+    if (!form.hidden && id && view.tasks.tasks.some(task => task.id === id)) open.add(id);
   }
   return open;
 }
 
-function renderToday(view: TodayView, preserveTaskEditors = false): void {
+function renderToday(view: TodayView, keepTaskEditorsOpen = false): void {
   void (async () => {
     const date = view.isToday
       ? window.__TAURI__.core.invoke<TodayClockView>("today_clock").then(clock => clock.date)
@@ -7321,8 +7303,8 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
   })().catch(() => {});
   closeTodayAxisTaskPopup(false, false);
   closeTodayAxisFactPopup(false);
-  const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
-  if (!preserveTaskEditors) taskEditDrafts.clear();
+  const openTaskEditors = keepTaskEditorsOpen ? openTodayTaskEditorIds(view) : new Set<string>();
+  taskEditDrafts.clear();
   stashEveningReviewDraft();
   todayPresentationFresh = true;
   const previousView = currentTodayView;

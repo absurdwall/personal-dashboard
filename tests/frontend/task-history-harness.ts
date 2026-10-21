@@ -85,7 +85,7 @@ export function editingRenderer() {
   r.eveningReviewEntry = null;
   const functions = ["selectedShortRecordCategory", "stashEveningReviewDraft", "stashDatedNoteDraft",
     "stashTodayTaskCreateDraft", "renderDatedNoteComposer", "taskDraftKey", "readTaskDraft",
-    "captureTodayTaskEditors", "hasTodayEditingTarget", "eveningViewHasContent", "renderToday",
+    "openTodayTaskEditorIds", "hasTodayEditingTarget", "eveningViewHasContent", "renderToday",
     "saveDatedNote", "refreshTodayClock"].map(sourceFunction).join("\n");
   for (const name of functions.match(/\btoday[A-Z]\w*/g) ?? []) if (!(name in r)) r[name] = null;
   for (const name of ["renderWorkspaceRailContext", "renderVaultSettings", "renderLegacyDayTasks",

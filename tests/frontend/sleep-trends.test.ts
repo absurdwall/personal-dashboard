@@ -175,3 +175,49 @@ test('changing the selected Vault invalidates an earlier sleep calendar lookup',
  `);
  assert.match(result.summary,/2026-08-09/);assert.equal(result.date,'2026-08-09');assert.deepEqual(result.errors,[]);
 });
+
+test('English sleep placeholder and errors use the shared language catalog without translating reported text', {skip:process.platform!=='darwin'},()=>{
+ const result=probe(969,`
+   await until(()=>!document.querySelector('#today-sleep-summary').hidden);
+   const placeholder=document.querySelector('#today-sleep-summary button').textContent;
+   releaseSleep();
+   await until(()=>document.querySelector('#today-sleep-summary button').textContent.includes('2026-08-10'));
+   document.querySelector('#today-sleep-summary button').click();
+   await until(()=>document.querySelector('.sleep-editor form'));
+   const dialog=document.querySelector('.sleep-editor');
+   const reported=dialog.querySelector('input[aria-label="Sleep onset · Original wording"]');
+   dialog.querySelector('input[aria-label="Get-up time · Time"]').value='08:20';
+   dialog.querySelector('form').requestSubmit();
+   await until(()=>dialog.querySelector('[role=status]').textContent);
+   const status=dialog.querySelector('[role=status]');
+   dialog.querySelector('[data-sleep-metric="duration"]').click();
+   const english={text:status.textContent,diagnostic:status.dataset.i18nError,reported:reported.value,statistics:dialog.querySelector('[data-sleep-statistics]').textContent};
+   freezeSleepReads=true;
+   document.querySelector('#workspace-language').click();
+   await until(()=>document.documentElement.lang.startsWith('zh'));
+   return JSON.stringify({placeholder,english,chinese:status.textContent,summary:document.querySelector('#today-sleep-summary button').textContent,statistics:dialog.querySelector('[data-sleep-statistics]').textContent,reportedAfter:reported.value,errors:window.probeErrors});
+ `,true,758,{},`
+   const sleepFixture={targetBinding:'sleep-language',revision:'sleep-language-rev',records:[{id:'language-night',wakeDate:'2026-08-10',sleepOnset:{kind:'text',date:'2026-08-09',text:'八点多 English original'},getUp:{kind:'point',date:'2026-08-10',time:'07:20',utcOffsetMinutes:-240,approximate:true},estimatedDurationMinutes:null},{id:'other-language-night',wakeDate:'2026-08-09',sleepOnset:{kind:'point',date:'2026-08-08',time:'23:50',utcOffsetMinutes:-240},getUp:{kind:'point',date:'2026-08-09',time:'07:20',utcOffsetMinutes:-240},estimatedDurationMinutes:450}]};
+   let finishSleep, sleepReady=false, freezeSleepReads=false;
+   const sleepPending=new Promise(resolve=>{finishSleep=resolve;});
+   const releaseSleep=()=>{sleepReady=true;finishSleep(sleepFixture);};
+   const baseInvoke=window.__TAURI__.core.invoke;
+   window.__TAURI__.core.invoke=async(command,args)=>{
+     if(command==='sleep_records')return freezeSleepReads?new Promise(()=>{}):sleepReady?sleepFixture:sleepPending;
+     if(command==='save_sleep_record')throw new Error('起床端点的实际日期必须与记录起床日一致。');
+     if(command==='set_interface_language')return {interfaceLanguage:args.interfaceLanguage};
+     return baseInvoke(command,args);
+   };
+ `);
+ assert.equal(result.placeholder,'Sleep');
+ assert.match(result.english.text,/actual get-up date must match the record/);
+ assert.match(result.english.diagnostic,/起床端点的实际日期必须与记录起床日一致/);
+ assert.match(result.chinese,/起床端点的实际日期必须与记录起床日一致/);
+ assert.match(result.english.statistics,/7h 30m/);
+ assert.match(result.summary,/约 07:20/);
+ assert.ok(!result.summary.includes('about'));
+ assert.match(result.statistics,/7 小时 30 分/);
+ assert.equal(result.english.reported,'八点多 English original');
+ assert.equal(result.reportedAfter,'八点多 English original');
+ assert.deepEqual(result.errors,[]);
+});
