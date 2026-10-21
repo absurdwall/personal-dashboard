@@ -4,7 +4,7 @@ import {probe} from './helpers/complete-page.ts';
 
 // The full shipped page, voice controller, transcript assembler and browser runtime
 // execute unchanged. Only public IPC and browser media/WebRTC are controlled.
-const mediaBoundary = `
+const mediaBoundary = String.raw`
   const track={readyState:'live',stop(){this.readyState='ended';},onended:null};
   const stream={getTracks:()=>[track],getAudioTracks:()=>[track]};
   Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{calls.push({command:'synthetic_microphone_capture'});return stream;}}});
