@@ -68,7 +68,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|assert-field-value|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-exact|press-contains|select-contains|select-contains-allow-unchanged|activate-owned|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|assert-field-value|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-role-text|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-window|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-exact|press-contains|select-field|select-contains|select-contains-allow-unchanged|activate-owned|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -269,9 +269,12 @@ func findVisiblePressable(
         "AXPopUpButton",
         "AXRadioButton",
     ])
-    return findTextPaths(application, text, contains: contains)
+    return findTextPaths(application, text, contains: true)
         .first { path in
             pressableRoles.contains(stringAttribute(path.element, "AXRole")) &&
+                (contains || ["AXTitle", "AXValue", "AXDescription"].contains {
+                    stringAttribute(path.element, $0) == text
+                }) &&
                 (path.ancestors + [path.element]).allSatisfy {
                     visibleAttribute($0, "AXHidden")
                 }
@@ -3541,6 +3544,37 @@ func scrollSurfaceToBottom(
     try assertDocumentFixed(application)
 }
 
+func selectLabelledOption(
+    _ application: AXUIElement,
+    label: String,
+    option: String,
+    pid: pid_t,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let picker = findRolesWithin(application, ["AXComboBox", "AXPopUpButton"]).first(where: {
+            visibleAttribute($0, "AXHidden") && nodeText($0).localizedCaseInsensitiveContains(label)
+        }) {
+            let previous = pickerState(picker)
+            try setAccessibilityAttribute(picker, "AXFocused", kCFBooleanTrue, "focus picker \(label)")
+            try performAccessibilityAction(picker, "AXPress", "open picker \(label)")
+            repeat {
+                if let menu = findVisibleMenu(application), let item = findMenuItem(menu, option) {
+                    try performAccessibilityAction(item, "AXPress", "select \(option) in \(label)")
+                    try waitForPickerValue(picker, option, timeout: timeout, changedFrom: previous, requireChange: true)
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.05)
+            } while Date() < deadline
+            try pressKey(pid, "escape")
+            throw DriverError.timeout("option \(option) in picker \(label)")
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+    throw DriverError.timeout("labelled picker: \(label)")
+}
+
 func selectOption(
     _ application: AXUIElement,
     _ text: String,
@@ -4465,6 +4499,9 @@ do {
     case "assert-select-absent-option":
         try assertSelectOption(application, text, expectation: .absent, pid: pid, timeout: timeout)
         print("Rendered select excludes option: \(text)")
+    case "dump-window":
+        guard let window = mainWindow(application) else { throw DriverError.timeout("owned candidate window") }
+        dumpText(window)
     case "dump-text":
         dumpText(application)
     case "assert-elements-disjoint":
@@ -4535,6 +4572,25 @@ do {
             throw DriverError.timeout("pressable control containing: \(text)")
         }
         print("Pressed rendered control containing: \(text)")
+    case "select-field":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { throw DriverError.usage }
+        try selectLabelledOption(application, label: parts[0], option: parts[1], pid: pid, timeout: timeout)
+        print("Selected rendered field option: \(parts[0])")
+    case "assert-role-text":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { throw DriverError.usage }
+        let deadline = Date().addingTimeInterval(timeout)
+        var matched = false
+        repeat {
+            matched = findRolesWithin(application, [parts[0]]).contains(where: {
+                visibleAttribute($0, "AXHidden") && nodeText($0).localizedCaseInsensitiveContains(parts[1])
+            })
+            if matched { break }
+            Thread.sleep(forTimeInterval: 0.05)
+        } while Date() < deadline
+        guard matched else { throw DriverError.timeout("\(parts[0]) containing \(parts[1])") }
+        print("Verified rendered role/text: \(parts[0])")
     case "select-contains":
         try selectOption(application, text, pid: pid, timeout: timeout)
         print("Selected rendered option containing: \(text)")
