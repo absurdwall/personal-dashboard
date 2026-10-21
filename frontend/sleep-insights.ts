@@ -1,8 +1,8 @@
+import { localizedSleepElement, setSleepAttribute, setSleepCopy, sleepLanguage, sleepText, SLEEP_LANGUAGE_CHANGED_EVENT, type SleepCopyKey } from "./sleep-presentation.js";
 import { createSleepElement as element } from "./sleep-dom.js";
-import { formatSleepDuration } from "./sleep-format.js";
+import { formatSleepDuration, formatSleepEndpoint } from "./sleep-format.js";
 import type { SleepEndpoint, SleepMetric, SleepRecord, SleepView } from "./sleep.js";
 
-type Copy = (zh: string, en: string) => string;
 type Sample = Readonly<{ date: string; value: number | null; approximate: boolean; label: string }>;
 const dayMinutes = 1440;
 function shiftDate(date: string, days: number): string {
@@ -16,9 +16,14 @@ function button(parent: HTMLElement, text: string, action: () => void): HTMLButt
   node.onclick = action;
   return node;
 }
-function label(metric: SleepMetric, copy: Copy): string {
-  return metric === "sleepOnset" ? copy("入睡", "Sleep onset") : metric === "getUp" ? copy("离床", "Get-up") : copy("估算时长", "Estimated duration");
+function metricKey(metric: SleepMetric): SleepCopyKey {
+  return metric === "sleepOnset" ? "sleep.metricOnset" : metric === "getUp" ? "sleep.getUp" : "sleep.metricDuration";
 }
+function label(metric: SleepMetric): string { return sleepText(metricKey(metric)); }
+function localizedButton(parent: HTMLElement, key: SleepCopyKey, action: () => void, variables: Readonly<Record<string,string|number>> = {}): HTMLButtonElement {
+  const node = button(parent,"",action); setSleepCopy(node,key,variables); return node;
+}
+
 function clock(minutes: number): string {
   const rounded = ((Math.round(minutes) % dayMinutes) + dayMinutes) % dayMinutes;
   return `${String(Math.floor(rounded / 60)).padStart(2, "0")}:${String(rounded % 60).padStart(2, "0")}`;
@@ -29,27 +34,23 @@ function endpointValue(endpoint: SleepEndpoint): number | null {
   const [hours, minutes] = endpoint.time.split(":").map(Number);
   return hours * 60 + minutes;
 }
-function endpointLabel(endpoint: SleepEndpoint, copy: Copy): string {
-  if (endpoint.kind === "point") return `${endpoint.approximate ? copy("约 ", "about ") : ""}${endpoint.time}`;
-  if (endpoint.kind === "text") return endpoint.text;
-  if (endpoint.kind === "range") return endpoint.reportedText;
-  return endpoint.kind === "unknown" ? copy("未知", "unknown") : "—";
-}
-function sample(record: SleepRecord | undefined, date: string, metric: SleepMetric, copy: Copy): Sample {
+function endpointLabel(endpoint: SleepEndpoint): string { return formatSleepEndpoint(endpoint,"history",sleepLanguage()); }
+
+function sample(record: SleepRecord | undefined, date: string, metric: SleepMetric): Sample {
   if (!record) return { date, value: null, approximate: false, label: "—" };
   if (metric === "duration") {
     const complete = record.sleepOnset.kind === "point" && record.getUp.kind === "point";
     const value = complete ? record.estimatedDurationMinutes : null;
-    return { date, value, approximate: complete && (Boolean(record.sleepOnset.kind === "point" && record.sleepOnset.approximate) || Boolean(record.getUp.kind === "point" && record.getUp.approximate)), label: value === null ? "—" : formatSleepDuration(value, copy) };
+    return { date, value, approximate: complete && (Boolean(record.sleepOnset.kind === "point" && record.sleepOnset.approximate) || Boolean(record.getUp.kind === "point" && record.getUp.approximate)), label: value === null ? "—" : formatSleepDuration(value, sleepLanguage()) };
   }
   const endpoint = record[metric];
-  return { date, value: endpointValue(endpoint), approximate: endpoint.kind === "point" && Boolean(endpoint.approximate), label: endpointLabel(endpoint, copy) };
+  return { date, value: endpointValue(endpoint), approximate: endpoint.kind === "point" && Boolean(endpoint.approximate), label: endpointLabel(endpoint) };
 }
-function samples(records: readonly SleepRecord[], endDate: string, days: number, metric: SleepMetric, copy: Copy): Sample[] {
+function samples(records: readonly SleepRecord[], endDate: string, days: number, metric: SleepMetric): Sample[] {
   const byDate = new Map(records.map(record => [record.wakeDate, record]));
   return Array.from({ length: days }, (_, index) => {
     const date = shiftDate(endDate, index - days + 1);
-    return sample(byDate.get(date), date, metric, copy);
+    return sample(byDate.get(date), date, metric);
   });
 }
 function average(values: readonly number[], circular: boolean): number | null {
@@ -63,29 +64,34 @@ function average(values: readonly number[], circular: boolean): number | null {
 function distance(value: number, center: number): number {
   return ((value - center + 2160) % dayMinutes) - 720;
 }
-function statistics(parent: HTMLElement, points: readonly Sample[], metric: SleepMetric, copy: Copy): void {
+function statistics(parent: HTMLElement, points: readonly Sample[], metric: SleepMetric): void {
   const valid = points.filter(point => point.value !== null);
   const values = valid.map(point => point.value!);
   const circular = metric !== "duration";
   const mean = average(values, circular);
-  const format = circular ? clock : (value: number) => formatSleepDuration(value, copy);
+  const format = circular ? clock : (value: number) => formatSleepDuration(value, sleepLanguage());
   const approximate = valid.filter(point => point.approximate).length;
-  const parts = [copy(`有效样本 ${valid.length}`, `${valid.length} valid samples`), copy("平均 ", "Average ") + (mean === null ? "—" : format(mean))];
+  parent.replaceChildren();
+  const part = (key: SleepCopyKey, variables: Readonly<Record<string,string|number>> = {}): void => {
+    if (parent.childNodes.length) parent.append(document.createTextNode(" · "));
+    localizedSleepElement("span",parent,key,variables);
+  };
+  part("sleep.validSamples",{count:valid.length});
+  part("sleep.average",{value:mean === null ? "—" : format(mean)});
   if (values.length >= 2 && mean !== null) {
     const ordered = circular ? values.map(value => mean + distance(value, mean)) : values;
-    parts.push(copy(circular ? "最早 " : "最短 ", circular ? "Earliest " : "Shortest ") + format(Math.min(...ordered)));
-    parts.push(copy(circular ? "最晚 " : "最长 ", circular ? "Latest " : "Longest ") + format(Math.max(...ordered)));
+    part(circular ? "sleep.earliest" : "sleep.shortest",{value:format(Math.min(...ordered))});
+    part(circular ? "sleep.latest" : "sleep.longest",{value:format(Math.max(...ordered))});
   }
-  if (approximate) parts.push(copy(`其中 ${approximate} 个约数`, `${approximate} approximate`));
-  parent.textContent = parts.join(" · ");
+  if (approximate) part("sleep.approximateSamples",{count:approximate});
 }
-function chart(parent: HTMLElement, points: readonly Sample[], metric: SleepMetric, onDate: (date: string) => void, copy: Copy): void {
+function chart(parent: HTMLElement, points: readonly Sample[], metric: SleepMetric, onDate: (date: string) => void): void {
   const namespace = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(namespace, "svg");
   svg.setAttribute("viewBox", "0 0 700 90");
   svg.setAttribute("preserveAspectRatio", "none");
   if (points.length > 7) svg.style.minWidth = `${points.length * 32}px`;
-  svg.setAttribute("aria-label", label(metric, copy) + copy("时间趋势；缺失或非单点不连线", " trend; missing or non-point times have gaps"));
+  setSleepAttribute(svg,"aria-label","sleep.trend",{metric:label(metric)});
   svg.setAttribute("role", "img");
   parent.append(svg);
   const valid = points.flatMap(point => point.value === null ? [] : [point.value]);
@@ -120,24 +126,24 @@ function chart(parent: HTMLElement, points: readonly Sample[], metric: SleepMetr
   for (const point of points) {
     const node = button(dates, `${point.label}\n${point.date.slice(5)}`, () => onDate(point.date));
     node.dataset.sleepDate = point.date;
-    node.title = `${point.date} · ${label(metric, copy)} · ${point.label}`;
+    node.title = `${point.date} · ${label(metric)} · ${point.label}`;
     node.setAttribute("aria-label", node.title);
   }
 }
 
-export function renderSleepHome(parent: HTMLElement, view: SleepView, date: string, onOpen: (date: string, metric: SleepMetric) => void, copy: Copy): void {
+export function renderSleepHome(parent: HTMLElement, view: SleepView, date: string, onOpen: (date: string, metric: SleepMetric) => void): void {
   parent.replaceChildren();
-  element("h3", parent, copy("作息 · 最近七天", "Sleep · last seven days"));
-  element("p", parent, copy("用户报告的时间；空缺与范围不绘制为单点。", "Reported times; missing values and ranges are not plotted as points."));
+  localizedSleepElement("h3",parent,"sleep.homeTitle");
+  localizedSleepElement("p",parent,"sleep.homeHelp");
   for (const metric of ["sleepOnset", "getUp"] as const) {
     const row = element("section", parent); row.dataset.sleepTrend = metric; row.className = "sleep-trend-row";
-    button(row, label(metric, copy), () => onOpen(date, metric)).className = "sleep-metric-link";
+    localizedButton(row, metricKey(metric), () => onOpen(date, metric)).className = "sleep-metric-link";
     const plot = element("div", row); plot.className = "sleep-chart";
-    chart(plot, samples(view.records, date, 7, metric, copy), metric, selected => onOpen(selected, metric), copy);
+    chart(plot, samples(view.records, date, 7, metric), metric, selected => onOpen(selected, metric));
   }
 }
 
-export function renderSleepInsights(parent: HTMLElement, view: SleepView, date: string, initialMetric: SleepMetric, onOpen: (date: string, metric: SleepMetric) => void, copy: Copy): HTMLElement {
+export function renderSleepInsights(parent: HTMLElement, view: SleepView, date: string, initialMetric: SleepMetric, onOpen: (date: string, metric: SleepMetric) => void): HTMLElement {
   let metric = initialMetric;
   let days = 7;
   let endDate = date;
@@ -150,7 +156,7 @@ export function renderSleepInsights(parent: HTMLElement, view: SleepView, date: 
   const plot = element("div", parent); plot.className = "sleep-chart sleep-detail-chart";
   const navigate = element("div", parent); navigate.className = "sleep-period-navigation";
   const historySection = document.createElement("section");
-  const historyHeading = element("h3", historySection, copy("历史记录", "History"));
+  const historyHeading = localizedSleepElement("h3",historySection,"sleep.history");
   const history = element("div", historySection); history.className = "sleep-history"; history.setAttribute("aria-labelledby", "sleep-history-heading");
   historyHeading.id = "sleep-history-heading";
   const historyNav = element("div", historySection); historyNav.className = "sleep-history-navigation";
@@ -159,32 +165,35 @@ export function renderSleepInsights(parent: HTMLElement, view: SleepView, date: 
   const renderHistory = (): void => {
     history.replaceChildren(); historyNav.replaceChildren();
     for (const record of records.slice(historyPage * historySize, (historyPage + 1) * historySize)) {
-      const node = button(history, `${record.wakeDate} · ${endpointLabel(record.sleepOnset, copy)} → ${endpointLabel(record.getUp, copy)} · ${record.estimatedDurationMinutes === null ? "—" : formatSleepDuration(record.estimatedDurationMinutes, copy)}`, () => onOpen(record.wakeDate, metric));
+      const node = button(history, `${record.wakeDate} · ${endpointLabel(record.sleepOnset)} → ${endpointLabel(record.getUp)} · ${record.estimatedDurationMinutes === null ? "—" : formatSleepDuration(record.estimatedDurationMinutes,sleepLanguage())}`, () => onOpen(record.wakeDate, metric));
       node.dataset.sleepHistoryDate = record.wakeDate;
       node.setAttribute("aria-current", String(record.wakeDate === date));
     }
-    if (!records.length) element("p", history, copy("尚无作息记录。", "No sleep records yet."));
-    if (historyPage > 0) button(historyNav, copy("较新记录", "Newer records"), () => { historyPage--; renderHistory(); });
-    if ((historyPage + 1) * historySize < records.length) button(historyNav, copy("更早记录", "Older records"), () => { historyPage++; renderHistory(); });
+    if (!records.length) localizedSleepElement("p",history,"sleep.noRecords");
+    if (historyPage > 0) localizedButton(historyNav,"sleep.newer", () => { historyPage--; renderHistory(); });
+    if ((historyPage + 1) * historySize < records.length) localizedButton(historyNav,"sleep.older", () => { historyPage++; renderHistory(); });
   };
   const render = (): void => {
     parent.closest<HTMLDialogElement>("dialog")!.dataset.metric = metric;
     metrics.replaceChildren(); ranges.replaceChildren(); plot.replaceChildren(); navigate.replaceChildren();
     for (const choice of ["sleepOnset", "getUp", "duration"] as const) {
-      const node = button(metrics, label(choice, copy), () => { metric = choice; render(); });
+      const node = localizedButton(metrics, metricKey(choice), () => { metric = choice; render(); });
       node.dataset.sleepMetric = choice; node.setAttribute("aria-pressed", String(choice === metric));
     }
     for (const choice of [7, 30]) {
-      const node = button(ranges, copy(`${choice} 天`, `${choice} days`), () => { days = choice; render(); });
+      const node = localizedButton(ranges,"sleep.days", () => { days = choice; render(); },{count:choice});
       node.dataset.sleepDays = String(choice); node.setAttribute("aria-pressed", String(choice === days));
     }
     period.textContent = `${shiftDate(endDate, 1 - days)} – ${endDate}`;
-    const points = samples(view.records, endDate, days, metric, copy);
-    statistics(stats, points, metric, copy);
-    chart(plot, points, metric, selected => onOpen(selected, metric), copy);
-    button(navigate, copy("上一时段", "Previous period"), () => { endDate = shiftDate(endDate, -days); render(); });
-    button(navigate, copy("下一时段", "Next period"), () => { endDate = shiftDate(endDate, days); render(); });
+    const points = samples(view.records, endDate, days, metric);
+    statistics(stats, points, metric);
+    chart(plot, points, metric, selected => onOpen(selected, metric));
+    localizedButton(navigate,"sleep.previous", () => { endDate = shiftDate(endDate, -days); render(); });
+    localizedButton(navigate,"sleep.next", () => { endDate = shiftDate(endDate, days); render(); });
   };
+  const refreshLanguage = (): void => { render(); renderHistory(); };
+  document.addEventListener(SLEEP_LANGUAGE_CHANGED_EVENT,refreshLanguage);
+  parent.closest("dialog")?.addEventListener("close",()=>document.removeEventListener(SLEEP_LANGUAGE_CHANGED_EVENT,refreshLanguage),{once:true});
   render(); renderHistory();
   return historySection;
 }

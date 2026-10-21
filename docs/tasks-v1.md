@@ -73,9 +73,10 @@ create by Task id or the same edit by change id is idempotent when its payload
 matches; a conflicting reuse is rejected. List creation is similarly keyed by
 the stable list id, while rename and archive/restore are convergent retries of
 the requested current list metadata. Moving a task records a `list-moved`
-history entry without duplicating the task. Failed writes retain the caller's
-recoverable draft, and the shared recovery machinery may retain a recovery
-snapshot for explicit inspection.
+history entry without duplicating the task. A failed write may leave submitted
+values visible in the current form for retry; it does not promise a draft
+across navigation or refresh. The shared recovery machinery may retain a
+recovery snapshot for explicit inspection.
 
 ## List visibility
 
@@ -99,9 +100,11 @@ The selected panel reuses the shared editor for name, content, list, date,
 time and optional execution end. Provenance, completion corrections, change
 history, Collaboration entry and abandon/delete/restore controls remain there.
 Completed and abandoned history stays folded and paged by thirty, with the
-selected or linked identity included even beyond the first page. Navigation
-retains drafts; a failed save preserves the selected editor and its submitted
-values for explicit refresh/retry. Writes keep the existing revision, stable
+selected or linked identity included even beyond the first page. Navigation,
+refresh and App reopen reload saved Task values; unsaved Task edits are not
+retained as drafts and cannot replace a newer canonical read. A failed save may
+leave its submitted values visible in the current form for explicit retry, but
+those values do not survive navigation or refresh. Writes keep the existing revision, stable
 operation identity and saved-readback checks, and freeze edit controls while
 pending. A Task link selects its actual list before revealing the details.
 

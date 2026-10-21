@@ -3,7 +3,7 @@ import test from "node:test";
 import { editingRenderer } from "./task-history-harness.ts";
 
 for (const category of ["ordinary", "exercise"]) {
-  test(`saving a ${category} Today note preserves a paged completed-task correction and its rollover guard`, async () => {
+  test(`saving a ${category} Today note keeps a paged completed-task editor, reloads saved values and retains its rollover guard`, async () => {
     const r = editingRenderer();
     const tasks = Array.from({ length: 65 }, (_, i) => ({
       id: `completed-${i}`, name: `Completed ${i}`, content: null, date: "2026-10-03", time: null,
@@ -43,7 +43,7 @@ for (const category of ["ordinary", "exercise"]) {
     const preserved = r.taskEditorForms().find((form: any) => form.dataset.taskEditor === "completed-34");
     assert.ok(preserved, "the paged Task editor must still be instantiated");
     assert.equal(preserved.hidden, false);
-    assert.equal(preserved.querySelector("[data-task-completion-date]").value, "2026-10-02");
+    assert.equal(preserved.querySelector("[data-task-completion-date]").value, "2026-10-03");
     assert.equal(r.hasTodayEditingTarget(r.currentTodayView), true);
     const restoredForms = r.taskEditorForms();
     assert.equal(restoredForms.length, 31, "restore only the first page plus the active off-page editor");
@@ -54,7 +54,7 @@ for (const category of ["ordinary", "exercise"]) {
     assert.equal(r.taskEditorForms().find((form: any) => form.dataset.taskEditor === "completed-34"), preserved,
       "pagination must keep the same open correction form");
     assert.equal(preserved.hidden, false);
-    assert.equal(preserved.querySelector("[data-task-completion-date]").value, "2026-10-02");
+    assert.equal(preserved.querySelector("[data-task-completion-date]").value, "2026-10-03");
     await r.refreshTodayClock();
     assert.equal(r.clockReloaded, undefined, "04:00 must not automatically replace the edited day");
     assert.equal(r.selectedTodayDate, "2026-10-03");
