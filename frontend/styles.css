@@ -11721,17 +11721,19 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 
 @media (min-width: 761px) {
   #workspace-destination-collaboration .collaboration-composer-input {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 9rem;
+    display: flex;
+    flex-wrap: wrap;
     align-items: stretch;
   }
   #workspace-destination-collaboration .collaboration-composer-input textarea {
-    grid-column: 1;
-    grid-row: 1;
+    flex: 1 1 220px;
+    min-width: 0;
   }
   #workspace-destination-collaboration .collaboration-composer-input .collaboration-voice-controls {
-    grid-column: 2;
-    grid-row: 1;
+    /* History can narrow the conversation inside a wide window. Wrap only the
+       local controls below the text rather than compressing the editor. */
+    flex: 0 0 9rem;
+    margin-left: auto;
     display: grid;
     min-width: 0;
     grid-template-columns: 2.25rem minmax(0, 1fr) auto;
