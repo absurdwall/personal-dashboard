@@ -66,7 +66,7 @@ function composer(actualVoice=false, pendingStart=false, empty=false) {
     currentInterfaceLanguage:"en",currentWorkspaceDestination:"settings",updateTodayOperationState(){},
     waitForPendingWrites:async()=>true,renderPendingWriteFailure(){},renderToday(){},renderWorkspaceContextStatus(){},
     openCalendar(){},refreshHabits(){},refreshTasks(){},renderVaultSelectionError(error:any){throw error;},
-    stashCalendarTaskCreateDraft(){},taskEditorForms:()=>[],compactScheduleTransactions:new Map(),
+    stashCalendarTaskCreateDraft(){},resetSleepPresentation(){},taskEditorForms:()=>[],compactScheduleTransactions:new Map(),
     taskCreateAttempts:new Map(), taskEndedCreateAttempts:new Map(), taskEditDrafts:new Map(),
     normalizeTaskDateTimeFields(){},renderWorkspaceRailContext(){},settingsVaultStatus:element(),
     refreshCollaborationRunOwner(){},showWorkspaceDestination(){},
