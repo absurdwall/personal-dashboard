@@ -200,6 +200,7 @@ pub(crate) enum StorageDocumentKind {
     HabitCompletions,
     HabitCatalog,
     Tasks,
+    SleepRecords,
 }
 
 impl StorageDocumentKind {
@@ -210,6 +211,7 @@ impl StorageDocumentKind {
             Self::HabitCompletions => habit_completions,
             Self::HabitCatalog => "本地 Habit 定义正本操作失败。",
             Self::Tasks => "任务正本操作失败。",
+            Self::SleepRecords => "作息正本操作失败。",
         }
         .into()
     }
@@ -229,6 +231,7 @@ impl StorageDocumentKind {
                 Self::HabitCompletions => habit_completions,
                 Self::HabitCatalog => "本地 Habit 定义正本操作失败：",
                 Self::Tasks => "任务正本操作失败：",
+                Self::SleepRecords => "作息正本操作失败：",
             },
             error
         )
@@ -392,6 +395,7 @@ pub(crate) fn create_new_file(
                 StorageDocumentKind::HabitCompletions => format!("{error}; the complete new local habit-completion document is present at {} and can be verified by refreshing", path.display()),
                 StorageDocumentKind::HabitCatalog => format!("{error}; the complete local Habit definition document is present at {} and can be verified by refreshing Habits", path.display()),
                 StorageDocumentKind::Tasks => format!("{error}; the complete task document is present at {} and can be verified by refreshing", path.display()),
+                StorageDocumentKind::SleepRecords => format!("{error}; the complete sleep-record document is present at {} and can be verified by refreshing", path.display()),
             }
         })?;
     fs::remove_file(&temporary).map_err(|error| {
@@ -401,6 +405,7 @@ pub(crate) fn create_new_file(
                 StorageDocumentKind::HabitCompletions => format!("The new local habit-completion document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::HabitCatalog => format!("The new local Habit definition document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::Tasks => format!("The new task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
+                StorageDocumentKind::SleepRecords => format!("The new sleep-record document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
             }
         })?;
     sync_parent(path, kind)
@@ -484,11 +489,12 @@ where
                     StorageDocumentKind::HabitCompletions => format!("{preservation_error}; activation was rolled back and the rejected local habit-completion candidate remains at {}", temporary.display()),
                     StorageDocumentKind::HabitCatalog => format!("{preservation_error}; activation was rolled back and the rejected local Habit definition candidate remains at {}", temporary.display()),
                     StorageDocumentKind::Tasks => format!("{preservation_error}; activation was rolled back and the rejected task candidate remains at {}", temporary.display()),
+                    StorageDocumentKind::SleepRecords => format!("{preservation_error}; activation was rolled back and the rejected sleep-record candidate remains at {}", temporary.display()),
                 })
             }
             Err(rollback_error) => Err(format!(
                 "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced {} inode remains linked at {}",
-                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document", StorageDocumentKind::HabitCatalog => "local Habit definition document", StorageDocumentKind::Tasks => "task document" }, temporary.display()
+                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document", StorageDocumentKind::HabitCatalog => "local Habit definition document", StorageDocumentKind::Tasks => "task document", StorageDocumentKind::SleepRecords => "sleep-record document" }, temporary.display()
             )),
         }
     })?;
@@ -499,6 +505,7 @@ where
             StorageDocumentKind::HabitCompletions => format!("Could not verify the displaced local habit-completion document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::HabitCatalog => format!("Could not verify the displaced local Habit definition document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::Tasks => format!("Could not verify the displaced task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
+            StorageDocumentKind::SleepRecords => format!("Could not verify the displaced sleep-record document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
         }
     })?;
     if displaced == expected {
@@ -509,6 +516,7 @@ where
                     StorageDocumentKind::HabitCompletions => format!("Could not verify the local habit-completion document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::HabitCatalog => format!("Could not verify the local Habit definition document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::Tasks => format!("Could not verify the task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
+                    StorageDocumentKind::SleepRecords => format!("Could not verify the sleep-record document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                 }
             })?;
         if active == updated {
@@ -542,6 +550,7 @@ where
                 StorageDocumentKind::HabitCompletions => "local habit-completion document",
                 StorageDocumentKind::HabitCatalog => "local Habit definition document",
                 StorageDocumentKind::Tasks => "task document",
+                StorageDocumentKind::SleepRecords => "sleep-record document",
             },
             temporary.display()
         )
@@ -620,6 +629,7 @@ fn preserve_displaced_inode(
             StorageDocumentKind::HabitCompletions => "habit-completions",
             StorageDocumentKind::HabitCatalog => "habit-definitions",
             StorageDocumentKind::Tasks => "tasks",
+            StorageDocumentKind::SleepRecords => "sleep-records",
         });
     for attempt in 0..32u8 {
         let recovery = recovery_directory.join(format!(
@@ -682,6 +692,7 @@ fn create_temporary_file(
                 StorageDocumentKind::HabitCompletions => "json",
                 StorageDocumentKind::HabitCatalog => "json",
                 StorageDocumentKind::Tasks => "json",
+                StorageDocumentKind::SleepRecords => "json",
             },
             std::process::id()
         ));
@@ -716,11 +727,13 @@ fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -
         (Some(path), StorageDocumentKind::HabitCompletions) => format!("本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
         (Some(path), StorageDocumentKind::HabitCatalog) => format!("本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 {}；请刷新 Habits 后重试。", path.display()),
         (Some(path), StorageDocumentKind::Tasks) => format!("任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请刷新 Tasks 后重试。", path.display()),
+        (Some(path), StorageDocumentKind::SleepRecords) => format!("作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Today 或 Habits。", path.display()),
         (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::HabitCompletions) => "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::HabitCatalog) => "本地 Habit 定义已在其他位置发生变化。请刷新 Habits 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::Tasks) => "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。".into(),
+        (None, StorageDocumentKind::SleepRecords) => "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。".into(),
     }
 }
 
@@ -759,6 +772,7 @@ fn preserve_conflict_snapshot(
                 StorageDocumentKind::HabitCompletions => "habit-completions",
             StorageDocumentKind::HabitCatalog => "habit-definitions",
                 StorageDocumentKind::Tasks => "tasks",
+                StorageDocumentKind::SleepRecords => "sleep-records",
             });
         let recovery = recovery_directory.join(format!(
             "{record_name}-conflict-{nonce}-{}-{attempt}.snapshot",
@@ -8290,6 +8304,26 @@ mod tests {
             1,
             "the original inode remains recoverable"
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn sleep_record_activation_rejects_external_changes_and_exclusive_creation_collisions() {
+        let directory = TempDirectory::new();
+        let path = directory.0.join("life/.personal-dashboard/sleep/v1/sessions.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original = b"original sleep document";
+        let external = b"external editor sleep document";
+        fs::write(&path, original).unwrap();
+        let error = save_file_if_unchanged(
+            &path, original, b"dashboard sleep correction", StorageDocumentKind::SleepRecords,
+            |_| fs::write(&path, external).map_err(|error| error.to_string()),
+        ).expect_err("a crossing external save must conflict");
+        assert!(error.contains("并发变化"), "{error}");
+        assert_eq!(fs::read(&path).unwrap(), external);
+        super::create_new_file(&path, b"competing first sleep record", StorageDocumentKind::SleepRecords)
+            .expect_err("exclusive creation must never replace an existing sleep document");
+        assert_eq!(fs::read(&path).unwrap(), external);
     }
 
     #[cfg(target_os = "macos")]

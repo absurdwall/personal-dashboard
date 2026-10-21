@@ -25,13 +25,16 @@ export function formatSleepDuration(minutes: number | null): string {
 export function readSleepRecords(): Promise<SleepView> { return window.__TAURI__.core.invoke<SleepView>("sleep_records"); }
 let summaryDate = "";
 let summaryRead = 0;
-export async function refreshSleepSummary(date: string): Promise<void> {
-  summaryDate = date;
+export async function refreshSleepSummary(requestedDate: string | Promise<string>): Promise<void> {
+  // Reserve the presentation before the calendar lookup; navigation and Vault reset invalidate it.
   const sequence = ++summaryRead;
   const row = document.querySelector<HTMLElement>("#today-sleep-summary");
   if (!row) return;
   row.hidden = false;
   try {
+    const date = await requestedDate;
+    if (sequence !== summaryRead) return;
+    summaryDate = date;
     const view = await readSleepRecords();
     if (sequence !== summaryRead) return;
     const record = view.records.find(record => record.wakeDate === date);
