@@ -319,13 +319,15 @@ fn validate_record(record: &SleepRecord) -> Result<(), String> {
     validate_date(&record.wake_date)?;
     validate_endpoint(&record.sleep_onset)?;
     validate_endpoint(&record.get_up)?;
-    let get_up_dates: Vec<&str> = match &record.get_up {
-        SleepEndpoint::Point { point } => vec![&point.date],
-        SleepEndpoint::Range { start, end, .. } => vec![&start.date, &end.date],
-        SleepEndpoint::Text { date, .. } => vec![date],
-        _ => vec![],
+    // A reported range may straddle midnight. Its explicit upper bound owns
+    // the night index; the lower bound retains its own actual calendar date.
+    let get_up_date = match &record.get_up {
+        SleepEndpoint::Point { point } => Some(point.date.as_str()),
+        SleepEndpoint::Range { end, .. } => Some(end.date.as_str()),
+        SleepEndpoint::Text { date, .. } => Some(date.as_str()),
+        _ => None,
     };
-    if get_up_dates.iter().any(|d| *d != record.wake_date) {
+    if get_up_date.is_some_and(|date| date != record.wake_date) {
         return Err("起床端点的实际日期必须与记录起床日一致。".into());
     }
     if duration_minutes(&record.sleep_onset, &record.get_up)? != record.estimated_duration_minutes {

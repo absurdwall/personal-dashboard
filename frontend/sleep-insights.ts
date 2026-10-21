@@ -1,3 +1,4 @@
+import { formatSleepDuration } from "./sleep-format.js";
 import type { SleepEndpoint, SleepMetric, SleepRecord, SleepView } from "./sleep.js";
 
 type Copy = (zh: string, en: string) => string;
@@ -27,11 +28,7 @@ function clock(minutes: number): string {
   const rounded = ((Math.round(minutes) % dayMinutes) + dayMinutes) % dayMinutes;
   return `${String(Math.floor(rounded / 60)).padStart(2, "0")}:${String(rounded % 60).padStart(2, "0")}`;
 }
-function duration(minutes: number, copy?: Copy): string {
-  const rounded = Math.round(minutes);
-  const hours = Math.floor(rounded / 60), rest = rounded % 60;
-  return copy ? copy(`${hours} 小时 ${rest} 分`, `${hours}h ${rest}m`) : `${hours}h ${rest}m`;
-}
+
 function endpointValue(endpoint: SleepEndpoint): number | null {
   if (endpoint.kind !== "point") return null;
   const [hours, minutes] = endpoint.time.split(":").map(Number);
@@ -48,7 +45,7 @@ function sample(record: SleepRecord | undefined, date: string, metric: SleepMetr
   if (metric === "duration") {
     const complete = record.sleepOnset.kind === "point" && record.getUp.kind === "point";
     const value = complete ? record.estimatedDurationMinutes : null;
-    return { date, value, approximate: complete && (Boolean(record.sleepOnset.kind === "point" && record.sleepOnset.approximate) || Boolean(record.getUp.kind === "point" && record.getUp.approximate)), label: value === null ? "—" : duration(value, copy) };
+    return { date, value, approximate: complete && (Boolean(record.sleepOnset.kind === "point" && record.sleepOnset.approximate) || Boolean(record.getUp.kind === "point" && record.getUp.approximate)), label: value === null ? "—" : formatSleepDuration(value, copy) };
   }
   const endpoint = record[metric];
   return { date, value: endpointValue(endpoint), approximate: endpoint.kind === "point" && Boolean(endpoint.approximate), label: endpointLabel(endpoint, copy) };
@@ -76,7 +73,7 @@ function statistics(parent: HTMLElement, points: readonly Sample[], metric: Slee
   const values = valid.map(point => point.value!);
   const circular = metric !== "duration";
   const mean = average(values, circular);
-  const format = circular ? clock : (value: number) => duration(value, copy);
+  const format = circular ? clock : (value: number) => formatSleepDuration(value, copy);
   const approximate = valid.filter(point => point.approximate).length;
   const parts = [copy(`有效样本 ${valid.length}`, `${valid.length} valid samples`), copy("平均 ", "Average ") + (mean === null ? "—" : format(mean))];
   if (values.length >= 2 && mean !== null) {
@@ -167,7 +164,7 @@ export function renderSleepInsights(parent: HTMLElement, view: SleepView, date: 
   const renderHistory = (): void => {
     history.replaceChildren(); historyNav.replaceChildren();
     for (const record of records.slice(historyPage * historySize, (historyPage + 1) * historySize)) {
-      const node = button(history, `${record.wakeDate} · ${endpointLabel(record.sleepOnset, copy)} → ${endpointLabel(record.getUp, copy)} · ${record.estimatedDurationMinutes === null ? "—" : duration(record.estimatedDurationMinutes, copy)}`, () => onOpen(record.wakeDate, metric));
+      const node = button(history, `${record.wakeDate} · ${endpointLabel(record.sleepOnset, copy)} → ${endpointLabel(record.getUp, copy)} · ${record.estimatedDurationMinutes === null ? "—" : formatSleepDuration(record.estimatedDurationMinutes, copy)}`, () => onOpen(record.wakeDate, metric));
       node.dataset.sleepHistoryDate = record.wakeDate;
       node.setAttribute("aria-current", String(record.wakeDate === date));
     }

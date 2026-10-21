@@ -82,7 +82,7 @@ import {
   type CollaborationVoiceTarget,
 } from "./collaboration-voice.js";
 import { BrowserCodexDictationRuntime } from "./collaboration-dictation-runtime.js";
-import { captureDiagnosticDictationFixture } from "./collaboration-dictation-fixture.js";
+import { CollaborationDictationCapture } from "./collaboration-dictation-capture.js";
 import { CodexCollaborationVoiceInputController } from "./collaboration-dictation.js";
 import {
   calendarTasksForDate,
@@ -1172,33 +1172,16 @@ const collaborationVoicePreviews = new Map<string, string>();
 const collaborationSendingDrafts = new Set<string>();
 const pendingCollaborationRunChecks = new Set<string>();
 const collaborationSubmittedDrafts = new Map<string, string>();
-let diagnosticVoiceFixtureEnabled = false;
-let diagnosticVoiceLocalMicrophonePreflightEnabled = false;
-let diagnosticVoiceReport: Record<string, boolean | string> = {};
-let diagnosticVoiceReportWrite = Promise.resolve();
-
-function reportDiagnosticDictation(value: Readonly<Record<string, boolean | string>>): void {
-  if (!diagnosticVoiceFixtureEnabled) return;
-  // These source flags describe the cloud stream. A local permission preflight
-  // is reported separately and never supplies physical audio to that stream.
-  diagnosticVoiceReport = {...diagnosticVoiceReport, ...value, syntheticOnly:true, cloudMicrophone:false};
-  const result = {...diagnosticVoiceReport};
-  diagnosticVoiceReportWrite = diagnosticVoiceReportWrite
-    .then(() => window.__TAURI__.core.invoke<void>("collaboration_voice_runtime_gate", {result}))
-    .catch(() => undefined);
-}
+const collaborationDictationCapture = new CollaborationDictationCapture(
+  (command, args) => window.__TAURI__.core.invoke(command, args),
+);
 
 const collaborationVoiceController = new CodexCollaborationVoiceInputController(
-  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args), async signal => {
-    if (diagnosticVoiceFixtureEnabled) {
-      if (diagnosticVoiceLocalMicrophonePreflightEnabled) reportDiagnosticDictation({localMicrophonePreflightRequested:true});
-      const source = await captureDiagnosticDictationFixture((command,args) => window.__TAURI__.core.invoke(command,args), diagnosticVoiceLocalMicrophonePreflightEnabled, signal);
-      if (diagnosticVoiceLocalMicrophonePreflightEnabled) reportDiagnosticDictation({localMicrophonePreflightStopped:true});
-      return source;
-    }
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
-    return {stream: await navigator.mediaDevices.getUserMedia({audio:true,video:false})};
-  }, value => reportDiagnosticDictation(value)),
+  new BrowserCodexDictationRuntime(
+    (command, args) => window.__TAURI__.core.invoke(command,args),
+    signal => collaborationDictationCapture.capture(signal),
+    value => collaborationDictationCapture.report(value),
+  ),
   {
     onState: (state, target) => {
       activeCollaborationVoiceTarget = state === "idle" ? null : target;
@@ -3290,7 +3273,7 @@ async function startOrStopCollaborationVoice(): Promise<void> {
   if(collaborationVoiceController.state==="recording") { collaborationVoiceController.stop();return; }
   const target=currentCollaborationVoiceTarget();
   if(!target||vaultSelectionInProgress||collaborationVoiceController.state!=="idle")return;
-  if (diagnosticVoiceFixtureEnabled) diagnosticVoiceReport = {};
+  collaborationDictationCapture.resetReport();
   if(collaborationMessageDraft)collaborationDrafts.set(collaborationDraftKey(target.sessionId,target.targetDate),collaborationMessageDraft.value);
   void collaborationVoiceController.start(target);
 }
@@ -15235,8 +15218,7 @@ async function connectToApplication(): Promise<void> {
     const identity = await window.__TAURI__.core.invoke<ApplicationIdentity>(
       "application_identity",
     );
-    diagnosticVoiceFixtureEnabled = identity.diagnosticVoiceFixture === true;
-    diagnosticVoiceLocalMicrophonePreflightEnabled = diagnosticVoiceFixtureEnabled && identity.diagnosticVoiceLocalMicrophonePreflight === true;
+    collaborationDictationCapture.configure(identity);
     try {
       const language = await window.__TAURI__.core.invoke<InterfaceLanguagePreferences>(
         "interface_language_preferences",

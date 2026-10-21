@@ -447,6 +447,14 @@ impl AppServerTransport for DynamicRuntime {
             self.results.lock().unwrap().push(result);
             return Ok(RuntimeTurnResult{text:"Verify the existing long-term document; other domains retain their state.".into(),runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
         }
+        if request.user_text == "read synthetic sleep" {
+            let result = handler(RuntimeDynamicToolCall {
+                thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
+                call_id: "sleep-read-race".into(), tool: "dashboard_sleep_records".into(), arguments: json!({"action":"read"}),
+            });
+            self.results.lock().unwrap().push(result);
+            return Ok(RuntimeTurnResult { text: "Read attempted".into(), runtime_turn_id: Some(format!("turn-{}",request.execution_id)), stopped:false, external_actions:vec![] });
+        }
         if request.user_text == "record synthetic sleep" {
             let call = |id:&str, arguments:Value| handler(RuntimeDynamicToolCall {
                 thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
@@ -8164,10 +8172,12 @@ fn evening_entry_save_failure_has_no_saved_session_and_retry_creates_one() {
 fn collaboration_sleep_tool_and_today_editor_share_the_same_selected_vault_record() {
     let directory=IsolatedDirectory::new(); let path=directory.vault("sleep-vault");
     let vault=MutableVault::new(&path);
-    let (application,tools,results)=new_application(&directory,&vault,MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false)));
+    let mut hasher=DefaultHasher::new(); path.canonicalize().unwrap().hash(&mut hasher);
+    let key=format!("vault-{:016x}",hasher.finish());
+    let (application,tools,results)=new_application(&directory,&vault,MutableContext::new(&key),Arc::new(AtomicBool::new(false)));
     let session=application.create_session("2026-09-27").unwrap();
-    application.submit_message("vault-a",&session.id,"2026-09-27","record synthetic sleep").unwrap();
-    wait_for_finish(&application,&session.id,"vault-a");
+    application.submit_message(&key,&session.id,"2026-09-27","record synthetic sleep").unwrap();
+    wait_for_finish(&application,&session.id,&key);
     assert!(tools.lock().unwrap().iter().any(|t|t["name"]=="dashboard_sleep_records"));
     let result=results.lock().unwrap()[0].clone(); assert!(result.success);
     let today=TodayApplication::new(vault.clone(),NoVaultPicker,FixedClock);
@@ -8398,4 +8408,46 @@ fn failed_first_task_save_returns_failure_without_a_canonical_task() {
     assert_eq!(saved.task_operations.len(), 1);
     assert_eq!(saved.task_operations[0].status, "failed");
     assert!(saved.task_operations[0].result_snapshot.is_none());
+}
+
+// Simulate a user selection completing after the turn's context check, at the
+// actual daily-data adapter boundary. The production adapter and file read run.
+struct SwitchVaultBeforeSleepRead {
+    inner: TodayApplicationCollaborationDailyDataAdapter<MutableVault, NoVaultPicker, FixedClock>,
+    selection: MutableVault,
+    replacement: PathBuf,
+}
+impl personal_dashboard_lib::collaboration::CollaborationDailyDataService for SwitchVaultBeforeSleepRead {
+    fn sleep_records_available(&self) -> bool { true }
+    fn read_sleep_records(&self, expected_vault_key: &str) -> Result<personal_dashboard_lib::sleep::SleepView, String> {
+        self.selection.select(&self.replacement);
+        self.inner.read_sleep_records(expected_vault_key)
+    }
+    fn read_date(&self, date: &str) -> Result<personal_dashboard_lib::today::TodayView, String> { self.inner.read_date(date) }
+    fn save(&self, input: DailyPlanWriteInput) -> Result<personal_dashboard_lib::today::TodayView, String> { self.inner.save(input) }
+    fn operation_applied(&self, date: &str, binding: &str, id: &str, fingerprint: &str) -> Result<bool, String> { self.inner.operation_applied(date,binding,id,fingerprint) }
+}
+
+#[test]
+fn collaboration_sleep_read_rejects_selection_changed_at_the_adapter_boundary() {
+    let directory = IsolatedDirectory::new();
+    let original = directory.vault("sleep-original");
+    let replacement = directory.vault("sleep-replacement");
+    let other = personal_dashboard_lib::sleep::SleepWorkflow::new(&replacement);
+    let empty = other.read().unwrap();
+    other.save(serde_json::from_value(json!({"wakeDate":"2026-09-27","changeId":"other-private-history","targetBinding":empty.target_binding,"expectedRevision":empty.revision,"getUp":{"kind":"text","date":"2026-09-27","text":"OTHER VAULT PRIVATE SLEEP"}})).unwrap()).unwrap();
+    let mut hasher = DefaultHasher::new(); original.canonicalize().unwrap().hash(&mut hasher);
+    let key = format!("vault-{:016x}",hasher.finish());
+    let selection = MutableVault::new(&original);
+    let (application, _, results) = new_application(&directory,&selection,MutableContext::new(&key),Arc::new(AtomicBool::new(false)));
+    let application = application.with_daily_data_service(Arc::new(SwitchVaultBeforeSleepRead {
+        inner: TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(selection.clone(),NoVaultPicker,FixedClock)),
+        selection, replacement,
+    }));
+    let session=application.create_session("2026-09-27").unwrap();
+    application.submit_message(&key,&session.id,"2026-09-27","read synthetic sleep").unwrap();
+    wait_for_finish(&application,&session.id,&key);
+    let result=results.lock().unwrap()[0].clone();
+    assert!(!result.success,"a turn must not read the newly selected Vault: {}",result.text);
+    assert!(!result.text.contains("OTHER VAULT PRIVATE SLEEP"));
 }
