@@ -10,6 +10,7 @@ acceptance_directory_owned_by_supervisor=0
 app_bundle=""
 app_executable=""
 app_pid=""
+app_launch_ownership_unknown=0
 app_pid_file=""
 acceptance_data_directory=""
 acceptance_baseline_file=""
@@ -379,6 +380,9 @@ fi
 
 stop_app() {
   local app_process_pids=""
+  if (( app_launch_ownership_unknown == 1 )); then
+    return 1
+  fi
 
   if [[ -n "$app_pid" ]] && pid_is_running "$app_pid"; then
     app_process_pids="$(collect_process_tree "$app_pid")"
@@ -419,6 +423,9 @@ cleanup() {
     app_stopped=1
   else
     echo "Packaged IPC acceptance cleanup warning: app process did not exit" >&2
+  fi
+  if (( app_stopped == 1 )) && [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_LAUNCH_SERVICES:-0}" == "1" && -n "$app_bundle" ]]; then
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$app_bundle" >/dev/null 2>&1 || true
   fi
   if (( app_stopped == 1 && acceptance_directory_owned_by_supervisor == 0 )); then
     if ! remove_acceptance_directory "$acceptance_directory"; then
@@ -503,6 +510,10 @@ frontmost_process_name="$(/usr/bin/osascript \
 
 launch_app() {
   current_step="launching isolated packaged app"
+  if [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_LAUNCH_SERVICES:-0}" == "1" ]]; then
+    launch_app_via_launch_services
+    return
+  fi
   if [[ "$acceptance_scenario" == "today-time-axis" && "$today_time_axis_real_clock" == "1" ]]; then
     /usr/bin/env -u PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS \
       -u PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES \
@@ -6748,6 +6759,7 @@ run_live_daily_cycle_scenario() {
 
 source "$script_directory/scenarios/task-saved-readback.sh"
 source "$script_directory/scenarios/collaboration-composer.sh"
+source "$script_directory/scenarios/launch-services-candidate.sh"
 
 case "$acceptance_scenario" in
   task-saved-readback) run_task_saved_readback_scenario ;;

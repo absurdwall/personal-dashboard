@@ -19,6 +19,7 @@ export async function captureDiagnosticDictationFixture(invoke: DictationInvoke)
     let released = false;
     return {
       stream: destination.stream,
+      diagnostic: true,
       start: () => { if (!released) source.start(); },
       release: () => {
         if (released) return;

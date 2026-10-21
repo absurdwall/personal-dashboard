@@ -30,10 +30,10 @@ func activateOwnedCandidate(_ pid: pid_t, timeout: TimeInterval) throws {
         throw DriverError.actionFailed("foreground probe requires the isolated acceptance identity", .failure)
     }
     let container = bundle.deletingLastPathComponent()
-    guard Set(["/tmp", "/private/tmp"]).contains(container.deletingLastPathComponent().path),
+    guard ["/tmp", "/private/tmp"].contains(container.deletingLastPathComponent().path),
           container.lastPathComponent.hasPrefix("personal-dashboard-ipc."),
           container.lastPathComponent.hasSuffix(".noindex") else {
-        throw DriverError.actionFailed("foreground probe requires the task-owned noindex candidate", .failure)
+        throw DriverError.actionFailed("foreground probe requires the task-owned noindex candidate (observed: \(container.path))", .failure)
     }
     guard running.activate(options: [.activateAllWindows, .activateIgnoringOtherApps]) else {
         throw DriverError.actionFailed("activate isolated candidate", .failure)

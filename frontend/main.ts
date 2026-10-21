@@ -1172,13 +1172,24 @@ const collaborationSendingDrafts = new Set<string>();
 const pendingCollaborationRunChecks = new Set<string>();
 const collaborationSubmittedDrafts = new Map<string, string>();
 let diagnosticVoiceFixtureEnabled = false;
+let diagnosticVoiceReport: Record<string, boolean | string> = {};
+let diagnosticVoiceReportWrite = Promise.resolve();
+
+function reportDiagnosticDictation(value: Readonly<Record<string, boolean | string>>): void {
+  if (!diagnosticVoiceFixtureEnabled) return;
+  diagnosticVoiceReport = {...diagnosticVoiceReport, ...value, syntheticOnly:true};
+  const result = {...diagnosticVoiceReport};
+  diagnosticVoiceReportWrite = diagnosticVoiceReportWrite
+    .then(() => window.__TAURI__.core.invoke<void>("collaboration_voice_runtime_gate", {result}))
+    .catch(() => undefined);
+}
 
 const collaborationVoiceController = new CodexCollaborationVoiceInputController(
   new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args), async () => {
     if (diagnosticVoiceFixtureEnabled) return captureDiagnosticDictationFixture((command,args) => window.__TAURI__.core.invoke(command,args));
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
     return {stream: await navigator.mediaDevices.getUserMedia({audio:true,video:false})};
-  }),
+  }, value => reportDiagnosticDictation(value)),
   {
     onState: (state, target) => {
       activeCollaborationVoiceTarget = state === "idle" ? null : target;
@@ -3270,6 +3281,7 @@ async function startOrStopCollaborationVoice(): Promise<void> {
   if(collaborationVoiceController.state==="recording") { collaborationVoiceController.stop();return; }
   const target=currentCollaborationVoiceTarget();
   if(!target||vaultSelectionInProgress||collaborationVoiceController.state!=="idle")return;
+  if (diagnosticVoiceFixtureEnabled) diagnosticVoiceReport = {};
   if(collaborationMessageDraft)collaborationDrafts.set(collaborationDraftKey(target.sessionId,target.targetDate),collaborationMessageDraft.value);
   void collaborationVoiceController.start(target);
 }

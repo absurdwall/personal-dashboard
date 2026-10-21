@@ -276,7 +276,7 @@ test("one aggregate draft save shares the existing queue with pending edits and 
 
 // Exercise the production browser runtime through the controller boundary with
 // a synthetic peer and clock. No actual microphone, cloud calls or long waits.
-async function browserFixture(t:TestContext, options: {connecting?:boolean; closeDuringSetup?:boolean; pauseAt?:"permission"|"offer"|"native"|"remote"; rejectNative?:boolean; pollPending?:boolean; tailPause?:"resume"|"replace"; tailReject?:boolean; closePending?:boolean; closeSendReject?:boolean} = {}) {
+async function browserFixture(t:TestContext, options: {connecting?:boolean; closeDuringSetup?:boolean; pauseAt?:"permission"|"offer"|"native"|"remote"; rejectNative?:boolean; pollPending?:boolean; tailPause?:"resume"|"replace"; tailReject?:boolean; closePending?:boolean; closeSendReject?:boolean; observerThrows?:boolean; diagnostic?:boolean} = {}) {
   t.mock.timers.enable({apis:["setTimeout","setInterval","Date"]});
   const descriptors=new Map<string,PropertyDescriptor|undefined>();
   const replace=(name:string,value:unknown)=>{descriptors.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{configurable:true,value});};
@@ -319,6 +319,8 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
     connectionState="connected";onconnectionstatechange:(()=>void)|null=null;
     addTrack(track:unknown){senderTrack=track;return sender;}createDataChannel(){channel=new FakeChannel();return channel;}
     async createOffer(){if(options.pauseAt==="offer")await gate;return {sdp:"synthetic-offer"};}async setLocalDescription(){}async setRemoteDescription(){if(options.pauseAt==="remote")await gate;if(options.closeDuringSetup)channel.onclose?.();}
+    iceConnectionState="checking";iceGatheringState="complete";
+    async getStats(){return new Map([["private-candidate-id",{type:"candidate-pair",state:"in-progress",requestsSent:3,responsesReceived:0,localCandidateId:"private-local-id"}]]);}
     close(){peerClosed=true;}
   }
   const track={stop:()=>{trackStopped=true;}};
@@ -328,6 +330,7 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
   replace("performance",{now:()=>Date.now()});
   let runtimeInputId="";
   const calls:string[]=[];
+  const diagnostics:Array<Readonly<Record<string,boolean|string>>>=[];
   const runtime=new BrowserCodexDictationRuntime(async<T>(command:string,args:Record<string,unknown>):Promise<T>=>{
     calls.push(command);runtimeInputId=String(args.inputId);
     if(command==="collaboration_dictation_start" && options.pauseAt==="native") { await gate; if(options.rejectNative)throw new Error("dictation-quota-exceeded"); }
@@ -335,20 +338,47 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
     if(command==="collaboration_dictation_start")nativeActive=true;
     if(command==="collaboration_dictation_stop")nativeActive=false;
     return (command==="collaboration_dictation_start"?{inputId:args.inputId,sdp:"synthetic-answer"}:command==="collaboration_dictation_poll"?nativeEvents.splice(0):[]) as T;
-  });
+  }, options.diagnostic ? async()=>({stream:await navigator.mediaDevices.getUserMedia({audio:true,video:false}),diagnostic:true}) : undefined,
+  value=>{diagnostics.push(value);if(options.observerThrows)throw new Error("Synthetic diagnostic observer failure");});
   let draft="existing";
   let incomplete=0;
   const failures:string[]=[];
   const controller=new CodexCollaborationVoiceInputController(runtime,{onState:()=>{},onTranscript:(_,text)=>{draft=appendVoiceTranscript(draft,text);},onFailure:(_,failure)=>{failures.push(failure);},onCancel:()=>{},onIncomplete:()=>{incomplete++;}});
   const started=controller.start(target);
   if(options.connecting || options.pauseAt)await tick();else await started;
-  return {controller,calls,started,release,failures,sent,
+  return {controller,calls,started,release,failures,sent,diagnostics,
     nativeClosed:()=>nativeEvents.push({inputId:runtimeInputId,kind:"closed"}),
     disconnect:()=>{connection.connectionState="failed";connection.onconnectionstatechange?.();},captureRequests:()=>captureRequests,
     audioCreated:()=>audioCreated,audioClosed:()=>audioClosed,zeroTrackStopped:()=>zeroTrackStopped,
     sourceStopped:()=>sourceStopped,zeroOffset:()=>zeroOffset,replacements:()=>replacements,senderTrack:()=>senderTrack,
     nativeActive:()=>nativeActive,close:()=>channel.onclose?.(),openListener:()=>channel.onopen,emit:(value:unknown)=>channel.onmessage?.({data:JSON.stringify(value)}),draft:()=>draft,incomplete:()=>incomplete,trackStopped:()=>trackStopped,peerClosed:()=>peerClosed};
 }
+
+test("synthetic diagnostics distinguish ICE checks without responses before the unchanged connection deadline",async t=>{
+  const f=await browserFixture(t,{connecting:true,diagnostic:true});
+  t.mock.timers.tick(14_000);await tick();
+  const result=Object.assign({},...f.diagnostics);
+  assert.equal(result.icePairPresent,true);assert.equal(result.icePairChecking,true);
+  assert.equal(result.iceRequestsSent,true);assert.equal(result.iceResponsesReceived,false);
+  assert.equal(result.iceConnectionState,"checking");
+  assert.ok(!JSON.stringify(result).includes("private-candidate"));
+  assert.equal(f.peerClosed(),false);
+  t.mock.timers.tick(1_000);await f.started;
+  assert.equal(f.controller.state,"idle");assert.equal(f.peerClosed(),true);
+  assert.deepEqual(f.failures,["connection-failed"]);
+});
+
+test("diagnostic observer failures cannot change dictation capture or finalization",async t=>{
+  const f=await browserFixture(t,{observerThrows:true});
+  assert.equal(f.controller.state,"recording");
+  f.emit(timedPreview("p","received",0,50));f.controller.stop();await tick();
+  t.mock.timers.tick(1_000);await tick();
+  f.emit(timedFinal("turn","final text",0,50));f.emit({type:"session.closed"});
+  t.mock.timers.tick(0);await tick();
+  assert.equal(f.draft(),"existing\nfinal text");
+  assert.equal(f.controller.state,"idle");
+  assert.equal(f.incomplete(),0);assert.deepEqual(f.failures,[]);
+});
 
 
 test("Stop requests the observed v3 close after zero-audio grace and accepts final then raw terminal",async t=>{
