@@ -67,6 +67,10 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
   private readonly observe?: (value: DictationDiagnostic) => void;
   constructor(invoke: DictationInvoke, captureAudio = captureMicrophone, observe?: (value: DictationDiagnostic) => void) { this.invoke = invoke; this.captureAudio = captureAudio; this.observe = observe; }
 
+  private report(value: DictationDiagnostic): void {
+    try { this.observe?.(value); } catch { /* Diagnostics never change capture results. */ }
+  }
+
   async start(inputId: string, onEvent: (event: CodexDictationEvent) => void, signal: AbortSignal): Promise<CodexDictationCapture> {
     if (typeof RTCPeerConnection !== "function") throw new Error("capture-unavailable");
     let audioSource: DictationAudioSource | undefined;
@@ -183,7 +187,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         peer.oniceconnectionstatechange = null;
         peer.onicecandidate = null;
         peer.close();
-        this.observe?.({peerClosed:true});
+        this.report({peerClosed:true});
       }
       signal.removeEventListener("abort", abort);
       finishWait?.();
@@ -194,7 +198,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     const fail = (failure: string) => {
       if (disposed || failed) return;
       failed = true;
-      this.observe?.({failure:diagnosticFailure(failure)});
+      this.report({failure:diagnosticFailure(failure)});
       releaseCapture();
       onEvent({inputId,kind:"failed",failure});
       void cleanup();
@@ -203,7 +207,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
       audioSource = await this.captureAudio();
       stream = audioSource.stream;
-      this.observe?.({microphone:false,productionRuntimeProbe:true});
+      this.report({microphone:false,productionRuntimeProbe:true});
       if (disposed || failed || signal.aborted || stopRequested) { releaseCapture(); throw new DOMException("Cancelled", "AbortError"); }
       onEvent({inputId,kind:"phase",phase:"connecting"});
       if (disposed || signal.aborted) { releaseCapture(); throw new DOMException("Cancelled", "AbortError"); }
@@ -250,15 +254,19 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
       channel.onerror = () => fail("dictation-connection-lost");
       channel.onclose = () => { if (!disposed && !closeRequested) fail("dictation-connection-lost"); };
       peer.onconnectionstatechange = () => {
-        this.observe?.({connectionState:peer?.connectionState ?? "closed"});
+        this.report({connectionState:peer?.connectionState ?? "closed"});
         if (peer?.connectionState === "failed" || (peer?.connectionState === "disconnected" && !terminalReceived) || (peer?.connectionState === "closed" && !closeRequested)) fail("dictation-connection-lost");
       };
-      peer.oniceconnectionstatechange = () => this.observe?.({iceConnectionState:peer?.iceConnectionState ?? "closed"});
-      peer.onicecandidate = event => this.observe?.(event.candidate ? {iceCandidateSeen:true} : {iceGatheringComplete:true});
+      peer.oniceconnectionstatechange = () => this.report({iceConnectionState:peer?.iceConnectionState ?? "closed"});
+      peer.onicecandidate = event => this.report({
+        ...(event.candidate ? {iceCandidateSeen:true} : {iceGatheringComplete:true}),
+        localDescriptionHasCandidate:/^a=candidate:/m.test(peer?.localDescription?.sdp ?? ""),
+      });
       const offer = await peer.createOffer();
-      this.observe?.({offer:true});
+      this.report({offer:true});
       if (disposed || failed || signal.aborted) throw new DOMException("Cancelled", "AbortError");
       await peer.setLocalDescription(offer);
+      this.report({localDescriptionHasCandidate:/^a=candidate:/m.test(peer.localDescription?.sdp ?? "")});
       if (disposed || failed || signal.aborted) throw new DOMException("Cancelled", "AbortError");
       nativeStartRequested = true;
       let answer: {inputId:string;sdp:string};
@@ -276,8 +284,12 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         throw new DOMException("Cancelled", "AbortError");
       }
       if (answer.inputId !== inputId) throw new Error("dictation-input-mismatch");
-      this.observe?.({remoteAnswer:true});
+      this.report({remoteAnswer:true,
+        remoteHasCandidate:/^a=candidate:/m.test(answer.sdp),
+        remoteIceLite:/^a=ice-lite\r?$/m.test(answer.sdp),
+        remoteTrickle:/^a=ice-options:.*\btrickle\b/m.test(answer.sdp)});
       await peer.setRemoteDescription({type:"answer",sdp:answer.sdp});
+      this.report({remoteDescriptionApplied:true});
       // The data channel is the actual connected gate; accepting SDP alone is
       // insufficient to announce recording readiness.
       await new Promise<void>((resolve, reject) => {
@@ -301,7 +313,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         signal.addEventListener("abort", onAbort, {once:true});
       });
       if (disposed || failed || signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      this.observe?.({dataChannelOpen:true,productionRuntimeConnected:true});
+      this.report({dataChannelOpen:true,productionRuntimeConnected:true});
       let polling = false;
       pollTimer = setInterval(async () => {
         if (disposed || polling) return;
@@ -318,7 +330,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         finally { polling = false; }
       },200);
       audioSource.start?.();
-      this.observe?.({productionFixtureStarted:true});
+      this.report({productionFixtureStarted:true});
       return {
         stopCapture,
         finalize: async () => {
@@ -329,13 +341,13 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
           await drainFinished;
           const incomplete = !terminalReceived || failed || drainFailed || !zeroAttached || stopRequested || transcript.snapshot().unresolved || !finalAfterStop;
           await cleanup();
-          this.observe?.({productionFinalizeReturned:true,productionIncomplete:incomplete});
+          this.report({productionFinalizeReturned:true,productionIncomplete:incomplete});
           return {incomplete};
         },
         cancel: async () => {stopRequested=true;await cleanup();},
       };
     } catch (error) {
-      this.observe?.({failure:diagnosticFailure(error)});
+      this.report({failure:diagnosticFailure(error)});
       await cleanup();
       throw error;
     }

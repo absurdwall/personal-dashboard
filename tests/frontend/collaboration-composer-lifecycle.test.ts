@@ -23,7 +23,7 @@ const mediaBoundary = `
   const realInvoke=window.__TAURI__.core.invoke;
   window.__TAURI__.core.invoke=async(command,args)=>{
     if(command==='collaboration_voice_runtime_gate'){calls.push({command,args});return;}
-    if(command==='collaboration_dictation_start'){calls.push({command,args});return {inputId:args.inputId,sdp:'synthetic'};}
+    if(command==='collaboration_dictation_start'){calls.push({command,args});return {inputId:args.inputId,sdp:'v=0\r\na=ice-lite\r\na=ice-options:trickle\r\na=candidate:synthetic-private-marker\r\n'};}
     if(command==='collaboration_dictation_poll')return [];
     if(command==='collaboration_dictation_stop'){calls.push({command,args});return;}
     if(command==='collaboration_save_draft'){calls.push({command,args});responses.collaboration_workspace.sessions[0].draft=args.draft;
@@ -71,6 +71,11 @@ for (const {width,height,language,fixture} of scenarios) {
     if(fixture){
       assert.ok(result.diagnostics);
       assert.equal(result.diagnostics.remoteAnswer,true);
+      assert.equal(result.diagnostics.remoteDescriptionApplied,true);
+      assert.equal(result.diagnostics.remoteHasCandidate,true);
+      assert.equal(result.diagnostics.remoteIceLite,true);
+      assert.equal(result.diagnostics.remoteTrickle,true);
+      assert.ok(!JSON.stringify(result.diagnostics).includes('synthetic-private-marker'));
       assert.equal(result.diagnostics.dataChannelOpen,true);
       assert.equal(result.diagnostics.productionFinalizeReturned,true);
       assert.equal(result.diagnostics.productionIncomplete,false);
