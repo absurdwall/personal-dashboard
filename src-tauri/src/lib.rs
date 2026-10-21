@@ -25,6 +25,7 @@ mod notification_platform;
 #[allow(dead_code)] // Retained only for historical regression and cutover parsing boundaries.
 mod platform;
 pub mod profile;
+pub mod sleep;
 pub mod task_adapter;
 pub mod tasks;
 pub mod today;
@@ -306,6 +307,7 @@ struct ApplicationIdentity {
     source_commit: &'static str,
     feature_area: &'static str,
     boundary_message: &'static str,
+    diagnostic_voice_fixture: bool,
 }
 
 #[tauri::command]
@@ -319,6 +321,9 @@ fn application_identity() -> ApplicationIdentity {
         source_commit: option_env!("PERSONAL_DASHBOARD_SOURCE_COMMIT").unwrap_or("development"),
         feature_area: "Daily records and habits",
         boundary_message: "Local-first personal management · Online AI optional",
+        diagnostic_voice_fixture: cfg!(feature = "diagnostic-voice-gate")
+            && std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_some()
+            && std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE").is_some(),
     }
 }
 
@@ -739,6 +744,16 @@ fn set_interface_language(
 #[tauri::command]
 fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayView, String> {
     application.read()
+}
+
+#[tauri::command]
+fn sleep_records(application: State<'_, DesktopTodayApplication>) -> Result<sleep::SleepView, String> {
+    application.sleep_records()
+}
+
+#[tauri::command]
+fn save_sleep_record(application: State<'_, DesktopTodayApplication>, input: sleep::SleepMutationInput) -> Result<sleep::SleepView, String> {
+    application.save_sleep_record(input)
 }
 
 #[tauri::command]
@@ -1236,6 +1251,8 @@ pub fn run() {
             set_interface_language,
             today_view,
             today_clock,
+            sleep_records,
+            save_sleep_record,
             daily_view,
             read_daily_view,
             calendar_month,
@@ -1329,6 +1346,8 @@ pub fn run() {
         set_interface_language,
         today_view,
         today_clock,
+        sleep_records,
+        save_sleep_record,
         daily_view,
         read_daily_view,
         calendar_month,

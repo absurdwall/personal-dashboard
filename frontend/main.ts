@@ -1,3 +1,4 @@
+import { configureSleepLanguage, refreshSleepSummary } from "./sleep.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
@@ -81,6 +82,7 @@ import {
   type CollaborationVoiceTarget,
 } from "./collaboration-voice.js";
 import { BrowserCodexDictationRuntime } from "./collaboration-dictation-runtime.js";
+import { captureDiagnosticDictationFixture } from "./collaboration-dictation-fixture.js";
 import { CodexCollaborationVoiceInputController } from "./collaboration-dictation.js";
 import {
   calendarTasksForDate,
@@ -131,6 +133,7 @@ type ApplicationIdentity = Readonly<{
   displayVersion: string;
   build: string;
   sourceCommit: string;
+  diagnosticVoiceFixture?: boolean;
 }>;
 
 declare global {
@@ -1168,9 +1171,14 @@ const collaborationVoicePreviews = new Map<string, string>();
 const collaborationSendingDrafts = new Set<string>();
 const pendingCollaborationRunChecks = new Set<string>();
 const collaborationSubmittedDrafts = new Map<string, string>();
+let diagnosticVoiceFixtureEnabled = false;
 
 const collaborationVoiceController = new CodexCollaborationVoiceInputController(
-  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args)),
+  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args), async () => {
+    if (diagnosticVoiceFixtureEnabled) return captureDiagnosticDictationFixture((command,args) => window.__TAURI__.core.invoke(command,args));
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
+    return {stream: await navigator.mediaDevices.getUserMedia({audio:true,video:false})};
+  }),
   {
     onState: (state, target) => {
       activeCollaborationVoiceTarget = state === "idle" ? null : target;
@@ -3237,10 +3245,12 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
     collaborationMessageDraft.value = draft;
     collaborationMessageDraft.focus();
     collaborationMessageDraft.setSelectionRange(draft.length, draft.length);
-    setCollaborationVoiceStatus(target, "collaboration.voiceReview");
+    if (collaborationIncompleteVoiceDrafts.has(key)) setCollaborationVoiceStatus(target, "collaboration.voiceIncomplete");
+    else collaborationVoiceStatuses.delete(key);
     renderCollaborationWorkspace();
   } else {
-    setCollaborationVoiceStatus(target, "collaboration.voiceSavedForDate");
+    if (collaborationIncompleteVoiceDrafts.has(key)) setCollaborationVoiceStatus(target, "collaboration.voiceIncomplete");
+    else collaborationVoiceStatuses.delete(key);
     renderCollaborationVoiceControls();
   }
   void saved.catch(() => {
@@ -7299,6 +7309,11 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
 }
 
 function renderToday(view: TodayView, preserveTaskEditors = false): void {
+  configureSleepLanguage(() => currentInterfaceLanguage);
+  void (async () => {
+    const date = view.isToday ? (await window.__TAURI__.core.invoke<TodayClockView>("today_clock")).date : view.date;
+    await refreshSleepSummary(date);
+  })().catch(() => {});
   closeTodayAxisTaskPopup(false, false);
   closeTodayAxisFactPopup(false);
   const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
@@ -15192,6 +15207,7 @@ async function connectToApplication(): Promise<void> {
     const identity = await window.__TAURI__.core.invoke<ApplicationIdentity>(
       "application_identity",
     );
+    diagnosticVoiceFixtureEnabled = identity.diagnosticVoiceFixture === true;
     try {
       const language = await window.__TAURI__.core.invoke<InterfaceLanguagePreferences>(
         "interface_language_preferences",

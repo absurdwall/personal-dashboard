@@ -11722,7 +11722,7 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 @media (min-width: 761px) {
   #workspace-destination-collaboration .collaboration-composer-input {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, auto);
+    grid-template-columns: minmax(0, 1fr) 9rem;
     align-items: stretch;
   }
   #workspace-destination-collaboration .collaboration-composer-input textarea {
@@ -11733,7 +11733,8 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
     grid-column: 2;
     grid-row: 1;
     display: grid;
-    grid-template-columns: repeat(2, auto);
+    min-width: 0;
+    grid-template-columns: 2.25rem minmax(0, 1fr) auto;
     grid-template-rows: 1.25rem 2.25rem;
     align-content: end;
     align-items: end;
@@ -11755,8 +11756,9 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   }
   #workspace-destination-collaboration #collaboration-voice-start { grid-column: 1; grid-row: 2; }
   #workspace-destination-collaboration #collaboration-send-message { grid-column: 2; grid-row: 2; }
-  #workspace-destination-collaboration .collaboration-composer-input .collaboration-voice-controls {
-    grid-template-columns: repeat(3, auto);
+  #workspace-destination-collaboration #collaboration-send-message {
+    min-width: 0;
+    padding-inline: 0.35rem;
   }
   #workspace-destination-collaboration #collaboration-voice-cancel {
     grid-column: 3;
@@ -11812,3 +11814,18 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 /* Issue #66: retain readable entry and schedule targets in the docked Today rail. */
 .today-task-create-form .task-compact-row { flex-wrap: wrap; column-gap: 0.125rem; }
 .today-task-create-form .task-compact-row > input { flex: 1 0 120px; min-height: 32px; }
+
+/* A reported night stays a compact supplement to Today. */
+.sleep-summary { margin: 0 0 12px; min-width: 0; }
+.sleep-summary button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-size: .82rem; }
+.sleep-editor { width: min(680px, calc(100vw - 40px)); max-height: calc(100vh - 48px); overflow: auto; border: 1px solid var(--parity-border, #ccc); border-radius: 14px; padding: 22px; color: var(--parity-ink, inherit); background: var(--parity-surface, #fff); }
+.sleep-editor::backdrop { background: #0006; }
+.sleep-editor p { font-size: .85rem; line-height: 1.5; }
+.sleep-editor-form { display: grid; gap: 12px; margin-top: 12px; }
+.sleep-editor fieldset { min-width: 0; border: 1px solid var(--parity-border, #ccc); border-radius: 8px; padding: 12px; }
+.sleep-editor label { display: grid; gap: 4px; font-size: .8rem; min-width: 0; }
+.sleep-editor input, .sleep-editor select { min-width: 0; max-width: 100%; padding: 7px; }
+.sleep-editor select { margin-bottom: 10px; }
+.sleep-point-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin-bottom: 8px; }
+.sleep-point-fields input[type=number] { width: 100px; }
+.sleep-point-fields input[type=checkbox] { width: 18px; height: 18px; }

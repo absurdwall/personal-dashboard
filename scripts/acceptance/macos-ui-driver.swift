@@ -2878,9 +2878,11 @@ func assertState(
         throw DriverError.timeout("stateful rendered control: \(text)")
     }
     let expectedState = expected.lowercased()
-    let stateAttributes = expectedState == "current"
-        ? ["AXCurrent", "AXSelected", "AXPressed", "AXValue"]
-        : ["AXSelected", "AXPressed", "AXValue"]
+    let stateAttributes = ["enabled", "disabled"].contains(expectedState)
+        ? ["AXEnabled"]
+        : expectedState == "current"
+            ? ["AXCurrent", "AXSelected", "AXPressed", "AXValue"]
+            : ["AXSelected", "AXPressed", "AXValue"]
     let values = stateAttributes.compactMap {
         attribute(element, $0).map(normalizedAttributeValue)
     }
@@ -2890,6 +2892,10 @@ func assertState(
         matches = ["true", "1", "page", "current", "selected", "pressed"]
     case "pressed", "selected":
         matches = ["true", "1", "pressed", "selected"]
+    case "enabled":
+        matches = ["true", "1"]
+    case "disabled":
+        matches = ["false", "0"]
     default:
         throw DriverError.usage
     }
