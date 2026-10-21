@@ -30,7 +30,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|assert-field-value|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|assert-field-value|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-exact|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -4455,11 +4455,11 @@ do {
         )
     case "dump-picker":
         try dumpPicker(application, pid: pid)
-    case "press":
+    case "press", "press-exact":
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false
         repeat {
-            if let element = findVisiblePressable(application, text, contains: true),
+            if let element = findVisiblePressable(application, text, contains: command != "press-exact"),
                (attribute(element, "AXEnabled") as? NSNumber)?.boolValue == true {
                 activateCandidate(pid)
                 Thread.sleep(forTimeInterval: 0.05)

@@ -45,7 +45,7 @@ TASKS
   run_driver press-contains "Details · $original" 10
   run_driver type-text "Name|$saved" 10
   run_driver type-text "Content|Replacement canonical content" 10
-  run_driver press "Save" 10
+  run_driver press-exact "Save" 10
   wait_for_task_property "$tasks" "saved-readback" "name" "$saved" || fail "Today Task save did not persist"
   assert_task_property "$tasks" "saved-readback" "content" "Replacement canonical content" || fail "Today content mismatch"
   run_driver press "Tasks" 10
@@ -62,7 +62,8 @@ TASKS
 
   current_step="clearing canonical content and reading the real empty field"
   run_driver type-text "Content|" 10
-  run_driver press "Save" 10
+  run_driver assert-field-value "Content|" 10
+  run_driver press-exact "Save" 10
   wait_for_task_property "$tasks" "saved-readback" "content" "null" || fail "Task content was not cleared"
   run_driver press "Refresh tasks" 10
   run_driver press-contains "Details · $saved" 10

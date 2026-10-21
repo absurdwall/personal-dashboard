@@ -12384,8 +12384,8 @@ function taskEditor(
     dialog.hidden = surface === "calendar"
       ? selectedCalendarTaskDetailId !== task.id
       : selectedTaskDetailId !== task.id;
-    dialog.setAttribute("role", "dialog");
-    dialog.setAttribute("aria-modal", "true");
+    // This is a docked detail panel; navigation and refresh remain available.
+    dialog.setAttribute("role", "group");
     dialog.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
     stateActions.querySelector(".task-completion-toggle")?.remove();
     detailsButton.remove();
