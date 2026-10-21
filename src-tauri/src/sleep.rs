@@ -111,7 +111,7 @@ impl SleepWorkflow {
         }
         Ok(path)
     }
-    fn load(&self) -> Result<(PathBuf, Document, Option<String>), String> {
+    fn load(&self) -> Result<(PathBuf, Document, Option<Vec<u8>>), String> {
         let path = self.path()?;
         let bytes = match fs::read(&path) {
             Ok(b) => Some(b),
@@ -137,19 +137,22 @@ impl SleepWorkflow {
         {
             return Err("作息正本存在重复身份或日期。".into());
         }
-        Ok((
-            path,
-            document,
-            bytes.map(|b| crate::today::document_revision(&b)),
-        ))
+        Ok((path, document, bytes))
     }
     pub fn read(&self) -> Result<SleepView, String> {
-        let (path, document, revision) = self.load()?;
-        Ok(view(&path, document, revision))
+        let (path, document, bytes) = self.load()?;
+        Ok(view(
+            &path,
+            document,
+            bytes.as_ref().map(|b| crate::today::document_revision(b)),
+        ))
     }
     pub fn save(&self, input: SleepMutationInput) -> Result<SleepView, String> {
         let _guard = WRITE_LOCK.lock().map_err(|_| "作息写入暂不可用")?;
-        let (path, mut document, revision) = self.load()?;
+        let (path, mut document, original) = self.load()?;
+        let revision = original
+            .as_ref()
+            .map(|b| crate::today::document_revision(b));
         if input.target_binding != binding(&path) {
             return Err("所选 Vault 已改变；未写入。".into());
         }
@@ -223,24 +226,20 @@ impl SleepWorkflow {
             input,
         });
         let bytes = serde_json::to_vec_pretty(&document).map_err(|e| e.to_string())?;
-        fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-        let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
-        let result = (|| {
-            use std::io::Write;
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temporary)
-                .map_err(|e| e.to_string())?;
-            file.write_all(&bytes)
-                .and_then(|_| file.sync_all())
-                .map_err(|e| e.to_string())?;
-            fs::rename(&temporary, &path).map_err(|e| e.to_string())
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(&temporary);
+        match original {
+            Some(expected) => crate::today::save_file_if_unchanged(
+                &path,
+                &expected,
+                &bytes,
+                crate::today::StorageDocumentKind::SleepRecords,
+                |_| Ok(()),
+            )?,
+            None => crate::today::create_new_file(
+                &path,
+                &bytes,
+                crate::today::StorageDocumentKind::SleepRecords,
+            )?,
         }
-        result?;
         self.read()
     }
 }

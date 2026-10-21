@@ -162,3 +162,43 @@ fn corrections_keep_identity_block_occupied_dates_and_repeated_delivery_is_idemp
     assert_eq!(workflow.read().unwrap(), saved);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn saving_a_sleep_correction_preserves_later_external_writes_to_the_displaced_file() {
+    use std::io::{Seek, SeekFrom, Write};
+    let root = vault("retained-external-file");
+    let workflow = SleepWorkflow::new(&root);
+    let first = save(
+        &workflow,
+        json!({"wakeDate":"2026-10-21","changeId":"initial","getUp":{"kind":"unknown"}}),
+    );
+    let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+    let mut retained = fs::OpenOptions::new().write(true).open(&path).unwrap();
+    let mut external: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    external["records"][0]["getUp"] =
+        json!({"kind":"text","date":"2026-10-21","text":"External editor: 八点多"});
+    let external_bytes = serde_json::to_vec_pretty(&external).unwrap();
+    let saved = save(
+        &workflow,
+        json!({"recordId":first.records[0].id,"wakeDate":"2026-10-21","changeId":"correction","getUp":point("2026-10-21","07:20",-240)}),
+    );
+    retained.set_len(0).unwrap();
+    retained.seek(SeekFrom::Start(0)).unwrap();
+    retained.write_all(&external_bytes).unwrap();
+    retained.sync_all().unwrap();
+    assert_eq!(workflow.read().unwrap(), saved);
+    let recovery = root.join("life/.personal-dashboard/recovery/today");
+    assert!(
+        recovery.is_dir(),
+        "the displaced sleep file must remain recoverable"
+    );
+    assert!(
+        fs::read_dir(recovery)
+            .unwrap()
+            .any(|entry| fs::read(entry.unwrap().path()).unwrap() == external_bytes),
+        "late external bytes must remain reachable through recovery"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
