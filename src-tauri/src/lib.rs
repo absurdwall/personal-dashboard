@@ -306,6 +306,7 @@ struct ApplicationIdentity {
     source_commit: &'static str,
     feature_area: &'static str,
     boundary_message: &'static str,
+    diagnostic_voice_fixture: bool,
 }
 
 #[tauri::command]
@@ -319,6 +320,9 @@ fn application_identity() -> ApplicationIdentity {
         source_commit: option_env!("PERSONAL_DASHBOARD_SOURCE_COMMIT").unwrap_or("development"),
         feature_area: "Daily records and habits",
         boundary_message: "Local-first personal management · Online AI optional",
+        diagnostic_voice_fixture: cfg!(feature = "diagnostic-voice-gate")
+            && std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_some()
+            && std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE").is_some(),
     }
 }
 
