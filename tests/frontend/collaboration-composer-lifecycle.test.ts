@@ -26,7 +26,7 @@ const mediaBoundary = String.raw`
   };
   const realInvoke=window.__TAURI__.core.invoke;
   window.__TAURI__.core.invoke=async(command,args)=>{
-    if(command==='collaboration_voice_gate_request_microphone'){calls.push({command});const result=window.nativePermissionResult??'authorized';window.nativePermissionGranted=result==='authorized';return result;}
+    if(command==='collaboration_voice_gate_request_microphone'){calls.push({command});if(window.holdNativePermission)await new Promise(resolve=>{window.releaseNativePermission=resolve;});const result=window.nativePermissionResult??'authorized';window.nativePermissionGranted=result==='authorized';return result;}
     if(command==='collaboration_voice_runtime_gate'){calls.push({command,args});return;}
     if(command==='collaboration_dictation_start'){calls.push({command,args});return {inputId:args.inputId,sdp:'v=0\r\na=ice-lite\r\na=ice-options:trickle\r\na=candidate:synthetic-private-marker\r\n'};}
     if(command==='collaboration_dictation_poll')return [];
@@ -127,7 +127,7 @@ for (const {width,height,language,fixture,preflight} of scenarios) {
   });
 }
 
-for(const mode of ['native-denied','denied','decode-failed','cancelled']) {
+for(const mode of ['native-denied','native-cancelled','denied','decode-failed','cancelled']) {
   test(`local permission preflight ${mode} never sends physical audio or starts a cloud call`, {skip:process.platform!=='darwin'},()=>{
     const session={id:'preflight',title:'Synthetic preflight',createdDate:'2026-08-10',activityDates:['2026-08-10'],lastActivityAt:'2026-08-10T09:30:00-04:00',targetDate:'2026-08-10',runId:null,runState:'idle',progress:'',runtimeThreadId:null,taskToolAvailable:true,messages:[],taskOperations:[],memoryProposals:[],draft:'Keyboard text',draftsByDate:{'2026-08-10':'Keyboard text'}};
     const pane={state:'ready',message:'Synthetic context',items:[]};
@@ -135,8 +135,9 @@ for(const mode of ['native-denied','denied','decode-failed','cancelled']) {
       document.querySelector('[data-workspace-destination="collaboration"]').click();
       await until(()=>!document.querySelector('#collaboration-voice-start').disabled);
       document.querySelector('#collaboration-voice-start').click();
+      ${mode==='native-cancelled'?`await until(()=>window.releaseNativePermission);document.querySelector('#collaboration-voice-cancel').click();window.releaseNativePermission();`:''}
       ${mode==='cancelled'?`await until(()=>window.releaseMediaPermission);document.querySelector('#collaboration-voice-cancel').click();window.releaseMediaPermission();`:''}
-      await until(()=>calls.some(call=>call.command===${JSON.stringify(mode==='native-denied'?'collaboration_voice_gate_request_microphone':'synthetic_microphone_capture')}));
+      await until(()=>calls.some(call=>call.command===${JSON.stringify(mode.startsWith('native-')?'collaboration_voice_gate_request_microphone':'synthetic_microphone_capture')}));
       await until(()=>document.querySelector('#collaboration-voice-status').dataset.state==='idle');
       await new Promise(resolve=>setTimeout(resolve,30));
       return JSON.stringify({status:document.querySelector('#collaboration-voice-status').textContent,draft:document.querySelector('#collaboration-message-draft').value,physicalStops:calls.filter(call=>call.command==='physical_track_stopped').length,peers:calls.filter(call=>call.command==='peer_created').length,starts:calls.filter(call=>call.command==='collaboration_dictation_start').length,sources:calls.filter(call=>call.command==='peer_audio_source'),microphones:calls.filter(call=>call.command==='synthetic_microphone_capture').length,audioContexts:calls.filter(call=>call.command==='audio_context_created').length,nativePermissions:calls.filter(call=>call.command==='collaboration_voice_gate_request_microphone').length,diagnostics:calls.filter(call=>call.command==='collaboration_voice_runtime_gate').at(-1)?.args.result,errors:window.probeErrors});
@@ -146,18 +147,18 @@ for(const mode of ['native-denied','denied','decode-failed','cancelled']) {
       interface_language_preferences:{interfaceLanguage:'en'},
       collaboration_connection:{authenticated:true,authMode:'chatgpt',readOnlyTextTurnsAvailable:true,models:[],selectedModel:null,selectedReasoningEffort:null},
       collaboration_workspace:{date:'2026-08-10',vaultName:'Synthetic Vault',selectedModel:null,context:{date:'2026-08-10',vaultName:'Synthetic Vault',dailyRecord:pane,tasks:pane,habits:pane,taskRecords:[],taskLists:[]},memory:null,sessions:[session],activeRun:null,recoveryRequired:false},
-    },mediaBoundary+`window.nativePermissionResult=${JSON.stringify(mode==='native-denied'?'denied':'authorized')};window.mediaPermissionFailure=${mode==='denied'};window.fixtureDecodeFailure=${mode==='decode-failed'};window.holdMediaPermission=${mode==='cancelled'};`);
+    },mediaBoundary+`window.nativePermissionResult=${JSON.stringify(mode==='native-denied'?'denied':'authorized')};window.holdNativePermission=${mode==='native-cancelled'};window.mediaPermissionFailure=${mode==='denied'};window.fixtureDecodeFailure=${mode==='decode-failed'};window.holdMediaPermission=${mode==='cancelled'};`);
     assert.equal(result.nativePermissions,1);
-    assert.equal(result.microphones,mode==='native-denied'?0:1);
-    assert.equal(result.physicalStops,['native-denied','denied'].includes(mode)?0:2);
-    if(mode==='native-denied')assert.equal(result.audioContexts,0);
+    assert.equal(result.microphones,mode.startsWith('native-')?0:1);
+    assert.equal(result.physicalStops,['native-denied','native-cancelled','denied'].includes(mode)?0:2);
+    if(mode.startsWith('native-'))assert.equal(result.audioContexts,0);
     assert.equal(result.peers,0);
     assert.equal(result.starts,0);
     assert.deepEqual(result.sources,[]);
     assert.equal(result.draft,'Keyboard text');
     assert.equal(result.diagnostics.localMicrophonePreflightRequested,true);
     assert.ok(!JSON.stringify(result.diagnostics).includes('synthetic-private-error'));
-    if(mode!=='cancelled')assert.ok(result.status.length>0);
+    if(!mode.includes('cancelled'))assert.ok(result.status.length>0);
     assert.deepEqual(result.errors,[]);
   });
 }

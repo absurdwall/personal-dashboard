@@ -63,9 +63,9 @@ export function parseCodexDictationEvent(inputId: string, value: unknown): Codex
 
 export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
   private readonly invoke: DictationInvoke;
-  private readonly captureAudio: () => Promise<DictationAudioSource>;
+  private readonly captureAudio: (signal: AbortSignal) => Promise<DictationAudioSource>;
   private readonly observe?: (value: DictationDiagnostic) => void;
-  constructor(invoke: DictationInvoke, captureAudio = captureMicrophone, observe?: (value: DictationDiagnostic) => void) { this.invoke = invoke; this.captureAudio = captureAudio; this.observe = observe; }
+  constructor(invoke: DictationInvoke, captureAudio: (signal: AbortSignal) => Promise<DictationAudioSource> = captureMicrophone, observe?: (value: DictationDiagnostic) => void) { this.invoke = invoke; this.captureAudio = captureAudio; this.observe = observe; }
 
   private report(value: DictationDiagnostic): void {
     try { this.observe?.(value); } catch { /* Diagnostics never change capture results. */ }
@@ -231,7 +231,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     };
     try {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      audioSource = await this.captureAudio();
+      audioSource = await this.captureAudio(signal);
       stream = audioSource.stream;
       this.report({microphone:false,productionRuntimeProbe:true});
       if (disposed || failed || signal.aborted || stopRequested) { releaseCapture(); throw new DOMException("Cancelled", "AbortError"); }
