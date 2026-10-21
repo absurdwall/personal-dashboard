@@ -101,9 +101,9 @@ export async function refreshSleepHabits(): Promise<void> {
   if (!container) return;
   const request = ++habitsRead;
   try {
-    const [view, clock] = await Promise.all([readSleepRecords(), window.__TAURI__.core.invoke<{ date?: string; livedDate: string }>("today_clock")]);
+    const [view, clock] = await Promise.all([readSleepRecords(), window.__TAURI__.core.invoke<{ date: string }>("today_clock")]);
     if (request !== habitsRead) return;
-    const date = clock.date ?? clock.livedDate;
+    const date = clock.date;
     if (!date) return;
     renderSleepHome(container, view, date, (selected, metric) => { void openSleepEditor(selected, metric); }, copy);
     container.hidden = false;

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {probe} from './helpers/complete-page.ts';
 
 const setup = `
+responses.today_clock={date:view.date,livedDate:'2026-08-09',time:'03:00'};
 const point=(date,time,approximate=false)=>({kind:'point',date,time,utcOffsetMinutes:-240,approximate});
 responses.sleep_records={targetBinding:'sleep-vault',revision:'sleep-1',records:[
  {id:'night-9',wakeDate:'2026-08-09',sleepOnset:point('2026-08-08','23:50'),getUp:point('2026-08-09','07:20'),estimatedDurationMinutes:450},
