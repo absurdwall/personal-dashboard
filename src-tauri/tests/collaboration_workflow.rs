@@ -1121,6 +1121,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
     let mut state = CollaborationState::default();
     state.next_queue_order = 3;
     state.sessions.push(StoredCollaborationSession {
+        title_generation: None,
         id: "session-recovery".into(),
         vault_key: Some("synthetic-vault".into()),
         title: "Recovery fixture".into(),
@@ -1301,6 +1302,7 @@ fn interruption_before_thread_id_is_saved_can_be_reviewed_without_replay() {
     );
     let mut state = CollaborationState::default();
     state.sessions.push(StoredCollaborationSession {
+        title_generation: None,
         id: "session-no-thread".into(),
         vault_key: Some("synthetic-vault".into()),
         title: "Interrupted before thread start completed".into(),
@@ -2577,4 +2579,197 @@ fn evening_entry_leaves_active_same_date_work_running_in_its_original_session() 
     wait_until_finished(&app, &active.id);
     assert_eq!(prompts.lock().unwrap().len(), 1);
     assert!(app.session("synthetic-vault", &review.session.id).unwrap().messages.is_empty());
+}
+
+
+#[derive(Default)]
+struct TitleControl {
+    requests: Mutex<Vec<personal_dashboard_lib::collaboration::RuntimeSessionTitleRequest>>,
+    result: Mutex<Option<Result<String, String>>>,
+    changed: Condvar,
+}
+impl TitleControl {
+    fn release(&self, result: Result<&str, &str>) {
+        *self.result.lock().unwrap() = Some(result.map(str::to_owned).map_err(str::to_owned));
+        self.changed.notify_all();
+    }
+    fn wait_started(&self, count: usize) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while self.requests.lock().unwrap().len() < count {
+            assert!(std::time::Instant::now() < deadline, "title request was not started");
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+struct TitleRuntime { base: FakeAppServer, title: Arc<TitleControl>, fail_reply: bool }
+impl AppServerTransport for TitleRuntime {
+    fn inspect(&mut self) -> Result<RuntimeConnectionView, String> { self.base.inspect() }
+    fn start_chatgpt_login(&mut self) -> Result<(), String> { self.base.start_chatgpt_login() }
+    fn start_thread(&mut self, model: Option<&str>, instructions: &str) -> Result<String, String> { self.base.start_thread(model, instructions) }
+    fn resume_thread(&mut self, id: &str) -> Result<(), String> { self.base.resume_thread(id) }
+    fn send_turn(&mut self, request: RuntimeTurnRequest) -> Result<RuntimeTurnResult, String> {
+        if self.fail_reply { Err("Synthetic first reply failed".into()) } else { self.base.send_turn(request) }
+    }
+    fn session_title_generator(&self) -> Option<personal_dashboard_lib::collaboration::RuntimeSessionTitleGenerator> {
+        let control = self.title.clone();
+        Some(Box::new(move |request| {
+            control.requests.lock().unwrap().push(request);
+            let mut result = control.result.lock().unwrap();
+            while result.is_none() { result = control.changed.wait(result).unwrap(); }
+            result.clone().unwrap()
+        }))
+    }
+}
+fn title_application(directory: &IsolatedDirectory, title: Arc<TitleControl>, fail_reply: bool) -> CollaborationApplication {
+    CollaborationApplication::with_adapters(
+        Arc::new(FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"))),
+        Box::new(TitleRuntime { title, fail_reply, base: FakeAppServer {
+            prompts: Arc::new(Mutex::new(Vec::new())), calls: Arc::new(Mutex::new(Vec::new())),
+            read_only_text_turns_available: true, switch_vault_on_inspect: None, turn_gate: None,
+            reconciliations: Arc::new(Mutex::new(HashMap::new())), memory_call: None,
+            memory_tool_results: Arc::new(Mutex::new(Vec::new())),
+        }}), Arc::new(FixtureContext), Arc::new(FixedClock), directory.path().to_path_buf(), "Synthetic instructions".into())
+}
+fn wait_for_title(application: &CollaborationApplication, id: &str, expected: &str) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if application.session("synthetic-vault", id).unwrap().title == expected { break; }
+        assert!(std::time::Instant::now() < deadline, "saved title did not update to {expected}");
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+#[test]
+fn first_reply_title_is_async_saved_once_and_keeps_the_opening_and_reply_intact() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    let app = title_application(&directory, title.clone(), false);
+    let session = app.create_session("2026-09-27").unwrap();
+    let opening = "讨论今天如何安排阅读与散步";
+    let queued = app.submit_message("synthetic-vault", &session.id, "2026-09-27", opening).unwrap();
+    assert_eq!(queued.title, opening, "temporary name is persisted with the first message");
+    wait_until_finished(&app, &session.id);
+    title.wait_started(1);
+    assert_eq!(app.session("synthetic-vault", &session.id).unwrap().messages.len(), 2, "body completes before slow naming");
+    app.submit_message("synthetic-vault", &session.id, "2026-09-27", "再加一个阅读建议").unwrap();
+    wait_until_finished(&app, &session.id);
+    assert_eq!(title.requests.lock().unwrap().len(), 1, "later chat proceeds without another naming request");
+    title.release(Ok("阅读与散步安排"));
+    wait_for_title(&app, &session.id, "阅读与散步安排");
+    let saved = app.session("synthetic-vault", &session.id).unwrap();
+    assert_eq!(saved.messages[0].text, opening);
+    assert_eq!(saved.messages[1].text, "Synthetic reply based on current context.");
+    assert_eq!(app.list_sessions("2026-09-27").unwrap().iter().find(|s| s.id == session.id).unwrap().title, saved.title);
+    let request = title.requests.lock().unwrap()[0].clone();
+    assert_eq!(request.opening_message, opening);
+    assert_eq!(request.first_reply, saved.messages[1].text);
+    let reopened = title_application(&directory, title.clone(), false);
+    assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().title, saved.title);
+    reopened.submit_message("synthetic-vault", &session.id, "2026-09-27", "继续").unwrap();
+    wait_until_finished(&reopened, &session.id);
+    assert_eq!(title.requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn title_failure_or_empty_result_keeps_temporary_name_without_retry_after_reopen() {
+    for outcome in [Err("Synthetic naming failure"), Ok("  \n ")] {
+        let directory = IsolatedDirectory::new();
+        let title = Arc::new(TitleControl::default());
+        let app = title_application(&directory, title.clone(), false);
+        let session = app.create_session("2026-09-27").unwrap();
+        app.submit_message("synthetic-vault", &session.id, "2026-09-27", "Opening remains recognisable").unwrap();
+        wait_until_finished(&app, &session.id);
+        title.wait_started(1);
+        assert!(app.session("synthetic-vault", &session.id).unwrap().title_generation_pending);
+        title.release(outcome);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while app.session("synthetic-vault", &session.id).unwrap().title_generation_pending {
+            assert!(std::time::Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(app.session("synthetic-vault", &session.id).unwrap().title, "Opening remains recognisable");
+        let reopened = title_application(&directory, title.clone(), false);
+        reopened.submit_message("synthetic-vault", &session.id, "2026-09-27", "Follow-up after failed naming").unwrap();
+        wait_until_finished(&reopened, &session.id);
+        assert_eq!(title.requests.lock().unwrap().len(), 1);
+        assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().title, "Opening remains recognisable");
+    }
+}
+
+#[test]
+fn late_title_targets_original_chat_and_cannot_replace_an_existing_name_or_restart_after_reopen() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    let app = title_application(&directory, title.clone(), false);
+    let first = app.create_session("2026-09-27").unwrap();
+    app.submit_message("synthetic-vault", &first.id, "2026-09-27", "Opening for the first chat").unwrap();
+    wait_until_finished(&app, &first.id);
+    title.wait_started(1);
+    let second = app.create_session("2026-09-27").unwrap();
+    assert_eq!(app.session("synthetic-vault", &second.id).unwrap().title, "");
+    title.release(Ok("First chat title\nwith a line break"));
+    wait_for_title(&app, &first.id, "First chat title with a line break");
+    assert_eq!(app.session("synthetic-vault", &second.id).unwrap().title, "");
+
+    // A saved human/legacy title has precedence; model result must not replace it.
+    let third = app.create_session("2026-09-27").unwrap();
+    let store = FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut state = store.load().unwrap();
+    state.sessions.iter_mut().find(|s| s.id == third.id).unwrap().title = "Existing chosen name".into();
+    store.save(&state).unwrap();
+    app.submit_message("synthetic-vault", &third.id, "2026-09-27", "Do not rename this existing session").unwrap();
+    wait_until_finished(&app, &third.id);
+    assert_eq!(app.session("synthetic-vault", &third.id).unwrap().title, "Existing chosen name");
+    assert_eq!(title.requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn reopening_during_naming_prevents_a_late_result_and_never_replays_the_title_request() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    let app = title_application(&directory, title.clone(), false);
+    let first = app.create_session("2026-09-27").unwrap();
+    app.submit_message("synthetic-vault", &first.id, "2026-09-27", "Retain this temporary title").unwrap();
+    wait_until_finished(&app, &first.id);
+    title.wait_started(1);
+    let reopened = title_application(&directory, title.clone(), false);
+    assert!(!reopened.session("synthetic-vault", &first.id).unwrap().title_generation_pending);
+    title.release(Ok("Discard late title"));
+    reopened.submit_message("synthetic-vault", &first.id, "2026-09-27", "Continue without replay").unwrap();
+    wait_until_finished(&reopened, &first.id);
+    assert_eq!(reopened.session("synthetic-vault", &first.id).unwrap().title, "Retain this temporary title");
+    assert_eq!(title.requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn unsuccessful_first_reply_does_not_start_title_generation() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    let app = title_application(&directory, title.clone(), true);
+    let session = app.create_session("2026-09-27").unwrap();
+    app.submit_message("synthetic-vault", &session.id, "2026-09-27", "Failed opening keeps its name").unwrap();
+    wait_for_run_state(&app, &session.id, "interrupted");
+    assert!(title.requests.lock().unwrap().is_empty());
+    assert_eq!(app.session("synthetic-vault", &session.id).unwrap().title, "Failed opening keeps its name");
+}
+
+#[test]
+fn a_name_saved_while_generation_is_pending_wins_over_the_late_model_result() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    let app = title_application(&directory, title.clone(), false);
+    let session = app.create_session("2026-09-27").unwrap();
+    app.submit_message("synthetic-vault", &session.id, "2026-09-27", "Temporary opening").unwrap();
+    wait_until_finished(&app, &session.id);
+    title.wait_started(1);
+    let store = FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut state = store.load().unwrap();
+    state.sessions.iter_mut().find(|stored| stored.id == session.id).unwrap().title = "Already chosen name".into();
+    store.save(&state).unwrap();
+    title.release(Ok("Late model title"));
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while app.session("synthetic-vault", &session.id).unwrap().title_generation_pending {
+        assert!(std::time::Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(app.session("synthetic-vault", &session.id).unwrap().title, "Already chosen name");
 }
