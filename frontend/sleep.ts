@@ -72,13 +72,16 @@ function endpointEditor(parent: HTMLElement, title: string, initial: SleepEndpoi
       if (label) field("strong",group,label);
       const date = input(group,copy("实际日期", "Actual date"),"date",point?.date ?? defaultDate);
       const time = input(group,copy("时间", "Time"),"time",point?.time ?? "");
-      const offset = input(group,copy("UTC 偏移（分钟）", "UTC offset (minutes)"),"number",point ? String(point.utcOffsetMinutes) : "");
+      const zone = field<HTMLDetailsElement>("details", group);
+      field("summary", zone, copy("时区与夏令时", "Time zone and daylight saving"));
+      field("p", zone, copy("按所选日期和时间自动确定。夏令时回拨的重复时刻可在此更正。", "Determined from the selected local date and time. Adjust here for a repeated time when daylight saving ends."));
+      const offset = input(zone,copy("UTC 偏移（分钟）", "UTC offset (minutes)"),"number",point ? String(point.utcOffsetMinutes) : "");
       const approximate = input(group,copy("约", "Approximate"),"checkbox",""); approximate.checked=point?.approximate ?? false;
       const deriveOffset = (): void => {
         if (date.value && time.value) { const parsed = new Date(`${date.value}T${time.value}`); if (!Number.isNaN(parsed.getTime()) && parsed.getFullYear() === Number(date.value.slice(0,4)) && parsed.getMonth()+1 === Number(date.value.slice(5,7)) && parsed.getDate() === Number(date.value.slice(8,10)) && parsed.getHours() === Number(time.value.slice(0,2)) && parsed.getMinutes() === Number(time.value.slice(3,5))) offset.value=String(-parsed.getTimezoneOffset()); else offset.value=""; }
       };
       date.addEventListener("change",deriveOffset); time.addEventListener("change",deriveOffset);
-      return () => { if (!date.value || !time.value || !offset.value) throw Error(copy("请填写实际日期、时间和 UTC 偏移。", "Enter the actual date, time and UTC offset.")); return {date:date.value,time:time.value,utcOffsetMinutes:Number(offset.value),approximate:approximate.checked}; };
+      return () => { if (!date.value || !time.value || !offset.value) throw Error(copy("请检查实际日期与时间；夏令时切换中不存在的时间不能保存。", "Check the actual local date and time; a nonexistent daylight-saving time cannot be saved.")); return {date:date.value,time:time.value,utcOffsetMinutes:Number(offset.value),approximate:approximate.checked}; };
     };
     if (kind.value === "point") { const point = pointControls(initial.kind === "point" ? initial : null,""); get = () => ({kind:"point",...point()}); }
     else {

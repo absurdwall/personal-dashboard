@@ -2015,13 +2015,7 @@ async function chooseInterfaceLanguage(interfaceLanguage: InterfaceLanguage): Pr
 
 function resetVaultScopedWorkspaceState(): void {
   stashCalendarTaskCreateDraft();
-  const calendarTaskEditDraftKeys = new Set<string>();
-  taskEditorForms("calendar").forEach((form) => {
-    stashTaskEditDraft(form);
-    const binding = currentCalendarSummaryView?.tasks.targetBinding;
-    const taskId = form.dataset.taskEditor;
-    if (binding && taskId) calendarTaskEditDraftKeys.add(taskDraftKey(binding, taskId));
-  });
+  taskEditDrafts.clear();
   historicalHabitArrival.clear();
   habitDetailRequests.invalidate();
   taskRequests.invalidate();
@@ -2108,9 +2102,6 @@ function resetVaultScopedWorkspaceState(): void {
     const calendarAttempts = attempts.filter((attempt) => attempt.origin === "calendar");
     if (calendarAttempts.length) taskEndedCreateAttempts.set(key, calendarAttempts);
     else taskEndedCreateAttempts.delete(key);
-  }
-  for (const key of taskEditDrafts.keys()) {
-    if (!calendarTaskEditDraftKeys.has(key)) taskEditDrafts.delete(key);
   }
   taskEndedCreateRegion?.replaceChildren();
   taskQuickForm?.reset();
@@ -7306,6 +7297,7 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
   closeTodayAxisTaskPopup(false, false);
   closeTodayAxisFactPopup(false);
   const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
+  if (!preserveTaskEditors) taskEditDrafts.clear();
   stashEveningReviewDraft();
   todayPresentationFresh = true;
   const previousView = currentTodayView;
@@ -8736,6 +8728,7 @@ function renderCalendarGrid(month: CalendarMonthView): void {
 }
 
 function renderCalendarSummary(view: TodayView): void {
+  taskEditDrafts.clear();
   currentCalendarSummaryView = view;
   renderWorkspaceRailContext("calendar");
   if (calendarSummaryHeading) {
@@ -8986,7 +8979,7 @@ function renderCalendarReadError(
 async function selectCalendarDate(date: string): Promise<void> {
   const selectionRequest = calendarSelectionRequests.begin();
   stashCalendarTaskCreateDraft();
-  taskEditorForms("calendar").forEach(stashTaskEditDraft);
+  taskEditDrafts.clear();
   calendarTaskRequests.invalidate();
   selectedCalendarDate = date;
   currentCalendarSummaryView = null;
@@ -9140,7 +9133,7 @@ async function chooseCalendarMonth(
 ): Promise<void> {
   calendarSelectionRequests.invalidate();
   stashCalendarTaskCreateDraft();
-  taskEditorForms("calendar").forEach(stashTaskEditDraft);
+  taskEditDrafts.clear();
   calendarTaskRequests.invalidate();
   selectedCalendarDate = date;
   currentCalendarSummaryView = null;
@@ -13534,6 +13527,8 @@ async function refreshTasks(): Promise<void> {
       return;
     }
     currentTaskLivedDate = clock.livedDate;
+    // A canonical reload ends the previous editor; its unsaved values are not records.
+    taskEditDrafts.clear();
     renderTasks(view);
   } catch (error) {
     if (
@@ -13542,6 +13537,7 @@ async function refreshTasks(): Promise<void> {
     ) {
       return;
     }
+    taskEditDrafts.clear();
     renderTasks({
       state: "error",
       message: String(error),
@@ -15064,6 +15060,7 @@ function showWorkspaceDestination(
     destination === "today" &&
     (destinationChanged || selectedTodayDate !== dailyDate);
   if (leavingToday || changingTodaySelection) {
+    taskEditDrafts.clear();
     todayUnlocatedOverride = null;
     todaySidebarReadingPosition = null;
     historicalHabitArrival.clear();
@@ -15078,13 +15075,13 @@ function showWorkspaceDestination(
   }
   if (leavingTasks) {
     stashTaskCreateDraft();
-    taskEditorForms("tasks").forEach(stashTaskEditDraft);
+    taskEditDrafts.clear();
     clearTaskEditorDialogs("tasks");
     taskRequests.invalidate();
   }
   if (leavingCalendar) {
     stashCalendarTaskCreateDraft();
-    taskEditorForms("calendar").forEach(stashTaskEditDraft);
+    taskEditDrafts.clear();
     selectedCalendarTaskDetailId = null;
     calendarTaskCreateDialog?.close();
     calendarTaskEditorDialogRoot?.toggleAttribute("hidden", true);
