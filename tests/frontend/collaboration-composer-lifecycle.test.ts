@@ -44,6 +44,13 @@ for (const {width,height,language,fixture} of scenarios) {
       document.title='voice ready';
       const input=document.querySelector('#collaboration-message-draft'),voice=document.querySelector('#collaboration-voice-start'),send=document.querySelector('#collaboration-send-message'),status=document.querySelector('#collaboration-voice-status'),controls=document.querySelector('.collaboration-voice-controls');
       const settle=async(f)=>{for(let n=0;n<2000;n++){if(f())return;await new Promise(r=>setTimeout(r,2));}throw Error('voice condition timed out');};
+      // Open real saved-session history before measuring the conversation column.
+      // ResizeObserver may otherwise apply the narrower column after the first sample.
+      await until(()=>document.querySelectorAll('.collaboration-session-button').length===1);
+      const historyToggle=document.querySelector('#collaboration-toggle-history');
+      if(historyToggle.getAttribute('aria-expanded')!=='true')historyToggle.click();
+      await until(()=>historyToggle.getAttribute('aria-expanded')==='true');
+      await new Promise(resolve=>setTimeout(resolve,100));
       input.value='Keyboard text';input.dispatchEvent(new Event('input',{bubbles:true}));
       const keyboard={input:rect(input),controls:rect(controls),run:rect(document.querySelector('#collaboration-run-status'))};
       voice.click();await until(()=>status.dataset.state==='recording');document.title='recording';
@@ -72,7 +79,15 @@ for (const {width,height,language,fixture} of scenarios) {
     assert.equal(result.submits,0);
     assert.equal(result.starts,1);
     assert.ok(result.stops>=1);
-    assert.ok(result.recording.input.width>=220,JSON.stringify(result));
+    for(const phase of ['keyboard','recording','idle']) {
+      assert.ok(result[phase].input.width>=220,JSON.stringify(result));
+      assert.ok(result[phase].input.bottom<=result[phase].controls.top+1||
+        result[phase].input.right<=result[phase].controls.left+1,JSON.stringify(result));
+    }
+    assert.deepEqual(result.idle.run,result.keyboard.run,'dictation must not move the global run-status area');
+    assert.ok(result.recording.voice.top>=0&&result.recording.voice.bottom<=height&&
+      result.recording.send.top>=0&&result.recording.send.bottom<=height,JSON.stringify(result));
+    if(width===830) console.log(`Composer ${width} ${language}: editor ${result.recording.input.width}px; controls ${result.recording.controls.width}px`);
     assert.ok(Math.abs(result.recording.controls.width-result.keyboard.controls.width)<1,JSON.stringify(result));
     assert.ok(Math.abs(result.idle.controls.width-result.keyboard.controls.width)<1,JSON.stringify(result));
     assert.ok(result.recording.voice.right<=width&&result.recording.send.right<=width);
