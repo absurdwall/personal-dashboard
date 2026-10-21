@@ -20,6 +20,44 @@ func activateCandidate(_ pid: pid_t) {
     }
 }
 
+// Explicit foreground probe for a task-owned candidate. Pointer/global-input
+// restrictions remain active; a normal installation never passes this guard.
+func activateOwnedCandidate(_ pid: pid_t, timeout: TimeInterval) throws {
+    guard let running = NSRunningApplication(processIdentifier: pid),
+          let bundle = running.bundleURL?.resolvingSymlinksInPath(),
+          bundle.lastPathComponent == "Personal Dashboard.app",
+          running.bundleIdentifier == "com.tortillaflat.personal-dashboard.acceptance" else {
+        throw DriverError.actionFailed("foreground probe requires the isolated acceptance identity", .failure)
+    }
+    let container = bundle.deletingLastPathComponent()
+    guard container.deletingLastPathComponent().path == "/private/tmp",
+          container.lastPathComponent.hasPrefix("personal-dashboard-ipc."),
+          container.lastPathComponent.hasSuffix(".noindex") else {
+        throw DriverError.actionFailed("foreground probe requires the task-owned noindex candidate", .failure)
+    }
+    guard running.activate(options: [.activateAllWindows, .activateIgnoringOtherApps]) else {
+        throw DriverError.actionFailed("activate isolated candidate", .failure)
+    }
+    let application = AXUIElementCreateApplication(pid)
+    let deadline = Date().addingTimeInterval(timeout)
+    var state = "window unavailable"
+    repeat {
+        if let window = mainWindow(application) {
+            _ = AXUIElementPerformAction(window, "AXRaise" as CFString)
+            _ = AXUIElementSetAttributeValue(window, "AXMain" as CFString, kCFBooleanTrue)
+            let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+            let main = attribute(window, "AXMain").map(normalizedAttributeValue) == "true"
+            let focused = attribute(application, "AXFocusedWindow").map {
+                CFEqual($0, window)
+            } ?? false
+            state = "active=\(running.isActive), frontmost=\(frontmost), main=\(main), focusedWindow=\(focused)"
+            if running.isActive && frontmost && main && focused { return }
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+    throw DriverError.timeout("key/focused isolated candidate (\(state))")
+}
+
 enum DriverError: Error, CustomStringConvertible {
     case usage
     case invalidPid(String)
@@ -30,7 +68,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|assert-field-value|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-exact|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|assert-field-value|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-exact|press-contains|select-contains|select-contains-allow-unchanged|activate-owned|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -4509,6 +4547,9 @@ do {
             allowUnchanged: true
         )
         print("Selected rendered option containing (unchanged allowed): \(text)")
+    case "activate-owned":
+        try activateOwnedCandidate(pid, timeout: timeout)
+        print("Activated only the guarded isolated candidate")
     case "set-size":
         try resizeWindow(application, pid: pid, text)
         print("Resized rendered window to: \(text)")
