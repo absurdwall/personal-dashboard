@@ -82,6 +82,7 @@ import {
   type CollaborationVoiceTarget,
 } from "./collaboration-voice.js";
 import { BrowserCodexDictationRuntime } from "./collaboration-dictation-runtime.js";
+import { captureDiagnosticDictationFixture } from "./collaboration-dictation-fixture.js";
 import { CodexCollaborationVoiceInputController } from "./collaboration-dictation.js";
 import {
   calendarTasksForDate,
@@ -132,6 +133,7 @@ type ApplicationIdentity = Readonly<{
   displayVersion: string;
   build: string;
   sourceCommit: string;
+  diagnosticVoiceFixture?: boolean;
 }>;
 
 declare global {
@@ -997,6 +999,7 @@ type HabitRefreshReport = Readonly<{
 }>;
 
 type CollaborationSessionView = Readonly<{
+  titleGenerationPending?: boolean;
   id: string;
   title: string;
   createdDate: string;
@@ -1139,6 +1142,7 @@ let dailyPlanReturnToCollaborationDate: string | null = null;
 let currentCollaborationConnection: CollaborationConnectionView | null = null;
 let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
+let collaborationTitleStatusTimer: number | null = null;
 let collaborationStatusTimer: number | null = null;
 let collaborationTargetDatePendingSession: string | null = null;
 let collaborationEmptyDraft = "";
@@ -1167,9 +1171,14 @@ const collaborationVoicePreviews = new Map<string, string>();
 const collaborationSendingDrafts = new Set<string>();
 const pendingCollaborationRunChecks = new Set<string>();
 const collaborationSubmittedDrafts = new Map<string, string>();
+let diagnosticVoiceFixtureEnabled = false;
 
 const collaborationVoiceController = new CodexCollaborationVoiceInputController(
-  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args)),
+  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args), async () => {
+    if (diagnosticVoiceFixtureEnabled) return captureDiagnosticDictationFixture((command,args) => window.__TAURI__.core.invoke(command,args));
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
+    return {stream: await navigator.mediaDevices.getUserMedia({audio:true,video:false})};
+  }),
   {
     onState: (state, target) => {
       activeCollaborationVoiceTarget = state === "idle" ? null : target;
@@ -3239,10 +3248,12 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
     collaborationMessageDraft.value = draft;
     collaborationMessageDraft.focus();
     collaborationMessageDraft.setSelectionRange(draft.length, draft.length);
-    setCollaborationVoiceStatus(target, "collaboration.voiceReview");
+    if (collaborationIncompleteVoiceDrafts.has(key)) setCollaborationVoiceStatus(target, "collaboration.voiceIncomplete");
+    else collaborationVoiceStatuses.delete(key);
     renderCollaborationWorkspace();
   } else {
-    setCollaborationVoiceStatus(target, "collaboration.voiceSavedForDate");
+    if (collaborationIncompleteVoiceDrafts.has(key)) setCollaborationVoiceStatus(target, "collaboration.voiceIncomplete");
+    else collaborationVoiceStatuses.delete(key);
     renderCollaborationVoiceControls();
   }
   void saved.catch(() => {
@@ -5001,6 +5012,15 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
     currentCollaborationWorkspace = { ...workspace, context };
     renderCollaborationWorkspace();
     if (session) watchCollaborationSession(session);
+    // Naming belongs to the originating saved session, even when another chat is selected.
+    if (workspace.sessions.some(session => session.titleGenerationPending)) {
+      if (collaborationTitleStatusTimer === null) collaborationTitleStatusTimer = window.setInterval(() => {
+        if (!vaultSelectionInProgress) void refreshCollaborationWorkspace(true);
+      }, 750);
+    } else if (collaborationTitleStatusTimer !== null) {
+      window.clearInterval(collaborationTitleStatusTimer);
+      collaborationTitleStatusTimer = null;
+    }
   } catch (error) {
     if (request !== collaborationWorkspaceRequest) return;
     if (quiet) return;
@@ -12369,8 +12389,8 @@ function taskEditor(
     dialog.hidden = surface === "calendar"
       ? selectedCalendarTaskDetailId !== task.id
       : selectedTaskDetailId !== task.id;
-    dialog.setAttribute("role", "dialog");
-    dialog.setAttribute("aria-modal", "true");
+    // This is a docked detail panel; navigation and refresh remain available.
+    dialog.setAttribute("role", "group");
     dialog.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
     stateActions.querySelector(".task-completion-toggle")?.remove();
     detailsButton.remove();
@@ -15192,6 +15212,7 @@ async function connectToApplication(): Promise<void> {
     const identity = await window.__TAURI__.core.invoke<ApplicationIdentity>(
       "application_identity",
     );
+    diagnosticVoiceFixtureEnabled = identity.diagnosticVoiceFixture === true;
     try {
       const language = await window.__TAURI__.core.invoke<InterfaceLanguagePreferences>(
         "interface_language_preferences",

@@ -11722,7 +11722,7 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 @media (min-width: 761px) {
   #workspace-destination-collaboration .collaboration-composer-input {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, auto);
+    grid-template-columns: minmax(0, 1fr) 9rem;
     align-items: stretch;
   }
   #workspace-destination-collaboration .collaboration-composer-input textarea {
@@ -11733,7 +11733,8 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
     grid-column: 2;
     grid-row: 1;
     display: grid;
-    grid-template-columns: repeat(2, auto);
+    min-width: 0;
+    grid-template-columns: 2.25rem minmax(0, 1fr) auto;
     grid-template-rows: 1.25rem 2.25rem;
     align-content: end;
     align-items: end;
@@ -11755,8 +11756,9 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   }
   #workspace-destination-collaboration #collaboration-voice-start { grid-column: 1; grid-row: 2; }
   #workspace-destination-collaboration #collaboration-send-message { grid-column: 2; grid-row: 2; }
-  #workspace-destination-collaboration .collaboration-composer-input .collaboration-voice-controls {
-    grid-template-columns: repeat(3, auto);
+  #workspace-destination-collaboration #collaboration-send-message {
+    min-width: 0;
+    padding-inline: 0.35rem;
   }
   #workspace-destination-collaboration #collaboration-voice-cancel {
     grid-column: 3;

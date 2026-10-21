@@ -20,6 +20,12 @@ export interface CodexDictationRuntime {
   start(inputId: string, onEvent: (event: CodexDictationEvent) => void, signal: AbortSignal): Promise<CodexDictationCapture>;
 }
 export type DictationInvoke = <T>(command: string, args: Record<string, unknown>) => Promise<T>;
+export type DictationAudioSource = Readonly<{ stream: MediaStream; start?(): void; release?(): void }>;
+
+async function captureMicrophone(): Promise<DictationAudioSource> {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
+  return {stream: await navigator.mediaDevices.getUserMedia({audio:true,video:false})};
+}
 
 function finiteTiming(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -47,10 +53,12 @@ export function parseCodexDictationEvent(inputId: string, value: unknown): Codex
 
 export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
   private readonly invoke: DictationInvoke;
-  constructor(invoke: DictationInvoke) { this.invoke = invoke; }
+  private readonly captureAudio: () => Promise<DictationAudioSource>;
+  constructor(invoke: DictationInvoke, captureAudio = captureMicrophone) { this.invoke = invoke; this.captureAudio = captureAudio; }
 
   async start(inputId: string, onEvent: (event: CodexDictationEvent) => void, signal: AbortSignal): Promise<CodexDictationCapture> {
-    if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection !== "function") throw new Error("capture-unavailable");
+    if (typeof RTCPeerConnection !== "function") throw new Error("capture-unavailable");
+    let audioSource: DictationAudioSource | undefined;
     let stream: MediaStream | undefined;
     let peer: RTCPeerConnection | undefined;
     let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -81,6 +89,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     const releaseCapture = () => {
       captureStopped = true;
       stream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
+      audioSource?.release?.();
     };
     const releaseZeroAudio = () => {
       if (zeroSource) {
@@ -177,7 +186,8 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     };
     try {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      stream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+      audioSource = await this.captureAudio();
+      stream = audioSource.stream;
       if (disposed || failed || signal.aborted || stopRequested) { releaseCapture(); throw new DOMException("Cancelled", "AbortError"); }
       onEvent({inputId,kind:"phase",phase:"connecting"});
       if (disposed || signal.aborted) { releaseCapture(); throw new DOMException("Cancelled", "AbortError"); }
@@ -285,6 +295,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         } catch { fail("dictation-connection-lost"); }
         finally { polling = false; }
       },200);
+      audioSource.start?.();
       return {
         stopCapture,
         finalize: async () => {

@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 
 // Production macOS WebKit DOM/layout with only the public Tauri boundary substituted.
-export function probe(width:number, scenario:string, withUntimed=true, height=758, responses: Record<string, unknown> = {}) {
+export function probe(width:number, scenario:string, withUntimed=true, height=758, responses: Record<string, unknown> = {}, beforeMain = "") {
   const directory=mkdtempSync(join(tmpdir(),'pdex14-webkit-'));
   try {
     const root=new URL('../../..',import.meta.url).pathname;
@@ -32,9 +32,10 @@ export function probe(width:number, scenario:string, withUntimed=true, height=75
         if(command==='appearance_preferences')return {accent:'green',fontSize:'normal'};
         throw Error('Unexpected public command '+command);
       }}};
+      ${beforeMain}
       require('./main.js');
       async function until(f){for(let n=0;n<200;n++){if(f())return;await new Promise(r=>setTimeout(r,2));}throw Error('DOM condition timed out '+f);}
-      await until(()=>document.querySelector('#runtime-status').dataset.state==='ready'&&document.documentElement.lang==='en');
+      await until(()=>document.querySelector('#runtime-status').dataset.state==='ready'&&document.documentElement.lang.startsWith(responses.interface_language_preferences?.interfaceLanguage??'en'));
       document.querySelector('[data-today-phase="daytime"]').click();
       const region=document.querySelector('#today-unlocated-time-region'),trigger=document.querySelector('#today-unlocated-time-shortcut');
       const rect=n=>{const r=n.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom};};

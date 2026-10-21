@@ -59,5 +59,5 @@ let deadline = Date().addingTimeInterval(20)
 while !probe.finished && Date() < deadline {
     RunLoop.current.run(until: Date().addingTimeInterval(0.02))
 }
-if !probe.finished { fputs("WebKit layout probe timed out\n", stderr) }
+if !probe.finished { fputs("WebKit layout probe timed out: \(probe.webView.title ?? "untitled")\n", stderr) }
 exit(probe.finished && !probe.failed ? 0 : 1)

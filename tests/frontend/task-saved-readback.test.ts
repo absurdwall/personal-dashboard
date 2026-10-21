@@ -24,7 +24,9 @@ test('Task refresh and navigation show saved values rather than an older editor'
       document.querySelector('#refresh-tasks').click();
       await until(()=>calls.filter(c=>c.command==='tasks_view').length>before);
       await new Promise(r=>setTimeout(r,20));};
-    await navigate('tasks');await open();edit('content','Unsaved content');
+    await navigate('tasks');await open();
+    const semantics={role:document.querySelector('#task-editor-dialog-root [data-task-editor-dialog]').getAttribute('role'),modal:document.querySelector('#task-editor-dialog-root [data-task-editor-dialog]').getAttribute('aria-modal')};
+    edit('content','Unsaved content');
     responses.tasks_view={...responses.tasks_view,revision:'revision-2',tasks:[{...task,name:'Saved replacement',content:'Saved content'}]};
     await refresh();await open();const replacement=read();
     edit('content','Another unsaved value');
@@ -36,8 +38,9 @@ test('Task refresh and navigation show saved values rather than an older editor'
     await navigate('tasks');await open();const untouched=read();
     edit('name','Unsaved task name');edit('content','Do not retain this editor');
     await navigate('today');await navigate('tasks');await open();const returned=read();
-    return JSON.stringify({replacement,cleared,untouched,returned,errors:window.probeErrors});
+    return JSON.stringify({semantics,replacement,cleared,untouched,returned,errors:window.probeErrors});
   `);
+  assert.deepEqual(result.semantics,{role:'group',modal:null},'a docked detail must leave navigation and refresh exposed to assistive technology');
   assert.deepEqual(result.replacement,{name:'Saved replacement',content:'Saved content',date:'2026-08-10',time:'10:00'});
   assert.deepEqual(result.cleared,{name:'Saved replacement',content:'',date:'2026-08-10',time:''});
   const latest={name:'Latest persisted task',content:'Saved after departure',date:'2026-08-10',time:'11:25'};
