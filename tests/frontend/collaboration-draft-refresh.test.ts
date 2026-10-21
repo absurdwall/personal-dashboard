@@ -69,6 +69,9 @@ function composer(actualVoice=false, pendingStart=false, empty=false) {
     stashCalendarTaskCreateDraft(){},resetSleepPresentation(){},taskEditorForms:()=>[],compactScheduleTransactions:new Map(),
     taskCreateAttempts:new Map(), taskEndedCreateAttempts:new Map(), taskEditDrafts:new Map(),
     normalizeTaskDateTimeFields(){},renderWorkspaceRailContext(){},settingsVaultStatus:element(),
+    // Title polling is unrelated pane refresh at this draft-protection seam;
+    // its real timer lifecycle is exercised by collaboration-title.test.ts.
+    collaborationTitlePolling:{setPending(){}},
     refreshCollaborationRunOwner(){},showWorkspaceDestination(){},
     collaborationDrafts:new Map(),collaborationUnsavedDrafts:new Set(),collaborationDraftWrites:new Map(),
     collaborationDraftSaveTimers:new Map(),collaborationTargetDates:new Map(),collaborationSendingDrafts:new Set(),

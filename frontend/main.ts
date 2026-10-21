@@ -1,3 +1,4 @@
+import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
 import { configureSleepLanguage, refreshSleepSummary, refreshSleepHabits, refreshSleepSurfaces, resetSleepPresentation } from "./sleep.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
@@ -1143,7 +1144,9 @@ let dailyPlanReturnToCollaborationDate: string | null = null;
 let currentCollaborationConnection: CollaborationConnectionView | null = null;
 let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
-let collaborationTitleStatusTimer: number | null = null;
+const collaborationTitlePolling = new CollaborationTitlePolling(() => {
+  if (!vaultSelectionInProgress) void refreshCollaborationWorkspace(true);
+});
 let collaborationStatusTimer: number | null = null;
 let collaborationTargetDatePendingSession: string | null = null;
 let collaborationEmptyDraft = "";
@@ -5017,14 +5020,7 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
     renderCollaborationWorkspace();
     if (session) watchCollaborationSession(session);
     // Naming belongs to the originating saved session, even when another chat is selected.
-    if (workspace.sessions.some(session => session.titleGenerationPending)) {
-      if (collaborationTitleStatusTimer === null) collaborationTitleStatusTimer = window.setInterval(() => {
-        if (!vaultSelectionInProgress) void refreshCollaborationWorkspace(true);
-      }, 750);
-    } else if (collaborationTitleStatusTimer !== null) {
-      window.clearInterval(collaborationTitleStatusTimer);
-      collaborationTitleStatusTimer = null;
-    }
+    collaborationTitlePolling.setPending(workspace.sessions.some(session => session.titleGenerationPending));
   } catch (error) {
     if (request !== collaborationWorkspaceRequest) return;
     if (quiet) return;

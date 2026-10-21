@@ -180,10 +180,7 @@ impl SleepWorkflow {
                     .position(|r| &r.id == id)
                     .ok_or("作息记录不存在；未写入。")?,
             ),
-            None => document
-                .records
-                .iter()
-                .position(|r| r.wake_date == input.wake_date),
+            None => None,
         };
         if document
             .records
@@ -303,18 +300,31 @@ fn validate_endpoint(endpoint: &SleepEndpoint) -> Result<(), String> {
     };
     Ok(())
 }
-pub fn duration_minutes(start: &SleepEndpoint, end: &SleepEndpoint) -> Result<Option<i64>, String> {
-    match (start, end) {
-        (SleepEndpoint::Point { point: a }, SleepEndpoint::Point { point: b }) => {
-            let elapsed = point_seconds(b)? - point_seconds(a)?;
-            if elapsed < 0 {
-                return Err("离床时间早于入睡时间；请更正实际日期，未写入。".into());
-            }
-            Ok(Some(elapsed / 60))
+fn endpoint_bounds(endpoint: &SleepEndpoint) -> Result<Option<(i64, i64)>, String> {
+    match endpoint {
+        SleepEndpoint::Point { point } => {
+            let instant = point_seconds(point)?;
+            Ok(Some((instant, instant)))
         }
+        SleepEndpoint::Range { start, end, .. } => Ok(Some((point_seconds(start)?, point_seconds(end)?))),
         _ => Ok(None),
     }
 }
+
+pub fn duration_minutes(start: &SleepEndpoint, end: &SleepEndpoint) -> Result<Option<i64>, String> {
+    let Some((earliest_onset, _)) = endpoint_bounds(start)? else { return Ok(None); };
+    let Some((_, latest_get_up)) = endpoint_bounds(end)? else { return Ok(None); };
+    // Reject only when every possible get-up instant precedes every possible
+    // onset instant. Overlapping reported ranges remain uncertain, not reversed.
+    if latest_get_up < earliest_onset {
+        return Err("离床时间早于入睡时间；请更正实际日期，未写入。".into());
+    }
+    match (start, end) {
+        (SleepEndpoint::Point { .. }, SleepEndpoint::Point { .. }) => Ok(Some((latest_get_up - earliest_onset) / 60)),
+        _ => Ok(None),
+    }
+}
+
 fn validate_record(record: &SleepRecord) -> Result<(), String> {
     validate_date(&record.wake_date)?;
     validate_endpoint(&record.sleep_onset)?;

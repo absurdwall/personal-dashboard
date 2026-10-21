@@ -203,7 +203,24 @@ pub(crate) enum StorageDocumentKind {
     SleepRecords,
 }
 
+struct StorageFileMetadata {
+    recovery_stem: &'static str,
+    extension: &'static str,
+}
+
 impl StorageDocumentKind {
+    fn file_metadata(self) -> StorageFileMetadata {
+        let (recovery_stem, extension) = match self {
+            Self::DailyRecord => ("daily-record", "md"),
+            Self::DayTasks => ("day-tasks", "json"),
+            Self::HabitCompletions => ("habit-completions", "json"),
+            Self::HabitCatalog => ("habit-definitions", "json"),
+            Self::Tasks => ("tasks", "json"),
+            Self::SleepRecords => ("sleep-records", "json"),
+        };
+        StorageFileMetadata { recovery_stem, extension }
+    }
+
     fn text(self, daily_record: &str, day_tasks: &str, habit_completions: &str) -> String {
         match self {
             Self::DailyRecord => daily_record,
@@ -623,14 +640,7 @@ fn preserve_displaced_inode(
     let record_name = path
         .file_stem()
         .and_then(|name| name.to_str())
-        .unwrap_or(match kind {
-            StorageDocumentKind::DailyRecord => "daily-record",
-            StorageDocumentKind::DayTasks => "day-tasks",
-            StorageDocumentKind::HabitCompletions => "habit-completions",
-            StorageDocumentKind::HabitCatalog => "habit-definitions",
-            StorageDocumentKind::Tasks => "tasks",
-            StorageDocumentKind::SleepRecords => "sleep-records",
-        });
+        .unwrap_or(kind.file_metadata().recovery_stem);
     for attempt in 0..32u8 {
         let recovery = recovery_directory.join(format!(
             "{record_name}-{nonce}-{}-{attempt}.snapshot",
@@ -686,14 +696,7 @@ fn create_temporary_file(
     for attempt in 0..32u8 {
         let temporary = path.with_extension(format!(
             "{}.personal-dashboard-tmp-{}-{nonce}-{attempt}",
-            match kind {
-                StorageDocumentKind::DailyRecord => "md",
-                StorageDocumentKind::DayTasks => "json",
-                StorageDocumentKind::HabitCompletions => "json",
-                StorageDocumentKind::HabitCatalog => "json",
-                StorageDocumentKind::Tasks => "json",
-                StorageDocumentKind::SleepRecords => "json",
-            },
+            kind.file_metadata().extension,
             std::process::id()
         ));
         match OpenOptions::new()
@@ -766,14 +769,7 @@ fn preserve_conflict_snapshot(
         let record_name = path
             .file_stem()
             .and_then(|name| name.to_str())
-            .unwrap_or(match kind {
-                StorageDocumentKind::DailyRecord => "daily-record",
-                StorageDocumentKind::DayTasks => "day-tasks",
-                StorageDocumentKind::HabitCompletions => "habit-completions",
-            StorageDocumentKind::HabitCatalog => "habit-definitions",
-                StorageDocumentKind::Tasks => "tasks",
-                StorageDocumentKind::SleepRecords => "sleep-records",
-            });
+            .unwrap_or(kind.file_metadata().recovery_stem);
         let recovery = recovery_directory.join(format!(
             "{record_name}-conflict-{nonce}-{}-{attempt}.snapshot",
             std::process::id()

@@ -1,3 +1,4 @@
+import { createSleepElement as field } from "./sleep-dom.js";
 import { formatSleepDuration } from "./sleep-format.js";
 import { renderSleepHome, renderSleepInsights } from "./sleep-insights.js";
 export type SleepPoint = Readonly<{ date: string; time: string; utcOffsetMinutes: number; approximate?: boolean }>;
@@ -41,23 +42,18 @@ export async function refreshSleepSummary(requestedDate: string | Promise<string
     button.onclick = () => { void openSleepEditor(date); };
   } catch { if (sequence === summaryRead) row.hidden = true; }
 }
-function field<T extends HTMLElement>(tag: string, parent: HTMLElement, text?: string): T {
-  const element = document.createElement(tag) as T;
-  if (text) element.textContent = text;
-  parent.append(element); return element;
-}
 function input(parent: HTMLElement, label: string, type: string, value: string, accessibleName?: string): HTMLInputElement {
-  const wrapper = field<HTMLLabelElement>("label", parent, label);
-  const control = field<HTMLInputElement>("input", wrapper); control.type = type; control.value = value; if (accessibleName) control.setAttribute("aria-label", accessibleName); return control;
+  const wrapper = field("label", parent, label);
+  const control = field("input", wrapper); control.type = type; control.value = value; if (accessibleName) control.setAttribute("aria-label", accessibleName); return control;
 }
 function endpointEditor(parent: HTMLElement, title: string, initial: SleepEndpoint, wakeDate: string): () => SleepEndpoint {
-  const section = field<HTMLFieldSetElement>("fieldset", parent); field("legend", section, title);
-  const kind = field<HTMLSelectElement>("select", section); kind.setAttribute("aria-label", title + copy("精度", " precision"));
+  const section = field("fieldset", parent); field("legend", section, title);
+  const kind = field("select", section); kind.setAttribute("aria-label", title + copy("精度", " precision"));
   for (const [value, label] of [["unrecorded",copy("未填写", "Unrecorded")],["unknown",copy("明确未知", "Explicitly unknown")],["point",copy("单点时间", "Point")],["range",copy("可靠范围", "Bounded range")],["text",copy("模糊原文", "Original wording")]]) {
-    const option = field<HTMLOptionElement>("option", kind, label); option.value = value;
+    const option = field("option", kind, label); option.value = value;
   }
   kind.value = initial.kind;
-  const controls = field<HTMLDivElement>("div", section);
+  const controls = field("div", section);
   let get = (): SleepEndpoint => initial;
   const render = (): void => {
     controls.replaceChildren();
@@ -69,12 +65,12 @@ function endpointEditor(parent: HTMLElement, title: string, initial: SleepEndpoi
       get = () => ({kind:"text",date:date.value,text:text.value}); return;
     }
     const pointControls = (point: SleepPoint | null, label: string): (() => SleepPoint) => {
-      const group = field<HTMLDivElement>("div",controls); group.className="sleep-point-fields";
+      const group = field("div",controls); group.className="sleep-point-fields";
       if (label) field("strong",group,label);
       const prefix = title + (label ? " · " + label : "") + " · ";
       const date = input(group,copy("实际日期", "Actual date"),"date",point?.date ?? defaultDate,prefix + copy("实际日期", "Actual date"));
       const time = input(group,copy("时间", "Time"),"time",point?.time ?? "",prefix + copy("时间", "Time"));
-      const zone = field<HTMLDetailsElement>("details", group);
+      const zone = field("details", group);
       field("summary", zone, copy("时区与夏令时", "Time zone and daylight saving"));
       field("p", zone, copy("按所选日期和时间自动确定。夏令时回拨的重复时刻可在此更正。", "Determined from the selected local date and time. Adjust here for a repeated time when daylight saving ends."));
       const offset = input(zone,copy("UTC 偏移（分钟）", "UTC offset (minutes)"),"number",point ? String(point.utcOffsetMinutes) : "",prefix + copy("UTC 偏移（分钟）", "UTC offset (minutes)"));
@@ -127,19 +123,19 @@ export async function openSleepEditor(date: string, metric: SleepMetric = "sleep
   const title=field("h2",dialog,copy("作息记录", "Sleep and wake record")); title.id="sleep-editor-title"; dialog.setAttribute("aria-labelledby",title.id); dialog.dataset.metric=metric;
   field("p",dialog,copy("用户报告的入睡与离床时间。估算时长包括醒后仍躺床的时间，并非生理睡眠测量。日期与 04:00 lived day 分开。", "Reported onset and get-up times. Estimated elapsed duration includes time awake in bed; it is not physiological sleep. Dates are independent of the 04:00 lived day."));
   const status=field("p",dialog); status.setAttribute("role","status");
-  const close=field<HTMLButtonElement>("button",dialog,copy("关闭", "Close")); close.type="button"; close.onclick=()=>dialog.close();
+  const close=field("button",dialog,copy("关闭", "Close")); close.type="button"; close.onclick=()=>dialog.close();
   dialog.addEventListener("close",()=>{dialog.remove();if(activeEditor===dialog)activeEditor=null;}); dialog.showModal();
   try {
     const view=await readSleepRecords(); if(activeEditor!==dialog)return;
     const record=view.records.find(r=>r.wakeDate===date);
-    const insights=field<HTMLDivElement>("div",dialog); insights.className="sleep-insights";
+    const insights=field("div",dialog); insights.className="sleep-insights";
     const history=renderSleepInsights(insights,view,date,metric,(selected,selectedMetric)=>{void openSleepEditor(selected,selectedMetric);},copy);
-    const form=field<HTMLFormElement>("form",dialog); form.className="sleep-editor-form";
+    const form=field("form",dialog); form.className="sleep-editor-form";
     const wakeDate=input(form,copy("起床日／这一晚的归属日期", "Get-up date / night index"),"date",date); wakeDate.required=true;
     const onset=endpointEditor(form,copy("入睡时间", "Sleep onset"),record?.sleepOnset??{kind:"unrecorded"},date);
     const getUp=endpointEditor(form,copy("离床时间", "Get-up time"),record?.getUp??{kind:"unrecorded"},date);
     if(record)field("p",form,copy("估算时长：", "Estimated duration: ")+formatSleepDuration(record.estimatedDurationMinutes, copy));
-    const save=field<HTMLButtonElement>("button",form,copy("保存作息", "Save record")); save.type="submit";
+    const save=field("button",form,copy("保存作息", "Save record")); save.type="submit";
     form.onsubmit=event=>{
       event.preventDefault();
       void (async()=>{

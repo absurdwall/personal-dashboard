@@ -1,3 +1,4 @@
+import { createSleepElement as element } from "./sleep-dom.js";
 import { formatSleepDuration } from "./sleep-format.js";
 import type { SleepEndpoint, SleepMetric, SleepRecord, SleepView } from "./sleep.js";
 
@@ -8,12 +9,6 @@ function shiftDate(date: string, days: number): string {
   const value = new Date(`${date}T12:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
-}
-function element<K extends keyof HTMLElementTagNameMap>(tag: K, parent: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
-  parent.append(node);
-  return node;
 }
 function button(parent: HTMLElement, text: string, action: () => void): HTMLButtonElement {
   const node = element("button", parent, text);

@@ -97,12 +97,12 @@ fn unknown_unrecorded_ranges_and_original_words_remain_distinct_and_have_no_dura
     );
     let fuzzy = save(
         &workflow,
-        json!({"wakeDate":"2026-10-21","changeId":"fuzzy","getUp":{"kind":"text","date":"2026-10-21","text":"八点多"}}),
+        json!({"recordId":partial.records[0].id,"wakeDate":"2026-10-21","changeId":"fuzzy","getUp":{"kind":"text","date":"2026-10-21","text":"八点多"}}),
     );
     assert_eq!(fuzzy.records[0].estimated_duration_minutes, None);
     let bounded = save(
         &workflow,
-        json!({"wakeDate":"2026-10-21","changeId":"range","getUp":{"kind":"range","start":{"date":"2026-10-21","time":"08:00","utcOffsetMinutes":-240},"end":{"date":"2026-10-21","time":"09:00","utcOffsetMinutes":-240},"reportedText":"八点到九点"}}),
+        json!({"recordId":fuzzy.records[0].id,"wakeDate":"2026-10-21","changeId":"range","getUp":{"kind":"range","start":{"date":"2026-10-21","time":"08:00","utcOffsetMinutes":-240},"end":{"date":"2026-10-21","time":"09:00","utcOffsetMinutes":-240},"reportedText":"八点到九点"}}),
     );
     assert_eq!(bounded.records[0].estimated_duration_minutes, None);
     fs::remove_dir_all(root).unwrap();
@@ -220,5 +220,83 @@ fn reliable_get_up_range_can_cross_midnight_without_inventing_a_point_or_duratio
         assert!(workflow.save(serde_json::from_value(input).unwrap()).is_err());
         assert_eq!(workflow.read().unwrap(), saved);
     }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn creating_an_occupied_night_rejects_without_receipt_or_record_changes() {
+    let root = vault("occupied-create");
+    let workflow = SleepWorkflow::new(&root);
+    let first = save(&workflow, json!({"wakeDate":"2026-10-21","changeId":"initial-night","getUp":{"kind":"unknown"}}));
+    let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+    let bytes = fs::read(&path).unwrap();
+    let mut input: SleepMutationInput = serde_json::from_value(json!({
+        "recordId":null,"wakeDate":"2026-10-21","changeId":"attempted-new-night",
+        "targetBinding":first.target_binding,"expectedRevision":first.revision,
+        "getUp":point("2026-10-21","07:20",-240)
+    })).unwrap();
+    assert!(workflow.save(input.clone()).is_err(), "creation must not silently revise the occupied night");
+    assert_eq!(workflow.read().unwrap(), first);
+    assert_eq!(fs::read(&path).unwrap(), bytes, "a rejected creation must not append a receipt");
+    input.record_id = Some(first.records[0].id.clone());
+    let corrected = workflow.save(input).unwrap();
+    assert_eq!(corrected.records.len(), 1);
+    assert_eq!(corrected.records[0].id, first.records[0].id);
+    assert_eq!(serde_json::to_value(&corrected.records[0].get_up).unwrap(), json!({"kind":"point","date":"2026-10-21","time":"07:20","utcOffsetMinutes":-240,"approximate":false}));
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn range(date: &str, start: &str, end: &str, offset: i32) -> serde_json::Value {
+    json!({"kind":"range","start":{"date":date,"time":start,"utcOffsetMinutes":offset},"end":{"date":date,"time":end,"utcOffsetMinutes":offset},"reportedText":format!("{start}–{end}")})
+}
+
+#[test]
+fn certainly_reversed_point_and_range_pairs_are_rejected_without_writes() {
+    let root = vault("certainly-reversed-bounds");
+    let workflow = SleepWorkflow::new(&root);
+    let before = workflow.read().unwrap();
+    for (label, onset, up) in [
+        ("point-range", point("2026-10-21","23:00",-240), range("2026-10-21","08:00","09:00",-240)),
+        ("range-point", range("2026-10-21","22:00","23:00",-240), point("2026-10-21","09:00",-240)),
+        ("range-range", range("2026-10-21","22:00","23:00",-240), range("2026-10-21","08:00","09:00",-240)),
+    ] {
+        let input = json!({"wakeDate":"2026-10-21","changeId":label,"targetBinding":before.target_binding,"expectedRevision":before.revision,"sleepOnset":onset,"getUp":up});
+        assert!(workflow.save(serde_json::from_value(input).unwrap()).is_err(), "{label} has get-up certainly before onset");
+        assert_eq!(workflow.read().unwrap(), before);
+        assert!(!root.join("life/.personal-dashboard/sleep/v1/sessions.json").exists());
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn overlapping_or_offset_ordered_ranges_preserve_uncertainty_without_duration() {
+    for (label, date, onset, up) in [
+        ("overlap-point-range", "2026-10-21", point("2026-10-21","10:00",-240), range("2026-10-21","09:00","11:00",-240)),
+        ("overlap-range-point", "2026-10-21", range("2026-10-21","08:00","10:00",-240), point("2026-10-21","09:00",-240)),
+        ("overlap-range-range", "2026-10-21", range("2026-10-21","08:00","10:00",-240), range("2026-10-21","09:00","11:00",-240)),
+        ("dst-point-range", "2026-11-01", point("2026-11-01","01:30",-240), range("2026-11-01","01:00","01:15",-300)),
+        ("dst-range-point", "2026-11-01", range("2026-11-01","01:30","01:45",-240), point("2026-11-01","01:00",-300)),
+    ] {
+        let root = vault(label);
+        let workflow = SleepWorkflow::new(&root);
+        let saved = save(&workflow, json!({"wakeDate":date,"changeId":label,"sleepOnset":onset,"getUp":up}));
+        assert_eq!(saved.records[0].sleep_onset, serde_json::from_value(onset).unwrap());
+        assert_eq!(saved.records[0].get_up, serde_json::from_value(up).unwrap());
+        assert_eq!(saved.records[0].estimated_duration_minutes, None);
+        assert_eq!(SleepWorkflow::new(&root).read().unwrap(), saved);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn bound_order_uses_actual_offsets_even_when_local_clocks_appear_ordered() {
+    let root = vault("reversed-dst-bounds");
+    let workflow = SleepWorkflow::new(&root);
+    let before = workflow.read().unwrap();
+    let input = json!({"wakeDate":"2026-11-01","changeId":"dst-reverse","targetBinding":before.target_binding,"expectedRevision":before.revision,
+        "sleepOnset":point("2026-11-01","01:30",-300),"getUp":range("2026-11-01","01:45","02:00",-240)});
+    assert!(workflow.save(serde_json::from_value(input).unwrap()).is_err());
+    assert_eq!(workflow.read().unwrap(), before);
+    assert!(!root.join("life/.personal-dashboard/sleep/v1/sessions.json").exists());
     fs::remove_dir_all(root).unwrap();
 }
