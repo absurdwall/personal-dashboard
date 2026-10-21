@@ -134,6 +134,7 @@ type ApplicationIdentity = Readonly<{
   build: string;
   sourceCommit: string;
   diagnosticVoiceFixture?: boolean;
+  diagnosticVoiceLocalMicrophonePreflight?: boolean;
 }>;
 
 declare global {
@@ -1172,12 +1173,15 @@ const collaborationSendingDrafts = new Set<string>();
 const pendingCollaborationRunChecks = new Set<string>();
 const collaborationSubmittedDrafts = new Map<string, string>();
 let diagnosticVoiceFixtureEnabled = false;
+let diagnosticVoiceLocalMicrophonePreflightEnabled = false;
 let diagnosticVoiceReport: Record<string, boolean | string> = {};
 let diagnosticVoiceReportWrite = Promise.resolve();
 
 function reportDiagnosticDictation(value: Readonly<Record<string, boolean | string>>): void {
   if (!diagnosticVoiceFixtureEnabled) return;
-  diagnosticVoiceReport = {...diagnosticVoiceReport, ...value, syntheticOnly:true};
+  // These source flags describe the cloud stream. A local permission preflight
+  // is reported separately and never supplies physical audio to that stream.
+  diagnosticVoiceReport = {...diagnosticVoiceReport, ...value, syntheticOnly:true, cloudMicrophone:false};
   const result = {...diagnosticVoiceReport};
   diagnosticVoiceReportWrite = diagnosticVoiceReportWrite
     .then(() => window.__TAURI__.core.invoke<void>("collaboration_voice_runtime_gate", {result}))
@@ -1186,7 +1190,12 @@ function reportDiagnosticDictation(value: Readonly<Record<string, boolean | stri
 
 const collaborationVoiceController = new CodexCollaborationVoiceInputController(
   new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args), async () => {
-    if (diagnosticVoiceFixtureEnabled) return captureDiagnosticDictationFixture((command,args) => window.__TAURI__.core.invoke(command,args));
+    if (diagnosticVoiceFixtureEnabled) {
+      if (diagnosticVoiceLocalMicrophonePreflightEnabled) reportDiagnosticDictation({localMicrophonePreflightRequested:true});
+      const source = await captureDiagnosticDictationFixture((command,args) => window.__TAURI__.core.invoke(command,args), diagnosticVoiceLocalMicrophonePreflightEnabled);
+      if (diagnosticVoiceLocalMicrophonePreflightEnabled) reportDiagnosticDictation({localMicrophonePreflightStopped:true});
+      return source;
+    }
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
     return {stream: await navigator.mediaDevices.getUserMedia({audio:true,video:false})};
   }, value => reportDiagnosticDictation(value)),
@@ -15227,6 +15236,7 @@ async function connectToApplication(): Promise<void> {
       "application_identity",
     );
     diagnosticVoiceFixtureEnabled = identity.diagnosticVoiceFixture === true;
+    diagnosticVoiceLocalMicrophonePreflightEnabled = diagnosticVoiceFixtureEnabled && identity.diagnosticVoiceLocalMicrophonePreflight === true;
     try {
       const language = await window.__TAURI__.core.invoke<InterfaceLanguagePreferences>(
         "interface_language_preferences",
