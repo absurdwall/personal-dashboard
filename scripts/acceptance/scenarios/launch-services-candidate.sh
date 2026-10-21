@@ -24,6 +24,9 @@ launch_app_via_launch_services() {
   if [[ -n "${PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE:-}" ]]; then
     launch_environment+=(--env "PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE=$PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE")
   fi
+  if [[ "${PERSONAL_DASHBOARD_VOICE_GATE_LOCAL_MIC_PREFLIGHT:-0}" == "1" ]]; then
+    launch_environment+=(--env "PERSONAL_DASHBOARD_VOICE_GATE_LOCAL_MIC_PREFLIGHT=1")
+  fi
   app_launch_ownership_unknown=1
   /usr/bin/open -n --stdout "$acceptance_directory/app.log" --stderr "$acceptance_directory/app.log" \
     "${launch_environment[@]}" "$app_bundle" || fail "Launch Services could not launch the isolated candidate"
