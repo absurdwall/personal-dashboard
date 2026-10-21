@@ -996,6 +996,7 @@ type HabitRefreshReport = Readonly<{
 }>;
 
 type CollaborationSessionView = Readonly<{
+  titleGenerationPending?: boolean;
   id: string;
   title: string;
   createdDate: string;
@@ -1138,6 +1139,7 @@ let dailyPlanReturnToCollaborationDate: string | null = null;
 let currentCollaborationConnection: CollaborationConnectionView | null = null;
 let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
+let collaborationTitleStatusTimer: number | null = null;
 let collaborationStatusTimer: number | null = null;
 let collaborationTargetDatePendingSession: string | null = null;
 let collaborationEmptyDraft = "";
@@ -4996,6 +4998,15 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
     currentCollaborationWorkspace = { ...workspace, context };
     renderCollaborationWorkspace();
     if (session) watchCollaborationSession(session);
+    // Naming belongs to the originating saved session, even when another chat is selected.
+    if (workspace.sessions.some(session => session.titleGenerationPending)) {
+      if (collaborationTitleStatusTimer === null) collaborationTitleStatusTimer = window.setInterval(() => {
+        if (!vaultSelectionInProgress) void refreshCollaborationWorkspace(true);
+      }, 750);
+    } else if (collaborationTitleStatusTimer !== null) {
+      window.clearInterval(collaborationTitleStatusTimer);
+      collaborationTitleStatusTimer = null;
+    }
   } catch (error) {
     if (request !== collaborationWorkspaceRequest) return;
     if (quiet) return;
