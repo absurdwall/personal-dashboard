@@ -2110,6 +2110,16 @@ where
         crate::sleep::SleepWorkflow::new(&vault).read()
     }
 
+    /// Capture and validate the selection before I/O so a concurrent selection
+    /// cannot supply another Vault's records to an originating model turn.
+    pub fn sleep_records_for_vault(&self, expected_vault_key: &str) -> Result<crate::sleep::SleepView, String> {
+        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再读取作息。")?;
+        if crate::collaboration::vault_key(&vault) != expected_vault_key {
+            return Err("Selected Vault changed; no sleep records read.".into());
+        }
+        crate::sleep::SleepWorkflow::new(&vault).read()
+    }
+
     pub fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
         let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
         crate::sleep::SleepWorkflow::new(&vault).save(input)

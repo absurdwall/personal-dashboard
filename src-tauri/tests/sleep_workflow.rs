@@ -202,3 +202,23 @@ fn saving_a_sleep_correction_preserves_later_external_writes_to_the_displaced_fi
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn reliable_get_up_range_can_cross_midnight_without_inventing_a_point_or_duration() {
+    let root = vault("midnight-get-up-range");
+    let workflow = SleepWorkflow::new(&root);
+    let range = json!({"kind":"range","start":{"date":"2026-10-20","time":"23:50","utcOffsetMinutes":-240,"approximate":false},"end":{"date":"2026-10-21","time":"00:10","utcOffsetMinutes":-240,"approximate":false},"reportedText":"between 23:50 and 00:10"});
+    let saved = save(&workflow, json!({"wakeDate":"2026-10-21","changeId":"cross-midnight","sleepOnset":point("2026-10-20","20:00",-240),"getUp":range}));
+    assert_eq!(serde_json::to_value(&saved.records[0].get_up).unwrap(), range);
+    assert_eq!(saved.records[0].estimated_duration_minutes, None);
+    assert_eq!(SleepWorkflow::new(&root).read().unwrap(), saved);
+    for (change, bad_range) in [
+        ("wrong-index",json!({"kind":"range","start":{"date":"2026-10-21","time":"23:50","utcOffsetMinutes":-240},"end":{"date":"2026-10-22","time":"00:10","utcOffsetMinutes":-240},"reportedText":"different night"})),
+        ("reverse",json!({"kind":"range","start":{"date":"2026-10-21","time":"00:10","utcOffsetMinutes":-240},"end":{"date":"2026-10-20","time":"23:50","utcOffsetMinutes":-240},"reportedText":"reverse"})),
+    ] {
+        let input = json!({"recordId":saved.records[0].id,"wakeDate":"2026-10-21","changeId":change,"targetBinding":saved.target_binding,"expectedRevision":saved.revision,"getUp":bad_range});
+        assert!(workflow.save(serde_json::from_value(input).unwrap()).is_err());
+        assert_eq!(workflow.read().unwrap(), saved);
+    }
+    fs::remove_dir_all(root).unwrap();
+}

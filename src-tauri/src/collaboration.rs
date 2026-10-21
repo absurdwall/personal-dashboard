@@ -980,7 +980,7 @@ where
 /// These operations use TodayApplication and never mutate the canonical Tasks store.
 pub trait CollaborationDailyDataService: Send + Sync {
     fn sleep_records_available(&self) -> bool { false }
-    fn read_sleep_records(&self) -> Result<crate::sleep::SleepView, String> {
+    fn read_sleep_records(&self, _expected_vault_key: &str) -> Result<crate::sleep::SleepView, String> {
         Err("Sleep records are unavailable in this runtime.".into())
     }
     fn save_sleep_record(&self, _input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
@@ -1130,7 +1130,7 @@ where
     C: TodayClock + Send + Sync,
 {
     fn sleep_records_available(&self) -> bool { true }
-    fn read_sleep_records(&self) -> Result<crate::sleep::SleepView, String> { self.application.sleep_records() }
+    fn read_sleep_records(&self, expected_vault_key: &str) -> Result<crate::sleep::SleepView, String> { self.application.sleep_records_for_vault(expected_vault_key) }
     fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> { self.application.save_sleep_record(input) }
 
     fn read_date(&self, date: &str) -> Result<TodayView, String> {
@@ -4748,7 +4748,7 @@ impl CollaborationApplication {
                 #[serde(tag="action",rename_all="camelCase",deny_unknown_fields)]
                 enum Call { Read, Save { input: crate::sleep::SleepMutationInput } }
                 match serde_json::from_value(call.arguments).map_err(|e|e.to_string())? {
-                    Call::Read => self.daily_data_service.read_sleep_records(),
+                    Call::Read => self.daily_data_service.read_sleep_records(vault_key),
                     Call::Save{input} => self.daily_data_service.save_sleep_record(input),
                 }
             })();

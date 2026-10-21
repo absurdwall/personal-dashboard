@@ -1,3 +1,4 @@
+import { formatSleepDuration } from "./sleep-format.js";
 import { renderSleepHome, renderSleepInsights } from "./sleep-insights.js";
 export type SleepPoint = Readonly<{ date: string; time: string; utcOffsetMinutes: number; approximate?: boolean }>;
 export type SleepEndpoint = Readonly<
@@ -17,10 +18,6 @@ export function formatSleepEndpoint(endpoint: SleepEndpoint, showDate = true): s
   if (endpoint.kind === "range") return endpoint.reportedText + ` (${showDate ? endpoint.start.date + " " : ""}${endpoint.start.time}–${showDate ? endpoint.end.date + " " : ""}${endpoint.end.time})`;
   if (endpoint.kind === "text") return `${showDate ? endpoint.date + " " : ""}${endpoint.text}`;
   return endpoint.kind === "unknown" ? copy("未知", "unknown") : copy("未填写", "unrecorded");
-}
-export function formatSleepDuration(minutes: number | null): string {
-  if (minutes === null) return "—";
-  return copy(`${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`, `${Math.floor(minutes / 60)}h ${minutes % 60}m`);
 }
 export function readSleepRecords(): Promise<SleepView> { return window.__TAURI__.core.invoke<SleepView>("sleep_records"); }
 let summaryDate = "";
@@ -141,7 +138,7 @@ export async function openSleepEditor(date: string, metric: SleepMetric = "sleep
     const wakeDate=input(form,copy("起床日／这一晚的归属日期", "Get-up date / night index"),"date",date); wakeDate.required=true;
     const onset=endpointEditor(form,copy("入睡时间", "Sleep onset"),record?.sleepOnset??{kind:"unrecorded"},date);
     const getUp=endpointEditor(form,copy("离床时间", "Get-up time"),record?.getUp??{kind:"unrecorded"},date);
-    if(record)field("p",form,copy("估算时长：", "Estimated duration: ")+formatSleepDuration(record.estimatedDurationMinutes));
+    if(record)field("p",form,copy("估算时长：", "Estimated duration: ")+formatSleepDuration(record.estimatedDurationMinutes, copy));
     const save=field<HTMLButtonElement>("button",form,copy("保存作息", "Save record")); save.type="submit";
     form.onsubmit=event=>{
       event.preventDefault();
