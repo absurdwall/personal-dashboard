@@ -41,4 +41,4 @@ The native script used explicitly supplied existing Codex auth and a task-owned 
 
 A local microphone permission preflight diagnostic is prepared behind an additional default-off environment gate. It has not been executed: no microphone request or permission/security change is authorized. The final core-only run explicitly set `PERSONAL_DASHBOARD_VOICE_GATE_LOCAL_MIC_PREFLIGHT=0` and skipped dictation entirely.
 
-Implementation, automated suites, independent review and final core/reopen evidence are recorded on an integration branch. Real voice acceptance remains unmet, so #131 is not complete. PR publication/merge, installation, notarization, public release and formal App replacement are separate boundaries; none occurred in this acceptance work.
+Implementation, automated suites, independent review and final core/reopen evidence are recorded on an integration branch. Real voice acceptance remains unmet, so #131 is not complete. Draft PR #132 is published; it remains draft. No main merge, installation, notarization, public release or formal App replacement occurred.
