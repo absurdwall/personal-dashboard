@@ -447,6 +447,24 @@ impl AppServerTransport for DynamicRuntime {
             self.results.lock().unwrap().push(result);
             return Ok(RuntimeTurnResult{text:"Verify the existing long-term document; other domains retain their state.".into(),runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
         }
+        if request.user_text == "record synthetic sleep" {
+            let call = |id:&str, arguments:Value| handler(RuntimeDynamicToolCall {
+                thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
+                call_id: id.into(), tool: "dashboard_sleep_records".into(), arguments,
+            });
+            let read = call("sleep-read", json!({"action":"read"}));
+            assert!(read.success,"{}",read.text);
+            let view:Value=serde_json::from_str(&read.text).unwrap();
+            let input=json!({"wakeDate":"2026-09-27","changeId":"synthetic-sleep-first","targetBinding":view["targetBinding"],"expectedRevision":view["revision"],
+                "sleepOnset":{"kind":"point","date":"2026-09-26","time":"23:50","utcOffsetMinutes":-240},
+                "getUp":{"kind":"point","date":"2026-09-27","time":"07:20","utcOffsetMinutes":-240}});
+            let save=call("sleep-save",json!({"action":"save","input":input}));
+            self.results.lock().unwrap().push(save.clone());
+            assert!(save.success,"{}",save.text);
+            let duplicate=call("sleep-save",json!({"action":"save","input":input}));
+            assert!(duplicate.success); assert_eq!(duplicate.text,save.text);
+            return Ok(RuntimeTurnResult{text:save.text,runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
+        }
         if let Some(operation) = request.user_text.strip_prefix("task-contract:") {
             let tools = self.registered_tools.lock().unwrap();
             let description = tools.iter().find(|tool| tool["name"] == "dashboard_task_operation")
@@ -1127,7 +1145,7 @@ fn initial_plan_description_example(registered_tools: &[Value]) -> Result<Value,
         .ok_or("Dashboard tool description is missing")?;
     let (_, example) = description.split_once("Minimal valid InitialPlan payload:")
         .ok_or("code-mode description does not provide the InitialPlan contract")?;
-    serde_json::from_str(example.trim()).map_err(|error| error.to_string())
+    serde_json::from_str(example.trim().lines().next().ok_or("InitialPlan example is empty")?).map_err(|error| error.to_string())
 }
 
 fn daily_plan_replan_example(registered_tools: &[Value]) -> Result<Value, String> {
@@ -1271,8 +1289,8 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.5.2");
-    assert_eq!(binding["toolSetVersion"], "1.4.1");
+    assert_eq!(binding["skillVersion"], "1.6.0");
+    assert_eq!(binding["toolSetVersion"], "1.5.0");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));
@@ -1801,7 +1819,7 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
     wait_for_finish(&application, &session.id, "vault-a");
 
     let registered = registered_tools.lock().unwrap();
-    assert_eq!(registered.len(), 3);
+    assert_eq!(registered.len(), 4);
     assert_eq!(registered[0]["name"], "dashboard_task_operation");
     assert!(
         registered[0]["inputSchema"]["oneOf"]
@@ -2170,7 +2188,7 @@ fn daily_plan_uses_the_shared_review_tool_and_persists_only_after_approval() {
     wait_for_finish(&application, &session.id, "vault-a");
 
     let registered = registered_tools.lock().unwrap();
-    assert_eq!(registered.len(), 3, "plan actions retain the shared operation tool beside bounded history and derived refresh");
+    assert_eq!(registered.len(), 4, "plan actions retain the shared operation tool beside bounded history and derived refresh");
     assert_eq!(registered[0]["name"], "dashboard_task_operation");
     assert!(registered[0]["inputSchema"]["oneOf"]
         .as_array()
@@ -4721,7 +4739,7 @@ fn automatic_session_human_continuation_saves_tasks_records_habits_and_memory_th
     );
     assert!(results.lock().unwrap().iter().all(|result| result.success));
     let tools = registered.lock().unwrap();
-    assert_eq!(tools.len(), 4);
+    assert_eq!(tools.len(), 5);
     let variants = tools[0]["inputSchema"]["oneOf"].as_array().unwrap();
     for name in [
         "completeTask",
@@ -8004,7 +8022,7 @@ fn personal_retro_reads_three_real_histories_for_complete_lived_days_without_bus
     assert_eq!(explicit.usage_bindings.len(),2);
     for binding in &explicit.usage_bindings {
         assert_eq!(binding.skill_name,"personal-dashboard-collaboration");
-        assert_eq!(binding.skill_version,"1.5.2");
+        assert_eq!(binding.skill_version,"1.6.0");
         assert_eq!(binding.registered_tools.iter().filter(|tool|*tool=="dashboard_read_history").count(),1);
     }
     if let Ok(destination)=std::env::var("PDCR_RETRO_EVIDENCE_DIR") {
@@ -8141,6 +8159,33 @@ fn evening_entry_save_failure_has_no_saved_session_and_retry_creates_one() {
     assert_eq!(again.session.id, saved.session.id);
     assert_eq!(app.list_sessions("2026-09-20").unwrap().len(), 1);
 }
+
+#[test]
+fn collaboration_sleep_tool_and_today_editor_share_the_same_selected_vault_record() {
+    let directory=IsolatedDirectory::new(); let path=directory.vault("sleep-vault");
+    let vault=MutableVault::new(&path);
+    let (application,tools,results)=new_application(&directory,&vault,MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false)));
+    let session=application.create_session("2026-09-27").unwrap();
+    application.submit_message("vault-a",&session.id,"2026-09-27","record synthetic sleep").unwrap();
+    wait_for_finish(&application,&session.id,"vault-a");
+    assert!(tools.lock().unwrap().iter().any(|t|t["name"]=="dashboard_sleep_records"));
+    let result=results.lock().unwrap()[0].clone(); assert!(result.success);
+    let today=TodayApplication::new(vault.clone(),NoVaultPicker,FixedClock);
+    let canonical=today.sleep_records().unwrap();
+    assert_eq!(canonical.records.len(),1); assert_eq!(canonical.records[0].estimated_duration_minutes,Some(450));
+    let readback:Value=serde_json::from_str(&result.text).unwrap();
+    assert_eq!(readback,serde_json::to_value(&canonical).unwrap());
+    let changed=today.save_sleep_record(serde_json::from_value(json!({
+        "recordId":canonical.records[0].id,"wakeDate":"2026-09-27","changeId":"manual-supplement",
+        "targetBinding":canonical.target_binding,"expectedRevision":canonical.revision,
+        "getUp":{"kind":"point","date":"2026-09-27","time":"08:20","utcOffsetMinutes":-240,"approximate":true}
+    })).unwrap()).unwrap();
+    assert_eq!(changed.records[0].id,canonical.records[0].id);
+    assert_eq!(changed.records[0].estimated_duration_minutes,Some(510));
+    let reopened=TodayApplication::new(vault,NoVaultPicker,FixedClock);
+    assert_eq!(reopened.sleep_records().unwrap(),changed);
+    assert!(fs::read_dir(path.join("life/Journal/Daily")).unwrap().next().is_none());
+        }
 
 #[test]
 fn first_task_requests_from_the_registered_contract_save_and_read_back_without_repair() {

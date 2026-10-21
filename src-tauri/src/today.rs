@@ -2091,6 +2091,16 @@ where
         }
     }
 
+    pub fn sleep_records(&self) -> Result<crate::sleep::SleepView, String> {
+        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再读取作息。")?;
+        crate::sleep::SleepWorkflow::new(&vault).read()
+    }
+
+    pub fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
+        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
+        crate::sleep::SleepWorkflow::new(&vault).save(input)
+    }
+
     fn day_tasks_for(
         &self,
         vault: &Path,
