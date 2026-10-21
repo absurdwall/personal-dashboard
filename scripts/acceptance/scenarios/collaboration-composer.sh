@@ -11,7 +11,9 @@ run_collaboration_composer_scenario() {
   [[ -f "$auth" ]] || fail "provide explicit existing auth.json for the isolated synthetic profile"
   [[ -f "${PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE:-}" && -n "${PERSONAL_DASHBOARD_VOICE_GATE_RESULT:-}" ]] ||
     fail "synthetic fixture and diagnostic environment gate are required; microphone fallback is not an acceptance path"
-  /usr/bin/strings "$app_executable" | rg "collaboration_voice_gate_fixture" > /dev/null ||
+  # Release optimization can coalesce/split the IPC command name. This error
+  # constant only exists inside the feature-gated native fixture command.
+  /usr/bin/strings "$app_executable" | rg -F "Fixture is not configured" > /dev/null ||
     fail "candidate lacks diagnostic voice fixture capability; refusing microphone fallback"
   [[ "$seconds" =~ ^([1-9]|1[0-9]|20)$ ]] || fail "voice fixture wait must be 1-20 seconds"
   mkdir -p "$vault/.obsidian" "$acceptance_data_directory/codex-profile" "$captures"

@@ -4,7 +4,7 @@ import {probe} from './helpers/complete-page.ts';
 
 // The full shipped page, voice controller, transcript assembler and browser runtime
 // execute unchanged. Only public IPC and browser media/WebRTC are controlled.
-const mediaBoundary = `
+const mediaBoundary = String.raw`
   const track={readyState:'live',stop(){this.readyState='ended';},onended:null};
   const stream={getTracks:()=>[track],getAudioTracks:()=>[track]};
   Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{calls.push({command:'synthetic_microphone_capture'});return stream;}}});
@@ -22,7 +22,8 @@ const mediaBoundary = `
   };
   const realInvoke=window.__TAURI__.core.invoke;
   window.__TAURI__.core.invoke=async(command,args)=>{
-    if(command==='collaboration_dictation_start'){calls.push({command,args});return {inputId:args.inputId,sdp:'synthetic'};}
+    if(command==='collaboration_voice_runtime_gate'){calls.push({command,args});return;}
+    if(command==='collaboration_dictation_start'){calls.push({command,args});return {inputId:args.inputId,sdp:'v=0\r\na=ice-lite\r\na=ice-options:trickle\r\na=candidate:synthetic-private-marker\r\n'};}
     if(command==='collaboration_dictation_poll')return [];
     if(command==='collaboration_dictation_stop'){calls.push({command,args});return;}
     if(command==='collaboration_save_draft'){calls.push({command,args});responses.collaboration_workspace.sessions[0].draft=args.draft;
@@ -60,7 +61,7 @@ for (const {width,height,language,fixture} of scenarios) {
       voice.click();await until(()=>status.dataset.state==='transcribing');document.title='stopping';
       await settle(()=>status.dataset.state==='idle');document.title='idle';
       input.focus();input.value+=' edited';input.dispatchEvent(new Event('input',{bubbles:true}));
-      return JSON.stringify({keyboard,recording,idle:{input:rect(input),controls:rect(controls),status:status.textContent,state:status.dataset.state,preview:document.querySelector('#collaboration-voice-preview').textContent,cancelHidden:document.querySelector('#collaboration-voice-cancel').hidden,value:input.value,disabled:input.disabled,run:rect(document.querySelector('#collaboration-run-status'))},fixtureStarts:calls.filter(c=>c.command==='synthetic_fixture_started').length,microphones:calls.filter(c=>c.command==='synthetic_microphone_capture').length,submits:calls.filter(c=>c.command==='collaboration_submit_message').length,starts:calls.filter(c=>c.command==='collaboration_dictation_start').length,stops:calls.filter(c=>c.command==='collaboration_dictation_stop').length,overflow:document.documentElement.scrollWidth>innerWidth,errors:window.probeErrors});
+      return JSON.stringify({diagnostics:calls.filter(c=>c.command==='collaboration_voice_runtime_gate').at(-1)?.args.result??null,keyboard,recording,idle:{input:rect(input),controls:rect(controls),status:status.textContent,state:status.dataset.state,preview:document.querySelector('#collaboration-voice-preview').textContent,cancelHidden:document.querySelector('#collaboration-voice-cancel').hidden,value:input.value,disabled:input.disabled,run:rect(document.querySelector('#collaboration-run-status'))},fixtureStarts:calls.filter(c=>c.command==='synthetic_fixture_started').length,microphones:calls.filter(c=>c.command==='synthetic_microphone_capture').length,submits:calls.filter(c=>c.command==='collaboration_submit_message').length,starts:calls.filter(c=>c.command==='collaboration_dictation_start').length,stops:calls.filter(c=>c.command==='collaboration_dictation_stop').length,overflow:document.documentElement.scrollWidth>innerWidth,errors:window.probeErrors});
     `,true,height,{
       application_identity:{productName:'Synthetic Dashboard',diagnosticVoiceFixture:fixture},
       collaboration_voice_gate_fixture:[1,2,3],
@@ -74,6 +75,19 @@ for (const {width,height,language,fixture} of scenarios) {
     assert.equal(result.idle.cancelHidden,true);
     assert.equal(result.idle.value,'Keyboard text\n'+'Synthetic final transcript 中文 '.repeat(16).trim()+' edited');
     assert.equal(result.idle.disabled,false);
+    if(fixture){
+      assert.ok(result.diagnostics);
+      assert.equal(result.diagnostics.remoteAnswer,true);
+      assert.equal(result.diagnostics.remoteDescriptionApplied,true);
+      assert.equal(result.diagnostics.remoteHasCandidate,true);
+      assert.equal(result.diagnostics.remoteIceLite,true);
+      assert.equal(result.diagnostics.remoteTrickle,true);
+      assert.ok(!JSON.stringify(result.diagnostics).includes('synthetic-private-marker'));
+      assert.equal(result.diagnostics.dataChannelOpen,true);
+      assert.equal(result.diagnostics.productionFinalizeReturned,true);
+      assert.equal(result.diagnostics.productionIncomplete,false);
+      assert.ok(Object.values(result.diagnostics).every(value=>typeof value==='boolean'||typeof value==='string'&&value.length<=120));
+    }else assert.equal(result.diagnostics,null);
     assert.equal(result.fixtureStarts,fixture?1:0);
     assert.equal(result.microphones,fixture?0:1);
     assert.equal(result.submits,0);

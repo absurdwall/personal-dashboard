@@ -276,7 +276,7 @@ test("one aggregate draft save shares the existing queue with pending edits and 
 
 // Exercise the production browser runtime through the controller boundary with
 // a synthetic peer and clock. No actual microphone, cloud calls or long waits.
-async function browserFixture(t:TestContext, options: {connecting?:boolean; closeDuringSetup?:boolean; pauseAt?:"permission"|"offer"|"native"|"remote"; rejectNative?:boolean; pollPending?:boolean; tailPause?:"resume"|"replace"; tailReject?:boolean; closePending?:boolean; closeSendReject?:boolean} = {}) {
+async function browserFixture(t:TestContext, options: {connecting?:boolean; closeDuringSetup?:boolean; pauseAt?:"permission"|"offer"|"native"|"remote"; rejectNative?:boolean; pollPending?:boolean; tailPause?:"resume"|"replace"; tailReject?:boolean; closePending?:boolean; closeSendReject?:boolean; observerThrows?:boolean} = {}) {
   t.mock.timers.enable({apis:["setTimeout","setInterval","Date"]});
   const descriptors=new Map<string,PropertyDescriptor|undefined>();
   const replace=(name:string,value:unknown)=>{descriptors.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{configurable:true,value});};
@@ -335,7 +335,7 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
     if(command==="collaboration_dictation_start")nativeActive=true;
     if(command==="collaboration_dictation_stop")nativeActive=false;
     return (command==="collaboration_dictation_start"?{inputId:args.inputId,sdp:"synthetic-answer"}:command==="collaboration_dictation_poll"?nativeEvents.splice(0):[]) as T;
-  });
+  }, undefined, options.observerThrows ? () => { throw new Error("Synthetic diagnostic observer failure"); } : undefined);
   let draft="existing";
   let incomplete=0;
   const failures:string[]=[];
@@ -349,6 +349,18 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
     sourceStopped:()=>sourceStopped,zeroOffset:()=>zeroOffset,replacements:()=>replacements,senderTrack:()=>senderTrack,
     nativeActive:()=>nativeActive,close:()=>channel.onclose?.(),openListener:()=>channel.onopen,emit:(value:unknown)=>channel.onmessage?.({data:JSON.stringify(value)}),draft:()=>draft,incomplete:()=>incomplete,trackStopped:()=>trackStopped,peerClosed:()=>peerClosed};
 }
+
+test("diagnostic observer failures cannot change dictation capture or finalization",async t=>{
+  const f=await browserFixture(t,{observerThrows:true});
+  assert.equal(f.controller.state,"recording");
+  f.emit(timedPreview("p","received",0,50));f.controller.stop();await tick();
+  t.mock.timers.tick(1_000);await tick();
+  f.emit(timedFinal("turn","final text",0,50));f.emit({type:"session.closed"});
+  t.mock.timers.tick(0);await tick();
+  assert.equal(f.draft(),"existing\nfinal text");
+  assert.equal(f.controller.state,"idle");
+  assert.equal(f.incomplete(),0);assert.deepEqual(f.failures,[]);
+});
 
 
 test("Stop requests the observed v3 close after zero-audio grace and accepts final then raw terminal",async t=>{
