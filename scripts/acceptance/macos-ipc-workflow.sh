@@ -6760,10 +6760,12 @@ run_live_daily_cycle_scenario() {
 source "$script_directory/scenarios/task-saved-readback.sh"
 source "$script_directory/scenarios/collaboration-composer.sh"
 source "$script_directory/scenarios/launch-services-candidate.sh"
+source "$script_directory/scenarios/experience-124.sh"
 
 case "$acceptance_scenario" in
   task-saved-readback) run_task_saved_readback_scenario ;;
   collaboration-composer) run_collaboration_composer_scenario ;;
+  experience-124) run_experience_124_scenario ;;
   shell) run_shell_scenario ;;
   direct) run_direct_record_scenario ;;
   state-semantics) run_state_semantics_scenario ;;
