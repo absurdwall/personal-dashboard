@@ -977,6 +977,14 @@ where
 /// Shared adapter seam for collaboration writes to Daily Records and local Habit completions.
 /// These operations use TodayApplication and never mutate the canonical Tasks store.
 pub trait CollaborationDailyDataService: Send + Sync {
+    fn sleep_records_available(&self) -> bool { false }
+    fn read_sleep_records(&self) -> Result<crate::sleep::SleepView, String> {
+        Err("Sleep records are unavailable in this runtime.".into())
+    }
+    fn save_sleep_record(&self, _input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
+        Err("Sleep records are unavailable in this runtime.".into())
+    }
+
     fn is_available(&self) -> bool {
         true
     }
@@ -1119,6 +1127,10 @@ where
     E: TodayWorkspaceExchange + Send + Sync,
     C: TodayClock + Send + Sync,
 {
+    fn sleep_records_available(&self) -> bool { true }
+    fn read_sleep_records(&self) -> Result<crate::sleep::SleepView, String> { self.application.sleep_records() }
+    fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> { self.application.save_sleep_record(input) }
+
     fn read_date(&self, date: &str) -> Result<TodayView, String> {
         self.application.read_date(date)
     }
@@ -4680,6 +4692,34 @@ impl CollaborationApplication {
                 success: false,
             };
         }
+        if call.tool == "dashboard_sleep_records" {
+            let result = (|| -> Result<crate::sleep::SleepView, String> {
+                if automatic_plan || !self.daily_data_service.sleep_records_available() {
+                    return Err("Sleep records are unavailable in this round.".into());
+                }
+                self.read_state(|state| -> Result<(),String> {
+                    let session = state.sessions.iter().find(|s| s.id==session_id && s.vault_key.as_deref()==Some(vault_key)).ok_or("Sleep request session is unavailable")?;
+                    if session.run_id.as_deref()!=Some(execution_id) || !matches!(session.run_state.as_str(),"reading"|"thinking") {
+                        return Err("Sleep request is no longer active; no data changed.".into());
+                    }
+                    Ok(())
+                })??;
+                if self.context_source.current_vault_key()?.as_deref()!=Some(vault_key) {
+                    return Err("Selected Vault changed; no sleep data changed.".into());
+                }
+                #[derive(Deserialize)]
+                #[serde(tag="action",rename_all="camelCase",deny_unknown_fields)]
+                enum Call { Read, Save { input: crate::sleep::SleepMutationInput } }
+                match serde_json::from_value(call.arguments).map_err(|e|e.to_string())? {
+                    Call::Read => self.daily_data_service.read_sleep_records(),
+                    Call::Save{input} => self.daily_data_service.save_sleep_record(input),
+                }
+            })();
+            return match result {
+                Ok(view)=>RuntimeDynamicToolResult{success:true,text:serde_json::to_string(&view).unwrap_or_default()},
+                Err(error)=>RuntimeDynamicToolResult{success:false,text:error},
+            };
+        }
         if call.tool == COLLABORATION_HISTORY_TOOL {
             let result = (|| -> Result<Value, String> {
                 if automatic_plan { return Err("History tool is unavailable in automatic rounds".into()); }
@@ -7404,6 +7444,7 @@ impl CollaborationApplication {
             && memory.long_term.state == "ready"
             && memory.long_term.revision.is_some();
         let mut dynamic_tools = Vec::new();
+
         if automatic_plan {
             if daily_plan_operations_available {
                 dynamic_tools.push(collaboration_task_tool_spec(false, true, false));
@@ -7423,6 +7464,9 @@ impl CollaborationApplication {
         }
         if !automatic_plan && memory_operations_available {
             dynamic_tools.push(collaboration_memory_tool_spec());
+        }
+        if !automatic_plan && self.daily_data_service.sleep_records_available() {
+            dynamic_tools.push(crate::sleep::tool_spec(usage::description("tool.sleepRecords")));
         }
         let mut prior_external_actions = Vec::new();
         for prior_session in state.sessions.iter().filter(|prior| prior.vault_key.as_deref() == Some(vault_key)) {
@@ -9813,6 +9857,8 @@ fn collaboration_task_tool_spec(
             operation_property["description"] = json!(usage::description("task.create"));
         } else if name == "updateTask" {
             operation_property["description"] = json!(usage::description("task.update"));
+        } else if name == "deleteTask" {
+            operation_property["description"] = json!(usage::description("task.delete"));
         } else if name == "completeTask" {
             operation_property["description"] = json!(usage::description("task.complete"));
         } else if name == "saveDailyPlan" {
@@ -9822,6 +9868,20 @@ fn collaboration_task_tool_spec(
         }
         if name == "createShortRecord" {
             operation_property["description"] = json!(usage::description("dailyRecord.shortRecord"));
+        }
+        if matches!(name, "createTask" | "updateTask" | "deleteTask") {
+            for (field, description) in [("taskId", "task.id"), ("listId", "task.listId"),
+                ("date", "task.date"), ("time", "task.time")] {
+                if let Some(property) = properties.get_mut(field) {
+                    property["description"] = json!(usage::description(description));
+                }
+            }
+            if let Some(date) = properties.get_mut("date") {
+                date["pattern"] = json!(r"^\d{4}-\d{2}-\d{2}$");
+            }
+            if let Some(time) = properties.get_mut("time") {
+                time["pattern"] = json!(r"^([01]\d|2[0-3]):[0-5]\d$");
+            }
         }
         properties.insert("operation".into(), operation_property);
         let mut required_fields = vec!["operation"];
@@ -10016,6 +10076,21 @@ fn collaboration_task_tool_spec(
     } else {
         description.to_owned()
     };
+    // Code-mode clients can collapse oneOf to unknown; expose the same strict
+    // Task shapes beside the executable schema so the first call is complete.
+    let description = if task_operations_available && include_manual_fields {
+        let examples = [
+            ("createTask", json!({"operation":"createTask", "executionMode":"execute", "name":"Synthetic task",
+                "content":"Synthetic note", "date":"2026-09-28", "time":"09:00", "listId":null})),
+            ("updateTask", json!({"operation":"updateTask", "executionMode":"execute", "taskId":"<current taskId>",
+                "name":"Synthetic task updated", "content":null, "date":"2026-09-29", "time":"10:30", "listId":"<current or destination listId>"})),
+            ("deleteTask", json!({"operation":"deleteTask", "executionMode":"execute", "taskId":"<current taskId>"})),
+        ];
+        let examples = examples.iter().map(|(name, payload)| format!("Minimal valid {name} payload: {payload}"))
+            .collect::<Vec<_>>().join("\n");
+        format!("{description}\n\n{}\n{}\n{}\nExamples use synthetic content; replace values with the requested change and current source IDs.\n{examples}", usage::description("task.create"),
+            usage::description("task.update"), usage::description("task.delete"))
+    } else { description };
     json!({
         "name": COLLABORATION_TASK_TOOL,
         "description": description,
