@@ -1,3 +1,4 @@
+import { configureSleepLanguage, refreshSleepSummary } from "./sleep.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
@@ -7297,6 +7298,11 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
 }
 
 function renderToday(view: TodayView, preserveTaskEditors = false): void {
+  configureSleepLanguage(() => currentInterfaceLanguage);
+  void (async () => {
+    const date = view.isToday ? (await window.__TAURI__.core.invoke<TodayClockView>("today_clock")).date : view.date;
+    await refreshSleepSummary(date);
+  })().catch(() => {});
   closeTodayAxisTaskPopup(false, false);
   closeTodayAxisFactPopup(false);
   const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
