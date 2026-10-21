@@ -1189,10 +1189,10 @@ function reportDiagnosticDictation(value: Readonly<Record<string, boolean | stri
 }
 
 const collaborationVoiceController = new CodexCollaborationVoiceInputController(
-  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args), async () => {
+  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args), async signal => {
     if (diagnosticVoiceFixtureEnabled) {
       if (diagnosticVoiceLocalMicrophonePreflightEnabled) reportDiagnosticDictation({localMicrophonePreflightRequested:true});
-      const source = await captureDiagnosticDictationFixture((command,args) => window.__TAURI__.core.invoke(command,args), diagnosticVoiceLocalMicrophonePreflightEnabled);
+      const source = await captureDiagnosticDictationFixture((command,args) => window.__TAURI__.core.invoke(command,args), diagnosticVoiceLocalMicrophonePreflightEnabled, signal);
       if (diagnosticVoiceLocalMicrophonePreflightEnabled) reportDiagnosticDictation({localMicrophonePreflightStopped:true});
       return source;
     }
