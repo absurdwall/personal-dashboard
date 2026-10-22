@@ -123,7 +123,7 @@ for(const [width,height]of [[830,758],[969,723],[1280,720]])for(const language o
       const normalHabit=habit;habit=key=>({...normalHabit(key),name:'A very long renamed Habit with preserved source context',localizedNames:{zh:'起床并保留一段安静的早间准备时间'}});
     `);
     for(const state of result.results){
-      assert.equal(state.text,state.title,'full formatted evidence stays available');assert.equal(state.overflow,false);
+      assert.equal(state.title,'','the full value remains in text without a duplicate language-stale tooltip');assert.equal(state.overflow,false);
       assert.ok(state.box.height<=(state.lineHeight||16)*3+1,'actual slot remains bounded: '+JSON.stringify(state));
       if(state.kind==='missing')assert.equal(new Set(state.lines.map(line=>line.top)).size,1,'Unrecorded must not split midword');
       if(state.kind!=='text')assert.ok(state.lines.every(line=>line.width<=state.box.width+1),'clock/state glyphs must not be clipped horizontally: '+JSON.stringify(state));
