@@ -90,7 +90,7 @@ export function editingRenderer() {
   for (const name of functions.match(/\btoday[A-Z]\w*/g) ?? []) if (!(name in r)) r[name] = null;
   for (const name of ["renderWorkspaceRailContext", "renderVaultSettings", "renderLegacyDayTasks",
     "renderHistoricalHabitCorrections", "renderTodayTimeline", "renderTodayTimeAxis", "showTodayPhase", "renderReadingList",
-    "renderReadingParagraphs", "scheduleTodayAxisFollowScroll", "updateTodayTimeAxisClock"]) r[name] = () => {};
+    "renderReadingParagraphs", "scheduleTodayAxisFollowScroll", "updateTodayTimeAxisClock", "ensureSleepSummaryDate"]) r[name] = () => {};
   Object.assign(r, {
     submitDatedNote, DatedNoteTargetChangedError, clockResultMatchesSession, clockTickDecision,
     todayDaytimeContent: new Element("input"), todayDaytimeKind: new Element("select"),

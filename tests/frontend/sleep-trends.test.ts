@@ -349,3 +349,133 @@ test('sleep save recovery diagnostics switch language without changing paths or 
  assert.equal(result.open,true);
  assert.deepEqual(result.errors,[]);
 });
+
+const midnightBoundary = `
+ let observedClock={date:'2026-08-10',livedDate:'2026-08-10',time:'23:59'};
+ let allowClockTimer=false,clockTicks=0;
+ const realSetInterval=window.setInterval.bind(window);
+ window.setInterval=(callback,delay,...args)=>realSetInterval(()=>{
+   if(delay!==60000||allowClockTimer)callback(...args);
+ },delay===60000?10:delay);
+ const baseInvoke=window.__TAURI__.core.invoke;
+ const point=(date,time)=>({kind:'point',date,time,utcOffsetMinutes:-240,approximate:false});
+ responses.sleep_records={targetBinding:'midnight-sleep',revision:'sleep-1',records:[
+  {id:'night-10',wakeDate:'2026-08-10',sleepOnset:point('2026-08-09','22:10'),getUp:point('2026-08-10','06:10'),estimatedDurationMinutes:480},
+  {id:'night-11',wakeDate:'2026-08-11',sleepOnset:point('2026-08-10','23:25'),getUp:point('2026-08-11','08:25'),estimatedDurationMinutes:540},
+ ]};
+ window.__TAURI__.core.invoke=async(command,args)=>{
+  if(command==='today_clock'){
+   if(allowClockTimer){allowClockTimer=false;clockTicks++;}
+   return structuredClone(observedClock);
+  }
+  return baseInvoke(command,args);
+ };
+`;
+
+test('the real clock timer advances current sleep at midnight without rerendering a dirty Daily Record', {skip:process.platform!=='darwin'},()=>{
+ const result=probe(969,`
+  await until(()=>document.querySelector('#today-sleep-summary button')?.textContent.includes('06:10'));
+  const input=document.querySelector('#today-daytime-content');
+  input.value='未保存的日记录 draft across midnight';input.dispatchEvent(new Event('input',{bubbles:true}));
+  const before={summary:document.querySelector('#today-sleep-summary button').textContent,reads:calls.filter(c=>c.command==='sleep_records').length,records:calls.filter(c=>['today_view','read_daily_view'].includes(c.command)).length};
+  observedClock={date:'2026-08-11',livedDate:'2026-08-10',time:'00:01'};
+  allowClockTimer=true;await until(()=>clockTicks===1);
+  await new Promise(resolve=>setTimeout(resolve,40));
+  const midnight={summary:document.querySelector('#today-sleep-summary button').textContent,reads:calls.filter(c=>c.command==='sleep_records').length};
+  observedClock={...observedClock,time:'00:02'};allowClockTimer=true;await until(()=>clockTicks===2);
+  await new Promise(resolve=>setTimeout(resolve,30));
+  const sameDateReads=calls.filter(c=>c.command==='sleep_records').length;
+  observedClock={date:'2026-08-11',livedDate:'2026-08-11',time:'04:00'};allowClockTimer=true;await until(()=>clockTicks===3);
+  await until(()=>document.querySelector('#today-sleep-summary button').textContent.includes('06:10'));
+  const pinned={summary:document.querySelector('#today-sleep-summary button').textContent,date:document.querySelector('#today-date').textContent};
+  observedClock={date:'2026-08-12',livedDate:'2026-08-11',time:'00:01'};allowClockTimer=true;await until(()=>clockTicks===4);
+  await new Promise(resolve=>setTimeout(resolve,30));
+  return JSON.stringify({before,midnight,sameDateReads,pinned,summary:document.querySelector('#today-sleep-summary button').textContent,input:input.value,sameInput:input===document.querySelector('#today-daytime-content'),reads:calls.filter(c=>c.command==='sleep_records').length,records:calls.filter(c=>['today_view','read_daily_view'].includes(c.command)).length,errors:window.probeErrors});
+ `,true,758,{},midnightBoundary);
+ assert.match(result.before.summary,/2026-08-10.*22:10.*06:10/);
+ assert.match(result.midnight.summary,/2026-08-11.*23:25.*08:25/);
+ assert.match(result.pinned.summary,/2026-08-10.*22:10.*06:10/);
+ assert.match(result.pinned.date,/2026-08-10/);
+ assert.equal(result.summary,result.pinned.summary,'the pinned historical date must not drift at another midnight');
+ assert.equal(result.sameDateReads,result.midnight.reads,'ordinary same-date ticks must not reread sleep');
+ assert.equal(result.input,'未保存的日记录 draft across midnight');
+ assert.equal(result.sameInput,true);
+ assert.equal(result.records,result.before.records,'sleep rollover must not refresh the Daily Record');
+ assert.equal(result.midnight.reads,result.before.reads+1);
+ assert.equal(result.reads,result.before.reads+2,'only midnight and the historical pin change sleep dates');
+ assert.deepEqual(result.errors,[]);
+});
+
+
+test('a midnight timer supersedes an unresolved summary clock without accepting its late date', {skip:process.platform!=='darwin'},()=>{
+ const result=probe(969,`
+  await until(()=>document.querySelector('#today-sleep-summary button')?.textContent.includes('06:10'));
+  const invoke=window.__TAURI__.core.invoke;let releaseClock,holdClock=true;
+  window.__TAURI__.core.invoke=async(command,args)=>{
+   if(command==='today_clock'&&holdClock){holdClock=false;return new Promise(resolve=>{releaseClock=()=>resolve({date:'2026-08-10',livedDate:'2026-08-10',time:'23:59'});});}
+   return invoke(command,args);
+  };
+  document.querySelector('#refresh-today').click();await until(()=>releaseClock);
+  observedClock={date:'2026-08-11',livedDate:'2026-08-10',time:'00:01'};allowClockTimer=true;
+  await until(()=>clockTicks===1&&document.querySelector('#today-sleep-summary button').textContent.includes('08:25'));
+  const current=document.querySelector('#today-sleep-summary button').textContent;
+  releaseClock();await new Promise(resolve=>setTimeout(resolve,30));
+  return JSON.stringify({current,after:document.querySelector('#today-sleep-summary button').textContent,errors:window.probeErrors});
+ `,true,758,{},midnightBoundary);
+ assert.match(result.current,/2026-08-11.*23:25.*08:25/);
+ assert.equal(result.after,result.current);
+ assert.deepEqual(result.errors,[]);
+});
+
+test('a late periodic clock cannot move an explicitly selected historical sleep day', {skip:process.platform!=='darwin'},()=>{
+ const result=probe(969,`
+  await until(()=>document.querySelector('#today-sleep-summary button')?.textContent.includes('06:10'));
+  responses.sleep_records.records.push({id:'night-9',wakeDate:'2026-08-09',sleepOnset:point('2026-08-08','21:09'),getUp:point('2026-08-09','05:09'),estimatedDurationMinutes:480});
+  const invoke=window.__TAURI__.core.invoke;let releaseClock,holdClock=true;
+  window.__TAURI__.core.invoke=async(command,args)=>{
+   if(command==='today_clock'&&allowClockTimer&&holdClock){holdClock=false;allowClockTimer=false;clockTicks++;return new Promise(resolve=>{releaseClock=()=>resolve({date:'2026-08-11',livedDate:'2026-08-10',time:'00:01'});});}
+   if(command==='calendar_month')return {...month,year:2026,month:8,days:[{...month.days[0],date:'2026-08-09',inMonth:true,availability:'missing'}]};
+   if(['read_daily_view','daily_view'].includes(command)&&args?.date)return {...structuredClone(view),date:args.date,isToday:false};
+   return invoke(command,args);
+  };
+  allowClockTimer=true;await until(()=>releaseClock);
+  document.querySelector('[data-workspace-destination="calendar"]').click();
+  await until(()=>document.querySelector('button[data-calendar-date="2026-08-09"]'));
+  document.querySelector('button[data-calendar-date="2026-08-09"]').click();
+  await until(()=>document.querySelector('#calendar-summary-heading').textContent.includes('9')&&!document.querySelector('#calendar-open-day').disabled);
+  document.querySelector('#calendar-open-day').click();
+  await until(()=>document.querySelector('#today-sleep-summary button')?.textContent.includes('05:09'));
+  const historical=document.querySelector('#today-sleep-summary button').textContent;
+  releaseClock();await new Promise(resolve=>setTimeout(resolve,30));
+  observedClock={date:'2026-08-11',livedDate:'2026-08-10',time:'00:02'};allowClockTimer=true;await until(()=>clockTicks===2);
+  await new Promise(resolve=>setTimeout(resolve,30));
+  return JSON.stringify({historical,after:document.querySelector('#today-sleep-summary button').textContent,errors:window.probeErrors});
+ `,true,758,{},midnightBoundary);
+ assert.match(result.historical,/2026-08-09.*21:09.*05:09/);
+ assert.equal(result.after,result.historical);
+ assert.deepEqual(result.errors,[]);
+});
+
+test('a Vault reset rejects a late sleep read started by the midnight timer', {skip:process.platform!=='darwin'},()=>{
+ const result=probe(969,`
+  await until(()=>document.querySelector('#today-sleep-summary button')?.textContent.includes('06:10'));
+  const invoke=window.__TAURI__.core.invoke;let releaseSleep,holdSleep=true;
+  window.__TAURI__.core.invoke=async(command,args)=>{
+   if(command==='sleep_records'&&holdSleep){holdSleep=false;const old=structuredClone(responses.sleep_records);return new Promise(resolve=>{releaseSleep=()=>resolve(old);});}
+   if(command==='select_today_vault'){
+    responses.sleep_records={targetBinding:'sleep-vault-b',revision:'b',records:[{id:'b-night',wakeDate:'2026-08-09',sleepOnset:point('2026-08-08','20:05'),getUp:point('2026-08-09','05:05'),estimatedDurationMinutes:540}]};
+    return {changed:true,view:{...structuredClone(view),date:'2026-08-09',isToday:false,targetBinding:'vault-b',tasks:{...view.tasks,targetBinding:'tasks-vault-b'}}};
+   }
+   return invoke(command,args);
+  };
+  observedClock={date:'2026-08-11',livedDate:'2026-08-10',time:'00:01'};allowClockTimer=true;await until(()=>releaseSleep);
+  document.querySelector('#select-today-vault').click();
+  await until(()=>document.querySelector('#today-sleep-summary button')?.textContent.includes('05:05'));
+  const current=document.querySelector('#today-sleep-summary button').textContent;
+  releaseSleep();await new Promise(resolve=>setTimeout(resolve,30));
+  return JSON.stringify({current,after:document.querySelector('#today-sleep-summary button').textContent,errors:window.probeErrors});
+ `,true,758,{},midnightBoundary);
+ assert.match(result.current,/2026-08-09.*20:05.*05:05/);
+ assert.equal(result.after,result.current);
+ assert.deepEqual(result.errors,[]);
+});
