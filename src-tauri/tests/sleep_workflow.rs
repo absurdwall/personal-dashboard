@@ -832,7 +832,7 @@ fn range(date: &str, start: &str, end: &str, offset: i32) -> serde_json::Value {
 }
 
 #[test]
-fn a_selection_change_while_reading_discards_the_previous_vault_result() {
+fn a_selection_change_after_sleep_operations_discards_even_failed_previous_vault_results() {
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -856,7 +856,7 @@ fn a_selection_change_while_reading_discards_the_previous_vault_result() {
     }
     let original = vault("read-capture");
     let replacement = vault("read-replacement");
-    save(
+    let initial = save(
         &application(&original),
         json!({"wakeDate":"2026-10-22","changeId":"private-original","getUp":point("2026-10-22","07:30",-240)}),
     );
@@ -876,6 +876,24 @@ fn a_selection_change_while_reading_discards_the_previous_vault_result() {
     assert!(error.contains("Vault"));
     reads.store(0, Ordering::SeqCst);
     assert!(app.read_date("2026-10-22").expect_err("Today must reject a late projection from the old Vault").contains("Vault"));
+    let path = original.join("life/.personal-dashboard/sleep/v1/sessions.json");
+    fs::write(&path, b"synthetic invalid canonical document").unwrap();
+    for operation in ["read", "habit-save", "record-save"] {
+        reads.store(0, Ordering::SeqCst);
+        let result = match operation {
+            "read" => app.sleep_records(),
+            "habit-save" => app.save_habit_sleep_time(serde_json::from_value(json!({
+                "habitKey":"wake","livedDate":"2026-10-22","endpoint":{"kind":"unknown"},
+                "changeId":"failed-habit","targetBinding":initial.target_binding,"expectedRevision":initial.revision
+            })).unwrap()),
+            _ => app.save_sleep_record(serde_json::from_value(json!({
+                "wakeDate":"2026-10-22","getUp":{"kind":"unknown"},
+                "changeId":"failed-record","targetBinding":initial.target_binding,"expectedRevision":initial.revision
+            })).unwrap()),
+        };
+        assert_eq!(result.unwrap_err(), "所选 Vault 在操作期间改变；结果属于原 Vault，请重新读取核对。", "selection confirmation precedes a captured operation error: {operation}");
+        assert_eq!(fs::read(&path).unwrap(), b"synthetic invalid canonical document");
+    }
     assert!(!replacement
         .join("life/.personal-dashboard/sleep/v1/sessions.json")
         .exists());
