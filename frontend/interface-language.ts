@@ -39,6 +39,12 @@ const interfaceCopies = {
   "sleep.overview.wording": {zh:"原话",en:"Txt"},
   "sleep.overview.unknown": {zh:"未知",en:"?"},
   "sleep.overview.conflict": {zh:"冲突",en:"!"},
+  "sleep.fact.source": { zh: "报告作息事实", en: "Reported sleep fact" },
+  "sleep.fact.onset": { zh: "入睡", en: "Sleep onset" },
+  "sleep.fact.getUp": { zh: "离床", en: "Get-up" },
+  "sleep.fact.value": { zh: "{habit}：{value}", en: "{habit}: {value}" },
+  "sleep.fact.canonicalRecord": { zh: "正本记录：{id}", en: "Canonical record: {id}" },
+  "sleep.fact.actualDate": { zh: "实际日期：{value}", en: "Actual date: {value}" },
   "sleep.readingValue": {zh:"正在读取实际时间…",en:"Reading actual time…"},
   "sleep.unavailableValue": {zh:"实际时间暂不可用",en:"Actual time unavailable"},
   "sleep.openCollaboration": {zh:"前往 Collaboration 明确记录",en:"Identify the record in Collaboration"},
@@ -2850,6 +2856,7 @@ export function interfaceCopy(
 }
 
 const todayAxisMarkerMetadataCopyKeys = [
+  "sleep.fact.source",
   "today.sourceTask",
   "today.sourceArrangement",
   "today.sourceConfirmedFact",

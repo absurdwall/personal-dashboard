@@ -24,7 +24,7 @@ export function probe(width:number, scenario:string, withUntimed=true, height=75
       window.__TAURI__={core:{invoke:async(command,args)=>{calls.push({command,args});
         if(command in responses)return structuredClone(responses[command]);
         if(command==='today_clock')return {date:view.date,livedDate:view.date,time:'09:30'};
-        if(['today_view','read_daily_view'].includes(command))return structuredClone(view);
+        if(['today_view','daily_view','read_daily_view'].includes(command))return structuredClone(view);
         if(command==='calendar_month')return structuredClone(month);
         if(command==='tasks_view')return structuredClone(view.tasks);
         if(command==='application_identity')return {productName:'Synthetic Dashboard'};
