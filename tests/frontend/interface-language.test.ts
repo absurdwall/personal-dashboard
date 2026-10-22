@@ -621,6 +621,7 @@ test("reported Habit-time workflow diagnostics localize without translating sour
     ["同一 Habit 日期存在多条作息端点；请明确记录身份。", "Multiple sleep endpoints belong to this Habit date; specify the record identity."],
     ["需要稳定的 wake 或 sleep Habit 身份；未写入。", "A stable wake or sleep Habit identity is required; nothing was written."],
     ["目标夜晚已有不同日期的端点；请明确记录身份，未写入。", "The night already has an endpoint on another date; specify the record identity. Nothing was written."],
+    ["同一 lived day 的另一条记录有可兼容的相反端点；请先澄清是否属于同一晚，再通过 Collaboration 明确记录身份；未写入。", "Another record has a compatible opposite endpoint on this lived day. Clarify whether they belong to the same night, then specify the record through Collaboration. Nothing was written."],
     ["端点日期上下文需要对应的明确端点；未写入。", "Endpoint date context requires its explicit endpoint; nothing was written."],
     ["作息正本无效：原话 PRIVATE_PATH /奇怪: 文件", "The sleep document is invalid: 原话 PRIVATE_PATH /奇怪: 文件"],
   ]) {
