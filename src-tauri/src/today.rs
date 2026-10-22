@@ -218,74 +218,103 @@ struct StorageDocumentLabels {
     external_document: &'static str,
 }
 
-impl StorageDocumentKind {
-    fn file_metadata(self) -> StorageFileMetadata {
-        let (recovery_stem, extension) = match self {
-            Self::DailyRecord => ("daily-record", "md"),
-            Self::DayTasks => ("day-tasks", "json"),
-            Self::HabitCompletions => ("habit-completions", "json"),
-            Self::HabitCatalog => ("habit-definitions", "json"),
-            Self::Tasks => ("tasks", "json"),
-            Self::SleepRecords => ("sleep-records", "json"),
-        };
-        StorageFileMetadata { recovery_stem, extension }
-    }
+struct StorageDocumentDescriptor {
+    file: StorageFileMetadata,
+    labels: StorageDocumentLabels,
+}
 
-    fn labels(self) -> StorageDocumentLabels {
+impl StorageDocumentKind {
+    fn descriptor(self) -> StorageDocumentDescriptor {
         match self {
-            Self::DailyRecord => StorageDocumentLabels {
-                document: "Daily Record",
-                created_document: "new Daily Record",
-                refresh_action: "refreshing",
-                candidate: "Dashboard candidate",
-                displaced_document: "daily record",
-                active_document: "today's daily record",
-                external_document: "record",
+            Self::DailyRecord => StorageDocumentDescriptor {
+                file: StorageFileMetadata {
+                    recovery_stem: "daily-record",
+                    extension: "md",
+                },
+                labels: StorageDocumentLabels {
+                    document: "Daily Record",
+                    created_document: "new Daily Record",
+                    refresh_action: "refreshing",
+                    candidate: "Dashboard candidate",
+                    displaced_document: "daily record",
+                    active_document: "today's daily record",
+                    external_document: "record",
+                },
             },
-            Self::DayTasks => StorageDocumentLabels {
-                document: "day-task document",
-                created_document: "new day-task document",
-                refresh_action: "refreshing",
-                candidate: "day-task candidate",
-                displaced_document: "day-task document",
-                active_document: "the day-task document",
-                external_document: "day-task document",
+            Self::DayTasks => StorageDocumentDescriptor {
+                file: StorageFileMetadata {
+                    recovery_stem: "day-tasks",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "day-task document",
+                    created_document: "new day-task document",
+                    refresh_action: "refreshing",
+                    candidate: "day-task candidate",
+                    displaced_document: "day-task document",
+                    active_document: "the day-task document",
+                    external_document: "day-task document",
+                },
             },
-            Self::HabitCompletions => StorageDocumentLabels {
-                document: "local habit-completion document",
-                created_document: "new local habit-completion document",
-                refresh_action: "refreshing",
-                candidate: "local habit-completion candidate",
-                displaced_document: "local habit-completion document",
-                active_document: "the local habit-completion document",
-                external_document: "local habit-completion document",
+            Self::HabitCompletions => StorageDocumentDescriptor {
+                file: StorageFileMetadata {
+                    recovery_stem: "habit-completions",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "local habit-completion document",
+                    created_document: "new local habit-completion document",
+                    refresh_action: "refreshing",
+                    candidate: "local habit-completion candidate",
+                    displaced_document: "local habit-completion document",
+                    active_document: "the local habit-completion document",
+                    external_document: "local habit-completion document",
+                },
             },
-            Self::HabitCatalog => StorageDocumentLabels {
-                document: "local Habit definition document",
-                created_document: "local Habit definition document",
-                refresh_action: "refreshing Habits",
-                candidate: "local Habit definition candidate",
-                displaced_document: "local Habit definition document",
-                active_document: "the local Habit definition document",
-                external_document: "local Habit definition document",
+            Self::HabitCatalog => StorageDocumentDescriptor {
+                file: StorageFileMetadata {
+                    recovery_stem: "habit-definitions",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "local Habit definition document",
+                    created_document: "local Habit definition document",
+                    refresh_action: "refreshing Habits",
+                    candidate: "local Habit definition candidate",
+                    displaced_document: "local Habit definition document",
+                    active_document: "the local Habit definition document",
+                    external_document: "local Habit definition document",
+                },
             },
-            Self::Tasks => StorageDocumentLabels {
-                document: "task document",
-                created_document: "task document",
-                refresh_action: "refreshing",
-                candidate: "task candidate",
-                displaced_document: "task document",
-                active_document: "the task document",
-                external_document: "task document",
+            Self::Tasks => StorageDocumentDescriptor {
+                file: StorageFileMetadata {
+                    recovery_stem: "tasks",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "task document",
+                    created_document: "task document",
+                    refresh_action: "refreshing",
+                    candidate: "task candidate",
+                    displaced_document: "task document",
+                    active_document: "the task document",
+                    external_document: "task document",
+                },
             },
-            Self::SleepRecords => StorageDocumentLabels {
-                document: "sleep-record document",
-                created_document: "sleep-record document",
-                refresh_action: "refreshing",
-                candidate: "sleep-record candidate",
-                displaced_document: "sleep-record document",
-                active_document: "the sleep-record document",
-                external_document: "sleep-record document",
+            Self::SleepRecords => StorageDocumentDescriptor {
+                file: StorageFileMetadata {
+                    recovery_stem: "sleep-records",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "sleep-record document",
+                    created_document: "sleep-record document",
+                    refresh_action: "refreshing",
+                    candidate: "sleep-record candidate",
+                    displaced_document: "sleep-record document",
+                    active_document: "the sleep-record document",
+                    external_document: "sleep-record document",
+                },
             },
         }
     }
@@ -428,7 +457,7 @@ pub(crate) fn create_new_file(
     document: &[u8],
     kind: StorageDocumentKind,
 ) -> Result<(), String> {
-    let labels = kind.labels();
+    let labels = kind.descriptor().labels;
     let parent = path.parent().ok_or_else(|| {
         kind.text(
             "The Daily Record has no parent directory.",
@@ -497,7 +526,7 @@ pub(crate) fn save_file_if_unchanged<F>(
 where
     F: FnOnce(&Path) -> Result<(), String>,
 {
-    let labels = kind.labels();
+    let labels = kind.descriptor().labels;
     let current = fs::read(path).map_err(|error| {
         kind.error(
             "Could not re-read today's daily record: ",
@@ -672,7 +701,7 @@ fn preserve_displaced_inode(
     let record_name = path
         .file_stem()
         .and_then(|name| name.to_str())
-        .unwrap_or(kind.file_metadata().recovery_stem);
+        .unwrap_or(kind.descriptor().file.recovery_stem);
     for attempt in 0..32u8 {
         let recovery = recovery_directory.join(format!(
             "{record_name}-{nonce}-{}-{attempt}.snapshot",
@@ -728,7 +757,7 @@ fn create_temporary_file(
     for attempt in 0..32u8 {
         let temporary = path.with_extension(format!(
             "{}.personal-dashboard-tmp-{}-{nonce}-{attempt}",
-            kind.file_metadata().extension,
+            kind.descriptor().file.extension,
             std::process::id()
         ));
         match OpenOptions::new()
@@ -802,7 +831,7 @@ fn preserve_conflict_snapshot(
         let record_name = path
             .file_stem()
             .and_then(|name| name.to_str())
-            .unwrap_or(kind.file_metadata().recovery_stem);
+            .unwrap_or(kind.descriptor().file.recovery_stem);
         let recovery = recovery_directory.join(format!(
             "{record_name}-conflict-{nonce}-{}-{attempt}.snapshot",
             std::process::id()

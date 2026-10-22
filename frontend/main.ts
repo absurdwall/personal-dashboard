@@ -1,5 +1,5 @@
 import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
-import { configureSleepLanguage, refreshSleepSummary, refreshSleepHabits, refreshSleepSurfaces, resetSleepPresentation } from "./sleep.js";
+import { configureSleepLanguage, ensureSleepSummaryDate, refreshSleepSummary, refreshSleepHabits, refreshSleepSurfaces, resetSleepPresentation } from "./sleep.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
@@ -8288,12 +8288,14 @@ async function refreshTodayClock(): Promise<void> {
   if (decision === "update-marker") {
     const updated = { ...current, isToday: true, currentTime: clock.time };
     currentTodayView = updated;
+    ensureSleepSummaryDate(clock.date);
     updateTodayTimeAxisClock(updated, clock.time);
     if (todayAxisFollowState === "following") scrollTodayAxisToNow();
     return;
   }
   const historical = { ...current, isToday: false, currentTime: null };
   currentTodayView = historical;
+  ensureSleepSummaryDate(historical.date);
   if (todayDate) {
     setCopy(todayDate, "today.selectedDate", { date: historical.date });
   }

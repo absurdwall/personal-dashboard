@@ -35,11 +35,16 @@ document.addEventListener(SLEEP_LANGUAGE_CHANGED_EVENT,()=>{
   if (lastSummary) renderSleepSummary(lastSummary.view,lastSummary.date);
   if (lastHabits) renderHabitSleepCopy(lastHabits.view,lastHabits.date);
 });
+export function ensureSleepSummaryDate(date: string): void {
+  if (summaryDate !== date) void refreshSleepSummary(date);
+}
 export async function refreshSleepSummary(requestedDate: string | Promise<string>): Promise<void> {
   const sequence = ++summaryRead;
   const row = document.querySelector<HTMLElement>("#today-sleep-summary");
   if (!row) return;
   row.hidden = false;
+  // A newer known clock date must supersede an unresolved earlier clock read.
+  summaryDate = typeof requestedDate === "string" ? requestedDate : "";
   try {
     const date = await requestedDate;
     if (sequence !== summaryRead) return;

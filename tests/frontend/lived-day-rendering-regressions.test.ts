@@ -226,8 +226,8 @@ function clockHarness(state: 'pending' | 'completed', open: boolean, draft = fal
     todayOperationCount: 0, taskOperationCount: 0,
     stashDatedNoteDraft() {}, stashEveningReviewDraft() {}, stashTodayTaskCreateDraft() {},
     todayTaskCreateDraftKey: (binding: string, date: string) => `${binding}:${date}`,
-    todayDate: new Element(), setCopy() {}, updateTodayTimeAxisClock() {}, scrollTodayAxisToNow() {},
-    window: { __TAURI__: { core: { invoke: async () => ({ livedDate: '2026-10-02', time: '04:00' }) } } },
+    todayDate: new Element(), setCopy() {}, updateTodayTimeAxisClock() {}, scrollTodayAxisToNow() {}, ensureSleepSummaryDate() {},
+    window: { __TAURI__: { core: { invoke: async () => ({ date: '2026-10-02', livedDate: '2026-10-02', time: '04:00' }) } } },
     reloads: 0, editor: form,
   });
   runInContext(handler('function taskDraftKey(', 'function readTaskDraft(') +

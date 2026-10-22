@@ -31,7 +31,7 @@ for (const category of ["ordinary", "exercise"]) {
     const ipcCalls: any[] = [];
     r.window = { __TAURI__: { core: { invoke: async (command: string, args: any) => {
       ipcCalls.push({ command, args });
-      if (command === "today_clock") return { livedDate: "2026-10-04", time: "04:00" };
+      if (command === "today_clock") return { date: "2026-10-04", livedDate: "2026-10-04", time: "04:00" };
       return { ...view, revision: "r2", daytime: { updates: [], shortRecords: [{ id: "note", category }] } };
     } } } };
     assert.equal(await r.saveDatedNote(), true, String(r.lastError));
