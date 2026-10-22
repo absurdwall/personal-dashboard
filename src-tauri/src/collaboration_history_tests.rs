@@ -320,12 +320,15 @@ impl AppServerTransport for InjectedTransport {
             sender.send(Ok(event.to_string())).unwrap();
         }
         // Keep observing tool RPC responses even when history persistence fails.
+        let (replies_ready, replies_observed) = mpsc::channel();
         let reader = std::thread::spawn(move || {
-            BufReader::new(stdout)
+            let replies = BufReader::new(stdout)
                 .lines()
                 .take(2)
                 .map(|line| serde_json::from_str::<Value>(&line.unwrap()).unwrap())
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            let _ = replies_ready.send(());
+            replies
         });
         let result = client.wait_for_turn_observed(
             &thread,
@@ -337,6 +340,10 @@ impl AppServerTransport for InjectedTransport {
             None,
             observer,
         );
+        // Let the echo peer flush both replies before Drop kills it. A missing
+        // reply expires this fixture-only wait; killing the peer then releases
+        // the reader, so the unchanged count assertion fails without hanging.
+        let _ = replies_observed.recv_timeout(Duration::from_secs(1));
         drop(client);
         let replies = reader.join().unwrap();
         assert_eq!(
