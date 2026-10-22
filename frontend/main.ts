@@ -1976,6 +1976,7 @@ if (todayLayoutForResize) new ResizeObserver(() => updateTodayUnlocatedPresentat
 function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
   currentInterfaceLanguage = preferences.interfaceLanguage;
   applyInterfaceLanguage(currentInterfaceLanguage);
+  refreshTodaySleepFactLanguage();
   document.querySelectorAll<HTMLAnchorElement>(".today-axis-marker-link").forEach((link) => {
     const time = link.querySelector<HTMLElement>(".today-axis-marker-time");
     if (time) link.dataset.axisItemTime = time.textContent ?? "";
@@ -2003,8 +2004,6 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
     renderTodayTasks(currentTodayView);
     renderLegacyDayTasks(currentTodayView.dayTasks);
     renderHistoricalHabitCorrections(currentTodayView);
-    closeTodayAxisFactPopup(false);
-    renderTodayTimeAxis(currentTodayView);
   }
   updateWorkspaceSidebarPresentation();
   updateTodayUnlocatedPresentation();
@@ -5922,6 +5921,7 @@ function sleepFactHabitName(fact: SleepEndpointFact): string {
 
 function appendAxisEntryCopy(target: HTMLElement, entry: TimeAxisEntryView): void {
   if (entry.sleepFact) {
+    target.dataset.sleepFactCopy = "";
     setCopy(target, "sleep.fact.value", {
       habit: sleepFactHabitName(entry.sleepFact),
       value: formatSleepEndpoint(entry.sleepFact, currentInterfaceLanguage),
@@ -5977,6 +5977,27 @@ function appendSleepFactCorrection(target: HTMLElement, entry: TimeAxisEntryView
   target.append(button);
 }
 
+// Refresh only derived sleep copy; retain marker nodes, open popups and reading position.
+function refreshTodaySleepFactLanguage(): void {
+  if (!currentTodayView) return;
+  const entries = [...currentTodayView.timeAxis.confirmedFacts, ...currentTodayView.timeAxis.unlocatedConfirmedFacts];
+  document.querySelectorAll<HTMLElement>("[data-sleep-record-id][data-sleep-habit-key]").forEach(container => {
+    const entry = entries.find(entry => entry.sleepFact && entry.sleepFact.recordId === container.dataset.sleepRecordId &&
+      entry.sleepFact.habitKey === container.dataset.sleepHabitKey);
+    const fact = entry?.sleepFact;
+    if (!entry || !fact) return;
+    const habit = sleepFactHabitName(fact);
+    container.querySelectorAll<HTMLElement>("[data-sleep-fact-copy]").forEach(target => appendAxisEntryCopy(target, entry));
+    container.querySelectorAll<HTMLElement>("[data-sleep-fact-time]").forEach(target =>
+      appendAxisEntryTimeLabel(target, entry, entry.startMinute === null ? "facts-unlocated" : "facts"));
+    container.querySelectorAll<HTMLElement>("[data-sleep-fact-title]").forEach(target => { target.textContent = habit; });
+    const link = container.querySelector<HTMLElement>(".today-axis-marker-link");
+    if (link) link.dataset.axisItemText = habit;
+    if (fact.livedDate) container.querySelectorAll<HTMLElement>('[data-i18n="sleep.correctTimeLabel"]').forEach(button =>
+      setCopy(button, "sleep.correctTimeLabel", { habit, date: fact.livedDate! }));
+  });
+}
+
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
   if (entry.sleepFact) return formatSleepEndpoint(entry.sleepFact, currentInterfaceLanguage);
   if(entry.task) {
@@ -6010,6 +6031,7 @@ function appendAxisEntryTimeLabel(
   lane: TodayAxisLaneId,
 ): void {
   if (entry.sleepFact) {
+    target.dataset.sleepFactTime = "";
     target.textContent = formatSleepEndpoint(entry.sleepFact, currentInterfaceLanguage);
     return;
   }
@@ -6696,6 +6718,7 @@ function renderTodayTimeAxisEntries(
       appendAxisEntryTimeLabel(timeLabel, original, original.lane);
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
+      if (entry.sleepFact) title.dataset.sleepFactTitle = "";
       title.textContent = entry.sleepFact ? sleepFactHabitName(entry.sleepFact) : entry.task
         ? entry.text
         : original.lane === "arrangement"
@@ -6873,6 +6896,8 @@ function closeTodayAxisFactPopup(restoreFocus = true): void {
   if (!todayAxisFactPopup?.open) return;
   const opener = todayAxisFactPopupOpener;
   todayAxisFactPopup.close();
+  delete todayAxisFactPopup.dataset.sleepRecordId;
+  delete todayAxisFactPopup.dataset.sleepHabitKey;
   todayAxisFactPopupContent?.replaceChildren();
   todayAxisFactPopupOpener = null;
   if (restoreFocus && opener?.isConnected) opener.focus({ preventScroll: true });
@@ -6884,6 +6909,10 @@ function openTodayAxisFactPopup(entry: TimeAxisEntryView, marker: HTMLElement): 
   setCopy(todayAxisFactPopupHeading, "today.axisFactPopupHeading");
   todayAxisFactPopupOpener = marker.querySelector<HTMLElement>(".today-axis-marker-link") ?? marker;
   todayAxisFactPopupContent.replaceChildren();
+  if (entry.sleepFact) {
+    todayAxisFactPopup.dataset.sleepRecordId = entry.sleepFact.recordId;
+    todayAxisFactPopup.dataset.sleepHabitKey = entry.sleepFact.habitKey;
+  }
 
   const time = document.createElement("time");
   time.className = "today-axis-fact-popup-time";

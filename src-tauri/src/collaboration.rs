@@ -2448,14 +2448,27 @@ impl CollaborationApplication {
             }
         };
         if today.state == TodayState::Error {
+            let read_error = today.daily_record_error_kind
+                == Some(crate::today::DailyRecordErrorKind::ReadError);
             self.record_daily_plan_automation_state(
                 &vault_key,
                 &view.date,
-                "damagedRecord",
-                format!(
-                    "Daily Record is damaged or unavailable; no plan was generated: {}",
-                    today.message
-                ),
+                if read_error {
+                    "readError"
+                } else {
+                    "damagedRecord"
+                },
+                if read_error {
+                    format!(
+                        "Daily Record could not be read; automation is waiting to retry: {}",
+                        today.message
+                    )
+                } else {
+                    format!(
+                        "Daily Record is damaged or unavailable; no plan was generated: {}",
+                        today.message
+                    )
+                },
                 None,
                 None,
             )?;

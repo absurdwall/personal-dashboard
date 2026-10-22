@@ -1358,6 +1358,27 @@ pub enum DailyRecordAvailability {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DailyRecordErrorKind {
+    ReadError,
+    DamagedRecord,
+}
+
+struct DailyRecordReadFailure {
+    kind: DailyRecordErrorKind,
+    message: String,
+}
+
+impl From<String> for DailyRecordReadFailure {
+    fn from(message: String) -> Self {
+        Self {
+            kind: DailyRecordErrorKind::DamagedRecord,
+            message,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CalendarTaskSummaryView {
@@ -1901,6 +1922,8 @@ pub struct TodayView {
     pub can_record: bool,
     pub default_phase: DailyPhase,
     pub daily_record_availability: DailyRecordAvailability,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daily_record_error_kind: Option<DailyRecordErrorKind>,
     pub vault_name: Option<String>,
     pub vault_path: Option<String>,
     pub vault_availability: VaultAvailability,
@@ -3981,6 +4004,7 @@ where
                 current_time: is_today.then_some(clock.time),
                 can_record: false,
                 default_phase: DailyPhase::Daytime,
+                daily_record_error_kind: None,
                 daily_record_availability: DailyRecordAvailability::Missing,
                 vault_name: None,
                 vault_path: None,
@@ -5033,11 +5057,11 @@ where
     ) -> Result<TodayView, String> {
         let mut view = match self.render_daily_vault(vault, date.clone(), receive_planning_input) {
             Ok(view) => view,
-            Err(message) => {
+            Err(failure) => {
                 // Keep selection transactional: a Daily Record read failure
                 // must not replace the previous Vault.
                 if self.persistence.load_selected_vault()?.as_deref() != Some(vault) {
-                    return Err(message);
+                    return Err(failure.message);
                 }
                 // A Daily Record read/encoding failure does not hide independent sources.
                 let clock = self.clock.current_local_time();
@@ -5052,8 +5076,9 @@ where
                         .map(str::to_owned),
                     Some(vault.to_string_lossy().into_owned()),
                     VaultAvailability::Available,
-                    message,
+                    failure.message,
                 );
+                view.daily_record_error_kind = Some(failure.kind);
                 view.tasks = self.shared_tasks_for(vault);
                 view.day_tasks = self.day_tasks_for(vault, &date, false);
                 view.habit_corrections = self.habit_corrections_for(vault, &date);
@@ -5075,7 +5100,7 @@ where
         vault: &Path,
         date: String,
         receive_planning_input: bool,
-    ) -> Result<TodayView, String> {
+    ) -> Result<TodayView, DailyRecordReadFailure> {
         let clock = self.clock.current_local_time();
         let is_today = date == clock.lived_date();
         let current_time = is_today.then_some(clock.time.clone());
@@ -5116,7 +5141,12 @@ where
         let habit_time_habits = self.habit_time_context_for(vault, &date);
         let path = canonical_record_path(vault, &date)?;
         let target_binding = record_target_binding(&path);
-        let bytes = match self.record_store.load(&path)? {
+        let bytes = match self.record_store.load(&path).map_err(|message| {
+            DailyRecordReadFailure {
+                kind: DailyRecordErrorKind::ReadError,
+                message,
+            }
+        })? {
             Some(document) => document,
             None => {
                 let message =
@@ -5128,6 +5158,7 @@ where
                     current_time: current_time.clone(),
                     can_record,
                     default_phase: DailyPhase::Daytime,
+                    daily_record_error_kind: None,
                     daily_record_availability: DailyRecordAvailability::Missing,
                     vault_name,
                     vault_path,
@@ -5197,6 +5228,7 @@ where
                     } else {
                         DailyPhase::Daytime
                     },
+                    daily_record_error_kind: None,
                     daily_record_availability: daily_record_availability(
                         TodayState::Ready,
                         &evening,
@@ -5226,6 +5258,7 @@ where
                 current_time,
                 can_record,
                 default_phase: DailyPhase::Daytime,
+                daily_record_error_kind: Some(DailyRecordErrorKind::DamagedRecord),
                 daily_record_availability: DailyRecordAvailability::Error,
                 vault_name,
                 vault_path,
@@ -5276,6 +5309,7 @@ fn vault_error_view(
         current_time,
         can_record: false,
         default_phase: DailyPhase::Daytime,
+        daily_record_error_kind: None,
         daily_record_availability: DailyRecordAvailability::Error,
         vault_name,
         vault_path: vault_path.clone(),

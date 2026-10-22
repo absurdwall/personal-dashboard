@@ -127,3 +127,31 @@ test('sleep source failures stay separate from existing facts and remain visible
   assert.match(result.changed,/作息读取未完成/);
   assert.equal(result.old,true);assert.deepEqual(result.errors,[]);
 });
+
+test('live sleep translations update the same point and open fact popup without replacing interaction identity',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const marker=document.querySelector('[data-sleep-record-id="canonical-night-1"] .today-axis-marker-link');
+    marker.click();await until(()=>document.querySelector('#today-axis-fact-popup').open);
+    const popup=document.querySelector('#today-axis-fact-popup');
+    document.querySelector('#workspace-language').click();
+    await until(()=>document.documentElement.lang==='zh-CN');
+    const chinese={same:document.querySelector('[data-sleep-record-id="canonical-night-1"] .today-axis-marker-link')===marker,popupSame:document.querySelector('#today-axis-fact-popup')===popup,open:popup.open,time:marker.querySelector('.today-axis-marker-time').textContent,copy:popup.textContent,aria:marker.getAttribute('aria-label')};
+    document.querySelector('#workspace-language').click();
+    await until(()=>document.documentElement.lang==='en');
+    return JSON.stringify({chinese,english:{same:document.querySelector('[data-sleep-record-id="canonical-night-1"] .today-axis-marker-link')===marker,open:popup.open,time:marker.querySelector('.today-axis-marker-time').textContent,copy:popup.textContent},errors:window.probeErrors});
+  `,false,723,{},boundary+String.raw`
+    const liveLanguageInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      if(command==='set_interface_language'){calls.push({command,args});return {interfaceLanguage:args.interfaceLanguage};}
+      return liveLanguageInvoke(command,args);
+    };
+  `);
+  assert.equal(result.chinese.same,true);assert.equal(result.chinese.popupSame,true);assert.equal(result.chinese.open,true);
+  assert.match(result.chinese.time,/次日.*约 02:00/);
+  assert.match(result.chinese.copy,/My bedtime.*次日.*约 02:00/);
+  assert.match(result.chinese.aria,/报告作息事实/);
+  assert.equal(result.english.same,true);assert.equal(result.english.open,true);
+  assert.match(result.english.time,/next day about 02:00/);
+  assert.match(result.english.copy,/My bedtime.*next day about 02:00/);
+  assert.deepEqual(result.errors,[]);
+});
