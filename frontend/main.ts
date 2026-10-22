@@ -1,6 +1,7 @@
+import {shiftDateOnly} from "./date-only.js";
 import { HabitSleepOverview } from "./habit-sleep-overview.js";
 import { HabitTimeEntry, createHabitTimeEntryButton } from "./habit-time-entry.js";
-import { isSleepHabitKey, formatSleepEndpoint, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
+import { SleepFactPresentation, isSleepHabitKey, formatSleepEndpoint, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
 import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
@@ -570,6 +571,8 @@ type HabitSnapshotView = Readonly<{
   catalogTargetBinding: string | null;
   catalogError: string | null;
   completionError: string | null;
+  sleepError?: string | null;
+  sleepView?: SleepView | null;
   namesConfigurationState: HabitNamesConfigurationState;
   summary: Readonly<{
     knownCompletions: number;
@@ -1867,6 +1870,13 @@ const habitSnapshotRequests = new LatestRequest();
 const habitDateRequests = new LatestRequest();
 const habitDetailRequests = new LatestRequest();
 const habitCompletionRequests = new LatestRequest();
+const sleepFactPresentation = new SleepFactPresentation(
+  () => currentInterfaceLanguage,
+  key => {
+    const habit = currentTodayView?.habitTimeHabits?.find(habit => habit.key === key);
+    return habit ? displayHabitName(habit) : undefined;
+  },
+);
 const habitSleepOverview = new HabitSleepOverview(() => currentInterfaceLanguage, () => revealHabitSleepDetail());
 let currentHabitSnapshot: HabitSnapshotView | null = null;
 type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
@@ -1979,7 +1989,9 @@ if (todayLayoutForResize) new ResizeObserver(() => updateTodayUnlocatedPresentat
 function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
   currentInterfaceLanguage = preferences.interfaceLanguage;
   applyInterfaceLanguage(currentInterfaceLanguage);
-  refreshTodaySleepFactLanguage();
+  if (currentTodayView) sleepFactPresentation.refresh(document,
+    [...currentTodayView.timeAxis.confirmedFacts, ...currentTodayView.timeAxis.unlocatedConfirmedFacts]
+      .flatMap(entry => entry.sleepFact ? [entry.sleepFact] : []));
   document.querySelectorAll<HTMLAnchorElement>(".today-axis-marker-link").forEach((link) => {
     const time = link.querySelector<HTMLElement>(".today-axis-marker-time");
     if (time) link.dataset.axisItemTime = time.textContent ?? "";
@@ -5896,11 +5908,6 @@ function minutePosition(minute: number): number {
   const [start, end] = axisBounds();
   return (minute - start) / (end - start);
 }
-function nextAxisDate(date: string): string {
-  const value = new Date(`${date}T12:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + 1);
-  return value.toISOString().slice(0, 10);
-}
 function formatAxisMinute(minute: number): string {
   minute %= 1440;
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
@@ -5918,96 +5925,36 @@ function canEditTodayPlanTime(entry: TimeAxisEntryView): boolean {
     !entry.continuesFromPreviousDay && !entry.continuesIntoNextDay;
 }
 
-function sleepFactHabitName(fact: SleepEndpointFact): string {
-  const habit = currentTodayView?.habitTimeHabits?.find(habit => habit.key === fact.habitKey);
-  return habit ? displayHabitName(habit) : t(fact.habitKey === "sleep" ? "sleep.fact.onset" : "sleep.fact.getUp");
-}
-
 function appendAxisEntryCopy(target: HTMLElement, entry: TimeAxisEntryView): void {
-  if (entry.sleepFact) {
-    target.dataset.sleepFactCopy = "";
-    setCopy(target, "sleep.fact.value", {
-      habit: sleepFactHabitName(entry.sleepFact),
-      value: formatSleepEndpoint(entry.sleepFact, currentInterfaceLanguage),
-    });
-  } else target.textContent = entry.text;
+  if (entry.sleepFact) sleepFactPresentation.appendCopy(target, entry.sleepFact);
+  else target.textContent = entry.text;
 }
 
 function appendAxisSourceIdentity(target: HTMLElement, entry: TimeAxisEntryView): void {
-  const fact = entry.sleepFact;
-  const label = document.createElement("span");
-  if (!fact) {
+  if (entry.sleepFact) sleepFactPresentation.appendProvenance(target, entry.sleepFact);
+  else {
+    const label = document.createElement("span");
     setCopy(label, "today.sourceDate", { date: entry.sourceDate });
     target.append(label);
-    return;
-  }
-  setCopy(label, "sleep.fact.canonicalRecord", { id: fact.recordId });
-  target.append(label);
-  const point = (value: { date: string; time: string; utcOffsetMinutes: number }): string => {
-    const offset = value.utcOffsetMinutes;
-    const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
-    const minutes = String(Math.abs(offset) % 60).padStart(2, "0");
-    return `${value.date} ${value.time} · UTC${offset < 0 ? "−" : "+"}${hours}:${minutes}`;
-  };
-  const endpoint = fact.endpoint;
-  const actual = endpoint.kind === "point" ? point(endpoint) : endpoint.kind === "range"
-    ? `${point(endpoint.start)} – ${point(endpoint.end)}` : endpoint.kind === "text" ? endpoint.date : null;
-  if (actual) {
-    const date = document.createElement("span");
-    setCopy(date, "sleep.fact.actualDate", { value: actual });
-    target.append(date);
-  } else if (endpoint.kind === "text") {
-    const date = document.createElement("span");
-    setCopy(date, "sleep.fact.actualDateUnknown");
-    target.append(date);
-  }
-  if (fact.livedDate) {
-    const context = document.createElement("span");
-    setCopy(context, "sleep.fixedContext", { date: fact.livedDate });
-    target.append(context);
   }
 }
 
 function appendSleepFactCorrection(target: HTMLElement, entry: TimeAxisEntryView): void {
   const fact = entry.sleepFact;
   if (!fact) return;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "secondary-button";
-  if (fact.livedDate === currentTodayView?.date && habitTimeEntry &&
-      currentTodayView.habitTimeHabits?.some(habit => habit.key === fact.habitKey)) {
-    setCopy(button, "sleep.correctTimeLabel", { habit: sleepFactHabitName(fact), date: fact.livedDate! });
-    button.addEventListener("click", () => { closeTodayAxisFactPopup(false); habitTimeEntry.focus(fact.habitKey); });
-  } else {
-    setCopy(button, "sleep.openCollaboration");
-    button.addEventListener("click", () => { closeTodayAxisFactPopup(false); showWorkspaceDestination("collaboration", true); });
-  }
+  const canCorrect = Boolean(fact.livedDate === currentTodayView?.date && habitTimeEntry &&
+    currentTodayView.habitTimeHabits?.some(habit => habit.key === fact.habitKey));
+  const button = sleepFactPresentation.correctionButton(fact, canCorrect);
+  button.addEventListener("click", () => {
+    closeTodayAxisFactPopup(false);
+    if (canCorrect) habitTimeEntry?.focus(fact.habitKey);
+    else showWorkspaceDestination("collaboration", true);
+  });
   target.append(button);
 }
 
-// Refresh only derived sleep copy; retain marker nodes, open popups and reading position.
-function refreshTodaySleepFactLanguage(): void {
-  if (!currentTodayView) return;
-  const entries = [...currentTodayView.timeAxis.confirmedFacts, ...currentTodayView.timeAxis.unlocatedConfirmedFacts];
-  document.querySelectorAll<HTMLElement>("[data-sleep-record-id][data-sleep-habit-key]").forEach(container => {
-    const entry = entries.find(entry => entry.sleepFact && entry.sleepFact.recordId === container.dataset.sleepRecordId &&
-      entry.sleepFact.habitKey === container.dataset.sleepHabitKey);
-    const fact = entry?.sleepFact;
-    if (!entry || !fact) return;
-    const habit = sleepFactHabitName(fact);
-    container.querySelectorAll<HTMLElement>("[data-sleep-fact-copy]").forEach(target => appendAxisEntryCopy(target, entry));
-    container.querySelectorAll<HTMLElement>("[data-sleep-fact-time]").forEach(target =>
-      appendAxisEntryTimeLabel(target, entry, entry.startMinute === null ? "facts-unlocated" : "facts"));
-    container.querySelectorAll<HTMLElement>("[data-sleep-fact-title]").forEach(target => { target.textContent = habit; });
-    const link = container.querySelector<HTMLElement>(".today-axis-marker-link");
-    if (link) link.dataset.axisItemText = habit;
-    if (fact.livedDate) container.querySelectorAll<HTMLElement>('[data-i18n="sleep.correctTimeLabel"]').forEach(button =>
-      setCopy(button, "sleep.correctTimeLabel", { habit, date: fact.livedDate! }));
-  });
-}
-
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
-  if (entry.sleepFact) return formatSleepEndpoint(entry.sleepFact, currentInterfaceLanguage);
+  if (entry.sleepFact) return sleepFactPresentation.value(entry.sleepFact);
   if(entry.task) {
     const task=currentTodayView?.tasks.tasks.find(task=>task.id===entry.task!.id);
     if(task?.date&&task.time) {
@@ -6025,11 +5972,11 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
   if (entry.planPrecision === "broad") return entry.period || t("today.planApproximatePoint");
   if (entry.planPrecision === "approximatePoint") {
     const label = t("today.planApproximateReference", { time: start });
-    return entry.startMinute >= 1440 ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
+    return entry.startMinute >= 1440 ? `${label} · ${shiftDateOnly(currentTodayView?.date ?? entry.sourceDate, 1)}` : label;
   }
   const label = entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
   return entry.startMinute >= 1440 || (entry.endMinute ?? 0) > 1440
-    ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
+    ? `${label} · ${shiftDateOnly(currentTodayView?.date ?? entry.sourceDate, 1)}` : label;
 }
 
 // Retain copy metadata only for derived labels; period and source text stay verbatim.
@@ -6039,8 +5986,7 @@ function appendAxisEntryTimeLabel(
   lane: TodayAxisLaneId,
 ): void {
   if (entry.sleepFact) {
-    target.dataset.sleepFactTime = "";
-    target.textContent = formatSleepEndpoint(entry.sleepFact, currentInterfaceLanguage);
+    sleepFactPresentation.appendTime(target, entry.sleepFact);
     return;
   }
   let key: InterfaceCopyKey;
@@ -6063,7 +6009,7 @@ function appendAxisEntryTimeLabel(
   setCopy(label, key, variables);
   target.append(label);
   if (entry.planPrecision === "approximatePoint" && entry.startMinute! >= 1440) {
-    target.append(` · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}`);
+    target.append(` · ${shiftDateOnly(currentTodayView?.date ?? entry.sourceDate, 1)}`);
   }
 }
 
@@ -6114,7 +6060,7 @@ function axisEntryDetails(
   if (entry.startMinute === null) time.className = "today-axis-entry-time-label";
   appendAxisEntryTimeLabel(time, entry, lane);
   if (entry.startMinute !== null) {
-    time.setAttribute("datetime", `${entry.startMinute >= 1440 ? nextAxisDate(currentTodayView?.date ?? entry.sourceDate) : (currentTodayView?.date ?? entry.sourceDate)}T${formatAxisMinute(entry.startMinute)}`);
+    time.setAttribute("datetime", `${entry.startMinute >= 1440 ? shiftDateOnly(currentTodayView?.date ?? entry.sourceDate, 1) : (currentTodayView?.date ?? entry.sourceDate)}T${formatAxisMinute(entry.startMinute)}`);
   }
   const excerpt = document.createElement("span");
   appendAxisEntryCopy(excerpt, entry);
@@ -6560,7 +6506,7 @@ function todayAxisGesturePreviewLabel(change: AxisGestureCommit<TodayView>): str
     ? t("today.planApproximateReference", { time: start })
     : change.endMinute === null ? start : `${start}–${formatAxisMinute(change.endMinute)}`;
   return change.startMinute >= 1440 || (change.endMinute ?? 0) >= 1440
-    ? `${label} · ${nextAxisDate(change.context.date)}` : label;
+    ? `${label} · ${shiftDateOnly(change.context.date, 1)}` : label;
 }
 
 function resolveTodayAxisGestureTarget(element: Element, loaded: TodayView): AxisGestureTarget | null | false {
@@ -6716,7 +6662,7 @@ function renderTodayTimeAxisEntries(
       if (readOnlyArrangement) link.classList.add("is-read-only");
       link.draggable = false;
       link.dataset.axisItemTime = axisEntryTimeLabel(original, original.lane);
-      link.dataset.axisItemText = entry.sleepFact ? sleepFactHabitName(entry.sleepFact) : entry.text;
+      link.dataset.axisItemText = entry.sleepFact ? sleepFactPresentation.name(entry.sleepFact) : entry.text;
       link.dataset.axisMetadataCopyKeys = JSON.stringify(
         axisEntryMetadataCopyKeys(entry, entry.lane),
       );
@@ -6727,7 +6673,7 @@ function renderTodayTimeAxisEntries(
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
       if (entry.sleepFact) title.dataset.sleepFactTitle = "";
-      title.textContent = entry.sleepFact ? sleepFactHabitName(entry.sleepFact) : entry.task
+      title.textContent = entry.sleepFact ? sleepFactPresentation.name(entry.sleepFact) : entry.task
         ? entry.text
         : original.lane === "arrangement"
           ? stripLeadingAxisTimeLabel(
@@ -6869,7 +6815,7 @@ function positionTodayAxisTaskPopup(): void {
 }
 
 function absoluteAxisDateTimeLabel(date: string, minute: number): string {
-  const actualDate = minute >= 1440 ? nextAxisDate(date) : date;
+  const actualDate = minute >= 1440 ? shiftDateOnly(date, 1) : date;
   return `${actualDate} ${formatAxisMinute(minute)}`;
 }
 
@@ -7041,7 +6987,7 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
     todayCurrentTime.textContent = currentMinute >= 1440
       ? `${t("today.planNextDay")} ${currentTime}`
       : currentTime;
-    todayCurrentTime.dateTime = `${currentMinute >= 1440 ? nextAxisDate(view.date) : view.date}T${currentTime}`;
+    todayCurrentTime.dateTime = `${currentMinute >= 1440 ? shiftDateOnly(view.date, 1) : view.date}T${currentTime}`;
     todayCurrentTime.hidden = false;
   } else if (todayCurrentTime) {
     todayCurrentTime.hidden = true;
@@ -9529,7 +9475,7 @@ function habitRow(habit: HabitView): HTMLElement {
   const progress = document.createElement("strong");
   const todayState = document.createElement("small");
   progress.textContent = isSleepHabitKey(habit.key)
-    ? habitSleepOverview.value(habit.key, habit.today.date, habit.today.sleepFact ? formatSleepEndpoint(habit.today.sleepFact, currentInterfaceLanguage) : habit.today.actualTimeLabel ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage) : undefined) : habitProgressLabel(habit);
+    ? habitSleepOverview.value(habit.key, habit.today.date, habit.today.actualTimeLabel ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage) : undefined) : habitProgressLabel(habit);
   progress.title = progress.textContent;
   if (isSleepHabitKey(habit.key)) {
     progress.classList.toggle("habit-sleep-described-value", !/^\d{2}:\d{2}$/.test(progress.textContent));
@@ -10309,11 +10255,10 @@ function renderSelectedHabitCell(): void {
   );
   detail.replaceChildren(heading, state, details);
   if (isSleepHabitKey(habit.key) && cell.date <= habit.today.date) {
-    if (cell.sleepFact) {
-      const actual = document.createElement("p");
-      setCopy(actual, "sleep.actualValue", { value: formatSleepEndpoint(cell.sleepFact, currentInterfaceLanguage) });
-      detail.append(actual);
-    }
+    const actual = document.createElement("p");
+    setCopy(actual, "sleep.actualValue", { value: habitSleepOverview.value(habit.key, cell.date,
+      cell.actualTimeLabel ? localizeHabitActualTimeLabel(cell.actualTimeLabel, currentInterfaceLanguage) : undefined) });
+    detail.append(actual);
     detail.append(createHabitTimeEntryButton({habitKey:habit.key,date:cell.date,habitName:displayHabitName(habit)},currentInterfaceLanguage));
   }
   const correctionDate = historicalHabitCorrectionDate(cell.date, habit.today.date);
@@ -10896,6 +10841,10 @@ function renderHabitSnapshotStatus(view: HabitSnapshotView): void {
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   const snapshotChanged = currentHabitSnapshot !== view;
   currentHabitSnapshot = view;
+  // Cells, row values and both charts share the snapshot's captured canonical read.
+  if (view.sleepError) habitSleepOverview.unavailable(view.sleepError);
+  else if (view.sleepView) habitSleepOverview.accept(view.sleepView);
+  else habitSleepOverview.clear();
   if (selectedHabitDetailKey && currentHabitDetailHistory?.habit.key === selectedHabitDetailKey) {
     const latestHabit = view.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
     if (latestHabit) {
@@ -11032,16 +10981,6 @@ async function refreshHabits(forSelection = false): Promise<void> {
   try {
     const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot", { vaultPath });
     if (!isCurrent()) return;
-    if (view.habits.some(habit => isSleepHabitKey(habit.key))) {
-      try {
-        const sleep = await window.__TAURI__.core.invoke<SleepView>("sleep_records", { vaultPath });
-        if (!isCurrent()) return;
-        habitSleepOverview.accept(sleep);
-      } catch (error) {
-        if (!isCurrent()) return;
-        habitSleepOverview.unavailable(String(error));
-      }
-    } else habitSleepOverview.clear();
     renderHabitSnapshot(view);
   } catch (error) {
     if (!isCurrent()) return;
@@ -15584,17 +15523,10 @@ settingsCategoryButtons.forEach((button) => {
   });
 });
 
-function shiftDate(date: string, days: number): string {
-  const value = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(value.getTime())) return date;
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
-}
-
 document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEventListener("click", () => {
   if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = true;
-  collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, -1);
+  collaborationActivityDate = shiftDateOnly(collaborationDateInput?.value || collaborationActivityDate, -1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
   void refreshCollaborationWorkspace();
 });
@@ -15602,7 +15534,7 @@ document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEv
 document.querySelector<HTMLButtonElement>("#collaboration-date-next")?.addEventListener("click", () => {
   if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = true;
-  collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, 1);
+  collaborationActivityDate = shiftDateOnly(collaborationDateInput?.value || collaborationActivityDate, 1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
   void refreshCollaborationWorkspace();
 });
@@ -16039,7 +15971,7 @@ function bindCompactSchedule(prefix: string, date: HTMLInputElement | null, time
   });
   ["today", "tomorrow", "undated"].forEach(preset => document.querySelector(`#${prefix}-${preset}`)?.addEventListener("click", () => {
     const base = baseDate();
-    date.value = preset === "undated" ? "" : base ? shiftDate(base, preset === "tomorrow" ? 1 : 0) : "";
+    date.value = preset === "undated" ? "" : base ? shiftDateOnly(base, preset === "tomorrow" ? 1 : 0) : "";
     normalizeTaskDateTimeFields(date, time); stash(); updateCompactScheduleLabel(prefix, date, time);
   }));
   document.querySelector(`#${prefix}-schedule-apply`)?.addEventListener("click", () => close(true));

@@ -11486,6 +11486,7 @@ mod capability_tests {
             catalog_error: None,
             completion_error: None,
             sleep_error: None,
+            sleep_view: None,
             names_configuration_state: HabitNamesConfigurationState::Missing,
             summary: HabitSummaryView::default(),
             habits: Vec::new(),

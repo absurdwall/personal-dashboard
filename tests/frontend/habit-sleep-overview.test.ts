@@ -35,7 +35,7 @@ const canonicalBoundary=String.raw`
   const ds=Array.from({length:7},(_,i)=>'2026-08-'+String(4+i).padStart(2,'0'));
   const cell=(key,date)=>({date,coverage:'complete',status:'thresholdOnly',hasRecord:true,countsAsCompletion:true,localCompletionState:'none',hasExternalCompletion:true,completionSourceLabels:['Synthetic threshold'],actualTimeLabel:null,sleepFact:sleepState.facts.find(f=>f.habitKey===key&&f.livedDate===date)??null,details:[{kind:'localRecord',sourceLabel:'Synthetic source',text:'Retained source evidence'}],localRecords:[]});
   let habit=(key)=>({key,name:key==='wake'?'Wake up':key==='sleep'?'Go to bed':'Reading',localizedNames:{zh:key==='wake'?'起床':key==='sleep'?'睡觉':'阅读'},active:true,canRecordCompletion:key==='reading',goalKind:key==='reading'?'weekly-count':'daily-time',goalLabel:'Source target',goalTarget:null,definition:null,weeklyTarget:key==='reading'?3:null,completedCount:2,sourceLabels:['Synthetic threshold'],coverageLabel:'complete',goalHistory:[],today:cell(key,view.date),recent:ds.map(date=>cell(key,date)),history:Array.from({length:84},(_,i)=>cell(key,new Date(Date.UTC(2026,4,19+i)).toISOString().slice(0,10)))});
-  const habitSnapshotFixture=()=>({state:'ready',message:'Synthetic coverage',livedDate:view.date,generatedAt:view.date+'T09:00:00-04:00',displayRangeLabel:'2026-08-04 — 2026-08-10',rangeLabel:'2026-08-04 — 2026-08-10',producerLabel:'Synthetic producer',completionRevision:'completions-r1',completionTargetBinding:'completion-target',catalogRevision:null,catalogTargetBinding:'catalog-target',catalogError:null,completionError:null,namesConfigurationState:'ready',summary:{knownCompletions:3,targetCompletions:5,coverageNote:'Source evidence preserved',excludedNoGoal:0},habits:['wake','sleep','reading'].map(habit)});
+  const habitSnapshotFixture=()=>({sleepView:structuredClone({...sleepState,overview:overviewFixture()}),state:'ready',message:'Synthetic coverage',livedDate:view.date,generatedAt:view.date+'T09:00:00-04:00',displayRangeLabel:'2026-08-04 — 2026-08-10',rangeLabel:'2026-08-04 — 2026-08-10',producerLabel:'Synthetic producer',completionRevision:'completions-r1',completionTargetBinding:'completion-target',catalogRevision:null,catalogTargetBinding:'catalog-target',catalogError:null,completionError:null,namesConfigurationState:'ready',summary:{knownCompletions:3,targetCompletions:5,coverageNote:'Source evidence preserved',excludedNoGoal:0},habits:['wake','sleep','reading'].map(habit)});
   view.habitTimeHabits=['wake','sleep'].map(key=>({key,name:habit(key).name,localizedNames:habit(key).localizedNames}));
   view.habitCorrections={...view.habitCorrections,habits:['wake','sleep','reading'].map(key=>({key,name:habit(key).name,localizedNames:habit(key).localizedNames,nameKnown:true,canRecordCompletion:key==='reading',goalLabel:'Source target',localChangeCount:0,localChanges:[],cell:cell(key,view.date)}))};
   const invoke=window.__TAURI__.core.invoke;
@@ -71,9 +71,9 @@ test('explicit language and range transitions reveal resized sleep plots while b
     const seven=geometry();surface.scrollTop=0;
     document.querySelector('button[data-sleep-metric="duration"]').click();const metric=geometry();
     surface.scrollTop=Math.max(0,surface.scrollTop-30);const readingPosition=surface.scrollTop;
-    const reads=calls.filter(c=>c.command==='sleep_records').length,beforeRefresh=document.querySelector('[data-sleep-overview]');
+    const reads=calls.filter(c=>c.command==='habit_snapshot').length,beforeRefresh=document.querySelector('[data-sleep-overview]');
     document.querySelector('#refresh-habits').click();
-    await until(()=>calls.filter(c=>c.command==='sleep_records').length>reads&&document.querySelector('[data-sleep-overview]')!==beforeRefresh&&document.querySelector('#habit-detail-status').textContent==='');
+    await until(()=>calls.filter(c=>c.command==='habit_snapshot').length>reads&&document.querySelector('[data-sleep-overview]')!==beforeRefresh&&document.querySelector('#habit-detail-status').textContent==='');
     return JSON.stringify({seven,metric,readingPosition,afterRefresh:surface.scrollTop,period:document.querySelector('[data-sleep-period="7"]').getAttribute('aria-pressed'),errors:window.probeErrors});
   `,true,720,{},canonicalBoundary+`
     const languageInvoke=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>command==='set_interface_language'?{interfaceLanguage:args.interfaceLanguage}:languageInvoke(command,args);
@@ -110,8 +110,8 @@ for(const [width,height]of [[830,758],[969,723],[1280,720]])for(const language o
       const results=[];
       for(const endpoint of states){
         sleepState={...sleepState,facts:endpoint?[fact('current','wake',view.date,endpoint)]:[],revision:'state-'+results.length};
-        const reads=calls.filter(c=>c.command==='sleep_records').length;
-        document.querySelector('#refresh-habits').click();await until(()=>calls.filter(c=>c.command==='sleep_records').length>reads);
+        const reads=calls.filter(c=>c.command==='habit_snapshot').length;
+        document.querySelector('#refresh-habits').click();await until(()=>calls.filter(c=>c.command==='habit_snapshot').length>reads);
         const expected=require('./sleep-facts.js').formatSleepEndpoint(endpoint?fact('current','wake',view.date,endpoint):null,document.documentElement.lang.startsWith('zh')?'zh':'en');
         await until(()=>document.querySelector('.habit-snapshot-row[data-habit-key="wake"] .habit-snapshot-value strong').textContent===expected);
         const value=document.querySelector('.habit-snapshot-row[data-habit-key="wake"] .habit-snapshot-value strong');
@@ -201,8 +201,8 @@ test('clock statistics cross the 04:00 ownership boundary without a false noon m
     const nearBoundary={mean:document.querySelector('[data-sleep-stat="mean"] strong').textContent,heights:[...document.querySelectorAll('[data-sleep-chart="detail"] circle')].map(n=>Number(n.getAttribute('cy')))};
     const replaceFacts=async(facts)=>{
       sleepState={...sleepState,facts,revision:'revision-'+facts.length+'-'+Math.random()};
-      const reads=calls.filter(c=>c.command==='sleep_records').length;
-      document.querySelector('#refresh-habits').click();await until(()=>calls.filter(c=>c.command==='sleep_records').length>reads);
+      const reads=calls.filter(c=>c.command==='habit_snapshot').length;
+      document.querySelector('#refresh-habits').click();await until(()=>calls.filter(c=>c.command==='habit_snapshot').length>reads);
       await new Promise(resolve=>setTimeout(resolve,30));
     };
     await replaceFacts([fact('antipodal-a','sleep','2026-08-08',point('2026-08-09','00:00')),fact('antipodal-b','sleep','2026-08-09',point('2026-08-09','12:00'))]);
@@ -262,14 +262,14 @@ test('out-of-order overview reads and same-named Vault selection never expose th
     await until(()=>calls.some(c=>c.command==='select_today_vault'));
     document.querySelector('[data-workspace-destination="habits"]').click();
     await until(()=>document.querySelector('[data-sleep-chart="mini"] [data-habit-key="wake"][data-habit-date="2026-08-10"]')?.getAttribute('aria-label').includes('08:40'));
-    pendingOverview.forEach(resolve=>resolve({targetBinding:'old-vault-a',revision:'stale-a',records:[],facts:[fact('old-a','wake',view.date,{kind:'text',date:view.date,text:'OLD_VAULT_PRIVATE_MARKER'})]}));
+    pendingOverview.forEach(resolve=>resolve({...habitSnapshotFixture(),sleepView:{targetBinding:'old-vault-a',revision:'stale-a',records:[],facts:[fact('old-a','wake',view.date,{kind:'text',date:view.date,text:'OLD_VAULT_PRIVATE_MARKER'})]}}));
     await new Promise(resolve=>setTimeout(resolve,35));
     return JSON.stringify({label:document.querySelector('[data-sleep-chart="mini"] [data-habit-key="wake"][data-habit-date="2026-08-10"]').getAttribute('aria-label'),stale:document.body.textContent.includes('OLD_VAULT_PRIVATE_MARKER'),summary:document.querySelector('#habits-summary-total').textContent,errors:window.probeErrors});
   `,true,723,{},canonicalBoundary+`
     view.vaultPath='/Synthetic/A/Shared';view.vaultName='Shared';
     let holdOverview=false;const pendingOverview=[];const overviewInvoke=window.__TAURI__.core.invoke;
     window.__TAURI__.core.invoke=async(command,args)=>{
-      if(command==='sleep_records'&&holdOverview){calls.push({command,args});return new Promise(resolve=>pendingOverview.push(resolve));}
+      if(command==='habit_snapshot'&&holdOverview){calls.push({command,args});return new Promise(resolve=>pendingOverview.push(resolve));}
       if(command==='select_today_vault'){calls.push({command,args});view.vaultPath='/Synthetic/B/Shared';holdOverview=false;sleepState={targetBinding:'new-vault-b',revision:'b1',records:[],facts:[fact('b','wake',view.date,point(view.date,'08:40'))]};return {view:structuredClone(view),changed:true};}
       return overviewInvoke(command,args);
     };
@@ -283,7 +283,7 @@ test('an unavailable canonical overview does not masquerade as an empty successf
     return JSON.stringify({count:document.querySelector('[data-sleep-stat="count"] strong').textContent,error:document.querySelector('.habit-sleep-read-error')?.textContent,actual:document.querySelector('[data-habit-key="sleep"] .habit-snapshot-value').textContent,summary:document.querySelector('#habits-summary-total').textContent,source:document.querySelector('[data-habit-key="reading"]').textContent,writes:calls.filter(c=>/save_|set_habit|dated_note/.test(c.command)).length,errors:window.probeErrors});
   `,true,723,{},canonicalBoundary+`
     const unavailableInvoke=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>{
-      if(command==='sleep_records'){calls.push({command,args});throw Error('Synthetic canonical read unavailable');}
+      if(command==='habit_snapshot'){calls.push({command,args});return {...habitSnapshotFixture(),sleepView:null,sleepError:'Synthetic canonical read unavailable'};}
       return unavailableInvoke(command,args);
     };
   `);
@@ -300,7 +300,7 @@ test('overview errors follow live interface-language changes', {skip:process.pla
     return JSON.stringify({english,chinese,errors:window.probeErrors});
   `,true,723,{},canonicalBoundary+`
     const languageInvoke=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>{
-      if(command==='sleep_records'){calls.push({command,args});throw '不支持的作息正本版本。';}
+      if(command==='habit_snapshot'){calls.push({command,args});return {...habitSnapshotFixture(),sleepView:null,sleepError:'不支持的作息正本版本。'};}
       if(command==='set_interface_language'){calls.push({command,args});return {interfaceLanguage:args.interfaceLanguage};}
       return languageInvoke(command,args);
     };
@@ -313,16 +313,16 @@ test('a newer refresh preserves the chosen metric and period when an older read 
   const result=probe(969,navigate+`
     holdRefresh=true;document.querySelector('#refresh-habits').click();await until(()=>refreshWaiters.length===1);
     document.querySelector('#refresh-habits').click();await until(()=>refreshWaiters.length===2);
-    refreshWaiters[1]({targetBinding:'sleep-target',revision:'freshest',records:[],facts:[fact('latest','wake',view.date,point(view.date,'08:45'))]});
+    refreshWaiters[1]({...habitSnapshotFixture(),sleepView:{targetBinding:'sleep-target',revision:'freshest',records:[],facts:[fact('latest','wake',view.date,point(view.date,'08:45'))]}});
     await until(()=>document.querySelector('[data-sleep-chart="mini"] [data-habit-key="wake"][data-habit-date="2026-08-10"]')?.getAttribute('aria-label').includes('08:45'));
     document.querySelector('[data-habit-open="sleep"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
     document.querySelector('[data-sleep-metric="wake"]').click();document.querySelector('[data-sleep-period="30"]').click();
-    refreshWaiters[0]({targetBinding:'sleep-target',revision:'old-result',records:[],facts:[fact('old','wake',view.date,{kind:'text',date:view.date,text:'STALE_READ_MARKER'})]});
+    refreshWaiters[0]({...habitSnapshotFixture(),sleepView:{targetBinding:'sleep-target',revision:'old-result',records:[],facts:[fact('old','wake',view.date,{kind:'text',date:view.date,text:'STALE_READ_MARKER'})]}});
     await new Promise(resolve=>setTimeout(resolve,30));
     return JSON.stringify({metric:document.querySelector('[data-sleep-overview]').dataset.sleepMetric,period:document.querySelector('[data-sleep-period="30"]').getAttribute('aria-pressed'),label:document.querySelector('[data-sleep-chart="detail"] [data-habit-date="2026-08-10"]').getAttribute('aria-label'),stale:document.body.textContent.includes('STALE_READ_MARKER'),errors:window.probeErrors});
   `,true,723,{},canonicalBoundary+`
     let holdRefresh=false;const refreshWaiters=[];const refreshedInvoke=window.__TAURI__.core.invoke;
-    window.__TAURI__.core.invoke=async(command,args)=>{if(command==='sleep_records'&&holdRefresh){calls.push({command,args});return new Promise(resolve=>refreshWaiters.push(resolve));}return refreshedInvoke(command,args);};
+    window.__TAURI__.core.invoke=async(command,args)=>{if(command==='habit_snapshot'&&holdRefresh){calls.push({command,args});return new Promise(resolve=>refreshWaiters.push(resolve));}return refreshedInvoke(command,args);};
   `);
   assert.equal(result.metric,'wake');assert.equal(result.period,'true');assert.match(result.label,/08:45/);assert.equal(result.stale,false);assert.deepEqual(result.errors,[]);
 });
@@ -363,7 +363,7 @@ test('already-rendered sleep copy and errors change language without losing cont
     return JSON.stringify({translated,original,rawAfter:wrapper.dataset.i18nError,error:wrapper.textContent,errorSame:document.querySelector('.habit-sleep-read-error')===wrapper,errors:window.probeErrors});
   `,true,723,{},canonicalBoundary+`
     window.failOverviewRead=false;const stableInvoke=window.__TAURI__.core.invoke;
-    window.__TAURI__.core.invoke=async(command,args)=>{if(command==='sleep_records'&&window.failOverviewRead)throw '不支持的作息正本版本。';return stableInvoke(command,args);};
+    window.__TAURI__.core.invoke=async(command,args)=>{if(command==='habit_snapshot'&&window.failOverviewRead)return {...habitSnapshotFixture(),sleepView:null,sleepError:'不支持的作息正本版本。'};return stableInvoke(command,args);};
   `);
   assert.equal(result.translated.same,true);assert.equal(result.translated.inputSame,true);assert.equal(result.translated.date,'2026-08-01');
   assert.equal(result.translated.tab,'入睡');assert.equal(result.translated.earliest,'23:50');assert.match(result.translated.latest,/约.*00:10/);
@@ -376,7 +376,7 @@ test('overview statistics from another date cannot appear in the selected contex
     document.querySelector('[data-habit-open="wake"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
     return JSON.stringify({count:document.querySelector('[data-sleep-stat="count"] strong').textContent,mean:document.querySelector('[data-sleep-stat="mean"] strong').textContent,points:document.querySelectorAll('[data-sleep-chart="detail"] circle').length,errors:window.probeErrors});
   `,true,723,{},canonicalBoundary+`
-    const datedInvoke=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>{const value=await datedInvoke(command,args);if(command==='sleep_records')value.overview.date='2026-08-09';return value;};
+    const datedInvoke=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>{const value=await datedInvoke(command,args);if(command==='habit_snapshot')value.sleepView.overview.date='2026-08-09';return value;};
   `);
   assert.equal(result.count,'— / 7');assert.equal(result.mean,'—');assert.equal(result.points,2);assert.deepEqual(result.errors,[]);
 });
@@ -402,9 +402,9 @@ test('a held Vault selection cannot attach a later backend overview to the previ
     window.__TAURI__.core.invoke=async(command,args)=>{
       if(command==='select_today_vault'){calls.push({command,args});backendVault='/Synthetic/B/Shared';return new Promise(resolve=>window.releaseSelection=resolve);}
       if(command==='habit_snapshot'&&holdSnapshot){calls.push({command,args});return new Promise(resolve=>window.releaseSnapshot=resolve);}
-      if(command==='sleep_records'&&backendVault==='/Synthetic/B/Shared'){
+      if(command==='habit_snapshot'&&backendVault==='/Synthetic/B/Shared'){
         calls.push({command,args});if(args?.vaultPath&&args.vaultPath!==backendVault)throw '所选 Vault 已改变；未读取作息。';
-        return {...sleepState,targetBinding:'binding-b',revision:'b1',facts:[fact('private-b','wake',view.date,point(view.date,'08:40'))],overview:overviewFixture()};
+        return {...habitSnapshotFixture(),sleepView:{...sleepState,targetBinding:'binding-b',revision:'b1',facts:[fact('private-b','wake',view.date,point(view.date,'08:40'))],overview:overviewFixture()}};
       }
       return selectedInvoke(command,args);
     };
@@ -533,4 +533,71 @@ test('the rendered Sleep detail disclosure keeps its catalog accessible name acr
     return JSON.stringify({before,zh,after:button.getAttribute('aria-label'),same:row.querySelector('.habit-expand')===button,errors:window.probeErrors});
   `,true,723,{},canonicalBoundary);
   assert.equal(result.before,result.after);assert.match(result.zh,/详情/);assert.doesNotMatch(result.zh,/历史/);assert.equal(result.same,true);assert.deepEqual(result.errors,[]);
+});
+
+for(const [date,next,prior] of [['2024-02-28','2024-02-29','2024-02-27'],['2024-03-01','2024-03-02','2024-02-29']])test(`axis and sleep overview share calendar-only dates across ${date}`,{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const axis=[...document.querySelectorAll('.today-axis-marker-time')].map(n=>n.textContent).join(' ');
+    document.querySelector('[data-workspace-destination="habits"]').click();await until(()=>document.querySelector('[data-sleep-chart="mini"]'));
+    const mini=[...document.querySelectorAll('[data-sleep-chart="mini"] [data-habit-date]')].map(n=>n.dataset.habitDate);
+    document.querySelector('[data-habit-open="sleep"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
+    document.querySelector('[data-sleep-period="30"]').click();const detail=[...document.querySelectorAll('[data-sleep-chart="detail"] [data-habit-date]')].map(n=>n.dataset.habitDate);
+    return JSON.stringify({axis,mini,detail,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    view.date=${JSON.stringify(date)};view.timeAxis.confirmedFacts=[{...view.timeAxis.currentArrangement[0],sourceDate:view.date,startMinute:1500,endMinute:null,text:'Calendar-only next-day fact',planId:null,planPrecision:null,timeEditable:false}];
+  `);
+  assert.match(result.axis,new RegExp(next));assert.ok(result.mini.includes(prior));assert.equal(result.detail.length,30);assert.equal(result.detail.at(-1),date);assert.equal(result.detail.at(-2),prior);assert.deepEqual(result.errors,[]);
+});
+
+
+test('a captured Habit snapshot keeps row, mini and detail on one revision without a second canonical read',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const before=calls.filter(c=>c.command==='sleep_records').length;
+  `+navigate+`
+    const row=document.querySelector('.habit-snapshot-row[data-habit-key="wake"]');
+    document.querySelector('[data-habit-open="wake"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
+    return JSON.stringify({actual:row.querySelector('.habit-snapshot-value strong').textContent,mini:row.querySelectorAll('circle').length,detail:document.querySelectorAll('[data-sleep-chart="detail"] circle').length,reads:calls.filter(c=>c.command==='sleep_records').length-before,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    const coherentInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      if(command==='habit_snapshot'){calls.push({command,args});return {...habitSnapshotFixture(),sleepView:structuredClone({...sleepState,overview:overviewFixture()})};}
+      if(command==='sleep_records'){calls.push({command,args});return {targetBinding:'sleep-target',revision:'removed-r2',records:[],facts:[],overview:{date:view.date,durations:[],statistics:['wake','sleep','duration'].flatMap(metric=>[7,30].map(period=>({metric,period,count:0,mean:null,earliest:null,latest:null,approximate:false,earliestApproximate:false,latestApproximate:false})))}};}
+      return coherentInvoke(command,args);
+    };
+  `);
+  assert.equal(result.actual,'08:10');assert.equal(result.mini,2);assert.equal(result.detail,2);assert.equal(result.reads,0);assert.deepEqual(result.errors,[]);
+});
+
+test('a correction to unrecorded updates the row, mini and open detail together while stale history cells cannot revive it',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    document.querySelector('[data-habit-open="wake"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
+    removeWake=true;const before=document.querySelector('[data-sleep-overview]');document.querySelector('#refresh-habits').click();
+    await until(()=>document.querySelector('[data-sleep-overview]')!==before&&document.querySelector('.habit-snapshot-row[data-habit-key="wake"] .habit-snapshot-value strong').textContent==='Unrecorded');
+    return JSON.stringify({value:document.querySelector('.habit-snapshot-row[data-habit-key="wake"] .habit-snapshot-value strong').textContent,mini:document.querySelector('.habit-snapshot-row[data-habit-key="wake"] [data-sleep-chart="mini"]').querySelectorAll('circle').length,detail:document.querySelectorAll('[data-sleep-chart="detail"] circle').length,count:document.querySelector('[data-sleep-stat="count"] strong').textContent,mean:document.querySelector('[data-sleep-stat="mean"] strong').textContent,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    let removeWake=false;const correctionInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      const response=await correctionInvoke(command,args);
+      if(command==='habit_snapshot'&&removeWake){
+        // Canonical R2 is authoritative even if independently sourced cells/history
+        // still contain an earlier projected fact. It must never be the fallback.
+        response.sleepView={...response.sleepView,revision:'removed-r2',facts:response.sleepView.facts.filter(f=>f.habitKey!=='wake'),overview:{...response.sleepView.overview,statistics:response.sleepView.overview.statistics.map(s=>s.metric==='wake'?{...s,count:0,mean:null,earliest:null,latest:null}:s)}};
+      }
+      return response;
+    };
+  `);
+  assert.equal(result.value,'Unrecorded');assert.equal(result.mini,0);assert.equal(result.detail,0);assert.equal(result.count,'0 / 7');assert.equal(result.mean,'—');assert.deepEqual(result.errors,[]);
+});
+
+test('a snapshot without a canonical Sleep view clears the preceding overview instead of reusing it',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    missingCanonical=true;document.querySelector('#refresh-habits').click();
+    await until(()=>document.querySelector('.habit-snapshot-row[data-habit-key="wake"] .habit-snapshot-value strong').textContent==='Unrecorded');
+    document.querySelector('[data-habit-open="wake"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
+    return JSON.stringify({mini:document.querySelector('.habit-snapshot-row[data-habit-key="wake"] [data-sleep-chart="mini"]').querySelectorAll('circle').length,detail:document.querySelectorAll('[data-sleep-chart="detail"] circle').length,count:document.querySelector('[data-sleep-stat="count"] strong').textContent,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    let missingCanonical=false;const missingInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{const response=await missingInvoke(command,args);return command==='habit_snapshot'&&missingCanonical?{...response,state:'missing',sleepView:null}:response;};
+  `);
+  assert.equal(result.mini,0);assert.equal(result.detail,0);assert.equal(result.count,'— / 7');assert.deepEqual(result.errors,[]);
 });
