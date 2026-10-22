@@ -62,7 +62,7 @@ run_habit_sleep_scenario() {
   local canonical="$vault/life/.personal-dashboard/sleep/v1/sessions.json"
   local identity="$acceptance_directory/sleep-record-identity"
   local sleep_record_hash sleep_completion_hash sleep_snapshot_hash sleep_names_hash saved_hash
-  local size language
+  local size language period_label metric_label
   fixed_now_epoch_millis="1789047000000" # 2026-09-10 09:30 at -04:00
   fixed_utc_offset_minutes="-240"
   current_step="preparing the owned offline Habit sleep Vault"
@@ -118,6 +118,7 @@ NODE
   run_driver press "Habits" 10
   run_driver focus-contains "2026-09-10 · Wake up" 10
   run_driver assert-focused-text "07:30" 10
+  run_driver capture-window "$captures/sleep-current-wake-row-en.png" 10
   run_driver press "View Wake up details" 10
   run_driver wait-active-text "Wake time" 20
   run_driver press "30 days" 10
@@ -139,6 +140,11 @@ NODE
   run_driver press "Daytime" 10
   run_driver click-axis-card "Go to bed" 10
   run_driver wait-text "2026-09-10 02:00" 20
+  run_driver wait-text "Reported sleep fact" 10
+  run_driver wait-text "Canonical record: $(cat "$identity")" 10
+  run_driver wait-text "Actual date: 2026-09-10 02:00 · UTC−04:00" 10
+  run_driver wait-text "Selected day: 2026-09-09 · day starts at 04:00" 10
+  run_driver capture-window "$captures/sleep-historical-fact-en.png" 10
   run_driver press "Close fact details" 10
   habit_sleep_assert_preserved
 
@@ -155,8 +161,10 @@ NODE
   run_driver press "Daytime" 10
   run_driver click-axis-card "Wake up" 10
   run_driver wait-text "2026-09-10 07:35" 20
+  run_driver wait-text "Canonical record: $(cat "$identity")" 10
+  run_driver wait-text "Actual date: 2026-09-10 07:35 · UTC−04:00" 10
   run_driver press "Close fact details" 10
-  run_driver assert-axis-card-absent "Go to bed|02:00" 10
+  run_driver assert-axis-card-absent "Go to bed|next day 02:00" 10
   run_driver capture-window "$captures/sleep-current-today-en.png" 10
   habit_sleep_assert_preserved
   saved_hash="$(shasum -a 256 "$canonical" | awk '{print $1}')"
@@ -172,13 +180,28 @@ NODE
   run_driver assert-focused-text "07:35" 10
   run_driver press "View Go to bed details" 10
   run_driver wait-active-text "Sleep time" 20
-  run_driver wait-active-text "02:00" 20
+  run_driver focus-contains "2026-09-09 · Sleep time" 10
+  run_driver assert-focused-text "next day 02:00" 10
   for language in en zh; do
-    if [[ "$language" == zh ]]; then run_driver press "Switch to Chinese" 10; fi
+    if [[ "$language" == zh ]]; then
+      run_driver press "Switch to Chinese" 10
+      metric_label="入睡"
+    else
+      metric_label="Sleep time"
+    fi
     for size in "830x758" "969x723" "1280x720"; do
       run_driver set-size "$size" 10
       run_driver assert-size "$size" 10
-      run_driver capture-window "$captures/sleep-reopened-overview-$size-$language.png" 10
+      if [[ "$language" == zh ]]; then period_label="7 天"; else period_label="7 days"; fi
+      run_driver press-exact "$period_label" 10
+      run_driver assert-window-visible "2026-09-04 · $metric_label" 10
+      run_driver assert-window-visible "2026-09-10 · $metric_label" 10
+      run_driver capture-window "$captures/sleep-reopened-overview-7-$size-$language.png" 10
+      if [[ "$language" == zh ]]; then period_label="30 天"; else period_label="30 days"; fi
+      run_driver press-exact "$period_label" 10
+      run_driver assert-window-visible "2026-08-12 · $metric_label" 10
+      run_driver assert-window-visible "2026-09-10 · $metric_label" 10
+      run_driver capture-window "$captures/sleep-reopened-overview-30-$size-$language.png" 10
     done
   done
   habit_sleep_assert_record "$canonical" corrected "$identity" || fail "sleep canonical state changed after process reopen"
