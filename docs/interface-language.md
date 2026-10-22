@@ -1,5 +1,10 @@
 # Fixed interface language
 
+These rules apply to the shipped Personal Dashboard UI, including diagnostic
+entry points and fixed errors. Clearly marked standalone reference-design
+prototypes are outside the App's delivery and bilingual requirements. Designs
+implemented in the shipped frontend must follow all catalog rules below.
+
 Fixed Personal Dashboard copy lives in `frontend/interface-language.ts`. Add
 both `zh` and `en` values to `interfaceCopies` in the same feature slice that
 introduces a new label, button, status, setting, or fixed error.
