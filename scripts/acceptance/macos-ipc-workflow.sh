@@ -6489,6 +6489,17 @@ NODE
   launch_app_waiting_for_text "Today" 30
   run_driver press "Collaboration" 10
   run_driver press "$session_title" 10
+  run_driver set-size "1440x900" 10
+  # WebKit pane preferences can outlive this isolated native profile. Establish
+  # the scenario's initial state through the actual disclosure/splitter owners.
+  if "$driver_binary" "$app_pid" assert-active-text "Current context" 10 >/dev/null 2>&1; then
+    run_driver press "Close current work context" 10
+  fi
+  if ! "$driver_binary" "$app_pid" assert-role-text "AXGroup|Sessions" 1 >/dev/null 2>&1; then
+    run_driver press "Toggle sessions sidebar" 10
+  fi
+  run_driver focus "Resize session history" 10
+  run_driver press-key "home" 10
   for window_size in "1440x900" "1040x800" "640x800" "1440x900"; do
     index=$((index + 1))
     current_step="checking collaboration columns at $window_size"
@@ -6510,6 +6521,12 @@ NODE
     run_driver set-size "$window_size" 10
     case "$window_size" in "640x800") mode=single ;; *) mode=two ;; esac
     run_driver press "Context" 10
+    if [[ "$window_size" == "640x800" ]]; then
+      # The narrow overlay scrolls behind the raised composer; reach complete
+      # normal body text with its existing keyboard scroll owner and sticky head.
+      run_driver focus "Close current work context" 10
+      run_driver press-key "pagedown" 10
+    fi
     run_driver assert-collaboration-columns "$mode-context|Sessions|$session_title|Current context|$draft|Send" 10
     run_driver assert-window-visible "Current context" 10
     run_driver assert-active-absent-text "Read failed" 10

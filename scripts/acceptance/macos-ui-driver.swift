@@ -3971,23 +3971,52 @@ func dumpText(_ application: AXUIElement) {
 
 // Check native hit-testing as well as geometry: a raised composer must remain
 // reachable even when the context panel extends behind it.
-func assertControlReceivesHitTest(_ control: AXUIElement, label: String) throws {
+func assertControlReceivesHitTest(_ control: AXUIElement, label: String, at point: CGPoint? = nil) throws {
     guard let bounds = frame(control), bounds.width > 0, bounds.height > 0 else {
         throw DriverError.timeout("visible control bounds: \(label)")
     }
+    let position = point ?? CGPoint(x: bounds.midX, y: bounds.midY)
     var hit: AXUIElement?
-    let status = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(bounds.midX), Float(bounds.midY), &hit)
+    let status = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(position.x), Float(position.y), &hit)
     guard status == .success else { throw DriverError.actionFailed("hit-test \(label)", status) }
     var cursor = hit
     var visited = AXElementIdentitySet()
     var depth = 0
+    var hitDetails: [String] = []
     while let element = cursor, depth < 64, visited.insert(element) {
+        hitDetails.append("role=\(stringAttribute(element, "AXRole")) frame=\(String(describing: frame(element))) text=\(String(nodeText(element).prefix(100)))")
         if CFEqual(element, control) { return }
         guard let parent = attribute(element, "AXParent"), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
         cursor = unsafeDowncast(parent, to: AXUIElement.self)
         depth += 1
     }
-    throw DriverError.unexpectedText("control is occluded at its center: \(label), bounds=\(bounds), hit=\(hit.map(nodeText) ?? "none")")
+    throw DriverError.unexpectedText("control is occluded at the tested position: \(label), bounds=\(bounds), hitPath=\(hitDetails.joined(separator: " -> "))")
+}
+
+// A multiline text bounding box includes line gaps/unused line width. Probe a
+// real character on every line, rather than mistaking its empty center for cover.
+func assertTextLinesReceiveHitTests(_ text: AXUIElement, label: String) throws {
+    let content = stringAttribute(text, "AXValue") as NSString
+    var testedLines: Set<Int> = []
+    for offset in 0..<content.length {
+        if content.substring(with: NSRange(location: offset, length: 1)).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+        var range = CFRange(location: offset, length: 1)
+        guard let parameter = AXValueCreate(.cfRange, &range) else { throw DriverError.timeout("text range: \(label)") }
+        var result: CFTypeRef?
+        let status = AXUIElementCopyParameterizedAttributeValue(text, "AXBoundsForRange" as CFString, parameter, &result)
+        guard status == .success, let value = result, CFGetTypeID(value) == AXValueGetTypeID() else {
+            throw DriverError.actionFailed("actual glyph bounds: \(label)", status)
+        }
+        var glyph = CGRect.zero
+        guard AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cgRect, &glyph), glyph.width > 0, glyph.height > 0 else {
+            throw DriverError.unexpectedText("empty actual glyph bounds at character \(offset): \(label)")
+        }
+        let line = Int((glyph.midY * 10).rounded())
+        if testedLines.insert(line).inserted {
+            try assertControlReceivesHitTest(text, label: "\(label), glyph \(offset) \(glyph)", at: CGPoint(x: glyph.midX, y: glyph.midY))
+        }
+    }
+    guard !testedLines.isEmpty else { throw DriverError.unexpectedText("no actual text lines: \(label)") }
 }
 
 // Measure current two-column/single layouts and the attached context overlay.
@@ -4067,7 +4096,7 @@ func assertCollaborationColumns(_ application: AXUIElement, specification: Strin
                           context.contains(bounds), windowFrame.contains(bounds),
                           bounds.minY >= contextHeading.maxY, bounds.maxY <= inputFrame.minY else { return false }
                     do {
-                        try assertControlReceivesHitTest(element, label: "normal context body: \(text)")
+                        try assertTextLinesReceiveHitTests(element, label: "normal context body: \(text)")
                     } catch {
                         bodyDiagnostics.append("body hit-test failed: \(error)")
                         return false

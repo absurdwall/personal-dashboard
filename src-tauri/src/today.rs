@@ -2371,6 +2371,14 @@ where
         vault: &Path,
     ) -> Result<crate::sleep::SleepView, String> {
         let result = crate::sleep::SleepWorkflow::new(vault).read();
+        self.finalize_sleep_view(vault, result)
+    }
+
+    fn finalize_sleep_view(
+        &self,
+        vault: &Path,
+        result: Result<crate::sleep::SleepView, String>,
+    ) -> Result<crate::sleep::SleepView, String> {
         self.confirm_selected_vault(vault)?;
         result.map(|view| view.project_overview(&self.clock.current_lived_date()))
     }
@@ -2449,15 +2457,13 @@ where
     pub fn save_habit_sleep_time(&self, input: crate::sleep::HabitSleepMutationInput) -> Result<crate::sleep::SleepView, String> {
         let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
         let result = crate::sleep::SleepWorkflow::new(&vault).save_habit_time(input);
-        self.confirm_selected_vault(&vault)?;
-        result.map(|view| view.project_overview(&self.clock.current_lived_date()))
+        self.finalize_sleep_view(&vault, result)
     }
 
     pub fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
         let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
         let result = crate::sleep::SleepWorkflow::new(&vault).save(input);
-        self.confirm_selected_vault(&vault)?;
-        result.map(|view| view.project_overview(&self.clock.current_lived_date()))
+        self.finalize_sleep_view(&vault, result)
     }
 
     fn confirm_selected_vault(&self, captured: &Path) -> Result<(), String> {
