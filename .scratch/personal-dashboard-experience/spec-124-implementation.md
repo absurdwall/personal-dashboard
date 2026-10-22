@@ -1,3 +1,15 @@
+> **Scope withdrawal after human acceptance · 2026-10-22**
+>
+> The user rejected the added sleep/wake UI during native manual acceptance and
+> asked to withdraw the complete new sleep/wake implementation from PR #132.
+> Keep the pre-existing wake/sleep Habits and all existing Vault data. The current
+> candidate retains the Task, dictation-composer and session-title fixes; its
+> human acceptance remains pending. Issues #125/#126 stay open for redesign after
+> the non-sleep candidate is accepted. Their previous requirements are paused.
+>
+> Everything below is historical evidence for earlier candidates and scopes. It
+> does not establish acceptance of the withdrawn design or the current candidate.
+
 # Spec #124 implementation and candidate acceptance
 
 Canonical specification: [#124](https://github.com/absurdwall/personal-dashboard/issues/124), children #125–#131. Integration branch: `codex/experience-grill-20261021`, original base `b0e33f1`. The accepted `CONTEXT.md`, ADR 0007 and sleep/wake prototype were preserved in `0cb490e`; the production App supplies the visual baseline.

@@ -30,7 +30,6 @@ function fixture(failReads = false) {
         : command === "calendar_month" ? {year: 2026, month: 10, taskState: "ready"}
           : {vault: "vault-a", state: "stale"};
     }}}},
-    refreshSleepSurfaces() {},
     todayPresentationRequests: request, todayClockRequests: request, calendarSelectionRequests: request,
     calendarMonthRequests: request, habitDateRequests: request, habitSnapshotRequests: request,
     renderToday(view: unknown) {context.currentTodayView = view; rendered.push("today");},

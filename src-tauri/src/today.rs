@@ -200,7 +200,6 @@ pub(crate) enum StorageDocumentKind {
     HabitCompletions,
     HabitCatalog,
     Tasks,
-    SleepRecords,
 }
 
 struct StorageFileMetadata {
@@ -301,21 +300,6 @@ impl StorageDocumentKind {
                     external_document: "task document",
                 },
             },
-            Self::SleepRecords => StorageDocumentDescriptor {
-                file: StorageFileMetadata {
-                    recovery_stem: "sleep-records",
-                    extension: "json",
-                },
-                labels: StorageDocumentLabels {
-                    document: "sleep-record document",
-                    created_document: "sleep-record document",
-                    refresh_action: "refreshing",
-                    candidate: "sleep-record candidate",
-                    displaced_document: "sleep-record document",
-                    active_document: "the sleep-record document",
-                    external_document: "sleep-record document",
-                },
-            },
         }
     }
 
@@ -332,7 +316,6 @@ impl StorageDocumentKind {
             Self::HabitCompletions => return habit_completions.into(),
             Self::HabitCatalog => "本地 Habit 定义正本操作失败",
             Self::Tasks => "任务正本操作失败",
-            Self::SleepRecords => "作息正本操作失败",
         };
         format!("{failure_label}{fallback_punctuation}")
     }
@@ -792,13 +775,11 @@ fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -
         (Some(path), StorageDocumentKind::HabitCompletions) => format!("本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
         (Some(path), StorageDocumentKind::HabitCatalog) => format!("本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 {}；请刷新 Habits 后重试。", path.display()),
         (Some(path), StorageDocumentKind::Tasks) => format!("任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请刷新 Tasks 后重试。", path.display()),
-        (Some(path), StorageDocumentKind::SleepRecords) => format!("作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Today 或 Habits。", path.display()),
         (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::HabitCompletions) => "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::HabitCatalog) => "本地 Habit 定义已在其他位置发生变化。请刷新 Habits 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::Tasks) => "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::SleepRecords) => "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。".into(),
     }
 }
 
@@ -2161,26 +2142,6 @@ where
             Ok(view) => view,
             Err(error) => TasksView::error(error, None, None, Some(vault.to_path_buf())),
         }
-    }
-
-    pub fn sleep_records(&self) -> Result<crate::sleep::SleepView, String> {
-        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再读取作息。")?;
-        crate::sleep::SleepWorkflow::new(&vault).read()
-    }
-
-    /// Capture and validate the selection before I/O so a concurrent selection
-    /// cannot supply another Vault's records to an originating model turn.
-    pub fn sleep_records_for_vault(&self, expected_vault_key: &str) -> Result<crate::sleep::SleepView, String> {
-        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再读取作息。")?;
-        if crate::collaboration::vault_key(&vault) != expected_vault_key {
-            return Err("Selected Vault changed; no sleep records read.".into());
-        }
-        crate::sleep::SleepWorkflow::new(&vault).read()
-    }
-
-    pub fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
-        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
-        crate::sleep::SleepWorkflow::new(&vault).save(input)
     }
 
     fn day_tasks_for(
@@ -8372,26 +8333,6 @@ mod tests {
             1,
             "the original inode remains recoverable"
         );
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn sleep_record_activation_rejects_external_changes_and_exclusive_creation_collisions() {
-        let directory = TempDirectory::new();
-        let path = directory.0.join("life/.personal-dashboard/sleep/v1/sessions.json");
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let original = b"original sleep document";
-        let external = b"external editor sleep document";
-        fs::write(&path, original).unwrap();
-        let error = save_file_if_unchanged(
-            &path, original, b"dashboard sleep correction", StorageDocumentKind::SleepRecords,
-            |_| fs::write(&path, external).map_err(|error| error.to_string()),
-        ).expect_err("a crossing external save must conflict");
-        assert!(error.contains("并发变化"), "{error}");
-        assert_eq!(fs::read(&path).unwrap(), external);
-        super::create_new_file(&path, b"competing first sleep record", StorageDocumentKind::SleepRecords)
-            .expect_err("exclusive creation must never replace an existing sleep document");
-        assert_eq!(fs::read(&path).unwrap(), external);
     }
 
     #[cfg(target_os = "macos")]

@@ -127,8 +127,8 @@ rollback also fails, the displaced inode remains linked at the reported
 temporary path for manual recovery.
 
 The same recovery directory protects writes to persistent Tasks, date-scoped
-tasks, local Habit completions, and Sleep and wake records. The app does not scan
-or replay recovery entries; restore one only after manually inspecting it.
+tasks, and local Habit completions. The app does not scan or replay recovery
+entries; restore one only after manually inspecting it.
 
 Snapshots have no automatic expiry. They remain until the user explicitly
 deletes them, which avoids inventing an unsafe time after which a retained

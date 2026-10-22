@@ -979,14 +979,6 @@ where
 /// Shared adapter seam for collaboration writes to Daily Records and local Habit completions.
 /// These operations use TodayApplication and never mutate the canonical Tasks store.
 pub trait CollaborationDailyDataService: Send + Sync {
-    fn sleep_records_available(&self) -> bool { false }
-    fn read_sleep_records(&self, _expected_vault_key: &str) -> Result<crate::sleep::SleepView, String> {
-        Err("Sleep records are unavailable in this runtime.".into())
-    }
-    fn save_sleep_record(&self, _input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
-        Err("Sleep records are unavailable in this runtime.".into())
-    }
-
     fn is_available(&self) -> bool {
         true
     }
@@ -1129,10 +1121,6 @@ where
     E: TodayWorkspaceExchange + Send + Sync,
     C: TodayClock + Send + Sync,
 {
-    fn sleep_records_available(&self) -> bool { true }
-    fn read_sleep_records(&self, expected_vault_key: &str) -> Result<crate::sleep::SleepView, String> { self.application.sleep_records_for_vault(expected_vault_key) }
-    fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> { self.application.save_sleep_record(input) }
-
     fn read_date(&self, date: &str) -> Result<TodayView, String> {
         self.application.read_date(date)
     }
@@ -4758,34 +4746,6 @@ impl CollaborationApplication {
                 success: false,
             };
         }
-        if call.tool == "dashboard_sleep_records" {
-            let result = (|| -> Result<crate::sleep::SleepView, String> {
-                if automatic_plan || !self.daily_data_service.sleep_records_available() {
-                    return Err("Sleep records are unavailable in this round.".into());
-                }
-                self.read_state(|state| -> Result<(),String> {
-                    let session = state.sessions.iter().find(|s| s.id==session_id && s.vault_key.as_deref()==Some(vault_key)).ok_or("Sleep request session is unavailable")?;
-                    if session.run_id.as_deref()!=Some(execution_id) || !matches!(session.run_state.as_str(),"reading"|"thinking") {
-                        return Err("Sleep request is no longer active; no data changed.".into());
-                    }
-                    Ok(())
-                })??;
-                if self.context_source.current_vault_key()?.as_deref()!=Some(vault_key) {
-                    return Err("Selected Vault changed; no sleep data changed.".into());
-                }
-                #[derive(Deserialize)]
-                #[serde(tag="action",rename_all="camelCase",deny_unknown_fields)]
-                enum Call { Read, Save { input: crate::sleep::SleepMutationInput } }
-                match serde_json::from_value(call.arguments).map_err(|e|e.to_string())? {
-                    Call::Read => self.daily_data_service.read_sleep_records(vault_key),
-                    Call::Save{input} => self.daily_data_service.save_sleep_record(input),
-                }
-            })();
-            return match result {
-                Ok(view)=>RuntimeDynamicToolResult{success:true,text:serde_json::to_string(&view).unwrap_or_default()},
-                Err(error)=>RuntimeDynamicToolResult{success:false,text:error},
-            };
-        }
         if call.tool == COLLABORATION_HISTORY_TOOL {
             let result = (|| -> Result<Value, String> {
                 if automatic_plan { return Err("History tool is unavailable in automatic rounds".into()); }
@@ -7524,7 +7484,6 @@ impl CollaborationApplication {
             && memory.long_term.state == "ready"
             && memory.long_term.revision.is_some();
         let mut dynamic_tools = Vec::new();
-
         if automatic_plan {
             if daily_plan_operations_available {
                 dynamic_tools.push(collaboration_task_tool_spec(false, true, false));
@@ -7544,9 +7503,6 @@ impl CollaborationApplication {
         }
         if !automatic_plan && memory_operations_available {
             dynamic_tools.push(collaboration_memory_tool_spec());
-        }
-        if !automatic_plan && self.daily_data_service.sleep_records_available() {
-            dynamic_tools.push(crate::sleep::tool_spec(usage::description("tool.sleepRecords")));
         }
         let mut prior_external_actions = Vec::new();
         for prior_session in state.sessions.iter().filter(|prior| prior.vault_key.as_deref() == Some(vault_key)) {

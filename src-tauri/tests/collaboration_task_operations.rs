@@ -447,32 +447,6 @@ impl AppServerTransport for DynamicRuntime {
             self.results.lock().unwrap().push(result);
             return Ok(RuntimeTurnResult{text:"Verify the existing long-term document; other domains retain their state.".into(),runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
         }
-        if request.user_text == "read synthetic sleep" {
-            let result = handler(RuntimeDynamicToolCall {
-                thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
-                call_id: "sleep-read-race".into(), tool: "dashboard_sleep_records".into(), arguments: json!({"action":"read"}),
-            });
-            self.results.lock().unwrap().push(result);
-            return Ok(RuntimeTurnResult { text: "Read attempted".into(), runtime_turn_id: Some(format!("turn-{}",request.execution_id)), stopped:false, external_actions:vec![] });
-        }
-        if request.user_text == "record synthetic sleep" {
-            let call = |id:&str, arguments:Value| handler(RuntimeDynamicToolCall {
-                thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
-                call_id: id.into(), tool: "dashboard_sleep_records".into(), arguments,
-            });
-            let read = call("sleep-read", json!({"action":"read"}));
-            assert!(read.success,"{}",read.text);
-            let view:Value=serde_json::from_str(&read.text).unwrap();
-            let input=json!({"wakeDate":"2026-09-27","changeId":"synthetic-sleep-first","targetBinding":view["targetBinding"],"expectedRevision":view["revision"],
-                "sleepOnset":{"kind":"point","date":"2026-09-26","time":"23:50","utcOffsetMinutes":-240},
-                "getUp":{"kind":"point","date":"2026-09-27","time":"07:20","utcOffsetMinutes":-240}});
-            let save=call("sleep-save",json!({"action":"save","input":input}));
-            self.results.lock().unwrap().push(save.clone());
-            assert!(save.success,"{}",save.text);
-            let duplicate=call("sleep-save",json!({"action":"save","input":input}));
-            assert!(duplicate.success); assert_eq!(duplicate.text,save.text);
-            return Ok(RuntimeTurnResult{text:save.text,runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
-        }
         if let Some(operation) = request.user_text.strip_prefix("task-contract:") {
             let tools = self.registered_tools.lock().unwrap();
             let description = tools.iter().find(|tool| tool["name"] == "dashboard_task_operation")
@@ -1827,7 +1801,7 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
     wait_for_finish(&application, &session.id, "vault-a");
 
     let registered = registered_tools.lock().unwrap();
-    assert_eq!(registered.len(), 4);
+    assert_eq!(registered.len(), 3);
     assert_eq!(registered[0]["name"], "dashboard_task_operation");
     assert!(
         registered[0]["inputSchema"]["oneOf"]
@@ -2196,7 +2170,7 @@ fn daily_plan_uses_the_shared_review_tool_and_persists_only_after_approval() {
     wait_for_finish(&application, &session.id, "vault-a");
 
     let registered = registered_tools.lock().unwrap();
-    assert_eq!(registered.len(), 4, "plan actions retain the shared operation tool beside bounded history and derived refresh");
+    assert_eq!(registered.len(), 3, "plan actions retain the shared operation tool beside bounded history and derived refresh");
     assert_eq!(registered[0]["name"], "dashboard_task_operation");
     assert!(registered[0]["inputSchema"]["oneOf"]
         .as_array()
@@ -4747,7 +4721,7 @@ fn automatic_session_human_continuation_saves_tasks_records_habits_and_memory_th
     );
     assert!(results.lock().unwrap().iter().all(|result| result.success));
     let tools = registered.lock().unwrap();
-    assert_eq!(tools.len(), 5);
+    assert_eq!(tools.len(), 4);
     let variants = tools[0]["inputSchema"]["oneOf"].as_array().unwrap();
     for name in [
         "completeTask",
@@ -8169,35 +8143,6 @@ fn evening_entry_save_failure_has_no_saved_session_and_retry_creates_one() {
 }
 
 #[test]
-fn collaboration_sleep_tool_and_today_editor_share_the_same_selected_vault_record() {
-    let directory=IsolatedDirectory::new(); let path=directory.vault("sleep-vault");
-    let vault=MutableVault::new(&path);
-    let mut hasher=DefaultHasher::new(); path.canonicalize().unwrap().hash(&mut hasher);
-    let key=format!("vault-{:016x}",hasher.finish());
-    let (application,tools,results)=new_application(&directory,&vault,MutableContext::new(&key),Arc::new(AtomicBool::new(false)));
-    let session=application.create_session("2026-09-27").unwrap();
-    application.submit_message(&key,&session.id,"2026-09-27","record synthetic sleep").unwrap();
-    wait_for_finish(&application,&session.id,&key);
-    assert!(tools.lock().unwrap().iter().any(|t|t["name"]=="dashboard_sleep_records"));
-    let result=results.lock().unwrap()[0].clone(); assert!(result.success);
-    let today=TodayApplication::new(vault.clone(),NoVaultPicker,FixedClock);
-    let canonical=today.sleep_records().unwrap();
-    assert_eq!(canonical.records.len(),1); assert_eq!(canonical.records[0].estimated_duration_minutes,Some(450));
-    let readback:Value=serde_json::from_str(&result.text).unwrap();
-    assert_eq!(readback,serde_json::to_value(&canonical).unwrap());
-    let changed=today.save_sleep_record(serde_json::from_value(json!({
-        "recordId":canonical.records[0].id,"wakeDate":"2026-09-27","changeId":"manual-supplement",
-        "targetBinding":canonical.target_binding,"expectedRevision":canonical.revision,
-        "getUp":{"kind":"point","date":"2026-09-27","time":"08:20","utcOffsetMinutes":-240,"approximate":true}
-    })).unwrap()).unwrap();
-    assert_eq!(changed.records[0].id,canonical.records[0].id);
-    assert_eq!(changed.records[0].estimated_duration_minutes,Some(510));
-    let reopened=TodayApplication::new(vault,NoVaultPicker,FixedClock);
-    assert_eq!(reopened.sleep_records().unwrap(),changed);
-    assert!(fs::read_dir(path.join("life/Journal/Daily")).unwrap().next().is_none());
-        }
-
-#[test]
 fn first_task_requests_from_the_registered_contract_save_and_read_back_without_repair() {
     let directory = IsolatedDirectory::new();
     let vault = MutableVault::new(&directory.vault("first-task-contract"));
@@ -8408,65 +8353,4 @@ fn failed_first_task_save_returns_failure_without_a_canonical_task() {
     assert_eq!(saved.task_operations.len(), 1);
     assert_eq!(saved.task_operations[0].status, "failed");
     assert!(saved.task_operations[0].result_snapshot.is_none());
-}
-
-// Simulate a user selection completing after the turn's context check, at the
-// actual daily-data adapter boundary. The production adapter and file read run.
-struct SwitchVaultBeforeSleepRead {
-    inner: TodayApplicationCollaborationDailyDataAdapter<MutableVault, NoVaultPicker, FixedClock>,
-    selection: MutableVault,
-    replacement: PathBuf,
-}
-impl personal_dashboard_lib::collaboration::CollaborationDailyDataService for SwitchVaultBeforeSleepRead {
-    fn sleep_records_available(&self) -> bool { true }
-    fn read_sleep_records(&self, expected_vault_key: &str) -> Result<personal_dashboard_lib::sleep::SleepView, String> {
-        self.selection.select(&self.replacement);
-        self.inner.read_sleep_records(expected_vault_key)
-    }
-    fn read_date(&self, date: &str) -> Result<personal_dashboard_lib::today::TodayView, String> { self.inner.read_date(date) }
-    fn save(&self, input: DailyPlanWriteInput) -> Result<personal_dashboard_lib::today::TodayView, String> { self.inner.save(input) }
-    fn operation_applied(&self, date: &str, binding: &str, id: &str, fingerprint: &str) -> Result<bool, String> { self.inner.operation_applied(date,binding,id,fingerprint) }
-}
-
-#[test]
-fn collaboration_sleep_read_rejects_selection_changed_at_the_adapter_boundary() {
-    let directory = IsolatedDirectory::new();
-    let original = directory.vault("sleep-original");
-    let replacement = directory.vault("sleep-replacement");
-    let other = personal_dashboard_lib::sleep::SleepWorkflow::new(&replacement);
-    let empty = other.read().unwrap();
-    other.save(serde_json::from_value(json!({"wakeDate":"2026-09-27","changeId":"other-private-history","targetBinding":empty.target_binding,"expectedRevision":empty.revision,"getUp":{"kind":"text","date":"2026-09-27","text":"OTHER VAULT PRIVATE SLEEP"}})).unwrap()).unwrap();
-    let mut hasher = DefaultHasher::new(); original.canonicalize().unwrap().hash(&mut hasher);
-    let key = format!("vault-{:016x}",hasher.finish());
-    let selection = MutableVault::new(&original);
-    let (application, _, results) = new_application(&directory,&selection,MutableContext::new(&key),Arc::new(AtomicBool::new(false)));
-    let application = application.with_daily_data_service(Arc::new(SwitchVaultBeforeSleepRead {
-        inner: TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(selection.clone(),NoVaultPicker,FixedClock)),
-        selection, replacement,
-    }));
-    let session=application.create_session("2026-09-27").unwrap();
-    application.submit_message(&key,&session.id,"2026-09-27","read synthetic sleep").unwrap();
-    wait_for_finish(&application,&session.id,&key);
-    let result=results.lock().unwrap()[0].clone();
-    assert!(!result.success,"a turn must not read the newly selected Vault: {}",result.text);
-    assert!(!result.text.contains("OTHER VAULT PRIVATE SLEEP"));
-}
-
-#[test]
-fn stale_sleep_save_at_today_command_entry_does_not_expose_selected_vault_parse_diagnostics() {
-    let directory=IsolatedDirectory::new();
-    let original=directory.vault("sleep-stale-command-original");
-    let replacement=directory.vault("sleep-stale-command-selected");
-    let selection=MutableVault::new(&original);
-    let today=TodayApplication::new(selection.clone(),NoVaultPicker,FixedClock);
-    let before=today.sleep_records().unwrap();
-    let relative="life/.personal-dashboard/sleep/v1/sessions.json";
-    let private=serde_json::to_vec(&json!({"schemaVersion":1,"records":[{"id":"selected-private-night","wakeDate":"2026-09-27","sleepOnset":{"kind":"SELECTED_B_PRIVATE_PARSE_MARKER"},"getUp":{"kind":"unrecorded"},"estimatedDurationMinutes":null}],"operations":[]})).unwrap();
-    fs::create_dir_all(replacement.join(relative).parent().unwrap()).unwrap();fs::write(replacement.join(relative),&private).unwrap();
-    selection.select(&replacement);
-    let error=today.save_sleep_record(serde_json::from_value(json!({"wakeDate":"2026-09-27","changeId":"stale-command-save","targetBinding":before.target_binding,"expectedRevision":before.revision,"getUp":{"kind":"unknown"}})).unwrap()).unwrap_err();
-    assert_eq!(fs::read(replacement.join(relative)).unwrap(),private);
-    assert!(!original.join(relative).exists());
-    assert!(!error.contains("SELECTED_B_PRIVATE_PARSE_MARKER"),"another Vault's corrupt content escaped through the command result: {error}");
-    assert_eq!(error,"所选 Vault 已改变；未写入。");
 }
