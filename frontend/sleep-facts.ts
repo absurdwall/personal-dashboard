@@ -1,4 +1,4 @@
-import {interfaceCopy, setInterfaceCopy, type InterfaceLanguage} from './interface-language.js';
+import {interfaceCopy, setInterfaceCopy, type InterfaceLanguage,type InterfaceCopyValue} from './interface-language.js';
 
 export type SleepHabitKey='wake'|'sleep';
 export function isSleepHabitKey(value:unknown):value is SleepHabitKey{return value==='wake'||value==='sleep';}
@@ -17,34 +17,44 @@ export type SleepOverviewStatistics=Readonly<{metric:'wake'|'sleep'|'duration';p
 export type SleepOverview=Readonly<{date:string;durations:readonly SleepDurationSample[];statistics:readonly SleepOverviewStatistics[]}>;
 export type SleepView = Readonly<{targetBinding:string;revision:string|null;records:readonly SleepRecord[];facts:readonly SleepEndpointFact[];overview?:SleepOverview|null}>;
 
-export function formatSleepEndpoint(fact:SleepEndpointFact|null|undefined, language:InterfaceLanguage):string {
-  const t=(key:Parameters<typeof interfaceCopy>[0],values:Record<string,string>={})=>interfaceCopy(key,language,values);
+/** Endpoint grammar retains semantic catalog values until the active language is known. */
+export function sleepEndpointCopy(fact:SleepEndpointFact|null|undefined):InterfaceCopyValue {
   const endpoint=fact?.endpoint;
-  if(!endpoint||endpoint.kind==='unrecorded')return t('sleep.unrecorded');
-  if(endpoint.kind==='unknown')return t('sleep.explicitUnknown');
-  if(endpoint.kind==='text')return t('sleep.originalValue',{text:endpoint.text});
-  const point=(value:SleepPoint):string=>{
-    const clock=value.approximate?t('sleep.aboutTime',{time:value.time}):value.time;
-    if(!fact?.livedDate)return `${value.date} ${clock}`;
-    return value.date===fact.livedDate?clock:t('sleep.nextDayTime',{time:clock});
+  if(!endpoint||endpoint.kind==='unrecorded')return {copy:'sleep.unrecorded'};
+  if(endpoint.kind==='unknown')return {copy:'sleep.explicitUnknown'};
+  if(endpoint.kind==='text')return {copy:'sleep.originalValue',variables:{text:endpoint.text}};
+  const point=(value:SleepPoint):InterfaceCopyValue=>{
+    if(!fact?.livedDate)return value.approximate?{copy:'sleep.datedAboutTime',variables:{date:value.date,time:value.time}}:`${value.date} ${value.time}`;
+    const clock:InterfaceCopyValue=value.approximate?{copy:'sleep.aboutTime',variables:{time:value.time}}:value.time;
+    return value.date===fact.livedDate?clock:{copy:'sleep.nextDayTime',variables:{time:clock}};
   };
-  if(endpoint.kind==='point')return point(endpoint);
-  return t('sleep.rangeValue',{start:point(endpoint.start),end:point(endpoint.end),text:endpoint.reportedText});
+  return endpoint.kind==='point'?point(endpoint):{copy:'sleep.rangeValue',variables:{start:point(endpoint.start),end:point(endpoint.end),text:endpoint.reportedText}};
 }
-
+export function formatSleepCopy(value:InterfaceCopyValue,language:InterfaceLanguage):string {
+  return typeof value==='object'?interfaceCopy(value.copy,language,value.variables):String(value);
+}
+export function formatSleepEndpoint(fact:SleepEndpointFact|null|undefined,language:InterfaceLanguage):string {return formatSleepCopy(sleepEndpointCopy(fact),language);}
+/** Raw clock/date/source values stay raw; every fixed grammar branch uses the catalog setter. */
+export function setSleepCopy(target:HTMLElement|SVGElement,value:InterfaceCopyValue,language:InterfaceLanguage):void {
+  if(typeof value==='object')setInterfaceCopy(target,value.copy,language,value.variables);
+  else {delete target.dataset.i18n;delete target.dataset.i18nVariables;delete target.dataset.i18nError;delete target.dataset.applicationMessage;target.textContent=String(value);}
+}
+export function setSleepEndpointCopy(target:HTMLElement|SVGElement,fact:SleepEndpointFact|null|undefined,language:InterfaceLanguage):void {setSleepCopy(target,sleepEndpointCopy(fact),language);}
 
 /** Feature-owned Today fact copy; the composition root supplies names and routes actions. */
 export class SleepFactPresentation {
   private readonly language:()=>InterfaceLanguage;
   private readonly habitName:(key:SleepHabitKey)=>string|undefined;
   constructor(language:()=>InterfaceLanguage,habitName:(key:SleepHabitKey)=>string|undefined){this.language=language;this.habitName=habitName;}
-  name(fact:SleepEndpointFact):string{return this.habitName(fact.habitKey)??interfaceCopy(fact.habitKey==='sleep'?'sleep.fact.onset':'sleep.fact.getUp',this.language());}
+  private nameCopy(fact:SleepEndpointFact):InterfaceCopyValue{return this.habitName(fact.habitKey)??{copy:fact.habitKey==='sleep'?'sleep.fact.onset':'sleep.fact.getUp'};}
+  name(fact:SleepEndpointFact):string{return formatSleepCopy(this.nameCopy(fact),this.language());}
+  appendName(target:HTMLElement,fact:SleepEndpointFact):void{setSleepCopy(target,this.nameCopy(fact),this.language());}
   value(fact:SleepEndpointFact):string{return formatSleepEndpoint(fact,this.language());}
   appendCopy(target:HTMLElement,fact:SleepEndpointFact):void{
     target.dataset.sleepFactCopy='';
-    setInterfaceCopy(target,'sleep.fact.value',this.language(),{habit:this.name(fact),value:this.value(fact)});
+    setInterfaceCopy(target,'sleep.fact.value',this.language(),{habit:this.nameCopy(fact),value:sleepEndpointCopy(fact)});
   }
-  appendTime(target:HTMLElement,fact:SleepEndpointFact):void{target.dataset.sleepFactTime='';target.textContent=this.value(fact);}
+  appendTime(target:HTMLElement,fact:SleepEndpointFact):void{target.dataset.sleepFactTime='';setSleepEndpointCopy(target,fact,this.language());}
   appendProvenance(target:HTMLElement,fact:SleepEndpointFact):void{
     const label=document.createElement('span');setInterfaceCopy(label,'sleep.fact.canonicalRecord',this.language(),{id:fact.recordId});target.append(label);
     const point=(value:SleepPoint):string=>{
@@ -59,7 +69,7 @@ export class SleepFactPresentation {
   }
   correctionButton(fact:SleepEndpointFact,canCorrect:boolean):HTMLButtonElement{
     const button=document.createElement('button');button.type='button';button.className='secondary-button';
-    if(canCorrect&&fact.livedDate)setInterfaceCopy(button,'sleep.correctTimeLabel',this.language(),{habit:this.name(fact),date:fact.livedDate});
+    if(canCorrect&&fact.livedDate)setInterfaceCopy(button,'sleep.correctTimeLabel',this.language(),{habit:this.nameCopy(fact),date:fact.livedDate});
     else setInterfaceCopy(button,'sleep.openCollaboration',this.language());
     return button;
   }
@@ -70,9 +80,9 @@ export class SleepFactPresentation {
       const habit=this.name(fact);
       container.querySelectorAll<HTMLElement>('[data-sleep-fact-copy]').forEach(target=>this.appendCopy(target,fact));
       container.querySelectorAll<HTMLElement>('[data-sleep-fact-time]').forEach(target=>this.appendTime(target,fact));
-      container.querySelectorAll<HTMLElement>('[data-sleep-fact-title]').forEach(target=>{target.textContent=habit;});
+      container.querySelectorAll<HTMLElement>('[data-sleep-fact-title]').forEach(target=>{this.appendName(target,fact);});
       const link=container.querySelector<HTMLElement>('.today-axis-marker-link');if(link)link.dataset.axisItemText=habit;
-      if(fact.livedDate)container.querySelectorAll<HTMLElement>('[data-i18n="sleep.correctTimeLabel"]').forEach(button=>setInterfaceCopy(button,'sleep.correctTimeLabel',this.language(),{habit,date:fact.livedDate!}));
+      if(fact.livedDate)container.querySelectorAll<HTMLElement>('[data-i18n="sleep.correctTimeLabel"]').forEach(button=>setInterfaceCopy(button,'sleep.correctTimeLabel',this.language(),{habit:this.nameCopy(fact),date:fact.livedDate!}));
     });
   }
 }

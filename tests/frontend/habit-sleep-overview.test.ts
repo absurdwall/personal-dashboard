@@ -601,3 +601,19 @@ test('a snapshot without a canonical Sleep view clears the preceding overview in
   `);
   assert.equal(result.mini,0);assert.equal(result.detail,0);assert.equal(result.count,'— / 7');assert.deepEqual(result.errors,[]);
 });
+
+test('catalog refresh updates row, selected source evidence and chart endpoint grammar without replacing their nodes',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    const row=document.querySelector('.habit-snapshot-row[data-habit-key="sleep"] .habit-snapshot-value strong');
+    const day=document.querySelector('[data-sleep-chart="mini"] [data-habit-key="sleep"][data-habit-date="2026-08-09"]');day.click();
+    await until(()=>document.querySelector('.habit-sleep-day-evidence:not([hidden])')?.textContent.includes('Retained source evidence'));
+    const panel=document.querySelector('.habit-sleep-day-evidence:not([hidden])'),actual=panel.querySelector('.habit-sleep-day-values p'),source=panel.querySelector('li');
+    const english={row:row.textContent,actual:actual.textContent,source:source.textContent,title:day.title};
+    require('./interface-language.js').applyInterfaceLanguage('zh');
+    return JSON.stringify({english,chinese:{row:row.textContent,actual:actual.textContent,source:source.textContent,title:day.title},same:row===document.querySelector('.habit-snapshot-row[data-habit-key="sleep"] .habit-snapshot-value strong')&&actual===panel.querySelector('.habit-sleep-day-values p')&&source===panel.querySelector('li'),errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary);
+  assert.equal(result.english.row,'Unrecorded');assert.equal(result.chinese.row,'尚未填写');
+  assert.match(result.english.actual,/next day about 00:10/);assert.match(result.chinese.actual,/次日.*约 00:10/);
+  assert.match(result.english.source,/text record.*Retained source evidence/);assert.match(result.chinese.source,/文字记录.*Retained source evidence/);
+  assert.match(result.chinese.title,/次日.*约 00:10/);assert.equal(result.same,true);assert.deepEqual(result.errors,[]);
+});

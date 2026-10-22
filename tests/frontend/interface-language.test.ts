@@ -10,10 +10,13 @@ import {
   localizeApplicationMessage,
   localizeCollaborationDiagnostic,
   localizeHabitActualTimeLabel,
+  habitActualTimeCopy,
+  setHabitDetailCopy,
   localizeHabitCoverageLabel,
   localizeHabitDetail,
   localizeHabitGoalLabel,
   setInterfaceError,
+  setInterfaceCopy,
   updateTodayAxisMarkerAccessibleName,
   type InterfaceLanguage,
 } from "../../frontend/interface-language.ts";
@@ -628,4 +631,51 @@ test("reported Habit-time workflow diagnostics localize without translating sour
     assert.equal(localizeApplicationError(diagnostic, "en"), expected);
     assert.equal(localizeApplicationError(diagnostic, "zh"), diagnostic);
   }
+});
+
+
+test("nested sleep endpoint grammar changes language in place and keeps reported wording literal", () => {
+  const value: FakeElement = {dataset:{},textContent:""};
+  setInterfaceCopy(value,"sleep.actualValue","en",{value:{copy:"sleep.rangeValue",variables:{
+    start:{copy:"sleep.nextDayTime",variables:{time:{copy:"sleep.aboutTime",variables:{time:"02:00"}}}},
+    end:"03:00",text:"原话 about {start} / 次日"}}});
+  assert.equal(value.textContent,"Actual: next day about 02:00–03:00 · 原话 about {start} / 次日");
+  const identity=value;
+  applyInterfaceLanguage("zh",languageRoot([value]));
+  assert.equal(value,identity);
+  assert.equal(value.textContent,"实际：次日 约 02:00–03:00 · 原话 about {start} / 次日");
+  applyInterfaceLanguage("en",languageRoot([value]));
+  assert.equal(value.textContent,"Actual: next day about 02:00–03:00 · 原话 about {start} / 次日");
+});
+
+test("invalid or excessively nested persisted copy metadata does not execute or recurse without bound", () => {
+  const value: FakeElement={dataset:{i18n:"sleep.actualValue"},textContent:""};
+  for(const invalid of [{value:{copy:"unknown.catalog.key"}}, {value:["not a copy descriptor"]}]){
+    value.dataset.i18nVariables=JSON.stringify(invalid);applyInterfaceLanguage("en",languageRoot([value]));
+    assert.equal(value.textContent,"Actual: {value}");
+  }
+  let nested:unknown="02:00";for(let i=0;i<32;i++)nested={copy:"sleep.nextDayTime",variables:{time:nested}};
+  value.dataset.i18nVariables=JSON.stringify({value:nested});
+  applyInterfaceLanguage("zh",languageRoot([value]));assert.equal(value.textContent,"实际：{value}");
+});
+
+
+test("tagged source evidence retains its existing bilingual bytes and raw text during catalog refresh",()=>{
+  const cases=[
+    [{kind:"localRecord",sourceLabel:"Raw来源",text:"原文 {time}"},"Raw来源 · text record · 原文 {time}","Raw来源 · 文字记录 · 原文 {time}"],
+    [{kind:"localCompletion",state:"completed",changedAt:"2026-08-10T09:00"},"Personal Dashboard local completion · 2026-08-10T09:00","Personal Dashboard 本地完成 · 2026-08-10T09:00"],
+    [{kind:"localCompletion",state:"withdrawn",changedAt:"2026-08-10T09:00"},"Personal Dashboard local completion withdrawn · 2026-08-10T09:00","Personal Dashboard 本地完成已取消 · 2026-08-10T09:00"],
+    [{kind:"actualTime",dayRelation:"next-day",localTime:"02:00",utcOffsetMinutes:-240},"Exact time next day 02:00 · UTC offset -240 minutes","明确时刻 次日 02:00 · UTC offset -240 分钟"],
+    [{kind:"actualTime",dayRelation:"unresolved",localTime:"02:00",utcOffsetMinutes:null},"Exact time unresolved 02:00 · UTC offset unknown","明确时刻 待解释 02:00 · UTC offset 未知"],
+    [{kind:"observation",sourceLabel:"Raw来源",status:"partial",evidence:"threshold-check-in",observedAt:"2026-08-10",note:"原文 {status}"},"Raw来源 · partial · excluded from counts · threshold check-in evidence · Observed at 2026-08-10 · 原文 {status}","Raw来源 · partial · 不计次 · 阈值打卡证据 · observedAt 2026-08-10 · 原文 {status}"],
+  ] as const;
+  for(const [detail,english,chinese]of cases){
+    const node:FakeElement={dataset:{},textContent:""};setHabitDetailCopy(node,detail,"en");
+    assert.equal(node.textContent,english);applyInterfaceLanguage("zh",languageRoot([node]));assert.equal(node.textContent,chinese);
+    applyInterfaceLanguage("en",languageRoot([node]));assert.equal(node.textContent,english);
+  }
+  const value:FakeElement={dataset:{},textContent:""};
+  setInterfaceCopy(value,"sleep.actualValue","en",{value:habitActualTimeCopy("次日 02:00",[{kind:"actualTime",dayRelation:"next-day",localTime:"02:00",utcOffsetMinutes:-240}])});
+  assert.equal(value.textContent,"Actual: next day 02:00");applyInterfaceLanguage("zh",languageRoot([value]));assert.equal(value.textContent,"实际：次日 02:00");
+  assert.equal(habitActualTimeCopy("次日 原文",[]),"次日 原文");
 });

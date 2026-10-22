@@ -1,5 +1,5 @@
-import {setInterfaceCopy,setInterfaceAttribute,setInterfaceError,type InterfaceLanguage,type InterfaceCopyKey} from './interface-language.js';
-import {isSleepHabitKey,formatSleepEndpoint,type SleepHabitKey,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint} from './sleep-facts.js';
+import {setInterfaceCopy,setInterfaceAttribute,setInterfaceError,type InterfaceLanguage,type InterfaceCopyKey,type InterfaceCopyVariables} from './interface-language.js';
+import {isSleepHabitKey,sleepEndpointCopy,setSleepEndpointCopy,type SleepHabitKey,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint} from './sleep-facts.js';
 
 type Context=Readonly<{date:string;vaultPath:string;canRecord:boolean;habits:readonly Readonly<{key:string;name:string}>[]}>;
 type Draft={habitKey:SleepHabitKey;kind:SleepEndpoint['kind'];time:string;endTime:string;approximate:boolean;text:string;textDate:string|null;expanded:boolean;recordId?:string;targetBinding:string;expectedRevision:string|null;changeId:string};
@@ -56,7 +56,7 @@ export class HabitTimeEntry {
     if(this.data)this.open(habitKey,true);
   }
 
-  private copy(element:HTMLElement,key:InterfaceCopyKey,values:Record<string,string>={}):void{setInterfaceCopy(element,key,this.options.language(),values);}
+  private copy(element:HTMLElement,key:InterfaceCopyKey,values:InterfaceCopyVariables={}):void{setInterfaceCopy(element,key,this.options.language(),values);}
   private async read():Promise<void>{
     const context=this.context;if(!context||this.selectionPending)return;const token=++this.request;
     try{
@@ -97,12 +97,12 @@ export class HabitTimeEntry {
       edit.disabled=this.selectionPending||this.saving||!context.canRecord||!this.data||conflict;
       edit.addEventListener('click',()=>this.open(key,true));header.append(name,edit);
       const value=document.createElement('p');value.className='day-task-meta';value.dataset.habitTimeValue=habit.key;
-      if(conflict)this.copy(value,'sleep.conflictValue');else if(!this.data)this.copy(value,this.status?.error?'sleep.unavailableValue':'sleep.readingValue');else this.copy(value,'sleep.actualValue',{value:formatSleepEndpoint(fact,this.options.language())});
+      if(conflict)this.copy(value,'sleep.conflictValue');else if(!this.data)this.copy(value,this.status?.error?'sleep.unavailableValue':'sleep.readingValue');else this.copy(value,'sleep.actualValue',{value:sleepEndpointCopy(fact)});
       row.append(header,value);
       if(conflict){
         const help=document.createElement('p');help.className='day-task-meta';this.copy(help,'sleep.conflictHelp');
         const provenance=document.createElement('ul');provenance.dataset.habitTimeConflicts=habit.key;
-        for(const item of matches){const line=document.createElement('li');line.textContent=formatSleepEndpoint(item,this.options.language());provenance.append(line);}
+        for(const item of matches){const line=document.createElement('li');setSleepEndpointCopy(line,item,this.options.language());provenance.append(line);}
         const resolve=document.createElement('button');resolve.type='button';resolve.className='secondary-button';this.copy(resolve,'sleep.openCollaboration');resolve.addEventListener('click',()=>this.options.openCollaboration());
         row.append(help,provenance,resolve);
       }

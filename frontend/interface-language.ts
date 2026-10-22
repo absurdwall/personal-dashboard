@@ -93,9 +93,32 @@ const interfaceCopies = {
   "sleep.recordTime": { zh: "记录时间", en: "Record time" },
   "sleep.rangeValue": { zh: "{start}–{end} · {text}", en: "{start}\u2013{end} \u00b7 {text}" },
   "sleep.nextDayTime": { zh: "次日 {time}", en: "next day {time}" },
+  "sleep.datedAboutTime": {zh:"{date} 约 {time}",en:"{date} about {time}"},
   "sleep.aboutTime": { zh: "约 {time}", en: "about {time}" },
   "sleep.originalValue": { zh: "原话：{text}", en: "Original wording: {text}" },
   "sleep.explicitUnknown": { zh: "明确未知", en: "Explicitly unknown" },
+  "habits.detail.future": {zh:"未来日期 · unknown",en:"Future date · unknown"},
+  "habits.detail.conflict": {zh:"来源冲突 · 暂不计入完成次数",en:"Source conflict · excluded from completion counts"},
+  "habits.detail.noRecord": {zh:"未读取或没有记录 · unknown，不等于 not_done",en:"Not read or not recorded · unknown, not not_done"},
+  "habits.detail.localRecord": {zh:"{source} · 文字记录 · {text}",en:"{source} · text record · {text}"},
+  "habits.detail.completed": {zh:"Personal Dashboard 本地完成 · {changedAt}",en:"Personal Dashboard local completion · {changedAt}"},
+  "habits.detail.withdrawn": {zh:"Personal Dashboard 本地完成已取消 · {changedAt}",en:"Personal Dashboard local completion withdrawn · {changedAt}"},
+  "habits.detail.exactTime": {zh:"明确时刻 {time} · UTC offset {offset}",en:"Exact time {time} · UTC offset {offset}"},
+  "habits.detail.unresolvedTime": {zh:"待解释 {time}",en:"unresolved {time}"},
+  "habits.detail.offsetUnknown": {zh:"未知",en:"unknown"},
+  "habits.detail.offsetMinutes": {zh:"{minutes} 分钟",en:"{minutes} minutes"},
+  "habits.detail.observation": {zh:"{source} · {status} · {evidence} · observedAt {observedAt}{note}",en:"{source} · {status} · {evidence} · Observed at {observedAt}{note}"},
+  "habits.detail.statusCompleted": {zh:"completed",en:"completed"},
+  "habits.detail.statusNotDone": {zh:"not_done",en:"not_done"},
+  "habits.detail.statusPartial": {zh:"partial · 不计次",en:"partial · excluded from counts"},
+  "habits.detail.statusBaseline": {zh:"baseline · 不计次",en:"baseline · excluded from counts"},
+  "habits.detail.statusUnavailable": {zh:"unavailable",en:"unavailable"},
+  "habits.detail.statusActualTime": {zh:"actual_time",en:"actual_time"},
+  "habits.detail.statusThreshold": {zh:"threshold_met · 不编造分钟",en:"threshold_met · minutes not inferred"},
+  "habits.detail.evidenceCheckIn": {zh:"打卡证据",en:"check-in evidence"},
+  "habits.detail.evidenceManual": {zh:"人工明确补报",en:"explicit manual report"},
+  "habits.detail.evidenceExact": {zh:"明确时刻证据",en:"exact-time evidence"},
+  "habits.detail.evidenceThreshold": {zh:"阈值打卡证据",en:"threshold check-in evidence"},
   "sleep.unrecorded": { zh: "尚未填写", en: "Unrecorded" },
   "sleep.error.endpointContext": { zh: "端点日期上下文需要对应的明确端点；未写入。", en: "Endpoint date context requires its explicit endpoint; nothing was written." },
   "sleep.error.ambiguousNight": { zh: "同一 lived day 的另一条记录有可兼容的相反端点；请先澄清是否属于同一晚，再通过 Collaboration 明确记录身份；未写入。", en: "Another record has a compatible opposite endpoint on this lived day. Clarify whether they belong to the same night, then specify the record through Collaboration. Nothing was written." },
@@ -1444,6 +1467,12 @@ const interfaceCopies = {
 } as const;
 
 export type InterfaceCopyKey = keyof typeof interfaceCopies;
+/** Semantic fixed grammar; user-owned wording remains a plain string leaf. */
+export type InterfaceCopyDescriptor = Readonly<{copy:InterfaceCopyKey;variables?:InterfaceCopyVariables}>;
+export type InterfaceCopyValue = string | number | InterfaceCopyDescriptor;
+export type InterfaceCopyVariables = Readonly<Record<string,InterfaceCopyValue>>;
+const maximumCopyDepth=8;
+
 
 const languageLocales: Record<InterfaceLanguage, string> = {
   zh: "zh-CN",
@@ -2733,89 +2762,34 @@ export type HabitDetail =
   | Readonly<{ kind: "conflict" }>
   | Readonly<{ kind: "noRecord" }>;
 
-export function localizeHabitDetail(
-  detail: HabitDetail,
-  language: InterfaceLanguage,
-): string {
-  if (detail.kind === "future") {
-    return language === "zh" ? "未来日期 · unknown" : "Future date · unknown";
+function habitDetailCopy(detail:HabitDetail):InterfaceCopyDescriptor {
+  if(detail.kind==='future')return {copy:'habits.detail.future'};
+  if(detail.kind==='conflict')return {copy:'habits.detail.conflict'};
+  if(detail.kind==='noRecord')return {copy:'habits.detail.noRecord'};
+  if(detail.kind==='localRecord')return {copy:'habits.detail.localRecord',variables:{source:detail.sourceLabel,text:detail.text}};
+  if(detail.kind==='localCompletion')return {copy:detail.state==='completed'?'habits.detail.completed':'habits.detail.withdrawn',variables:{changedAt:detail.changedAt}};
+  if(detail.kind==='actualTime'){
+    const time:InterfaceCopyValue=detail.dayRelation==='same-day'?detail.localTime:{copy:detail.dayRelation==='next-day'?'sleep.nextDayTime':'habits.detail.unresolvedTime',variables:{time:detail.localTime}};
+    const offset:InterfaceCopyDescriptor=detail.utcOffsetMinutes===null?{copy:'habits.detail.offsetUnknown'}:{copy:'habits.detail.offsetMinutes',variables:{minutes:detail.utcOffsetMinutes}};
+    return {copy:'habits.detail.exactTime',variables:{time,offset}};
   }
-  if (detail.kind === "conflict") {
-    return language === "zh"
-      ? "来源冲突 · 暂不计入完成次数"
-      : "Source conflict · excluded from completion counts";
-  }
-  if (detail.kind === "noRecord") {
-    return language === "zh"
-      ? "未读取或没有记录 · unknown，不等于 not_done"
-      : "Not read or not recorded · unknown, not not_done";
-  }
-  if (detail.kind === "localRecord") {
-    const label = language === "zh" ? "文字记录" : "text record";
-    return `${detail.sourceLabel} · ${label} · ${detail.text}`;
-  }
-  if (detail.kind === "localCompletion") {
-    if (detail.state === "completed") {
-      return language === "zh"
-        ? `Personal Dashboard 本地完成 · ${detail.changedAt}`
-        : `Personal Dashboard local completion · ${detail.changedAt}`;
-    }
-    return language === "zh"
-      ? `Personal Dashboard 本地完成已取消 · ${detail.changedAt}`
-      : `Personal Dashboard local completion withdrawn · ${detail.changedAt}`;
-  }
-  if (detail.kind === "actualTime") {
-    const relation = {
-      "same-day": "",
-      "next-day": language === "zh" ? "次日 " : "next day ",
-      unresolved: language === "zh" ? "待解释 " : "unresolved ",
-    }[detail.dayRelation];
-    const offset = detail.utcOffsetMinutes === null
-      ? language === "zh" ? "未知" : "unknown"
-      : language === "zh"
-        ? `${detail.utcOffsetMinutes} 分钟`
-        : `${detail.utcOffsetMinutes} minutes`;
-    const label = language === "zh" ? "明确时刻" : "Exact time";
-    return `${label} ${relation}${detail.localTime} · UTC offset ${offset}`;
-  }
+  const statuses:Record<typeof detail.status,InterfaceCopyKey>={completed:'habits.detail.statusCompleted','not-done':'habits.detail.statusNotDone',partial:'habits.detail.statusPartial',baseline:'habits.detail.statusBaseline',unavailable:'habits.detail.statusUnavailable','actual-time':'habits.detail.statusActualTime','threshold-met':'habits.detail.statusThreshold'};
+  const evidence:Record<typeof detail.evidence,InterfaceCopyKey>={'check-in':'habits.detail.evidenceCheckIn','manual-completion':'habits.detail.evidenceManual','explicit-time':'habits.detail.evidenceExact','threshold-check-in':'habits.detail.evidenceThreshold'};
+  return {copy:'habits.detail.observation',variables:{source:detail.sourceLabel,status:{copy:statuses[detail.status]},evidence:{copy:evidence[detail.evidence]},observedAt:detail.observedAt,note:detail.note===null?'':` · ${detail.note}`}};
+}
+export function localizeHabitDetail(detail:HabitDetail,language:InterfaceLanguage):string {
+  const value=habitDetailCopy(detail);return interfaceCopy(value.copy,language,value.variables);
+}
+export function setHabitDetailCopy(target:LocalizableElement,detail:HabitDetail,language:InterfaceLanguage):void {
+  const value=habitDetailCopy(detail);setInterfaceCopy(target,value.copy,language,value.variables);
+}
 
-  const statuses = language === "zh"
-    ? {
-        completed: "completed",
-        "not-done": "not_done",
-        partial: "partial · 不计次",
-        baseline: "baseline · 不计次",
-        unavailable: "unavailable",
-        "actual-time": "actual_time",
-        "threshold-met": "threshold_met · 不编造分钟",
-      }
-    : {
-        completed: "completed",
-        "not-done": "not_done",
-        partial: "partial · excluded from counts",
-        baseline: "baseline · excluded from counts",
-        unavailable: "unavailable",
-        "actual-time": "actual_time",
-        "threshold-met": "threshold_met · minutes not inferred",
-      };
-  const evidenceKinds = language === "zh"
-    ? {
-        "check-in": "打卡证据",
-        "manual-completion": "人工明确补报",
-        "explicit-time": "明确时刻证据",
-        "threshold-check-in": "阈值打卡证据",
-      }
-    : {
-        "check-in": "check-in evidence",
-        "manual-completion": "explicit manual report",
-        "explicit-time": "exact-time evidence",
-        "threshold-check-in": "threshold check-in evidence",
-      };
-  const observedAt = language === "zh" ? "observedAt" : "Observed at";
-  const note = detail.note === null ? "" : ` · ${detail.note}`;
-  return `${detail.sourceLabel} · ${statuses[detail.status]} · ${
-    evidenceKinds[detail.evidence]
-  } · ${observedAt} ${detail.observedAt}${note}`;
+/** Reuse tagged source evidence only when it confirms the projected legacy display. */
+export function habitActualTimeCopy(label:string,details:readonly HabitDetail[]):InterfaceCopyValue {
+  const actual=details.find(detail=>detail.kind==='actualTime'&&(
+    detail.dayRelation==='same-day'&&label===detail.localTime||
+    detail.dayRelation==='next-day'&&label===`次日 ${detail.localTime}`));
+  return actual?.kind==='actualTime'&&actual.dayRelation==='next-day'?{copy:'sleep.nextDayTime',variables:{time:actual.localTime}}:label;
 }
 
 export function localizeHabitActualTimeLabel(
@@ -2853,16 +2827,21 @@ export function localizeHabitCoverageLabel(
   return label.replace(/ · (\d+) 个 complete 日期$/, " · $1 complete dates");
 }
 
-export function interfaceCopy(
-  key: InterfaceCopyKey,
-  language: InterfaceLanguage,
-  variables: Readonly<Record<string, string | number>> = {},
-): string {
-  return Object.entries(variables).reduce(
-    (copy, [name, value]) => copy.replaceAll(`{${name}}`, String(value)),
-    interfaceCopies[key][language] as string,
-  );
+function renderInterfaceCopy(key:InterfaceCopyKey,language:InterfaceLanguage,variables:InterfaceCopyVariables,depth:number):string {
+  if(depth>maximumCopyDepth)return '';
+  return (interfaceCopies[key][language] as string).replace(/\{([^{}]+)\}/g,(placeholder,name:string)=>{
+    if(!Object.hasOwn(variables,name))return placeholder;
+    const value=variables[name];
+    if(typeof value==='string'||typeof value==='number')return String(value);
+    return value&&Object.hasOwn(interfaceCopies,value.copy)?renderInterfaceCopy(value.copy,language,value.variables??{},depth+1):placeholder;
+  });
 }
+
+export function interfaceCopy(
+  key:InterfaceCopyKey,
+  language:InterfaceLanguage,
+  variables:InterfaceCopyVariables={},
+):string {return renderInterfaceCopy(key,language,variables,0);}
 
 const todayAxisMarkerMetadataCopyKeys = [
   "sleep.fact.source",
@@ -2938,27 +2917,35 @@ type InterfaceLanguageRoot = {
   querySelectorAll(selector: string): Iterable<LocalizableElement>;
 };
 
-function variablesFor(
-  element: LocalizableElement,
-  language: InterfaceLanguage,
-): Readonly<Record<string, string | number>> {
-  let variables: Readonly<Record<string, string | number>> = {};
-  if (!element.dataset.i18nVariables) return {};
-  try {
-    variables = JSON.parse(element.dataset.i18nVariables) as Record<string, string | number>;
-  } catch {
-    variables = {};
+/** DOM metadata may be stale or malformed; accept only bounded semantic copy trees. */
+function validatedCopyVariables(value:unknown,depth=0):InterfaceCopyVariables|null {
+  if(depth>maximumCopyDepth||!value||typeof value!=='object'||Array.isArray(value))return null;
+  const entries=Object.entries(value);if(entries.length>64)return null;
+  const result:Record<string,InterfaceCopyValue>=Object.create(null);
+  for(const [name,item]of entries){
+    if(typeof item==='string'||typeof item==='number'&&Number.isFinite(item)){result[name]=item;continue;}
+    if(depth>=maximumCopyDepth||!item||typeof item!=='object'||Array.isArray(item))return null;
+    const candidate=item as Record<string,unknown>;
+    if(Object.keys(candidate).some(key=>key!=='copy'&&key!=='variables')||typeof candidate.copy!=='string'||!Object.hasOwn(interfaceCopies,candidate.copy))return null;
+    const variables=candidate.variables===undefined?{}:validatedCopyVariables(candidate.variables,depth+1);
+    if(!variables)return null;
+    result[name]={copy:candidate.copy as InterfaceCopyKey,variables};
   }
-  return element.dataset.i18nError
-    ? { ...variables, error: localizeApplicationError(element.dataset.i18nError, language) }
-    : variables;
+  return result;
+}
+
+function variablesFor(element:LocalizableElement,language:InterfaceLanguage):InterfaceCopyVariables {
+  let variables:InterfaceCopyVariables={};
+  if(!element.dataset.i18nVariables)return {};
+  try{variables=validatedCopyVariables(JSON.parse(element.dataset.i18nVariables))??{};}catch{}
+  return element.dataset.i18nError?{...variables,error:localizeApplicationError(element.dataset.i18nError,language)}:variables;
 }
 
 export function setInterfaceCopy(
   element: LocalizableElement | null,
   key: InterfaceCopyKey,
   language: InterfaceLanguage,
-  variables: Readonly<Record<string, string | number>> = {},
+  variables: InterfaceCopyVariables = {},
 ): void {
   if (!element) return;
   delete element.dataset.applicationMessage;
@@ -2974,7 +2961,7 @@ export function setInterfaceAttribute(
   attribute: 'aria-label' | 'title' | 'placeholder',
   key: InterfaceCopyKey,
   language: InterfaceLanguage,
-  variables: Readonly<Record<string, string | number>> = {},
+  variables: InterfaceCopyVariables = {},
 ): void {
   element.setAttribute?.('data-i18n-' + attribute, key);
   element.dataset.i18nVariables = JSON.stringify(variables);
