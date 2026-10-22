@@ -1,5 +1,5 @@
 import { HabitSleepOverview } from "./habit-sleep-overview.js";
-import { HabitTimeEntry } from "./habit-time-entry.js";
+import { HabitTimeEntry, createHabitTimeEntryButton } from "./habit-time-entry.js";
 import { formatSleepEndpoint, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
 import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
@@ -10234,12 +10234,7 @@ function renderSleepHabitSelection(): boolean {
     setCopy(coverage, "habits.canonicalCoverage");detail.append(coverage);
   }
   if (selected.date <= habit.today.date) {
-    const entry = document.createElement("button");
-    entry.type = "button";entry.className = "secondary-button";
-    entry.dataset.habitTimeOpen = selected.habitKey;entry.dataset.habitTimeDate = selected.date;
-    setCopy(entry, "sleep.viewOrAddTime", {date: selected.date});
-    entry.setAttribute("aria-label", t("sleep.overview.viewOrRecord", {habit: displayHabitName(habit), date: selected.date}));
-    detail.append(entry);
+    detail.append(createHabitTimeEntryButton({habitKey:selected.habitKey,date:selected.date,habitName:displayHabitName(habit)},currentInterfaceLanguage));
   }
   if (habitNoteStatus?.error) {
     const error = document.createElement("p");setCopyError(error, "habits.loadDateFailed", habitNoteStatus.error);detail.append(error);
@@ -10287,13 +10282,7 @@ function renderSelectedHabitCell(): void {
       setCopy(actual, "sleep.actualValue", { value: formatSleepEndpoint(cell.sleepFact, currentInterfaceLanguage) });
       detail.append(actual);
     }
-    const entry = document.createElement("button");
-    entry.type = "button";
-    entry.className = "secondary-button";
-    entry.dataset.habitTimeOpen = habit.key;
-    entry.dataset.habitTimeDate = cell.date;
-    setCopy(entry, "sleep.viewOrAddTime", { date: cell.date });
-    detail.append(entry);
+    detail.append(createHabitTimeEntryButton({habitKey:habit.key,date:cell.date,habitName:displayHabitName(habit)},currentInterfaceLanguage));
   }
   const correctionDate = historicalHabitCorrectionDate(cell.date, habit.today.date);
   const snapshot = currentHabitSnapshot;

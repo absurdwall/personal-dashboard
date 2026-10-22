@@ -5,6 +5,54 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OverviewMetric {
+    Wake,
+    Sleep,
+    Duration,
+}
+impl OverviewMetric {
+    fn habit_key(self) -> Option<&'static str> {
+        match self {
+            Self::Wake => Some("wake"),
+            Self::Sleep => Some("sleep"),
+            Self::Duration => None,
+        }
+    }
+    fn ordered_minutes(self, value: i64) -> i64 {
+        let anchor = match self {
+            Self::Wake => 480,
+            Self::Sleep => 60,
+            Self::Duration => return value,
+        };
+        anchor + (value - anchor + 720).rem_euclid(1440) - 720
+    }
+    fn mean(self, values: &[i64]) -> Option<i64> {
+        if values.is_empty() {
+            return None;
+        }
+        match self {
+            Self::Duration => {
+                Some((values.iter().sum::<i64>() as f64 / values.len() as f64).round() as i64)
+            }
+            Self::Wake | Self::Sleep => {
+                let angles = values
+                    .iter()
+                    .map(|value| *value as f64 / 1440.0 * std::f64::consts::TAU);
+                let (sine, cosine) =
+                    angles.fold((0.0, 0.0), |(s, c), a| (s + a.sin(), c + a.cos()));
+                (sine.hypot(cosine) / values.len() as f64 > 1e-6).then(|| {
+                    ((sine.atan2(cosine) / std::f64::consts::TAU * 1440.0)
+                        .rem_euclid(1440.0)
+                        .round() as i64)
+                        .rem_euclid(1440)
+                })
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SleepOverview {
@@ -24,7 +72,7 @@ pub struct DurationSample {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OverviewStatistics {
-    pub metric: String,
+    pub metric: OverviewMetric,
     pub period: usize,
     pub count: usize,
     pub mean: Option<i64>,
@@ -33,10 +81,6 @@ pub struct OverviewStatistics {
     pub approximate: bool,
     pub earliest_approximate: bool,
     pub latest_approximate: bool,
-}
-fn clock_minutes_around_anchor(value: i64, metric: &str) -> i64 {
-    let anchor = if metric == "wake" { 480 } else { 60 };
-    anchor + (value - anchor + 720).rem_euclid(1440) - 720
 }
 impl SleepView {
     pub(crate) fn project_overview(mut self, date: &str) -> Self {
@@ -85,14 +129,18 @@ impl SleepView {
             }
         }
         let mut statistics = Vec::new();
-        for metric in ["wake", "sleep", "duration"] {
+        for metric in [
+            OverviewMetric::Wake,
+            OverviewMetric::Sleep,
+            OverviewMetric::Duration,
+        ] {
             for period in [7, 30] {
                 let mut values = Vec::new();
                 let mut approximate = false;
                 let mut qualities = Vec::new();
                 for offset in 0..period {
                     let day = end.plus_days(-(offset as i64)).to_string();
-                    if metric == "duration" {
+                    if metric == OverviewMetric::Duration {
                         if let Some(sample) = durations.iter().find(|sample| sample.date == day) {
                             values.push(sample.minutes);
                             qualities.push(sample.approximate);
@@ -103,7 +151,8 @@ impl SleepView {
                             .facts
                             .iter()
                             .filter(|fact| {
-                                fact.habit_key == metric && fact.lived_date.as_deref() == Some(&day)
+                                Some(fact.habit_key.as_str()) == metric.habit_key()
+                                    && fact.lived_date.as_deref() == Some(&day)
                             })
                             .collect();
                         if let [fact] = facts.as_slice() {
@@ -117,32 +166,10 @@ impl SleepView {
                         }
                     }
                 }
-                let mean = if values.is_empty() {
-                    None
-                } else if metric == "duration" {
-                    Some((values.iter().sum::<i64>() as f64 / values.len() as f64).round() as i64)
-                } else {
-                    let angles = values
-                        .iter()
-                        .map(|value| *value as f64 / 1440.0 * std::f64::consts::TAU);
-                    let (sine, cosine) =
-                        angles.fold((0.0, 0.0), |(s, c), a| (s + a.sin(), c + a.cos()));
-                    (sine.hypot(cosine) / values.len() as f64 > 1e-6).then(|| {
-                        ((sine.atan2(cosine) / std::f64::consts::TAU * 1440.0)
-                            .rem_euclid(1440.0)
-                            .round() as i64)
-                            .rem_euclid(1440)
-                    })
-                };
+                let mean = metric.mean(&values);
                 let ordered: Vec<_> = values
                     .iter()
-                    .map(|value| {
-                        if metric == "duration" {
-                            *value
-                        } else {
-                            clock_minutes_around_anchor(*value, metric)
-                        }
-                    })
+                    .map(|value| metric.ordered_minutes(*value))
                     .collect();
                 let earliest = (values.len() > 1).then(|| *ordered.iter().min().unwrap());
                 let latest = (values.len() > 1).then(|| *ordered.iter().max().unwrap());
@@ -153,7 +180,7 @@ impl SleepView {
                         .any(|(value, approximate)| Some(*value) == extreme && *approximate)
                 };
                 statistics.push(OverviewStatistics {
-                    metric: metric.into(),
+                    metric,
                     period,
                     count: values.len(),
                     mean,
