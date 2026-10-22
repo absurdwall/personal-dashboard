@@ -784,8 +784,11 @@ fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayVi
 }
 
 #[tauri::command]
-fn sleep_records(application: State<'_, DesktopTodayApplication>) -> Result<sleep::SleepView, String> {
-    application.sleep_records()
+fn sleep_records(
+    application: State<'_, DesktopTodayApplication>,
+    vault_path: String,
+) -> Result<sleep::SleepView, String> {
+    application.sleep_records_for_path(&vault_path)
 }
 
 #[tauri::command]
@@ -855,8 +858,9 @@ fn calendar_month(
 #[tauri::command]
 fn habit_snapshot(
     application: State<'_, DesktopTodayApplication>,
+    vault_path: String,
 ) -> Result<HabitSnapshotView, String> {
-    application.habits()
+    application.habits_for_selected_vault(&vault_path)
 }
 
 #[tauri::command]
@@ -871,8 +875,9 @@ fn save_habit_definition(
 fn habit_detail_history(
     application: State<'_, DesktopTodayApplication>,
     habit_key: String,
+    vault_path: String,
 ) -> Result<HabitDetailHistoryView, String> {
-    application.habit_detail_history(&habit_key)
+    application.habit_detail_history_for_path(&habit_key, &vault_path)
 }
 
 #[tauri::command]

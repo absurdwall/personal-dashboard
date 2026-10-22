@@ -2021,6 +2021,20 @@ pub struct VaultSelectionResult {
     pub changed: bool,
 }
 
+/// One source identity and read outcome shared by all sleep projections in a view.
+struct VaultSleepRead {
+    vault: PathBuf,
+    result: Result<crate::sleep::SleepView, String>,
+}
+impl VaultSleepRead {
+    fn read(vault: &Path) -> Self {
+        Self {
+            vault: vault.to_owned(),
+            result: crate::sleep::SleepWorkflow::new(vault).read(),
+        }
+    }
+}
+
 pub struct TodayApplication<
     P,
     E,
@@ -2201,21 +2215,49 @@ where
     }
 
     pub fn sleep_records(&self) -> Result<crate::sleep::SleepView, String> {
-        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再读取作息。")?;
-        let result = crate::sleep::SleepWorkflow::new(&vault).read();
-        self.confirm_sleep_vault(&vault)?;
-        result.map(|view| view.project_overview(&self.clock.current_lived_date()))
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or("请先选择 Vault，再读取作息。")?;
+        self.read_sleep_for_captured_vault(&vault)
+    }
+
+    pub fn sleep_records_for_path(
+        &self,
+        expected_path: &str,
+    ) -> Result<crate::sleep::SleepView, String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or("请先选择 Vault，再读取作息。")?;
+        if vault != Path::new(expected_path) {
+            return Err("所选 Vault 已改变；未读取作息。".into());
+        }
+        self.read_sleep_for_captured_vault(&vault)
     }
 
     /// Capture and validate the selection before I/O so a concurrent selection
     /// cannot supply another Vault's records to an originating model turn.
-    pub fn sleep_records_for_vault(&self, expected_vault_key: &str) -> Result<crate::sleep::SleepView, String> {
-        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再读取作息。")?;
+    pub fn sleep_records_for_vault(
+        &self,
+        expected_vault_key: &str,
+    ) -> Result<crate::sleep::SleepView, String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or("请先选择 Vault，再读取作息。")?;
         if crate::collaboration::vault_key(&vault) != expected_vault_key {
             return Err("Selected Vault changed; no sleep records read.".into());
         }
-        let result = crate::sleep::SleepWorkflow::new(&vault).read();
-        self.confirm_sleep_vault(&vault)?;
+        self.read_sleep_for_captured_vault(&vault)
+    }
+
+    fn read_sleep_for_captured_vault(
+        &self,
+        vault: &Path,
+    ) -> Result<crate::sleep::SleepView, String> {
+        let result = crate::sleep::SleepWorkflow::new(vault).read();
+        self.confirm_sleep_vault(vault)?;
         result.map(|view| view.project_overview(&self.clock.current_lived_date()))
     }
 
@@ -3530,10 +3572,31 @@ where
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
         };
-        self.habits_for_vault(&vault)
+        self.habits_for_selected_vault(&vault.to_string_lossy())
     }
 
-    fn habits_for_vault(&self, vault: &Path) -> Result<HabitSnapshotView, String> {
+    pub fn habits_for_selected_vault(
+        &self,
+        expected_path: &str,
+    ) -> Result<HabitSnapshotView, String> {
+        let Some(vault) = self.persistence.load_selected_vault()? else {
+            return if expected_path.is_empty() {
+                Ok(HabitSnapshotView::unconfigured())
+            } else {
+                Err("所选 Vault 已改变；未读取作息。".into())
+            };
+        };
+        if vault != Path::new(expected_path) {
+            return Err("所选 Vault 已改变；未读取作息。".into());
+        }
+        let sleep = VaultSleepRead::read(&vault);
+        let result = self.habits_for_vault(&sleep);
+        self.confirm_sleep_vault(&vault)?;
+        result
+    }
+
+    fn habits_for_vault(&self, sleep: &VaultSleepRead) -> Result<HabitSnapshotView, String> {
+        let vault = &sleep.vault;
         let mut view = self.sourced_habits_for(vault)?;
         view.lived_date = Some(self.clock.current_lived_date());
         let catalog_path = habit_catalog::canonical_path(vault);
@@ -3586,15 +3649,15 @@ where
             &local_completions,
             &self.clock.current_lived_date(),
         )?;
-        match crate::sleep::SleepWorkflow::new(vault).read() {
-            Ok(sleep) => crate::sleep::project_habits(&mut view, &sleep),
-            Err(error) => view.sleep_error = Some(error),
+        match &sleep.result {
+            Ok(sleep) => crate::sleep::project_habits(&mut view, sleep),
+            Err(error) => view.sleep_error = Some(error.clone()),
         }
         Ok(view)
     }
 
-    fn habit_time_context_for(&self, vault: &Path, date: &str) -> Vec<HabitTimeHabitView> {
-        let Ok(snapshot) = self.habits_for_vault(vault) else {
+    fn habit_time_context_for(&self, sleep: &VaultSleepRead, date: &str) -> Vec<HabitTimeHabitView> {
+        let Ok(snapshot) = self.habits_for_vault(sleep) else {
             return Vec::new();
         };
         if snapshot.catalog_error.is_some() {
@@ -3604,10 +3667,7 @@ where
         if date > today.as_str() {
             return Vec::new();
         }
-        let recorded = crate::sleep::SleepWorkflow::new(vault)
-            .read()
-            .map(|view| view.facts)
-            .unwrap_or_default();
+        let recorded = sleep.result.as_ref().map(|view| view.facts.as_slice()).unwrap_or_default();
         snapshot.habits.into_iter().filter(|habit| {
             if !["wake", "sleep"].contains(&habit.key.as_str()) {
                 return false;
@@ -3917,7 +3977,20 @@ where
 
     pub fn habit_detail_history(&self, habit_key: &str) -> Result<HabitDetailHistoryView, String> {
         validate_habit_key(habit_key)?;
-        let snapshot = self.habits()?;
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or("Habit 历史需要先选择 Vault。")?;
+        self.habit_detail_history_for_path(habit_key, &vault.to_string_lossy())
+    }
+
+    pub fn habit_detail_history_for_path(
+        &self,
+        habit_key: &str,
+        expected_path: &str,
+    ) -> Result<HabitDetailHistoryView, String> {
+        validate_habit_key(habit_key)?;
+        let snapshot = self.habits_for_selected_vault(expected_path)?;
         let habit = snapshot
             .habit(habit_key)
             .cloned()
@@ -5126,7 +5199,8 @@ where
         date: String,
         receive_planning_input: bool,
     ) -> Result<TodayView, String> {
-        let mut view = match self.render_daily_vault(vault, date.clone(), receive_planning_input) {
+        let sleep = VaultSleepRead::read(vault);
+        let mut view = match self.render_daily_vault(&sleep, date.clone(), receive_planning_input) {
             Ok(view) => view,
             Err(failure) => {
                 // Keep selection transactional: a Daily Record read failure
@@ -5153,14 +5227,14 @@ where
                 view.tasks = self.shared_tasks_for(vault);
                 view.day_tasks = self.day_tasks_for(vault, &date, false);
                 view.habit_corrections = self.habit_corrections_for(vault, &date);
-                view.habit_time_habits = self.habit_time_context_for(vault, &date);
+                view.habit_time_habits = self.habit_time_context_for(&sleep, &date);
                 view
             }
         };
         if view.vault_availability == VaultAvailability::Available {
-            match crate::sleep::SleepWorkflow::new(vault).read() {
-                Ok(sleep) => project_sleep_time_axis(&mut view.time_axis, &sleep, &date),
-                Err(error) => view.time_axis.sleep_error = Some(error),
+            match &sleep.result {
+                Ok(sleep) => project_sleep_time_axis(&mut view.time_axis, sleep, &date),
+                Err(error) => view.time_axis.sleep_error = Some(error.clone()),
             }
         }
         Ok(view)
@@ -5168,10 +5242,11 @@ where
 
     fn render_daily_vault(
         &self,
-        vault: &Path,
+        sleep: &VaultSleepRead,
         date: String,
         receive_planning_input: bool,
     ) -> Result<TodayView, DailyRecordReadFailure> {
+        let vault = &sleep.vault;
         let clock = self.clock.current_local_time();
         let is_today = date == clock.lived_date();
         let current_time = is_today.then_some(clock.time.clone());
@@ -5209,7 +5284,7 @@ where
         let tasks = self.shared_tasks_for(vault);
         let day_tasks = self.day_tasks_for(vault, &date, receive_planning_input);
         let habit_corrections = self.habit_corrections_for(vault, &date);
-        let habit_time_habits = self.habit_time_context_for(vault, &date);
+        let habit_time_habits = self.habit_time_context_for(sleep, &date);
         let path = canonical_record_path(vault, &date)?;
         let target_binding = record_target_binding(&path);
         let bytes = match self.record_store.load(&path).map_err(|message| {

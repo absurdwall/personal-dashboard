@@ -33,6 +33,31 @@ function clockMinutesAroundAnchor(value:number,key:HabitKey):number{
   const center=key==='wake'?480:60;return center+((value-center+2160)%1440)-720;
 }
 
+type PlotSample=Readonly<{value:number|null;approximate:boolean}>;
+const plotFrames={
+  mini:{width:210,height:44,left:0,top:3,bottom:3,lineWidth:1.6,pointRadius:2.3},
+  detail:{width:600,height:190,left:40,top:17,bottom:28,lineWidth:2,pointRadius:3},
+} as const;
+/** The two Habit plots share clock domains, gaps and approximate-point semantics. */
+function createSleepPlot(metric:Metric,samples:readonly PlotSample[],size:keyof typeof plotFrames){
+  const frame=plotFrames[size],{width,height,left,top,bottom}=frame;
+  const plotted=samples.map(sample=>({...sample,value:sample.value===null?null:metric==='duration'?sample.value:clockMinutesAroundAnchor(sample.value,metric)}));
+  const values=plotted.flatMap(sample=>sample.value===null?[]:[sample.value]);
+  const base=metric==='duration'?[180,660]:metric==='wake'?[360,600]:[-60,180];
+  const low=Math.floor(Math.min(base[0],...values)/60)*60,high=Math.ceil(Math.max(base[1],...values)/60)*60;
+  const x=(index:number)=>left+(index+.5)*(width-left)/samples.length;
+  const y=(value:number)=>top+(high-value)/(high-low)*(height-top-bottom);
+  const ticks=[high,(high+low)/2,low].map(value=>({value,y:y(value)}));
+  const drawing=svg('svg',{viewBox:`0 0 ${width} ${height}`,preserveAspectRatio:'none','aria-hidden':'true'});
+  for(const tick of ticks)drawing.append(svg('line',{x1:left,x2:width,y1:tick.y,y2:tick.y,stroke:'var(--parity-border)','stroke-width':.7}));
+  appendGapSeries(drawing,plotted,x,y,frame.lineWidth);
+  for(const [index,sample]of plotted.entries())if(sample.value!==null)drawing.append(svg('circle',{
+    cx:x(index),cy:y(sample.value),r:frame.pointRadius,
+    fill:sample.approximate?'var(--parity-surface)':'var(--parity-accent)',stroke:'var(--parity-accent)','stroke-width':1.3,
+  }));
+  return {drawing,frame,x,ticks,hasPoints:values.length>0};
+}
+
 /** Read-only presentation of the same canonical endpoint view used by the editor. */
 export class HabitSleepOverview {
   private view:SleepView|null=null;
@@ -100,20 +125,14 @@ export class HabitSleepOverview {
   }
   private detailChart(context:HabitContext,samples:readonly Sample[]):HTMLElement{
     const root=element('div','habit-sleep-detail-chart');root.dataset.sleepChart='detail';
-    const width=600,height=190,left=40,top=17,bottom=28,plotWidth=width-left;
-    const numbers=samples.flatMap(sample=>sample.value===null?[]:[this.metric==='duration'?sample.value:clockMinutesAroundAnchor(sample.value,this.metric)]);
-    const base=this.metric==='duration'?[180,660]:this.metric==='wake'?[360,600]:[-60,180];
-    const low=Math.floor(Math.min(base[0],...numbers)/60)*60,high=Math.ceil(Math.max(base[1],...numbers)/60)*60;
-    const x=(index:number)=>left+(index+.5)*plotWidth/samples.length,y=(value:number)=>top+(high-value)/(high-low)*(height-top-bottom);
-    const drawing=svg('svg',{viewBox:`0 0 ${width} ${height}`,preserveAspectRatio:'none','aria-hidden':'true'});
-    for(const tick of [high,(high+low)/2,low]){
-      drawing.append(svg('line',{x1:left,x2:width,y1:y(tick),y2:y(tick),stroke:'var(--parity-border)','stroke-width':.7}));
-      const text=svg('text',{x:32,y:y(tick)+3,'text-anchor':'end',fill:'var(--parity-muted)','font-size':10});if(this.metric==='duration')setInterfaceCopy(text,'sleep.overview.axisHours',this.language(),{hours:new Intl.NumberFormat(this.language(),{maximumFractionDigits:1}).format(tick/60)});else text.textContent=clock(tick);drawing.append(text);
+    const {drawing,frame,x,ticks,hasPoints}=createSleepPlot(this.metric,samples,'detail');
+    for(const tick of ticks){
+      const text=svg('text',{x:frame.left-8,y:tick.y+3,'text-anchor':'end',fill:'var(--parity-muted)','font-size':10});
+      if(this.metric==='duration')setInterfaceCopy(text,'sleep.overview.axisHours',this.language(),{hours:new Intl.NumberFormat(this.language(),{maximumFractionDigits:1}).format(tick.value/60)});else text.textContent=clock(tick.value);
+      drawing.append(text);
     }
-    appendGapSeries(drawing,samples.map(sample=>({value:sample.value===null?null:this.metric==='duration'?sample.value:clockMinutesAroundAnchor(sample.value,this.metric)})),x,y,2);
-    for(const [index,sample]of samples.entries()){
-      if(sample.value!==null){const numeric=this.metric==='duration'?sample.value:clockMinutesAroundAnchor(sample.value,this.metric);drawing.append(svg('circle',{cx:x(index),cy:y(numeric),r:3,fill:sample.approximate?'var(--parity-surface)':'var(--parity-accent)',stroke:'var(--parity-accent)','stroke-width':1.3}));}
-      if(samples.length===7||index%5===0||index===samples.length-1){const label=svg('text',{x:x(index),y:height-7,'text-anchor':'middle',fill:'var(--parity-muted)','font-size':10});label.textContent=sample.date.slice(5).replace('-','/');drawing.append(label);}
+    for(const [index,sample]of samples.entries())if(samples.length===7||index%5===0||index===samples.length-1){
+      const label=svg('text',{x:x(index),y:frame.height-7,'text-anchor':'middle',fill:'var(--parity-muted)','font-size':10});label.textContent=sample.date.slice(5).replace('-','/');drawing.append(label);
     }
     root.append(drawing);
     const targets=element('div','habit-sleep-date-targets');targets.style.setProperty('--sleep-date-count',String(samples.length));
@@ -124,7 +143,7 @@ export class HabitSleepOverview {
       const show=()=>setInterfaceCopy(tooltip,'sleep.overview.dateReadout',this.language(),values);button.addEventListener('focus',show);button.addEventListener('mouseenter',show);
       button.addEventListener('click',()=>this.selected={metric:this.metric,date:sample.date});targets.append(button);}
     root.append(targets);
-    if(!numbers.length)root.append(this.copyElement('span','habit-sleep-detail-empty',this.error?'sleep.unavailableValue':'sleep.overview.empty'));
+    if(!hasPoints)root.append(this.copyElement('span','habit-sleep-detail-empty',this.error?'sleep.unavailableValue':'sleep.overview.empty'));
     const group=element('div');group.append(root,tooltip);return group;
   }
   detail(context:HabitContext):HTMLElement{
@@ -161,23 +180,12 @@ export class HabitSleepOverview {
   mini(context:HabitContext):HTMLElement{
     const root=element('div','habit-sleep-mini');root.setAttribute('role','group');this.copyAttribute(root,'aria-label','sleep.overview.recentLabel',{habit:context.name});root.dataset.sleepChart='mini';
     const dates=Array.from({length:7},(_,i)=>shifted(context.date,i-6));
-    const samples=dates.map(date=>{const matches=this.facts(context.key,date),fact=matches.length===1?matches[0]:null;return {date,fact,value:fact?.endpoint.kind==='point'?clockMinutesAroundAnchor(minute(fact.endpoint.time),context.key):null};});
-    const base=context.key==='wake'?[360,600]:[-60,180];
-    const values=samples.flatMap(sample=>sample.value===null?[]:[sample.value]);
-    const low=Math.floor(Math.min(base[0],...values)/60)*60,high=Math.ceil(Math.max(base[1],...values)/60)*60;
-    const width=210,height=44,x=(index:number)=>(index+.5)*width/7,y=(value:number)=>3+(high-value)/(high-low)*38;
+    const samples=dates.map(date=>{const matches=this.facts(context.key,date),fact=matches.length===1?matches[0]:null,endpoint=fact?.endpoint;return {date,fact,value:endpoint?.kind==='point'?minute(endpoint.time):null,approximate:endpoint?.kind==='point'&&Boolean(endpoint.approximate)};});
+    const {drawing,frame,ticks,hasPoints}=createSleepPlot(context.key,samples,'mini');
     const scale=element('div','habit-sleep-scale');scale.setAttribute('aria-hidden','true');
     const plot=element('div','habit-sleep-plot');
-    const drawing=svg('svg',{viewBox:`0 0 ${width} ${height}`,preserveAspectRatio:'none','aria-hidden':'true'});
-    for(const tick of [high,(high+low)/2,low]){
-      const text=element('span','habit-sleep-tick',clock(tick));text.style.top=`${y(tick)/height*100}%`;scale.append(text);
-      drawing.append(svg('line',{x1:0,x2:width,y1:y(tick),y2:y(tick),stroke:'var(--parity-border)','stroke-width':.7}));
-    }
-    appendGapSeries(drawing,samples,x,y,1.6);
-    for(const [index,sample]of samples.entries())if(sample.value!==null){
-      drawing.append(svg('circle',{cx:x(index),cy:y(sample.value),r:2.3,fill:sample.fact?.endpoint.kind==='point'&&sample.fact.endpoint.approximate?'var(--parity-surface)':'var(--parity-accent)',stroke:'var(--parity-accent)','stroke-width':1.3}));
-    }
-    if(values.length&&!this.error)plot.append(drawing);else plot.append(this.copyElement('span','habit-sleep-empty',this.error?'sleep.unavailableValue':'sleep.overview.empty'));
+    for(const tick of ticks){const text=element('span','habit-sleep-tick',clock(tick.value));text.style.top=`${tick.y/frame.height*100}%`;scale.append(text);}
+    if(hasPoints&&!this.error)plot.append(drawing);else plot.append(this.copyElement('span','habit-sleep-empty',this.error?'sleep.unavailableValue':'sleep.overview.empty'));
     const tooltip=element('span','habit-sleep-tooltip');tooltip.hidden=true;tooltip.setAttribute('role','status');
     for(const [index,sample]of samples.entries()){
       const button=element('button','habit-sleep-day');button.type='button';button.dataset.habitKey=context.key;button.dataset.habitDate=sample.date;
