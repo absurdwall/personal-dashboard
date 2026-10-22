@@ -1,5 +1,5 @@
 import {setInterfaceCopy,setInterfaceAttribute,setInterfaceError,type InterfaceLanguage,type InterfaceCopyKey,type InterfaceCopyVariables} from './interface-language.js';
-import {isSleepHabitKey,sleepEndpointCopy,setSleepEndpointCopy,type SleepHabitKey,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint} from './sleep-facts.js';
+import {isSleepHabitKey,sleepFactsForLivedDate,sleepEndpointCopy,setSleepEndpointCopy,type SleepHabitKey,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint} from './sleep-facts.js';
 
 type Context=Readonly<{date:string;vaultPath:string;canRecord:boolean;habits:readonly Readonly<{key:string;name:string}>[]}>;
 type Draft={habitKey:SleepHabitKey;kind:SleepEndpoint['kind'];time:string;endTime:string;approximate:boolean;text:string;textDate:string|null;expanded:boolean;recordId?:string;targetBinding:string;expectedRevision:string|null;changeId:string};
@@ -69,7 +69,7 @@ export class HabitTimeEntry {
       this.status={key:'sleep.loadFailed',error:String(error)};this.render();
     }
   }
-  private facts(key:SleepHabitKey):readonly SleepEndpointFact[]{return this.data?.facts.filter(f=>f.habitKey===key&&f.livedDate===this.context?.date)??[];}
+  private facts(key:SleepHabitKey):readonly SleepEndpointFact[]{return sleepFactsForLivedDate(this.data?.facts,key,this.context?.date);}
   private fact(key:SleepHabitKey):SleepEndpointFact|null{const matches=this.facts(key);return matches.length===1?matches[0]:null;}
   private open(key:SleepHabitKey,focus=false):void{
     if(this.selectionPending||!this.data||!this.context?.canRecord||this.saving)return;

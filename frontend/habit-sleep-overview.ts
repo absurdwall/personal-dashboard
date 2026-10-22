@@ -1,6 +1,6 @@
 import {shiftDateOnly} from './date-only.js';
 import {setInterfaceCopy, setInterfaceAttribute, setInterfaceError, type InterfaceCopyKey, type InterfaceLanguage,type InterfaceCopyVariables,type InterfaceCopyValue} from './interface-language.js';
-import {sleepEndpointCopy,setSleepCopy,setSleepEndpointCopy, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
+import {sleepFactsForLivedDate,sleepEndpointCopy,setSleepCopy,setSleepEndpointCopy, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
 
 type HabitKey=SleepHabitKey;
 type Metric=HabitKey|'duration';
@@ -71,7 +71,7 @@ export class HabitSleepOverview {
     setInterfaceAttribute(node,attribute,key,this.language(),values);
   }
   private errorElement():HTMLElement{const node=element('p','habit-sleep-read-error');setInterfaceError(node,'sleep.loadFailed',this.error!,this.language());return node;}
-  private facts(key:HabitKey,date:string):readonly SleepEndpointFact[]{return this.view?.facts.filter(f=>f.habitKey===key&&f.livedDate===date)??[];}
+  private facts(key:HabitKey,date:string):readonly SleepEndpointFact[]{return sleepFactsForLivedDate(this.view?.facts,key,date);}
   private valueCopy(key:HabitKey,date:string,fallback?:InterfaceCopyValue):InterfaceCopyValue {
     if(this.error)return {copy:'sleep.unavailableValue'};
     const matches=this.facts(key,date);

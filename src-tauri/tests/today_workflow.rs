@@ -2805,3 +2805,59 @@ fn canonical_file_stores_preserve_kind_specific_conflicts_and_raw_os_error_detai
         assert!(!missing.exists());
     }
 }
+
+#[test]
+fn canonical_file_creation_preserves_kind_specific_directory_errors_and_raw_os_details() {
+    use personal_dashboard_lib::habit_catalog::FileHabitCatalogStore;
+    use personal_dashboard_lib::sleep::{FileSleepStore, SleepStore};
+    use personal_dashboard_lib::tasks::{FileTaskStore, TaskStore};
+    use personal_dashboard_lib::today::{
+        DayTaskStore, FileDayTaskStore, FileHabitCompletionStore, HabitCompletionStore,
+    };
+    type Create = fn(&Path, &[u8]) -> Result<(), String>;
+    let cases: [(&str, Create, &str); 6] = [
+        (
+            "daily",
+            |p, d| FileTodayRecordStore.create_new(p, d),
+            "Could not create the Daily Record directory: ",
+        ),
+        (
+            "day-tasks",
+            |p, d| FileDayTaskStore.create_new(p, d),
+            "Could not create the day-task document directory: ",
+        ),
+        (
+            "completions",
+            |p, d| FileHabitCompletionStore.create_new(p, d),
+            "Could not create the local habit-completion document directory: ",
+        ),
+        (
+            "catalog",
+            |p, d| FileHabitCatalogStore.create_new(p, d),
+            "本地 Habit 定义正本操作失败：",
+        ),
+        (
+            "tasks",
+            |p, d| FileTaskStore.create_new(p, d),
+            "任务正本操作失败：",
+        ),
+        (
+            "sleep",
+            |p, d| FileSleepStore.create_new(p, d),
+            "作息正本操作失败：",
+        ),
+    ];
+    let root = TempDirectory::new("canonical-store-create-diagnostics");
+    for (name, create, prefix) in cases {
+        let blocker = root.path().join(name);
+        fs::write(&blocker, b"existing user file").unwrap();
+        let os_error = fs::create_dir_all(&blocker).unwrap_err().to_string();
+        let path = blocker.join("record");
+        assert_eq!(
+            create(&path, b"candidate").unwrap_err(),
+            format!("{prefix}{os_error}")
+        );
+        assert_eq!(fs::read(&blocker).unwrap(), b"existing user file");
+        assert!(!path.exists());
+    }
+}
