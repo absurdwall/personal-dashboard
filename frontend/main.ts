@@ -9503,7 +9503,7 @@ function habitRow(habit: HabitView): HTMLElement {
   const progress = document.createElement("strong");
   const todayState = document.createElement("small");
   progress.textContent = habit.key === "wake" || habit.key === "sleep"
-    ? habitSleepOverview.value(habit.key, habit.today.date, habit.today.actualTimeLabel ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage) : undefined) : habitProgressLabel(habit);
+    ? habitSleepOverview.value(habit.key, habit.today.date, habit.today.sleepFact ? formatSleepEndpoint(habit.today.sleepFact, currentInterfaceLanguage) : habit.today.actualTimeLabel ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage) : undefined) : habitProgressLabel(habit);
   progress.title = progress.textContent;
   if (habit.key === "wake" || habit.key === "sleep") {
     progress.classList.toggle("habit-sleep-described-value", !/^\d{2}:\d{2}$/.test(progress.textContent));

@@ -2204,7 +2204,7 @@ where
         let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再读取作息。")?;
         let result = crate::sleep::SleepWorkflow::new(&vault).read();
         self.confirm_sleep_vault(&vault)?;
-        result
+        result.map(|view| view.project_overview(&self.clock.current_lived_date()))
     }
 
     /// Capture and validate the selection before I/O so a concurrent selection
@@ -2216,21 +2216,92 @@ where
         }
         let result = crate::sleep::SleepWorkflow::new(&vault).read();
         self.confirm_sleep_vault(&vault)?;
-        result
+        result.map(|view| view.project_overview(&self.clock.current_lived_date()))
+    }
+
+    /// Resolve a fixed Habit lived-day draft through the platform clock adapter.
+    /// This is read-only; the canonical save still validates endpoint/context.
+    pub fn resolve_habit_sleep_point(
+        &self,
+        lived_date: &str,
+        time: &str,
+        approximate: bool,
+    ) -> Result<crate::sleep::SleepPoint, String> {
+        let day = CalendarDate::parse(lived_date)
+            .ok_or("需要明确、有效的 YYYY-MM-DD 日期；日期含糊时请先澄清。")?;
+        let minutes = crate::sleep::clock_minutes(time)?;
+        let date = if minutes < 240 { day.plus_days(1) } else { day }.to_string();
+        self.resolve_sleep_calendar_point(&date, time, approximate)
+    }
+
+    /// A range advances chronologically from its first actual endpoint. Crossing
+    /// the display boundary affects location, never the reported chronology.
+    pub fn resolve_habit_sleep_range(
+        &self,
+        lived_date: &str,
+        start_time: &str,
+        end_time: &str,
+        reported_text: &str,
+    ) -> Result<crate::sleep::SleepEndpoint, String> {
+        crate::sleep::clock_minutes(end_time)?;
+        let start = self.resolve_habit_sleep_point(lived_date, start_time, false)?;
+        let first = CalendarDate::parse(&start.date).expect("validated actual date");
+        let end_date = if end_time < start_time {
+            first.plus_days(1)
+        } else {
+            first
+        }
+        .to_string();
+        let end = self.resolve_sleep_calendar_point(&end_date, end_time, false)?;
+        Ok(crate::sleep::SleepEndpoint::Range {
+            start,
+            end,
+            reported_text: reported_text.into(),
+        })
+    }
+
+    fn resolve_sleep_calendar_point(
+        &self,
+        date: &str,
+        time: &str,
+        approximate: bool,
+    ) -> Result<crate::sleep::SleepPoint, String> {
+        let minutes = crate::sleep::clock_minutes(time)?;
+        if wall_time_components(date, minutes).is_none() {
+            return Err("需要明确、有效的 YYYY-MM-DD 日期；日期含糊时请先澄清。".into());
+        }
+        let utc_offset_minutes = match self.clock.resolve_local_wall_time(date, minutes) {
+            LocalWallTimeResolution::Unique { utc_offset_minutes } => utc_offset_minutes,
+            LocalWallTimeResolution::Nonexistent => {
+                return Err("请检查实际日期与时间；夏令时切换中不存在的时间不能保存。".into())
+            }
+            LocalWallTimeResolution::Ambiguous => {
+                return Err(
+                    "本地时刻重复出现；请保留原话或在 Collaboration 中明确实际发生的那一次。"
+                        .into(),
+                )
+            }
+        };
+        Ok(crate::sleep::SleepPoint {
+            date: date.into(),
+            time: time.into(),
+            utc_offset_minutes,
+            approximate,
+        })
     }
 
     pub fn save_habit_sleep_time(&self, input: crate::sleep::HabitSleepMutationInput) -> Result<crate::sleep::SleepView, String> {
         let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
         let result = crate::sleep::SleepWorkflow::new(&vault).save_habit_time(input);
         self.confirm_sleep_vault(&vault)?;
-        result
+        result.map(|view| view.project_overview(&self.clock.current_lived_date()))
     }
 
     pub fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
         let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
         let result = crate::sleep::SleepWorkflow::new(&vault).save(input);
         self.confirm_sleep_vault(&vault)?;
-        result
+        result.map(|view| view.project_overview(&self.clock.current_lived_date()))
     }
 
     fn confirm_sleep_vault(&self, captured: &Path) -> Result<(), String> {

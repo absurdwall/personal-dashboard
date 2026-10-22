@@ -1,5 +1,5 @@
-import {interfaceCopy,setInterfaceCopy,setInterfaceError,type InterfaceLanguage,type InterfaceCopyKey} from './interface-language.js';
-import {formatSleepEndpoint,sleepPointForLivedDay,type SleepEndpoint,type SleepEndpointFact,type SleepView} from './sleep-facts.js';
+import {setInterfaceCopy,setInterfaceAttribute,setInterfaceError,type InterfaceLanguage,type InterfaceCopyKey} from './interface-language.js';
+import {formatSleepEndpoint,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint} from './sleep-facts.js';
 
 type Context=Readonly<{date:string;vaultPath:string;canRecord:boolean;habits:readonly Readonly<{key:string;name:string}>[]}>;
 type Draft={habitKey:string;kind:SleepEndpoint['kind'];time:string;endTime:string;approximate:boolean;text:string;expanded:boolean;recordId?:string;targetBinding:string;expectedRevision:string|null;changeId:string};
@@ -37,7 +37,7 @@ export class HabitTimeEntry {
     this.pendingFocus=habitKey;
     if(this.data)this.open(habitKey,true);
   }
-  private t(key:InterfaceCopyKey,values:Record<string,string>={}):string{return interfaceCopy(key,this.options.language(),values);}
+
   private copy(element:HTMLElement,key:InterfaceCopyKey,values:Record<string,string>={}):void{setInterfaceCopy(element,key,this.options.language(),values);}
   private async read():Promise<void>{
     const context=this.context,token=++this.request;
@@ -74,7 +74,7 @@ export class HabitTimeEntry {
       const matches=this.facts(habit.key),conflict=matches.length>1;
       const fact=this.fact(habit.key),values={habit:habit.name,date:context.date};
       this.copy(edit,fact?'sleep.correctTime':'sleep.recordTime');
-      edit.setAttribute('aria-label',this.t(fact?'sleep.correctTimeLabel':'sleep.recordTimeLabel',values));
+      setInterfaceAttribute(edit,'aria-label',fact?'sleep.correctTimeLabel':'sleep.recordTimeLabel',this.options.language(),values);
       edit.disabled=this.saving||!context.canRecord||!this.data||conflict;
       edit.addEventListener('click',()=>this.open(habit.key,true));header.append(name,edit);
       const value=document.createElement('p');value.className='day-task-meta';value.dataset.habitTimeValue=habit.key;
@@ -101,23 +101,34 @@ export class HabitTimeEntry {
     const draft=this.draft!,context=this.context!,values={habit:habitName,date:context.date};
     const form=document.createElement('form');form.dataset.habitTimeForm=draft.habitKey;
     const fields=document.createElement('div');fields.className='habit-time-fields';
-    const time=document.createElement('input');time.type='time';time.name='time';time.value=draft.time;time.dataset.habitTimePoint='';time.setAttribute('aria-label',this.t('sleep.actualTimeLabel',values));time.required=draft.kind==='point'||draft.kind==='range';time.hidden=draft.kind==='text'||draft.kind==='unknown'||draft.kind==='unrecorded';
+    const time=document.createElement('input');time.type='time';time.name='time';time.value=draft.time;time.dataset.habitTimePoint='';setInterfaceAttribute(time,'aria-label','sleep.actualTimeLabel',this.options.language(),values);time.required=draft.kind==='point'||draft.kind==='range';time.hidden=draft.kind==='text'||draft.kind==='unknown'||draft.kind==='unrecorded';
     const approximate=document.createElement('label'),check=document.createElement('input'),checkCopy=document.createElement('span');
-    check.type='checkbox';check.name='approximate';check.checked=draft.approximate;check.dataset.habitTimeApproximate='';check.setAttribute('aria-label',this.t('sleep.approximateLabel',values));this.copy(checkCopy,'sleep.approximate');approximate.append(check,checkCopy);approximate.hidden=draft.kind!=='point';
-    const save=document.createElement('button');save.type='submit';this.copy(save,this.saving?'sleep.saving':'sleep.saveTime');save.setAttribute('aria-label',this.t('sleep.saveTimeLabel',values));
-    const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary-button';this.copy(cancel,'sleep.cancel');cancel.setAttribute('aria-label',this.t('sleep.cancelTimeLabel',values));cancel.addEventListener('click',()=>{this.draft=null;this.status=null;this.render();});fields.append(time,approximate,save,cancel);
+    check.type='checkbox';check.name='approximate';check.checked=draft.approximate;check.dataset.habitTimeApproximate='';setInterfaceAttribute(check,'aria-label','sleep.approximateLabel',this.options.language(),values);this.copy(checkCopy,'sleep.approximate');approximate.append(check,checkCopy);approximate.hidden=draft.kind!=='point';
+    const save=document.createElement('button');save.type='submit';this.copy(save,this.saving?'sleep.saving':'sleep.saveTime');setInterfaceAttribute(save,'aria-label','sleep.saveTimeLabel',this.options.language(),values);
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary-button';this.copy(cancel,'sleep.cancel');setInterfaceAttribute(cancel,'aria-label','sleep.cancelTimeLabel',this.options.language(),values);cancel.addEventListener('click',()=>{this.draft=null;this.status=null;this.render();});fields.append(time,approximate,save,cancel);
     const preview=document.createElement('p');preview.className='day-task-meta habit-time-preview';preview.dataset.habitTimePreview='';
-    const updatePreview=()=>{
+    let previewRequest=0;
+    const updatePreview=async()=>{
+      const request=++previewRequest;
       if(draft.kind!=='point'&&draft.kind!=='range'){this.copy(preview,'sleep.fixedContext',{date:context.date});return;}
-      try{const point=sleepPointForLivedDay(context.date,draft.time,draft.approximate);this.copy(preview,'sleep.calendarPreview',{date:point.date,time:point.time});}catch{this.copy(preview,'sleep.previewEmpty');}
+      this.copy(preview,'sleep.previewEmpty');
+      try{
+        if(draft.kind==='range'){
+          const endpoint=await this.resolveRange(context.date,draft);
+          if(request===previewRequest&&this.draft===draft&&endpoint.kind==='range')this.copy(preview,'sleep.rangeCalendarPreview',{date:context.date,startDate:endpoint.start.date,startTime:endpoint.start.time,endDate:endpoint.end.date,endTime:endpoint.end.time});
+        }else{
+          const point=await this.resolvePoint(context.date,draft.time,draft.approximate);
+          if(request===previewRequest&&this.draft===draft)this.copy(preview,'sleep.calendarPreview',{date:point.date,time:point.time});
+        }
+      }catch{if(request===previewRequest&&this.draft===draft)this.copy(preview,'sleep.previewEmpty');}
     };
     const details=document.createElement('details');details.className='habit-time-precision';details.open=draft.expanded;
     const summary=document.createElement('summary');this.copy(summary,'sleep.morePrecision');
-    const kind=document.createElement('select');kind.name='precision';kind.dataset.habitTimeKind='';kind.setAttribute('aria-label',this.t('sleep.precisionLabel',values));
+    const kind=document.createElement('select');kind.name='precision';kind.dataset.habitTimeKind='';setInterfaceAttribute(kind,'aria-label','sleep.precisionLabel',this.options.language(),values);
     const kinds:readonly [SleepEndpoint['kind'],InterfaceCopyKey][]=[['point','sleep.pointOption'],['range','sleep.rangeOption'],['text','sleep.textOption'],['unknown','sleep.unknownOption'],['unrecorded','sleep.unrecordedOption']];
-    for(const [value,key]of kinds){const option=document.createElement('option');option.value=value;option.textContent=this.t(key);kind.append(option);}kind.value=draft.kind;
-    const end=document.createElement('input');end.type='time';end.name='endTime';end.value=draft.endTime;end.dataset.habitTimeEnd='';end.hidden=draft.kind!=='range';end.required=draft.kind==='range';end.setAttribute('aria-label',this.t('sleep.rangeEndLabel',values));
-    const text=document.createElement('input');text.type='text';text.name='original';text.value=draft.text;text.dataset.habitTimeOriginal='';text.hidden=draft.kind!=='text'&&draft.kind!=='range';text.required=draft.kind==='text'||draft.kind==='range';text.maxLength=2000;text.setAttribute('aria-label',this.t('sleep.originalLabel',values));text.placeholder=this.t('sleep.originalPlaceholder');
+    for(const [value,key]of kinds){const option=document.createElement('option');option.value=value;this.copy(option,key);kind.append(option);}kind.value=draft.kind;
+    const end=document.createElement('input');end.type='time';end.name='endTime';end.value=draft.endTime;end.dataset.habitTimeEnd='';end.hidden=draft.kind!=='range';end.required=draft.kind==='range';setInterfaceAttribute(end,'aria-label','sleep.rangeEndLabel',this.options.language(),values);
+    const text=document.createElement('input');text.type='text';text.name='original';text.value=draft.text;text.dataset.habitTimeOriginal='';text.hidden=draft.kind!=='text'&&draft.kind!=='range';text.required=draft.kind==='text'||draft.kind==='range';text.maxLength=2000;setInterfaceAttribute(text,'aria-label','sleep.originalLabel',this.options.language(),values);setInterfaceAttribute(text,'placeholder','sleep.originalPlaceholder',this.options.language(),values);
     details.append(summary,kind,end,text);details.addEventListener('toggle',()=>{if(this.draft===draft)draft.expanded=details.open;});
     const edited=()=>{draft.time=time.value;draft.endTime=end.value;draft.approximate=check.checked;draft.text=text.value;updatePreview();};
     [time,end,text].forEach(input=>input.addEventListener('input',edited));check.addEventListener('change',edited);
@@ -127,19 +138,24 @@ export class HabitTimeEntry {
     form.addEventListener('submit',event=>{event.preventDefault();edited();this.options.track(this.save(draft,context));});
     return form;
   }
+  private resolvePoint(livedDate:string,time:string,approximate:boolean):Promise<SleepPoint>{
+    return this.options.invoke<SleepPoint>('resolve_habit_sleep_point',{livedDate,time,approximate});
+  }
+  private resolveRange(livedDate:string,draft:Draft):Promise<SleepEndpoint>{
+    return this.options.invoke<SleepEndpoint>('resolve_habit_sleep_range',{livedDate,startTime:draft.time,endTime:draft.endTime,reportedText:draft.text});
+  }
   private async save(draft:Draft,context:Context):Promise<boolean>{
     if(this.saving||this.draft!==draft||this.identity(context)!==this.identity(this.context))return false;
     if(this.facts(draft.habitKey).length>1){this.status={key:'sleep.conflictHelp'};this.render();return false;}
-    let endpoint:SleepEndpoint;
-    try{
-      if(draft.kind==='point')endpoint={kind:'point',...sleepPointForLivedDay(context.date,draft.time,draft.approximate)};
-      else if(draft.kind==='range')endpoint={kind:'range',start:sleepPointForLivedDay(context.date,draft.time,false),end:sleepPointForLivedDay(context.date,draft.endTime,false),reportedText:draft.text};
-      else if(draft.kind==='text')endpoint={kind:'text',date:context.date,text:draft.text};
-      else endpoint={kind:draft.kind};
-    }catch(error){this.status={key:'sleep.saveFailed',error:String(error)};this.render();return false;}
     const generation=this.generation;
     this.saving=true;this.status=null;this.request+=1;this.render();
     try{
+      let endpoint:SleepEndpoint;
+      if(draft.kind==='point')endpoint={kind:'point',...await this.resolvePoint(context.date,draft.time,draft.approximate)};
+      else if(draft.kind==='range')endpoint=await this.resolveRange(context.date,draft);
+      else if(draft.kind==='text')endpoint={kind:'text',date:context.date,text:draft.text};
+      else endpoint={kind:draft.kind};
+      if(generation!==this.generation||this.identity(context)!==this.identity(this.context)||this.draft!==draft)return false;
       const input={habitKey:draft.habitKey,livedDate:context.date,endpoint,recordId:draft.recordId,changeId:draft.changeId,targetBinding:draft.targetBinding,expectedRevision:draft.expectedRevision};
       const saved=await this.options.invoke<SleepView>('save_habit_sleep_time',{input});
       if(saved.targetBinding!==draft.targetBinding)throw new Error('尚未确认保存读回。');

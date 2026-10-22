@@ -11,7 +11,8 @@ introduces a new label, button, status, setting, or fixed error.
 
 - Static HTML uses `data-i18n`, `data-i18n-aria-label`,
   `data-i18n-title`, or `data-i18n-placeholder` with a catalog key.
-- Dynamic fixed copy uses `setInterfaceCopy`; fixed application messages use
+- Dynamic fixed copy uses `setInterfaceCopy`; dynamic fixed attributes use
+  `setInterfaceAttribute`. Fixed application messages use
   `setApplicationMessage` so an already-rendered status can switch language.
 - Fixed error wrappers use `setInterfaceError`, which retains the original
   diagnostic separately while localizing the user-visible detail.

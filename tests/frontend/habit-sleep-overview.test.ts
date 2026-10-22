@@ -19,6 +19,19 @@ const canonicalBoundary=String.raw`
     fact('original','wake','2026-08-06',{kind:'text',date:'2026-08-06',text:'Eight-ish, no clock'}),
     fact('unknown','sleep','2026-08-07',{kind:'unknown'})
   ]};
+  // Literal public backend-projection fixtures. Rust workflow tests independently
+  // establish pairing/statistics; these page tests verify rendering and updates.
+  const overviewFixture=()=>{
+    const ids=sleepState.facts.map(f=>f.recordId);
+    const onset=ids.includes('near-before')?{count:2,mean:240,earliest:230,latest:250,approximate:false}:
+      ids.includes('antipodal-a')?{count:2,mean:null,earliest:0,latest:720,approximate:false}:
+      ids.includes('only-point')?{count:1,mean:250,earliest:null,latest:null,approximate:false}:
+      !ids.length?{count:0,mean:null,earliest:null,latest:null,approximate:false}:
+      {count:2,mean:0,earliest:-10,latest:10,approximate:true};
+    const durations=[{date:'2026-08-09',minutes:450,approximate:false,onset:point('2026-08-08','23:50'),getUp:point('2026-08-09','07:20')},{date:'2026-08-10',minutes:480,approximate:true,onset:point('2026-08-10','00:10',true),getUp:point('2026-08-10','08:10')}];
+    const statistics=['wake','sleep','duration'].flatMap(metric=>[7,30].map(period=>({metric,period,earliestApproximate:false,latestApproximate:metric==='sleep'||metric==='duration',...(metric==='sleep'?onset:metric==='duration'?(sleepState.records[0]?.estimatedDurationMinutes===479?{count:2,mean:480,earliest:479,latest:480,approximate:true}:{count:2,mean:465,earliest:450,latest:480,approximate:true}):{count:2,mean:465,earliest:440,latest:490,approximate:false})})));
+    return {date:view.date,durations,statistics};
+  };
   const ds=Array.from({length:7},(_,i)=>'2026-08-'+String(4+i).padStart(2,'0'));
   const cell=(key,date)=>({date,coverage:'complete',status:'thresholdOnly',hasRecord:true,countsAsCompletion:true,localCompletionState:'none',hasExternalCompletion:true,completionSourceLabels:['Synthetic threshold'],actualTimeLabel:null,sleepFact:sleepState.facts.find(f=>f.habitKey===key&&f.livedDate===date)??null,details:[{kind:'localRecord',sourceLabel:'Synthetic source',text:'Retained source evidence'}],localRecords:[]});
   let habit=(key)=>({key,name:key==='wake'?'Wake up':key==='sleep'?'Go to bed':'Reading',localizedNames:{zh:key==='wake'?'起床':key==='sleep'?'睡觉':'阅读'},active:true,canRecordCompletion:key==='reading',goalKind:key==='reading'?'weekly-count':'daily-time',goalLabel:'Source target',goalTarget:null,definition:null,weeklyTarget:key==='reading'?3:null,completedCount:2,sourceLabels:['Synthetic threshold'],coverageLabel:'complete',goalHistory:[],today:cell(key,view.date),recent:ds.map(date=>cell(key,date)),history:Array.from({length:84},(_,i)=>cell(key,new Date(Date.UTC(2026,4,19+i)).toISOString().slice(0,10)))});
@@ -27,7 +40,7 @@ const canonicalBoundary=String.raw`
   view.habitCorrections={...view.habitCorrections,habits:['wake','sleep','reading'].map(key=>({key,name:habit(key).name,localizedNames:habit(key).localizedNames,nameKnown:true,canRecordCompletion:key==='reading',goalLabel:'Source target',localChangeCount:0,localChanges:[],cell:cell(key,view.date)}))};
   const invoke=window.__TAURI__.core.invoke;
   window.__TAURI__.core.invoke=async(command,args)=>{
-    if(command==='sleep_records'){calls.push({command,args});return structuredClone(sleepState);}
+    if(command==='sleep_records'){calls.push({command,args});return structuredClone({...sleepState,overview:overviewFixture()});}
     if(command==='habit_snapshot'){calls.push({command,args});return structuredClone(habitSnapshotFixture());}
     if(command==='habit_detail_history'){calls.push({command,args});return {habit:habit(args.habitKey),snapshotState:'ready',snapshotGeneratedAt:view.date,snapshotRange:'Source range',canonicalState:'missing',canonicalRevision:null,canonicalError:null,localCompletions:[],statistics:{monthAttainedDays:2,monthExact:true,cumulativeAttainedDays:2,cumulativeExact:true,currentStreak:null,highestConfirmedStreak:null,highestHistoryExact:false,streakUnit:'days',coverageFrom:'2026-08-04',coverageTo:view.date}};}
     if(command==='read_daily_view'||command==='daily_view'){
@@ -331,4 +344,36 @@ test('existing sourced actual-time display survives an absent independent fact w
     habit=(key)=>{const result=sourcedHabit(key);return key==='wake'?{...result,today:{...result.today,actualTimeLabel:'07:55'}}:result;};
   `);
   assert.equal(result.actual,'07:55');assert.equal(result.points,0);assert.deepEqual(result.errors,[]);
+});
+
+
+test('already-rendered sleep copy and errors change language without losing controls or original diagnostics',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    document.querySelector('[data-habit-open="sleep"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
+    const overview=document.querySelector('[data-sleep-overview]');
+    const history=overview.querySelector('[data-sleep-history-date]');history.value='2026-08-01';
+    require('./interface-language.js').applyInterfaceLanguage('zh');
+    const translated={same:document.querySelector('[data-sleep-overview]')===overview,inputSame:document.querySelector('[data-sleep-history-date]')===history,date:history.value,tab:overview.querySelector('button[data-sleep-metric="sleep"]').textContent,earliest:overview.querySelector('[data-sleep-stat="earliest"] strong').textContent,latest:overview.querySelector('[data-sleep-stat="latest"] strong').textContent};
+    window.failOverviewRead=true;document.querySelector('#refresh-habits').click();await until(()=>document.querySelector('.habit-sleep-read-error'));
+    const wrapper=document.querySelector('.habit-sleep-read-error'),original=wrapper.dataset.i18nError;
+    require('./interface-language.js').applyInterfaceLanguage('en');
+    return JSON.stringify({translated,original,rawAfter:wrapper.dataset.i18nError,error:wrapper.textContent,errorSame:document.querySelector('.habit-sleep-read-error')===wrapper,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    window.failOverviewRead=false;const stableInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{if(command==='sleep_records'&&window.failOverviewRead)throw '不支持的作息正本版本。';return stableInvoke(command,args);};
+  `);
+  assert.equal(result.translated.same,true);assert.equal(result.translated.inputSame,true);assert.equal(result.translated.date,'2026-08-01');
+  assert.equal(result.translated.tab,'入睡');assert.equal(result.translated.earliest,'23:50');assert.match(result.translated.latest,/约.*00:10/);
+  assert.equal(result.original,'不支持的作息正本版本。');assert.equal(result.rawAfter,result.original);assert.equal(result.errorSame,true);assert.match(result.error,/unsupported.*sleep/i);assert.deepEqual(result.errors,[]);
+});
+
+
+test('overview statistics from another date cannot appear in the selected context',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    document.querySelector('[data-habit-open="wake"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
+    return JSON.stringify({count:document.querySelector('[data-sleep-stat="count"] strong').textContent,mean:document.querySelector('[data-sleep-stat="mean"] strong').textContent,points:document.querySelectorAll('[data-sleep-chart="detail"] circle').length,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    const datedInvoke=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>{const value=await datedInvoke(command,args);if(command==='sleep_records')value.overview.date='2026-08-09';return value;};
+  `);
+  assert.equal(result.count,'— / 7');assert.equal(result.mean,'—');assert.equal(result.points,2);assert.deepEqual(result.errors,[]);
 });
