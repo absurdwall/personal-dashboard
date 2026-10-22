@@ -455,9 +455,12 @@ impl AppServerTransport for DynamicRuntime {
             self.results.lock().unwrap().push(result);
             return Ok(RuntimeTurnResult { text: "Read attempted".into(), runtime_turn_id: Some(format!("turn-{}",request.execution_id)), stopped:false, external_actions:vec![] });
         }
-        if request.user_text == "record synthetic sleep" {
+        if request.user_text == "record synthetic sleep" || request.user_text == "clarify synthetic sleep" {
+            let ambiguous = request.user_text == "clarify synthetic sleep";
             let tools = self.registered_tools.lock().unwrap();
-            let schema = &tools.iter().find(|t| t["name"] == "dashboard_sleep_records").unwrap()["inputSchema"]["oneOf"];
+            let tool = tools.iter().find(|t| t["name"] == "dashboard_sleep_records").unwrap();
+            assert!(tool["description"].as_str().unwrap().contains("chronology is compatibility, not identity"));
+            let schema = &tool["inputSchema"]["oneOf"];
             assert!(schema.as_array().unwrap().iter().any(|v| v["properties"]["action"]["const"] == "saveHabitTime"));
             drop(tools);
             let call = |id:&str, arguments:Value| handler(RuntimeDynamicToolCall {
@@ -467,15 +470,33 @@ impl AppServerTransport for DynamicRuntime {
             let read = call("sleep-read", json!({"action":"read"}));
             assert!(read.success,"{}",read.text);
             let view:Value=serde_json::from_str(&read.text).unwrap();
-            let first_input=json!({"habitKey":"sleep","livedDate":"2026-09-26","changeId":"synthetic-sleep-first","targetBinding":view["targetBinding"],"expectedRevision":view["revision"],
+            let mut first_input=json!({"habitKey":"sleep","livedDate":"2026-09-26","changeId":"synthetic-sleep-first","targetBinding":view["targetBinding"],"expectedRevision":view["revision"],
                 "endpoint":{"kind":"point","date":"2026-09-26","time":"23:50","utcOffsetMinutes":-240}});
+            if ambiguous {
+                first_input["habitKey"]=json!("wake"); first_input["livedDate"]=json!("2026-09-27");
+                first_input["endpoint"]=json!({"kind":"point","date":"2026-09-27","time":"07:30","utcOffsetMinutes":-240});
+            }
             let first=call("sleep-first",json!({"action":"saveHabitTime","input":first_input}));
             assert!(first.success,"{}",first.text);
             let first_view:Value=serde_json::from_str(&first.text).unwrap();
-            let input=json!({"habitKey":"wake","livedDate":"2026-09-27","changeId":"synthetic-sleep-supplement","targetBinding":first_view["targetBinding"],"expectedRevision":first_view["revision"],
+            let mut input=json!({"habitKey":"wake","livedDate":"2026-09-27","changeId":"synthetic-sleep-supplement","targetBinding":first_view["targetBinding"],"expectedRevision":first_view["revision"],
                 "endpoint":{"kind":"point","date":"2026-09-27","time":"07:20","utcOffsetMinutes":-240}});
+            if ambiguous {
+                input["habitKey"]=json!("sleep");
+                input["endpoint"]=json!({"kind":"point","date":"2026-09-27","time":"04:10","utcOffsetMinutes":-240});
+            }
             let save=call("sleep-save",json!({"action":"saveHabitTime","input":input}));
             self.results.lock().unwrap().push(save.clone());
+            if ambiguous {
+                assert!(!save.success); assert!(save.text.contains("请先澄清是否属于同一晚"));
+                let unchanged=call("sleep-check",json!({"action":"read"}));
+                assert_eq!(unchanged.text,first.text);
+                input["recordId"]=first_view["records"][0]["id"].clone();
+                let resolved=call("sleep-resolved",json!({"action":"saveHabitTime","input":input}));
+                assert!(resolved.success,"{}",resolved.text);
+                self.results.lock().unwrap().push(resolved.clone());
+                return Ok(RuntimeTurnResult{text:resolved.text,runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
+            }
             assert!(save.success,"{}",save.text);
             let duplicate=call("sleep-save",json!({"action":"saveHabitTime","input":input}));
             assert!(duplicate.success); assert_eq!(duplicate.text,save.text);
@@ -1305,8 +1326,8 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.7.0");
-    assert_eq!(binding["toolSetVersion"], "1.6.0");
+    assert_eq!(binding["skillVersion"], "1.7.1");
+    assert_eq!(binding["toolSetVersion"], "1.6.1");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));
@@ -8038,7 +8059,7 @@ fn personal_retro_reads_three_real_histories_for_complete_lived_days_without_bus
     assert_eq!(explicit.usage_bindings.len(),2);
     for binding in &explicit.usage_bindings {
         assert_eq!(binding.skill_name,"personal-dashboard-collaboration");
-        assert_eq!(binding.skill_version,"1.7.0");
+        assert_eq!(binding.skill_version,"1.7.1");
         assert_eq!(binding.registered_tools.iter().filter(|tool|*tool=="dashboard_read_history").count(),1);
     }
     if let Ok(destination)=std::env::var("PDCR_RETRO_EVIDENCE_DIR") {
@@ -8204,6 +8225,28 @@ fn collaboration_sleep_tool_and_today_editor_share_the_same_selected_vault_recor
     assert_eq!(reopened.sleep_records().unwrap(),changed);
     assert!(fs::read_dir(path.join("life/Journal/Daily")).unwrap().next().is_none());
         }
+
+#[test]
+fn collaboration_sleep_clarification_preserves_canonical_state_until_explicit_identity_is_supplied() {
+    let directory=IsolatedDirectory::new(); let path=directory.vault("sleep-clarification");
+    let vault=MutableVault::new(&path);
+    let mut hasher=DefaultHasher::new(); path.canonicalize().unwrap().hash(&mut hasher);
+    let key=format!("vault-{:016x}",hasher.finish());
+    let (application,_,results)=new_application(&directory,&vault,MutableContext::new(&key),Arc::new(AtomicBool::new(false)));
+    let session=application.create_session("2026-09-27").unwrap();
+    application.submit_message(&key,&session.id,"2026-09-27","clarify synthetic sleep").unwrap();
+    wait_for_finish(&application,&session.id,&key);
+    let results=results.lock().unwrap();
+    assert_eq!(results.len(),2);
+    assert!(!results[0].success); assert!(results[1].success);
+    let today=TodayApplication::new(vault,NoVaultPicker,FixedClock);
+    let canonical=today.sleep_records().unwrap();
+    assert_eq!(canonical.records.len(),1);
+    assert_eq!(canonical.records[0].estimated_duration_minutes,Some(200));
+    assert_eq!(serde_json::from_str::<Value>(&results[1].text).unwrap(),serde_json::to_value(canonical).unwrap());
+    assert!(fs::read_dir(path.join("life/Journal/Daily")).unwrap().next().is_none());
+    assert!(!path.join("life/.personal-dashboard/habit-completions/v1/completions.json").exists());
+}
 
 #[test]
 fn first_task_requests_from_the_registered_contract_save_and_read_back_without_repair() {

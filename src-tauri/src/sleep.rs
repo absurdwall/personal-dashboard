@@ -299,6 +299,33 @@ impl<S: SleepStore> SleepWorkflow<S> {
         } else {
             input.lived_date.clone()
         };
+        if input.record_id.is_none() && matching.is_empty() {
+            if let SleepEndpoint::Point { point } = &input.endpoint {
+                let incoming = point_seconds(point)?;
+                let opposite_key = if onset { "wake" } else { "sleep" };
+                for candidate in &document.records {
+                    if candidate.wake_date == night_date {
+                        continue;
+                    }
+                    for fact in record_facts(candidate) {
+                        if fact.habit_key != opposite_key
+                            || fact.lived_date.as_deref() != Some(input.lived_date.as_str())
+                        {
+                            continue;
+                        }
+                        if let SleepEndpoint::Point { point: opposite } = &fact.endpoint {
+                            let opposite = point_seconds(opposite)?;
+                            // A compatible opposite endpoint on this lived day is a
+                            // clarification signal, including when its night is complete.
+                            // It never identifies a night by chronology or distance.
+                            if (onset && incoming <= opposite) || (!onset && opposite <= incoming) {
+                                return Err("同一 lived day 的另一条记录有可兼容的相反端点；请先澄清是否属于同一晚，再通过 Collaboration 明确记录身份；未写入。".into());
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let record = if let Some(id) = input.record_id.as_ref() {
             Some(
                 document

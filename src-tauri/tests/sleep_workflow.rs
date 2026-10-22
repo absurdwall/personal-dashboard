@@ -99,6 +99,313 @@ fn point(date: &str, time: &str, offset: i32) -> serde_json::Value {
 }
 
 #[test]
+fn habit_entry_requires_clarification_for_same_lived_day_night_ambiguity() {
+    let mut silently_split = Vec::new();
+    for (
+        label,
+        first_habit,
+        first_date,
+        first_time,
+        second_habit,
+        second_date,
+        second_time,
+        lived_date,
+    ) in [
+        (
+            "A",
+            "wake",
+            "2026-09-09",
+            "07:30",
+            "sleep",
+            "2026-09-09",
+            "04:10",
+            "2026-09-09",
+        ),
+        (
+            "B",
+            "sleep",
+            "2026-09-08",
+            "23:00",
+            "wake",
+            "2026-09-09",
+            "03:30",
+            "2026-09-08",
+        ),
+        (
+            "A-reverse",
+            "sleep",
+            "2026-09-09",
+            "04:10",
+            "wake",
+            "2026-09-09",
+            "07:30",
+            "2026-09-09",
+        ),
+        (
+            "B-reverse",
+            "wake",
+            "2026-09-09",
+            "03:30",
+            "sleep",
+            "2026-09-08",
+            "23:00",
+            "2026-09-08",
+        ),
+    ] {
+        let root = vault(&format!("actual-night-repro-{label}"));
+        let app = application(&root);
+        let opened = app.sleep_records().unwrap();
+        let first = app
+            .save_habit_sleep_time(
+                serde_json::from_value(json!({
+                    "habitKey": first_habit, "livedDate": lived_date,
+                    "endpoint": point(first_date, first_time, -240), "changeId": "first",
+                    "targetBinding": opened.target_binding, "expectedRevision": opened.revision,
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        let before =
+            fs::read(root.join("life/.personal-dashboard/sleep/v1/sessions.json")).unwrap();
+        let second = app.save_habit_sleep_time(
+            serde_json::from_value(json!({
+                "habitKey": second_habit, "livedDate": lived_date,
+                "endpoint": point(second_date, second_time, -240), "changeId": "second",
+                "targetBinding": first.target_binding, "expectedRevision": first.revision,
+            }))
+            .unwrap(),
+        );
+        match second {
+            Ok(saved) => {
+                eprintln!(
+                    "CASE {label} WITHOUT ID: {}",
+                    serde_json::to_string(&saved.records).unwrap()
+                );
+                assert_eq!(application(&root).sleep_records().unwrap(), saved);
+                silently_split.push(label);
+            }
+            Err(error) => {
+                eprintln!("CASE {label} CLARIFICATION: {error}");
+                assert!(error.contains("请先澄清是否属于同一晚"), "{error}");
+                assert_eq!(
+                    fs::read(root.join("life/.personal-dashboard/sleep/v1/sessions.json")).unwrap(),
+                    before
+                );
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+    assert!(
+        silently_split.is_empty(),
+        "actual endpoints silently became separate nights: {silently_split:?}"
+    );
+}
+
+#[test]
+fn explicit_identity_pairs_same_lived_day_nights_in_either_save_order() {
+    for (
+        label,
+        first_habit,
+        first_date,
+        first_time,
+        second_habit,
+        second_date,
+        second_time,
+        lived_date,
+        duration,
+    ) in [
+        (
+            "A",
+            "wake",
+            "2026-09-09",
+            "07:30",
+            "sleep",
+            "2026-09-09",
+            "04:10",
+            "2026-09-09",
+            200,
+        ),
+        (
+            "B",
+            "sleep",
+            "2026-09-08",
+            "23:00",
+            "wake",
+            "2026-09-09",
+            "03:30",
+            "2026-09-08",
+            270,
+        ),
+        (
+            "A-reverse",
+            "sleep",
+            "2026-09-09",
+            "04:10",
+            "wake",
+            "2026-09-09",
+            "07:30",
+            "2026-09-09",
+            200,
+        ),
+        (
+            "B-reverse",
+            "wake",
+            "2026-09-09",
+            "03:30",
+            "sleep",
+            "2026-09-08",
+            "23:00",
+            "2026-09-08",
+            270,
+        ),
+    ] {
+        let root = vault(&format!("actual-night-explicit-{label}"));
+        let app = application(&root);
+        let opened = app.sleep_records().unwrap();
+        let first = app
+            .save_habit_sleep_time(
+                serde_json::from_value(json!({
+                    "habitKey": first_habit, "livedDate": lived_date,
+                    "endpoint": point(first_date, first_time, -240), "changeId": "first",
+                    "targetBinding": opened.target_binding, "expectedRevision": opened.revision,
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        let saved = app.save_habit_sleep_time(serde_json::from_value(json!({
+            "habitKey": second_habit, "livedDate": lived_date, "recordId": first.records[0].id,
+            "endpoint": point(second_date, second_time, -240), "changeId": "second",
+            "targetBinding": first.target_binding, "expectedRevision": first.revision,
+        })).unwrap()).unwrap();
+        eprintln!(
+            "CASE {label} EXPLICIT ID: {}",
+            serde_json::to_string(&saved.records).unwrap()
+        );
+        assert_eq!(saved.records.len(), 1);
+        assert_eq!(saved.records[0].id, first.records[0].id);
+        assert_eq!(saved.records[0].estimated_duration_minutes, Some(duration));
+        assert!(saved
+            .facts
+            .iter()
+            .all(|fact| fact.lived_date.as_deref() == Some(lived_date)));
+        assert_eq!(application(&root).sleep_records().unwrap(), saved);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+fn habit_entry(
+    app: &TodayApplication<Selected, NoSelection, FixedClock>,
+    habit: &str,
+    day: &str,
+    endpoint: serde_json::Value,
+) -> Result<personal_dashboard_lib::sleep::SleepView, String> {
+    let opened = app.sleep_records().unwrap();
+    app.save_habit_sleep_time(
+        serde_json::from_value(json!({
+            "habitKey":habit,"livedDate":day,"endpoint":endpoint,"changeId":"context-entry",
+            "targetBinding":opened.target_binding,"expectedRevision":opened.revision,
+        }))
+        .unwrap(),
+    )
+}
+
+#[test]
+fn outside_index_night_requires_clarification_even_with_conventional_candidate_or_complete_record()
+{
+    for complete in [false, true] {
+        let root = vault("outside-index-night");
+        let app = application(&root);
+        let mut outside = json!({"wakeDate":"2026-09-09","changeId":"outside","getUp":point("2026-09-09","07:30",-240)});
+        if complete {
+            outside["sleepOnset"] = point("2026-09-09", "02:00", -240);
+        }
+        let original = save(&app, outside);
+        if !complete {
+            save(
+                &app,
+                json!({"wakeDate":"2026-09-10","changeId":"conventional","getUp":point("2026-09-10","07:30",-240)}),
+            );
+        }
+        let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+        let before = fs::read(&path).unwrap();
+        let error = habit_entry(
+            &app,
+            "sleep",
+            "2026-09-09",
+            point("2026-09-09", "04:10", -240),
+        )
+        .unwrap_err();
+        assert!(error.contains("请先澄清是否属于同一晚"), "{error}");
+        assert_eq!(fs::read(&path).unwrap(), before);
+        let view = app.sleep_records().unwrap();
+        let corrected = app
+            .save_habit_sleep_time(
+                serde_json::from_value(json!({
+                    "habitKey":"sleep","livedDate":"2026-09-09","recordId":original.records[0].id,
+                    "endpoint":point("2026-09-09","04:10",-240),"changeId":"explicit-correction",
+                    "targetBinding":view.target_binding,"expectedRevision":view.revision,
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(corrected.records.len(), if complete { 1 } else { 2 });
+        assert_eq!(corrected.records[0].id, original.records[0].id);
+        assert_eq!(corrected.records[0].estimated_duration_minutes, Some(200));
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn identified_corrections_and_unrelated_historical_partial_nights_do_not_require_clarification() {
+    let root = vault("bounded-night-context");
+    let app = application(&root);
+    save(
+        &app,
+        json!({"wakeDate":"2026-09-02","changeId":"old-incomplete","sleepOnset":point("2026-09-01","23:00",-240)}),
+    );
+    let new = habit_entry(
+        &app,
+        "wake",
+        "2026-09-09",
+        point("2026-09-09", "07:30", -240),
+    )
+    .unwrap();
+    assert_eq!(new.records.len(), 2);
+    let existing = save(
+        &app,
+        json!({"wakeDate":"2026-09-10","changeId":"identified-onset","sleepOnset":point("2026-09-09","04:10",-240)}),
+    );
+    // The same-role fact identifies an existing correction, despite another compatible wake on that lived day.
+    let corrected = app.save_habit_sleep_time(serde_json::from_value(json!({
+        "habitKey":"sleep","livedDate":"2026-09-09","endpoint":point("2026-09-09","04:20",-240),"changeId":"same-role-correction",
+        "targetBinding":existing.target_binding,"expectedRevision":existing.revision,
+    })).unwrap()).unwrap();
+    assert_eq!(corrected.records.len(), 3);
+    assert_eq!(corrected.records[2].id, existing.records[2].id);
+    assert_eq!(corrected.records[1], existing.records[1]);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn same_lived_day_but_reversed_actual_points_are_not_a_pairing_candidate() {
+    let root = vault("reversed-candidate");
+    let app = application(&root);
+    save(
+        &app,
+        json!({"wakeDate":"2026-09-10","changeId":"later-onset","sleepOnset":point("2026-09-09","12:00",-240)}),
+    );
+    let saved = habit_entry(
+        &app,
+        "wake",
+        "2026-09-09",
+        point("2026-09-09", "07:30", -240),
+    )
+    .unwrap();
+    assert_eq!(saved.records.len(), 2);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn same_night_endpoints_project_to_independent_lived_days_without_completing_habits() {
     let root = vault("lived-endpoints");
     let app = application(&root);
