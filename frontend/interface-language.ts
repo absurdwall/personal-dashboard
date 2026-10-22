@@ -59,6 +59,7 @@ const interfaceCopies = {
   "sleep.longest": { zh: "最长 {value}", en: "Longest {value}" },
   "sleep.approximateSamples": { zh: "其中 {count} 个约数", en: "{count} approximate" },
   "sleep.trend": { zh: "{metric}时间趋势；缺失或非单点不连线", en: "{metric} trend; missing or non-point times have gaps" },
+  "sleep.chartPoint": { zh: "{date} · {metric} · {value}", en: "{date} · {metric} · {value}" },
   "sleep.error": { zh: "作息操作未完成：{error}", en: "Sleep operation did not complete: {error}" },
   "sleep.invalidLocalTime": { zh: "请检查实际日期与时间；夏令时切换中不存在的时间不能保存。", en: "Check the actual local date and time; a nonexistent daylight-saving time cannot be saved." },
   "sleep.unconfirmed": { zh: "尚未确认保存读回。", en: "Saved readback is unconfirmed." },

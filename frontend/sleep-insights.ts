@@ -128,8 +128,9 @@ function chart(parent: HTMLElement, points: readonly Sample[], metric: SleepMetr
   for (const point of points) {
     const node = button(dates, `${point.label}\n${point.date.slice(5)}`, () => onDate(point.date));
     node.dataset.sleepDate = point.date;
-    node.title = `${point.date} · ${label(metric)} · ${point.label}`;
-    node.setAttribute("aria-label", node.title);
+    const pointCopy = {date:point.date,metric:label(metric),value:point.label};
+    setSleepAttribute(node,"title","sleep.chartPoint",pointCopy);
+    setSleepAttribute(node,"aria-label","sleep.chartPoint",pointCopy);
   }
 }
 
