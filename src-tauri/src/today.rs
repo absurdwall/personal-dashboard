@@ -1915,7 +1915,17 @@ pub struct TodayView {
     pub tasks: TasksView,
     pub day_tasks: DayTaskListView,
     pub habit_corrections: HabitCorrectionView,
+    pub habit_time_habits: Vec<HabitTimeHabitView>,
     pub time_axis: TimeAxisView,
+}
+
+/// Canonical display/lifecycle context for the two existing time Habits.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitTimeHabitView {
+    pub key: String,
+    pub name: String,
+    pub localized_names: crate::habits::HabitLocalizedNames,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -3422,9 +3432,13 @@ where
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
         };
-        let mut view = self.sourced_habits_for(&vault)?;
+        self.habits_for_vault(&vault)
+    }
+
+    fn habits_for_vault(&self, vault: &Path) -> Result<HabitSnapshotView, String> {
+        let mut view = self.sourced_habits_for(vault)?;
         view.lived_date = Some(self.clock.current_lived_date());
-        let catalog_path = habit_catalog::canonical_path(&vault);
+        let catalog_path = habit_catalog::canonical_path(vault);
         view.catalog_target_binding = Some(habit_catalog::target_binding(&catalog_path));
         let catalog_bytes = match self.habit_catalog_store.load(&catalog_path) {
             Ok(bytes) => bytes,
@@ -3447,7 +3461,7 @@ where
             None => None,
         };
 
-        let completion_path = canonical_habit_completion_path(&vault);
+        let completion_path = canonical_habit_completion_path(vault);
         view.completion_target_binding = Some(habit_completion_target_binding(&completion_path));
         let mut local_completions = Vec::new();
         match self.habit_completion_store.load(&completion_path) {
@@ -3474,11 +3488,47 @@ where
             &local_completions,
             &self.clock.current_lived_date(),
         )?;
-        match crate::sleep::SleepWorkflow::new(&vault).read() {
+        match crate::sleep::SleepWorkflow::new(vault).read() {
             Ok(sleep) => crate::sleep::project_habits(&mut view, &sleep),
             Err(error) => view.sleep_error = Some(error),
         }
         Ok(view)
+    }
+
+    fn habit_time_context_for(&self, vault: &Path, date: &str) -> Vec<HabitTimeHabitView> {
+        let Ok(snapshot) = self.habits_for_vault(vault) else {
+            return Vec::new();
+        };
+        if snapshot.catalog_error.is_some() {
+            return Vec::new();
+        }
+        let today = self.clock.current_lived_date();
+        if date > today.as_str() {
+            return Vec::new();
+        }
+        let recorded = crate::sleep::SleepWorkflow::new(vault)
+            .read()
+            .map(|view| view.facts)
+            .unwrap_or_default();
+        snapshot.habits.into_iter().filter(|habit| {
+            if !["wake", "sleep"].contains(&habit.key.as_str()) {
+                return false;
+            }
+            let started = habit.definition.as_ref()
+                .and_then(|definition| definition.start_date.as_deref())
+                .is_none_or(|start| start <= date);
+            if date == today {
+                return habit.active && started;
+            }
+            // Canonical history outlives pausing, start-date edits and the snapshot window.
+            started || recorded.iter().any(|fact| {
+                fact.habit_key == habit.key && fact.lived_date.as_deref() == Some(date)
+            })
+        }).map(|habit| HabitTimeHabitView {
+            key: habit.key,
+            name: habit.name,
+            localized_names: habit.localized_names,
+        }).collect()
     }
 
     fn sourced_habits_for(&self, vault: &Path) -> Result<HabitSnapshotView, String> {
@@ -3946,6 +3996,7 @@ where
                     HabitSnapshotState::Unconfigured,
                     "请选择 Vault，以读取历史习惯。",
                 ),
+                habit_time_habits: Vec::new(),
                 time_axis: TimeAxisView::default(),
             });
         };
@@ -5011,6 +5062,7 @@ where
         let tasks = self.shared_tasks_for(vault);
         let day_tasks = self.day_tasks_for(vault, &date, receive_planning_input);
         let habit_corrections = self.habit_corrections_for(vault, &date);
+        let habit_time_habits = self.habit_time_context_for(vault, &date);
         let path = canonical_record_path(vault, &date)?;
         let target_binding = record_target_binding(&path);
         let bytes = match self.record_store.load(&path)? {
@@ -5040,6 +5092,7 @@ where
                     tasks,
                     day_tasks,
                     habit_corrections,
+                    habit_time_habits,
                     time_axis: TimeAxisView::default(),
                 });
             }
@@ -5111,6 +5164,7 @@ where
                     tasks,
                     day_tasks,
                     habit_corrections,
+                    habit_time_habits,
                     time_axis,
                 })
             }
@@ -5136,6 +5190,7 @@ where
                 tasks,
                 day_tasks,
                 habit_corrections,
+                habit_time_habits,
                 time_axis: TimeAxisView::default(),
             }),
         }
@@ -5190,6 +5245,7 @@ fn vault_error_view(
         ),
         day_tasks: DayTaskListView::error(message.clone(), None),
         habit_corrections,
+        habit_time_habits: Vec::new(),
         time_axis: TimeAxisView::default(),
     }
 }

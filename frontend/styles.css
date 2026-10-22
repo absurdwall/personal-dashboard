@@ -11816,3 +11816,17 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 /* Issue #66: retain readable entry and schedule targets in the docked Today rail. */
 .today-task-create-form .task-compact-row { flex-wrap: wrap; column-gap: 0.125rem; }
 .today-task-create-form .task-compact-row > input { flex: 1 0 120px; min-height: 32px; }
+
+/* Report one Habit endpoint inside the existing dated Habit recording region. */
+.habit-time-row { padding: 12px 0; border-bottom: 1px solid var(--parity-border); }
+.habit-time-row > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.habit-time-row > header > strong { min-width: 0; overflow-wrap: anywhere; }
+.habit-time-row > header > button { flex-shrink: 0; }
+.habit-time-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.habit-time-fields input[type="time"] { width: 112px; min-width: 0; }
+.habit-time-fields label { display: inline-flex; align-items: center; gap: 5px; }
+.habit-time-fields input[type="checkbox"] { width: auto; }
+.habit-time-preview { overflow-wrap: anywhere; }
+.habit-time-precision { margin-top: 8px; font-size: 0.84rem; }
+.habit-time-precision summary { cursor: pointer; }
+.habit-time-precision select, .habit-time-precision input { max-width: 100%; margin-top: 8px; }
