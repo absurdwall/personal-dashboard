@@ -156,7 +156,9 @@ impl SleepEndpoint {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SleepRecord {
     pub id: String,
-    pub wake_date: String,
+    /// Stable internal night index, independent of either endpoint's actual date.
+    #[serde(rename = "wakeDate")]
+    pub night_index: String,
     pub sleep_onset: SleepEndpoint,
     pub get_up: SleepEndpoint,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -176,7 +178,8 @@ pub struct SleepMutationContext {
 #[serde(from = "SleepMutationInputWire", into = "SleepMutationInputWire")]
 pub struct SleepMutationInput {
     pub record_id: Option<String>,
-    pub wake_date: String,
+    /// Internal night identity; the public wire adapter retains legacy `wakeDate`.
+    pub night_index: String,
     pub sleep_onset: Option<SleepEndpoint>,
     pub get_up: Option<SleepEndpoint>,
     pub sleep_onset_lived_date: Option<String>,
@@ -240,6 +243,7 @@ pub struct HabitSleepMutationInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SleepMutationInputWire {
     record_id: Option<String>,
+    // Legacy public spelling for the internal night index, not an endpoint date.
     wake_date: String,
     sleep_onset: Option<SleepEndpoint>,
     get_up: Option<SleepEndpoint>,
@@ -255,7 +259,7 @@ impl From<SleepMutationInputWire> for SleepMutationInput {
     fn from(wire: SleepMutationInputWire) -> Self {
         Self {
             record_id: wire.record_id,
-            wake_date: wire.wake_date,
+            night_index: wire.wake_date,
             sleep_onset: wire.sleep_onset,
             get_up: wire.get_up,
             sleep_onset_lived_date: wire.sleep_onset_lived_date,
@@ -272,7 +276,7 @@ impl From<SleepMutationInput> for SleepMutationInputWire {
     fn from(input: SleepMutationInput) -> Self {
         Self {
             record_id: input.record_id,
-            wake_date: input.wake_date,
+            wake_date: input.night_index,
             sleep_onset: input.sleep_onset,
             get_up: input.get_up,
             sleep_onset_lived_date: input.sleep_onset_lived_date,
@@ -455,7 +459,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         if document
             .records
             .iter()
-            .any(|r| !dates.insert(&r.wake_date) || !ids.insert(&r.id))
+            .any(|r| !dates.insert(&r.night_index) || !ids.insert(&r.id))
         {
             return Err("作息正本存在重复身份或日期。".into());
         }
@@ -548,7 +552,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
                 let incoming = point_seconds(point)?;
                 let opposite_key = input.habit_key.opposite();
                 for candidate in &document.records {
-                    if candidate.wake_date == night_date {
+                    if candidate.night_index == night_date {
                         continue;
                     }
                     for fact in record_facts(candidate) {
@@ -581,7 +585,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         } else if let Some(record) = matching.first() {
             Some(*record)
         } else {
-            document.records.iter().find(|r| r.wake_date == night_date)
+            document.records.iter().find(|r| r.night_index == night_date)
         };
         if let Some(record) = record {
             let existing = if onset {
@@ -598,7 +602,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         }
         self.save(SleepMutationInput {
             record_id: record.map(|r| r.id.clone()),
-            wake_date: record.map(|r| r.wake_date.clone()).unwrap_or(night_date),
+            night_index: record.map(|r| r.night_index.clone()).unwrap_or(night_date),
             sleep_onset: onset.then(|| input.endpoint.clone()),
             get_up: (!onset).then_some(input.endpoint),
             sleep_onset_lived_date: if onset { context.clone() } else { None },
@@ -633,7 +637,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
                     .iter()
                     .find(|record| record.id == id)
                     .is_some_and(|record| {
-                        record.wake_date == input.wake_date
+                        record.night_index == input.night_index
                             && input
                                 .sleep_onset
                                 .as_ref()
@@ -660,7 +664,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         if revision != input.mutation.expected_revision {
             return Err("作息已更新，请重新读取后修改；未写入。".into());
         }
-        validate_date(&input.wake_date)?;
+        validate_date(&input.night_index)?;
         if (input.sleep_onset.is_none() && input.sleep_onset_lived_date.is_some())
             || (input.get_up.is_none() && input.get_up_lived_date.is_some())
         {
@@ -683,7 +687,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
             .records
             .iter()
             .enumerate()
-            .any(|(i, r)| r.wake_date == input.wake_date && Some(i) != existing)
+            .any(|(i, r)| r.night_index == input.night_index && Some(i) != existing)
         {
             return Err("目标起床日期已有另一条作息；未覆盖。".into());
         }
@@ -691,14 +695,14 @@ impl<S: SleepStore> SleepWorkflow<S> {
             .map(|i| document.records[i].clone())
             .unwrap_or_else(|| SleepRecord {
                 id: record_id_for_change(&input.mutation.change_id),
-                wake_date: input.wake_date.clone(),
+                night_index: input.night_index.clone(),
                 sleep_onset: SleepEndpoint::Unrecorded,
                 get_up: SleepEndpoint::Unrecorded,
                 estimated_duration_minutes: None,
                 sleep_onset_lived_date: None,
                 get_up_lived_date: None,
             });
-        record.wake_date = input.wake_date.clone();
+        record.night_index = input.night_index.clone();
         if let Some(value) = input.sleep_onset.clone() {
             record.sleep_onset_lived_date =
                 value.validate_context(input.sleep_onset_lived_date.clone())?;
@@ -731,7 +735,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         };
         document
             .records
-            .sort_by(|a, b| a.wake_date.cmp(&b.wake_date));
+            .sort_by(|a, b| a.night_index.cmp(&b.night_index));
         document.operations.push(Receipt {
             id: input.mutation.change_id.clone(),
             input,
@@ -902,7 +906,7 @@ pub fn duration_minutes(start: &SleepEndpoint, end: &SleepEndpoint) -> Result<Op
 }
 
 fn validate_record(record: &SleepRecord) -> Result<(), String> {
-    validate_date(&record.wake_date)?;
+    validate_date(&record.night_index)?;
     record.sleep_onset.validate()?;
     record.get_up.validate()?;
     record

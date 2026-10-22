@@ -6463,7 +6463,7 @@ run_collaboration_layout_scenario() {
   local session_title="Automatic morning plan · layout probe"
   local draft="Synthetic retained draft 中文 English"
   local index=0 mode window_size
-  mkdir -p "$vault/.obsidian" "$acceptance_data_directory" "$captures"
+  mkdir -p "$vault/.obsidian" "$vault/life/Journal/Daily" "$acceptance_data_directory" "$captures"
   printf '{"schemaVersion":1,"selectedVault":"%s"}\n' "$vault" > "$acceptance_data_directory/today-workspace.json"
   printf '{"schemaVersion":1,"interfaceLanguage":"en"}\n' > "$acceptance_data_directory/interface-language.json"
   launch_app_waiting_for_text "Today" 30
@@ -6512,6 +6512,7 @@ NODE
     run_driver press "Context" 10
     run_driver assert-collaboration-columns "$mode-context|Sessions|$session_title|Current context|$draft|Send" 10
     run_driver assert-window-visible "Current context" 10
+    run_driver assert-active-absent-text "Read failed" 10
     run_driver focus "$draft" 10
     run_driver assert-visible-focus "$draft" 10
     run_driver capture-window "$captures/collaboration-context-$window_size.png" 10
@@ -6535,6 +6536,7 @@ NODE
   run_driver press "Context" 10
   run_driver scroll-text-visible "Current context" 10
   run_driver assert-collaboration-columns "single-scroll-evidence|Sessions|$session_title|Current context|$draft|Send" 10
+  run_driver assert-active-absent-text "Read failed" 10
   run_driver capture-window "$captures/collaboration-short-context.png" 10
   run_driver scroll-text-visible "$draft" 10
   run_driver scroll-text-visible "Send" 10
