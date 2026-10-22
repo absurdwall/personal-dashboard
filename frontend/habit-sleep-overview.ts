@@ -31,7 +31,7 @@ export class HabitSleepOverview {
   private metric:Metric='wake';
   private period:7|30=7;
   private selected:{metric:Metric;date:string}|null=null;
-  constructor(private readonly language:()=>InterfaceLanguage){}
+  constructor(private readonly language:()=>InterfaceLanguage,private readonly reveal:()=>void=()=>{}){}
   clear():void{this.view=null;this.error=null;this.selected=null;this.metric='wake';this.period=7;}
   open(key:HabitKey):void{this.metric=key;this.period=7;this.selected=null;}
   accept(view:SleepView):void{this.view=view;this.error=null;}
@@ -120,7 +120,7 @@ export class HabitSleepOverview {
   detail(context:HabitContext):HTMLElement{
     const root=element('section','habit-sleep-overview');root.setAttribute('aria-label',this.t('sleep.overview.label'));root.dataset.sleepOverview='';root.dataset.sleepMetric=this.metric;
     const tabs=element('div','habit-sleep-metric-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label',this.t('sleep.overview.metrics'));
-    const replace=(selector:string)=>{const next=this.detail(context);root.replaceWith(next);next.querySelector<HTMLElement>(selector)?.focus({preventScroll:true});};
+    const replace=(selector:string)=>{const next=this.detail(context);root.replaceWith(next);next.querySelector<HTMLElement>(selector)?.focus({preventScroll:true});this.reveal();};
     for(const metric of ['wake','sleep','duration'] as const){const button=element('button','secondary-button',this.metricName(metric));button.type='button';button.dataset.sleepMetric=metric;button.setAttribute('role','tab');button.setAttribute('aria-selected',String(this.metric===metric));button.addEventListener('click',()=>{this.metric=metric;replace(`[data-sleep-metric="${metric}"]`)});tabs.append(button);}
     const ranges=element('div','habit-sleep-period-tabs');ranges.setAttribute('aria-label',this.t('sleep.overview.period'));
     for(const period of [7,30] as const){const button=element('button','secondary-button',this.t('sleep.overview.days',{count:period}));button.type='button';button.dataset.sleepPeriod=String(period);button.setAttribute('aria-pressed',String(this.period===period));button.addEventListener('click',()=>{this.period=period;replace(`[data-sleep-period="${period}"]`)});ranges.append(button);}

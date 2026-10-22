@@ -45,6 +45,80 @@ const navigate=String.raw`
   await until(()=>document.querySelector('.habit-snapshot-row[data-habit-key="wake"]'));
 `;
 
+test('explicit language and range transitions reveal resized sleep plots while background reads preserve history position',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(1280,navigate+`
+    document.querySelector('[data-habit-open="sleep"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
+    document.querySelector('[data-sleep-period="30"]').click();
+    document.querySelector('#workspace-language').click();await until(()=>document.documentElement.lang.startsWith('zh'));
+    window.webkit.messageHandlers.resizeViewport.postMessage({width:830,height:758});
+    await until(()=>innerWidth===830&&document.querySelector('.workspace-information').getBoundingClientRect().right<=830);
+    document.querySelector('[data-sleep-period="7"]').click();
+    const surface=document.querySelector('.workspace-information');
+    const geometry=()=>({chart:rect(document.querySelector('[data-sleep-chart="detail"]')),viewport:rect(surface)});
+    const seven=geometry();surface.scrollTop=0;
+    document.querySelector('button[data-sleep-metric="duration"]').click();const metric=geometry();
+    surface.scrollTop=Math.max(0,surface.scrollTop-30);const readingPosition=surface.scrollTop;
+    const reads=calls.filter(c=>c.command==='sleep_records').length,beforeRefresh=document.querySelector('[data-sleep-overview]');
+    document.querySelector('#refresh-habits').click();
+    await until(()=>calls.filter(c=>c.command==='sleep_records').length>reads&&document.querySelector('[data-sleep-overview]')!==beforeRefresh&&document.querySelector('#habit-detail-status').textContent==='');
+    return JSON.stringify({seven,metric,readingPosition,afterRefresh:surface.scrollTop,period:document.querySelector('[data-sleep-period="7"]').getAttribute('aria-pressed'),errors:window.probeErrors});
+  `,true,720,{},canonicalBoundary+`
+    const languageInvoke=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>command==='set_interface_language'?{interfaceLanguage:args.interfaceLanguage}:languageInvoke(command,args);
+  `);
+  for(const state of [result.seven,result.metric]){assert.ok(state.chart.top>=state.viewport.top);assert.ok(state.chart.bottom<=state.viewport.bottom+1,'explicit action must expose full chart: '+JSON.stringify(state));}
+  assert.equal(result.afterRefresh,result.readingPosition,'background read must not reset history reading position');assert.equal(result.period,'true');assert.deepEqual(result.errors,[]);
+});
+
+for(const [width,height]of [[830,758],[969,723],[1280,720]])for(const language of ['en','zh']){
+  test(`opening sleep detail exposes controls and entire plot without blanking summary at ${width} ${language}`,{skip:process.platform!=='darwin'},()=>{
+    const result=probe(width,navigate+`
+      document.querySelector('[data-sleep-chart="mini"] [data-habit-date="2026-08-10"]').focus();
+      document.querySelector('[data-habit-open="wake"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
+      const surface=document.querySelector('.workspace-information');
+      const geometry=()=>({surface:rect(surface),summary:rect(document.querySelector('.habits-week-summary')),summaryText:document.querySelector('#habits-summary-total').textContent,heading:rect(document.querySelector('.habit-detail-heading')),chart:rect(document.querySelector('[data-sleep-chart="detail"]')),tab:rect(document.querySelector('button[data-sleep-metric="wake"]')),range:rect(document.querySelector('[data-sleep-period="30"]'))});
+      const first=geometry();const thirty=document.querySelector('[data-sleep-period="30"]');thirty.focus();thirty.click();
+      return JSON.stringify({first,thirty:geometry(),errors:window.probeErrors});
+    `,true,height,{interface_language_preferences:{interfaceLanguage:language}},canonicalBoundary+`
+      const normalHabit=habit;habit=key=>({...normalHabit(key),name:'Wake up and prepare quietly for the entire morning',localizedNames:{zh:'起床并留出安静的早间准备时间'}});
+    `);
+    for(const state of [result.first,result.thirty]){
+      for(const part of ['heading','chart','tab','range']){
+        assert.ok(state[part].top>=state.surface.top-1,part+' must start within the scroll viewport');
+        assert.ok(state[part].bottom<=state.surface.bottom+1,part+' must fit initial scroll viewport: '+JSON.stringify(state));
+      }
+      assert.equal(state.summaryText,'3 / 5');
+      if(width>900){assert.ok(state.summary.top>=state.surface.top-1,'side summary stays visible');assert.ok(state.summary.top<state.chart.top);}
+    }
+    assert.deepEqual(result.errors,[]);
+  });
+  test(`actual sleep values remain word-safe and bounded for all precisions at ${width} ${language}`,{skip:process.platform!=='darwin'},()=>{
+    const result=probe(width,navigate+`
+      const states=[null,{kind:'unknown'},point(view.date,'07:30'),point(view.date,'07:30',true),point('2026-08-11','02:00'),{kind:'range',start:point(view.date,'07:00'),end:point(view.date,'08:00'),reportedText:'Between seven and eight'},{kind:'text',date:view.date,text:'LongOriginalTokenWithoutSpacesToExerciseClamping plus the entire original wording'}];
+      const results=[];
+      for(const endpoint of states){
+        sleepState={...sleepState,facts:endpoint?[fact('current','wake',view.date,endpoint)]:[],revision:'state-'+results.length};
+        const reads=calls.filter(c=>c.command==='sleep_records').length;
+        document.querySelector('#refresh-habits').click();await until(()=>calls.filter(c=>c.command==='sleep_records').length>reads);
+        const expected=require('./sleep-facts.js').formatSleepEndpoint(endpoint?fact('current','wake',view.date,endpoint):null,document.documentElement.lang.startsWith('zh')?'zh':'en');
+        await until(()=>document.querySelector('.habit-snapshot-row[data-habit-key="wake"] .habit-snapshot-value strong').textContent===expected);
+        const value=document.querySelector('.habit-snapshot-row[data-habit-key="wake"] .habit-snapshot-value strong');
+        const range=document.createRange();range.selectNodeContents(value);
+        results.push({kind:endpoint?.kind??'missing',text:value.textContent,title:value.title,box:rect(value),lines:[...range.getClientRects()].map(r=>({top:r.top,width:r.width})),lineHeight:parseFloat(getComputedStyle(value).lineHeight),overflow:document.documentElement.scrollWidth>innerWidth});
+      }
+      return JSON.stringify({results,errors:window.probeErrors});
+    `,true,height,{interface_language_preferences:{interfaceLanguage:language}},canonicalBoundary+`
+      const normalHabit=habit;habit=key=>({...normalHabit(key),name:'A very long renamed Habit with preserved source context',localizedNames:{zh:'起床并保留一段安静的早间准备时间'}});
+    `);
+    for(const state of result.results){
+      assert.equal(state.text,state.title,'full formatted evidence stays available');assert.equal(state.overflow,false);
+      assert.ok(state.box.height<=(state.lineHeight||16)*3+1,'actual slot remains bounded: '+JSON.stringify(state));
+      if(state.kind==='missing')assert.equal(new Set(state.lines.map(line=>line.top)).size,1,'Unrecorded must not split midword');
+      if(state.kind!=='text')assert.ok(state.lines.every(line=>line.width<=state.box.width+1),'clock/state glyphs must not be clipped horizontally: '+JSON.stringify(state));
+    }
+    assert.deepEqual(result.errors,[]);
+  });
+}
+
 test('original sleep rows show weekday/clock trends and missing dates while preserving ordinary Habit evidence', {skip:process.platform!=='darwin'},()=>{
   const result=probe(969,navigate+`
     const rows=['wake','sleep'].map(key=>{
