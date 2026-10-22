@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { probe } from "./helpers/complete-page.ts";
 import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
@@ -213,56 +212,3 @@ for (const language of ["zh", "en"] as const) {
     }
   });
 }
-
-
-test("the shipped work history switches sleep host diagnostics while retaining source-owned text", {skip: process.platform !== "darwin"}, () => {
-  const result = probe(969, `
-    const diagnostics=[
-      'Sleep records are unavailable in this round.',
-      'Sleep records are unavailable in this runtime.',
-      'Sleep request session is unavailable',
-      'Sleep request is no longer active; no data changed.',
-      'Selected Vault changed; no sleep data changed.',
-      '作息正本操作失败：Permission denied: 原始尾串 (os error 13); activation was rolled back and the rejected sleep-record candidate remains at /synthetic/用户: path.snapshot',
-      'Could not verify the displaced sleep-record document after atomic exchange; its durable recovery link remains at /synthetic/用户: path.snapshot: Permission denied: 原始尾串 (os error 13)',
-    ];
-    const diagnostic=diagnostics[0];
-    const pane={state:'ready',message:'Synthetic',items:[]};
-    const item={itemId:'sleep-failure',callId:'sleep-call',kind:'dynamicToolCall',tool:'dashboard_sleep_records',text:'',summary:[],status:'failed',firstSequence:1,parameters:[],diagnostic};
-    const session={id:'sleep-errors',title:'User authored title',titleGenerationPending:false,createdDate:view.date,targetDate:view.date,activityDates:[view.date],runId:'sleep-run',runState:'completed',progress:'',draft:'',draftsByDate:{},taskOperations:[],
-      messages:[{id:'user',role:'user',text:diagnostic,executionId:'sleep-run',deliveryState:'completed',messageDate:view.date,targetDate:view.date},{id:'reply',role:'assistant',text:'User/source wording: '+diagnostic,executionId:'sleep-run',messageDate:view.date,targetDate:view.date}],
-      workHistory:[{evidenceVersion:1,executionId:'sleep-run',threadId:'thread',turnId:'turn',status:'completed',sequence:1,items:[...diagnostics.map((diagnostic,index)=>({...item,itemId:'sleep-failure-'+index,diagnostic})),{...item,itemId:'external-failure',kind:'mcpToolCall',tool:'external_sleep_tool'}]}]};
-    responses.collaboration_workspace={sessions:[session],context:{vaultName:'Synthetic',dailyRecord:pane,tasks:pane,habits:pane},recoveryRequired:false};
-    responses.collaboration_session=session;responses.collaboration_context=responses.collaboration_workspace.context;
-    responses.collaboration_connection={authenticated:true,authMode:'chatgpt',readOnlyTextTurnsAvailable:true,models:[],selectedModel:null};
-    const invoke=window.__TAURI__.core.invoke;
-    window.__TAURI__.core.invoke=async(command,args)=>command==='set_interface_language'?{interfaceLanguage:args.interfaceLanguage}:invoke(command,args);
-    document.querySelector('[data-workspace-destination="collaboration"].destination-button').click();
-    await until(()=>document.querySelectorAll('.collaboration-work-item').length===8);
-    const read=()=>[...document.querySelectorAll('.collaboration-work-item')].map(row=>row.textContent);
-    const english=read();
-    document.querySelector('#workspace-language').click();
-    await until(()=>document.documentElement.lang.startsWith('zh'));
-    const chinese=read(),messages=document.querySelector('#collaboration-message-list').textContent;
-    document.querySelector('#workspace-language').click();
-    await until(()=>document.documentElement.lang.startsWith('en'));
-    return JSON.stringify({english,chinese,englishAgain:read(),messages,original:session.workHistory[0].items[0].diagnostic,errors:window.probeErrors});
-  `);
-  assert.match(result.english[0], /Sleep records are unavailable in this round\./);
-  assert.match(result.chinese[0], /本轮无法使用作息记录/);
-  assert.ok(!result.chinese[0].includes("Sleep records are unavailable"));
-  for(const [index,copy] of ["本轮无法使用作息记录","当前运行环境无法使用作息记录","作息请求对应的会话不可用","作息请求已不再执行；未更改数据","所选 Vault 已更改；未更改作息数据"].entries()) assert.ok(result.chinese[index].includes(copy));
-  assert.ok(result.chinese[5].includes("启用已回滚"));
-  assert.ok(result.chinese[6].includes("无法验证移出的作息正本"));
-  assert.ok(result.english[5].includes("The canonical sleep operation failed: Permission denied: 原始尾串 (os error 13)"));
-  assert.ok(!result.english[5].includes("作息正本操作失败"));
-  for(const index of [5,6]) for(const copy of [result.chinese[index],result.english[index]]) {
-    assert.ok(copy.includes("/synthetic/用户: path.snapshot"));
-    assert.ok(copy.includes("Permission denied: 原始尾串 (os error 13)"));
-  }
-  assert.match(result.chinese[7], /Sleep records are unavailable in this round\./, "external-owned identical text remains verbatim");
-  assert.match(result.messages, /User\/source wording: Sleep records are unavailable in this round\./);
-  assert.deepEqual(result.englishAgain,result.english);
-  assert.equal(result.original,"Sleep records are unavailable in this round.");
-  assert.deepEqual(result.errors,[]);
-});

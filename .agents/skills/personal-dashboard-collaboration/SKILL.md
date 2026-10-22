@@ -47,17 +47,6 @@ Missing long-term background or an external routine skill is normal in a new per
 
 Use Dashboard operations for managed Tasks/lists, Daily Record transitions, local Habit completions, and durable background. Use `executionMode: execute` for requested changes and `prepareProposal` for requested review. Existing objects use their stable IDs. Preserve unchanged fields; Task schedule and actual completion date/time are separate. Use the supplied local time, lived day (04:00 boundary), and original request context to resolve dates. `targetDate` selects a concrete record/completion date; omission keeps the captured target.
 
-For reported sleep onset or get-up, use `dashboard_sleep_records` when registered.
-Read first for the selected-Vault binding, revision and stable record identity;
-then save only the explicitly supplied endpoints. The index is the get-up
-calendar date, independent of the 04:00 lived day. Preserve each endpoint's actual
-date and UTC offset. Resolve a night only from explicit dates or clear “昨晚”
-context; clarify ambiguous dates before saving. Keep “八点多” as original wording
-or a reliably bounded range; never invent a midpoint. An approximate point can
-remain approximate. Omitted, unknown and unrecorded endpoints differ. Reported
-onset-to-get-up duration includes time awake in bed and is not measured sleep.
-These facts never complete a Habit or create a Daily Record copy.
-
 Daytime facts use `saveDailyPlan` / `daytimeEvent`, with the fact in `event` and empty `arrangement` / `evidence` unless the plan changes. Replanning preserves the morning baseline. For `daytimeReplan`, send the complete current-day arrangement and retain every existing block, including earlier blocks, unless the user explicitly asks to remove or limit one; do not apply a remaining-hours assumption to a full-day request. `revisedDirection` is a required scalar string; `changeReason` is an optional scalar string with that exact singular field name. See `dailyRecord.transition` for a minimal synthetic valid example. Evening review uses `saveEveningReview`; dated ordinary/exercise notes use `createShortRecord` or `correctShortRecord`. Use `dashboard_memory_update` for requested durable background changes; single-day events belong in dated records.
 
 An existing completion-type Habit uses its stable key. Its default scope is local plus a uniquely resolved Dida counterpart; use `scope: local` for local-only and `scope: original` for withdrawal of an earlier completion. Resolve counterpart IDs from current catalog and context; ask only when the relationship is ambiguous, not merely because it is the first association. Native Dida tools save the external endpoint independently. `dashboard_refresh_habits` publishes the derived snapshot through its native producer adapter. For current unique counterpart identities use `executionMode: execute` without mappings; the adapter plans and performs the full-window source queries using current native schemas, then validates and generates. Explicit mappings are only for a confirmed existing key/ID association. Source failures leave previous readings intact; an independent refresh repairs display without replaying completion.

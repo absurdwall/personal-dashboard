@@ -5,119 +5,6 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
-  "sleep.readbackChanged": {zh:"文档已保存，但读回结果已经变化；请重新读取核对。",en:"Document saved, but the readback changed; read the record again to verify."},
-  "sleep.readbackUnavailable": {zh:"作息已保存，但无法确认读回：{error}",en:"Sleep was saved, but its readback could not be confirmed: {error}"},
-  "sleep.invalidDocument": {zh:"作息正本无效：{error}",en:"The sleep document is invalid: {error}"},
-  "sleep.storageDiagnostic": {zh:"作息正本操作失败：{error}",en:"The canonical sleep operation failed: {error}"},
-  "sleep.label": { zh: "作息", en: "Sleep" },
-  "sleep.getUp": { zh: "离床", en: "Get-up" },
-  "sleep.metricOnset": { zh: "入睡", en: "Sleep onset" },
-  "sleep.metricDuration": { zh: "估算时长", en: "Estimated duration" },
-  "sleep.summary": { zh: "作息 · {date} · 入睡 {onset} · 离床 {getUp}", en: "Sleep · {date} · Onset {onset} · Get-up {getUp}" },
-  "sleep.summaryHelp": { zh: "用户报告的入睡与离床时间；点击查看或修改", en: "Reported sleep onset and get-up; view or edit" },
-  "sleep.unknown": { zh: "未知", en: "unknown" },
-  "sleep.unrecorded": { zh: "未填写", en: "unrecorded" },
-  "sleep.optionUnrecorded": { zh: "未填写", en: "Unrecorded" },
-  "sleep.optionUnknown": { zh: "明确未知", en: "Explicitly unknown" },
-  "sleep.optionPoint": { zh: "单点时间", en: "Point" },
-  "sleep.optionRange": { zh: "可靠范围", en: "Bounded range" },
-  "sleep.optionText": { zh: "模糊原文", en: "Original wording" },
-  "sleep.actualDate": { zh: "实际日期", en: "Actual date" },
-  "sleep.originalWords": { zh: "原文（如八点多）", en: "Original wording" },
-  "sleep.wording": { zh: "报告原文", en: "Reported wording" },
-  "sleep.time": { zh: "时间", en: "Time" },
-  "sleep.timeZone": { zh: "时区与夏令时", en: "Time zone and daylight saving" },
-  "sleep.timeZoneHelp": { zh: "按所选日期和时间自动确定。夏令时回拨的重复时刻可在此更正。", en: "Determined from the selected local date and time. Adjust here for a repeated time when daylight saving ends." },
-  "sleep.offset": { zh: "UTC 偏移（分钟）", en: "UTC offset (minutes)" },
-  "sleep.approximate": { zh: "约", en: "Approximate" },
-  "sleep.approximateTime": { zh: "约 {time}", en: "about {time}" },
-  "sleep.rangeStart": { zh: "范围开始", en: "Range start" },
-  "sleep.rangeEnd": { zh: "范围结束", en: "Range end" },
-  "sleep.editorTitle": { zh: "作息记录", en: "Sleep and wake record" },
-  "sleep.explanation": { zh: "用户报告的入睡与离床时间。估算时长包括醒后仍躺床的时间，并非生理睡眠测量。日期与 04:00 lived day 分开。", en: "Reported onset and get-up times. Estimated elapsed duration includes time awake in bed; it is not physiological sleep. Dates are independent of the 04:00 lived day." },
-  "sleep.close": { zh: "关闭", en: "Close" },
-  "sleep.wakeDate": { zh: "起床日／这一晚的归属日期", en: "Get-up date / night index" },
-  "sleep.onsetTitle": { zh: "入睡时间", en: "Sleep onset" },
-  "sleep.getUpTitle": { zh: "离床时间", en: "Get-up time" },
-  "sleep.duration": { zh: "{hours} 小时 {minutes} 分", en: "{hours}h {minutes}m" },
-  "sleep.estimated": { zh: "估算时长：{value}", en: "Estimated duration: {value}" },
-  "sleep.save": { zh: "保存作息", en: "Save record" },
-  "sleep.homeTitle": { zh: "作息 · 最近七天", en: "Sleep · last seven days" },
-  "sleep.homeHelp": { zh: "用户报告的时间；空缺与范围不绘制为单点。", en: "Reported times; missing values and ranges are not plotted as points." },
-  "sleep.history": { zh: "历史记录", en: "History" },
-  "sleep.noRecords": { zh: "尚无作息记录。", en: "No sleep records yet." },
-  "sleep.newer": { zh: "较新记录", en: "Newer records" },
-  "sleep.older": { zh: "更早记录", en: "Older records" },
-  "sleep.previous": { zh: "上一时段", en: "Previous period" },
-  "sleep.next": { zh: "下一时段", en: "Next period" },
-  "sleep.days": { zh: "{count} 天", en: "{count} days" },
-  "sleep.validSamples": { zh: "有效样本 {count}", en: "{count} valid samples" },
-  "sleep.average": { zh: "平均 {value}", en: "Average {value}" },
-  "sleep.earliest": { zh: "最早 {value}", en: "Earliest {value}" },
-  "sleep.latest": { zh: "最晚 {value}", en: "Latest {value}" },
-  "sleep.shortest": { zh: "最短 {value}", en: "Shortest {value}" },
-  "sleep.longest": { zh: "最长 {value}", en: "Longest {value}" },
-  "sleep.approximateSamples": { zh: "其中 {count} 个约数", en: "{count} approximate" },
-  "sleep.trend": { zh: "{metric}时间趋势；缺失或非单点不连线", en: "{metric} trend; missing or non-point times have gaps" },
-  "sleep.chartPoint": { zh: "{date} · {metric} · {value}", en: "{date} · {metric} · {value}" },
-  "sleep.error": { zh: "作息操作未完成：{error}", en: "Sleep operation did not complete: {error}" },
-  "sleep.invalidLocalTime": { zh: "请检查实际日期与时间；夏令时切换中不存在的时间不能保存。", en: "Check the actual local date and time; a nonexistent daylight-saving time cannot be saved." },
-  "sleep.unconfirmed": { zh: "尚未确认保存读回。", en: "Saved readback is unconfirmed." },
-  "sleep.error.symlink": { zh: "作息正本路径不能包含符号链接；未写入。", en: "The canonical sleep path cannot contain symbolic links; nothing was written." },
-  "sleep.error.version": { zh: "不支持的作息正本版本。", en: "Unsupported sleep document version." },
-  "sleep.error.duplicate": { zh: "作息正本存在重复身份或日期。", en: "The sleep document contains duplicate identities or dates." },
-  "sleep.error.vaultChanged": { zh: "所选 Vault 已改变；未写入。", en: "The selected Vault changed; nothing was written." },
-  "sleep.error.changeId": { zh: "需要有效 changeId；未写入。", en: "A valid changeId is required; nothing was written." },
-  "sleep.error.changeReused": { zh: "changeId 已用于不同作息修改；未写入。", en: "The changeId belongs to a different sleep edit; nothing was written." },
-  "sleep.error.revision": { zh: "作息已更新，请重新读取后修改；未写入。", en: "Sleep records changed; read them again before editing. Nothing was written." },
-  "sleep.error.emptyPatch": { zh: "请明确提供要修改的作息端点；未写入。", en: "Explicitly supply the sleep endpoint to change; nothing was written." },
-  "sleep.error.missing": { zh: "作息记录不存在；未写入。", en: "The sleep record does not exist; nothing was written." },
-  "sleep.error.occupied": { zh: "目标起床日期已有另一条作息；未覆盖。", en: "Another sleep record occupies the target get-up date; it was not overwritten." },
-  "sleep.error.date": { zh: "需要明确、有效的 YYYY-MM-DD 日期；日期含糊时请先澄清。", en: "An explicit valid YYYY-MM-DD date is required; clarify ambiguous dates first." },
-  "sleep.error.offset": { zh: "需要有效的实际端点时区偏移。", en: "A valid actual endpoint UTC offset is required." },
-  "sleep.error.point": { zh: "需要 HH:MM 单点时间及实际日期。", en: "A point time in HH:MM and its actual date are required." },
-  "sleep.error.range": { zh: "时间范围需要可靠且有序的上下界与原文。", en: "A time range needs reliable ordered bounds and the reported wording." },
-  "sleep.error.wording": { zh: "请保留有效的模糊时间原文。", en: "Keep valid original wording for the uncertain time." },
-  "sleep.error.reversed": { zh: "离床时间早于入睡时间；请更正实际日期，未写入。", en: "Get-up precedes sleep onset; correct the actual dates. Nothing was written." },
-  "sleep.error.index": { zh: "起床端点的实际日期必须与记录起床日一致。", en: "The actual get-up date must match the record’s get-up date." },
-  "sleep.error.duration": { zh: "作息时长与报告端点不一致。", en: "The sleep duration does not match the reported endpoints." },
-  "sleep.error.chooseRead": { zh: "请先选择 Vault，再读取作息。", en: "Select a Vault before reading sleep records." },
-  "sleep.error.chooseSave": { zh: "请先选择 Vault，再保存作息。", en: "Select a Vault before saving sleep records." },
-  "sleep.error.operation": { zh: "作息正本操作失败。", en: "The canonical sleep operation failed." },
-  "sleep.error.externalChange": { zh: "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。", en: "The canonical sleep document changed externally. Refresh Today or Habits before saving again; external content was not overwritten." },
-  "sleep.error.concurrentChange": { zh: "作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {path}。请检查后刷新 Today 或 Habits。", en: "The canonical sleep document changed concurrently at the save boundary. Interleaved content was not silently discarded; a recovery snapshot remains at {path}. Check it, then refresh Today or Habits." },
-  "sleep.error.busy": { zh: "作息写入暂不可用", en: "Sleep writing is temporarily unavailable" },
-  "sleep.error.boundRead": { zh: "所选 Vault 已改变；未读取作息。", en: "Selected Vault changed; no sleep records read." },
-  "sleep.onset.precision": { zh: "入睡时间精度", en: "Sleep onset precision" },
-  "sleep.onset.date": { zh: "入睡时间 · 实际日期", en: "Sleep onset · Actual date" },
-  "sleep.onset.time": { zh: "入睡时间 · 时间", en: "Sleep onset · Time" },
-  "sleep.onset.offset": { zh: "入睡时间 · UTC 偏移（分钟）", en: "Sleep onset · UTC offset (minutes)" },
-  "sleep.onset.approximate": { zh: "入睡时间 · 约", en: "Sleep onset · Approximate" },
-  "sleep.onset.original": { zh: "入睡时间 · 原文", en: "Sleep onset · Original wording" },
-  "sleep.onset.wording": { zh: "入睡时间 · 报告原文", en: "Sleep onset · Reported wording" },
-  "sleep.onset.start.date": { zh: "入睡时间 · 范围开始 · 实际日期", en: "Sleep onset · Range start · Actual date" },
-  "sleep.onset.start.time": { zh: "入睡时间 · 范围开始 · 时间", en: "Sleep onset · Range start · Time" },
-  "sleep.onset.start.offset": { zh: "入睡时间 · 范围开始 · UTC 偏移（分钟）", en: "Sleep onset · Range start · UTC offset (minutes)" },
-  "sleep.onset.start.approximate": { zh: "入睡时间 · 范围开始 · 约", en: "Sleep onset · Range start · Approximate" },
-  "sleep.onset.end.date": { zh: "入睡时间 · 范围结束 · 实际日期", en: "Sleep onset · Range end · Actual date" },
-  "sleep.onset.end.time": { zh: "入睡时间 · 范围结束 · 时间", en: "Sleep onset · Range end · Time" },
-  "sleep.onset.end.offset": { zh: "入睡时间 · 范围结束 · UTC 偏移（分钟）", en: "Sleep onset · Range end · UTC offset (minutes)" },
-  "sleep.onset.end.approximate": { zh: "入睡时间 · 范围结束 · 约", en: "Sleep onset · Range end · Approximate" },
-  "sleep.getUp.precision": { zh: "离床时间精度", en: "Get-up time precision" },
-  "sleep.getUp.date": { zh: "离床时间 · 实际日期", en: "Get-up time · Actual date" },
-  "sleep.getUp.time": { zh: "离床时间 · 时间", en: "Get-up time · Time" },
-  "sleep.getUp.offset": { zh: "离床时间 · UTC 偏移（分钟）", en: "Get-up time · UTC offset (minutes)" },
-  "sleep.getUp.approximate": { zh: "离床时间 · 约", en: "Get-up time · Approximate" },
-  "sleep.getUp.original": { zh: "离床时间 · 原文", en: "Get-up time · Original wording" },
-  "sleep.getUp.wording": { zh: "离床时间 · 报告原文", en: "Get-up time · Reported wording" },
-  "sleep.getUp.start.date": { zh: "离床时间 · 范围开始 · 实际日期", en: "Get-up time · Range start · Actual date" },
-  "sleep.getUp.start.time": { zh: "离床时间 · 范围开始 · 时间", en: "Get-up time · Range start · Time" },
-  "sleep.getUp.start.offset": { zh: "离床时间 · 范围开始 · UTC 偏移（分钟）", en: "Get-up time · Range start · UTC offset (minutes)" },
-  "sleep.getUp.start.approximate": { zh: "离床时间 · 范围开始 · 约", en: "Get-up time · Range start · Approximate" },
-  "sleep.getUp.end.date": { zh: "离床时间 · 范围结束 · 实际日期", en: "Get-up time · Range end · Actual date" },
-  "sleep.getUp.end.time": { zh: "离床时间 · 范围结束 · 时间", en: "Get-up time · Range end · Time" },
-  "sleep.getUp.end.offset": { zh: "离床时间 · 范围结束 · UTC 偏移（分钟）", en: "Get-up time · Range end · UTC offset (minutes)" },
-  "sleep.getUp.end.approximate": { zh: "离床时间 · 范围结束 · 约", en: "Get-up time · Range end · Approximate" },
   "calendar.hideSummary": { zh: "收起日期摘要侧栏", en: "Hide date summary sidebar" },
   "calendar.showSummary": { zh: "展开日期摘要侧栏", en: "Show date summary sidebar" },
   "calendar.addTask": { zh: "在选中日期新建任务", en: "Create a task on the selected date" },
@@ -1514,11 +1401,6 @@ const englishApplicationMessages: Readonly<Record<string, string>> = {
 // Only host-owned result diagnostics use this catalog. Source replies and user
 // text bypass it, even if their wording happens to match a diagnostic.
 const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
-  "Sleep records are unavailable in this runtime.": "当前运行环境无法使用作息记录。",
-  "Sleep records are unavailable in this round.": "本轮无法使用作息记录。",
-  "Sleep request session is unavailable": "作息请求对应的会话不可用。",
-  "Sleep request is no longer active; no data changed.": "作息请求已不再执行；未更改数据。",
-  "Selected Vault changed; no sleep data changed.": "所选 Vault 已更改；未更改作息数据。",
   "The native file access root must be a real directory. No model turn was sent.": "原生文件访问根路径必须为真实目录。未发送模型请求。",
   "Original Habit completion scope is unconfirmed. Read the current canonical history and source; clarify the endpoints before withdrawing.": "原 Habit 完成范围尚未确认。请读取当前正本历史及来源，撤回前明确要修改的端点。",
   "The selected Vault changed before native file access was granted. No model turn was sent.": "授予原生文件访问前所选 Vault 已更改。未发送模型请求。",
@@ -1640,8 +1522,6 @@ export function localizeCollaborationDiagnostic(message: string, language: Inter
   }
   const nativePath = /^Native personal-content access (refuses a redirected path|requires a directory): (.*)\. No model turn was sent\.$/s.exec(message);
   if (nativePath) return language === "en" ? message : `原生个人内容访问${nativePath[1] === "refuses a redirected path" ? "拒绝重定向路径" : "要求目录"}：${nativePath[2]}。未发送模型请求。`;
-  const sleepDiagnostic = localizeSleepDiagnostic(message,language);
-  if (sleepDiagnostic) return sleepDiagnostic;
   if (language === "en") return englishTaskDiagnostic(message) ?? englishHabitValidationDiagnostic(message) ?? localizeApplicationMessage(message, language);
   const exact = chineseCollaborationDiagnostics[message];
   if (exact) return exact;
@@ -2407,41 +2287,21 @@ const chineseApplicationErrors: Readonly<Record<string, string>> = {
     "当天任务原子条件替换目前仅支持 macOS。",
 };
 
-/** Fixed protected-store grammar for the two document families below. */
-function localizeProtectedStorageDiagnostic(message: string, language: InterfaceLanguage): string | null {
-  const names: Readonly<Record<string, string>> = { "day-task": "当天任务", "sleep-record": "作息" };
-  const nested = (value: string, kind: string): string => kind === "sleep-record"
-    ? localizeSleepDiagnostic(value, language) ?? value
-    : language === "zh" ? localizeApplicationError(value, language) : value;
-  // Preserve the entire sleep path/OS tail, including ambiguous colons in either value.
-  const detail = (path: string, error: string, kind: string): string =>
-    `${path}${kind === "sleep-record" ? ": " : "："}${error}`;
-  const complete = /^(.+); the complete (new day-task document|sleep-record document) is present at (.+) and can be verified by refreshing$/s.exec(message);
-  if (complete) {
-    const kind = complete[2] === "sleep-record document" ? "sleep-record" : "day-task";
-    return language === "zh" ? `${nested(complete[1],kind)}；完整的${kind === "day-task" ? "新" : ""}${names[kind]}正本位于 ${complete[3]}，可通过刷新验证`
-      : `${nested(complete[1],kind)}; the complete ${complete[2]} is present at ${complete[3]} and can be verified by refreshing`;
-  }
-  const active = /^The new (day-task|sleep-record) document is active, but its temporary hard link remains at (.+): (.+)$/s.exec(message);
-  if (active) return language === "zh" ? `新的${names[active[1]]}正本已启用，但临时硬链接仍保留在 ${detail(active[2],active[3],active[1])}` : message;
-  const rolledBack = /^(.+); activation was rolled back and the rejected (day-task|sleep-record) candidate remains at (.+)$/s.exec(message);
-  if (rolledBack) return language === "zh" ? `${nested(rolledBack[1],rolledBack[2])}；启用已回滚，被拒绝的${names[rolledBack[2]]}候选仍保留在 ${rolledBack[3]}`
-    : `${nested(rolledBack[1],rolledBack[2])}; activation was rolled back and the rejected ${rolledBack[2]} candidate remains at ${rolledBack[3]}`;
-  const rollbackFailed = /^(.+); rollback also failed \((.+)\); the actual displaced (day-task|sleep-record) document inode remains linked at (.+)$/s.exec(message);
-  if (rollbackFailed) return language === "zh" ? `${nested(rollbackFailed[1],rollbackFailed[3])}；回滚也失败（${nested(rollbackFailed[2],rollbackFailed[3])}）；实际移出的${names[rollbackFailed[3]]}正本 inode 仍链接在 ${rollbackFailed[4]}`
-    : `${nested(rollbackFailed[1],rollbackFailed[3])}; rollback also failed (${nested(rollbackFailed[2],rollbackFailed[3])}); the actual displaced ${rollbackFailed[3]} document inode remains linked at ${rollbackFailed[4]}`;
-  const displaced = /^Could not verify the displaced (day-task|sleep-record) document after atomic exchange; its durable recovery link remains at (.+): (.+)$/s.exec(message);
-  if (displaced) return language === "zh" ? `原子交换后无法验证移出的${names[displaced[1]]}正本；其持久恢复链接仍保留在 ${detail(displaced[2],displaced[3],displaced[1])}` : message;
-  const activeRecovery = /^Could not verify the (day-task|sleep-record) document after atomic exchange; the actual displaced inode remains recoverable at (.+): (.+)$/s.exec(message);
-  if (activeRecovery) {
-    if (language === "en") return message;
-    return activeRecovery[1] === "sleep-record"
-      ? `原子交换后无法验证作息正本；实际移出的 inode 仍可恢复，位置及诊断：${detail(activeRecovery[2],activeRecovery[3],activeRecovery[1])}`
-      : `原子交换后无法验证当天任务正本；实际移出的 inode 仍可在 ${activeRecovery[2]} 恢复：${activeRecovery[3]}`;
-  }
-  const displacedExternal = /^(.+); the displaced external (day-task|sleep-record) document remains at (.+) for recovery$/s.exec(message);
-  if (displacedExternal) return language === "zh" ? `${nested(displacedExternal[1],displacedExternal[2])}；移出的外部${names[displacedExternal[2]]}正本仍保留在 ${displacedExternal[3]} 以供恢复`
-    : `${nested(displacedExternal[1],displacedExternal[2])}; the displaced external ${displacedExternal[2]} document remains at ${displacedExternal[3]} for recovery`;
+function chineseDayTaskStorageDiagnostic(message: string): string | null {
+  const complete = /^(.+); the complete new day-task document is present at (.+) and can be verified by refreshing$/.exec(message);
+  if (complete) return `${localizeApplicationError(complete[1], "zh")}；完整的新当天任务正本位于 ${complete[2]}，可通过刷新验证`;
+  const active = /^The new day-task document is active, but its temporary hard link remains at (.+): (.+)$/.exec(message);
+  if (active) return `新的当天任务正本已启用，但临时硬链接仍保留在 ${active[1]}：${active[2]}`;
+  const rolledBack = /^(.+); activation was rolled back and the rejected day-task candidate remains at (.+)$/.exec(message);
+  if (rolledBack) return `${localizeApplicationError(rolledBack[1], "zh")}；启用已回滚，被拒绝的当天任务候选仍保留在 ${rolledBack[2]}`;
+  const rollbackFailed = /^(.+); rollback also failed \((.+)\); the actual displaced day-task document inode remains linked at (.+)$/.exec(message);
+  if (rollbackFailed) return `${localizeApplicationError(rollbackFailed[1], "zh")}；回滚也失败（${localizeApplicationError(rollbackFailed[2], "zh")}）；实际移出的当天任务正本 inode 仍链接在 ${rollbackFailed[3]}`;
+  const displaced = /^Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at (.+): (.+)$/.exec(message);
+  if (displaced) return `原子交换后无法验证移出的当天任务正本；其持久恢复链接仍保留在 ${displaced[1]}：${displaced[2]}`;
+  const activeRecovery = /^Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at (.+): (.+)$/.exec(message);
+  if (activeRecovery) return `原子交换后无法验证当天任务正本；实际移出的 inode 仍可在 ${activeRecovery[1]} 恢复：${activeRecovery[2]}`;
+  const displacedExternal = /^(.+); the displaced external day-task document remains at (.+) for recovery$/.exec(message);
+  if (displacedExternal) return `${localizeApplicationError(displacedExternal[1], "zh")}；移出的外部当天任务正本仍保留在 ${displacedExternal[2]} 以供恢复`;
   return null;
 }
 
@@ -2477,82 +2337,6 @@ function chineseDailyRecordDiagnostic(message: string): string | null {
   return null;
 }
 
-const sleepDiagnosticKeys: Readonly<Record<string, InterfaceCopyKey>> = {
-  "作息正本路径不能包含符号链接；未写入。": "sleep.error.symlink",
-  "不支持的作息正本版本。": "sleep.error.version",
-  "作息正本存在重复身份或日期。": "sleep.error.duplicate",
-  "所选 Vault 已改变；未写入。": "sleep.error.vaultChanged",
-  "需要有效 changeId；未写入。": "sleep.error.changeId",
-  "changeId 已用于不同作息修改；未写入。": "sleep.error.changeReused",
-  "作息已更新，请重新读取后修改；未写入。": "sleep.error.revision",
-  "请明确提供要修改的作息端点；未写入。": "sleep.error.emptyPatch",
-  "作息记录不存在；未写入。": "sleep.error.missing",
-  "目标起床日期已有另一条作息；未覆盖。": "sleep.error.occupied",
-  "需要明确、有效的 YYYY-MM-DD 日期；日期含糊时请先澄清。": "sleep.error.date",
-  "需要有效的实际端点时区偏移。": "sleep.error.offset",
-  "需要 HH:MM 单点时间及实际日期。": "sleep.error.point",
-  "时间范围需要可靠且有序的上下界与原文。": "sleep.error.range",
-  "请保留有效的模糊时间原文。": "sleep.error.wording",
-  "离床时间早于入睡时间；请更正实际日期，未写入。": "sleep.error.reversed",
-  "起床端点的实际日期必须与记录起床日一致。": "sleep.error.index",
-  "作息时长与报告端点不一致。": "sleep.error.duration",
-  "请先选择 Vault，再读取作息。": "sleep.error.chooseRead",
-  "请先选择 Vault，再保存作息。": "sleep.error.chooseSave",
-  "作息正本操作失败。": "sleep.error.operation",
-  "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。": "sleep.error.externalChange",
-  "The canonical sleep document changed externally. Refresh Today or Habits before saving again; external content was not overwritten.": "sleep.error.externalChange",
-  "作息写入暂不可用": "sleep.error.busy",
-  "所选 Vault 已改变；未读取作息。": "sleep.error.boundRead",
-  "The canonical sleep path cannot contain symbolic links; nothing was written.": "sleep.error.symlink",
-  "Unsupported sleep document version.": "sleep.error.version",
-  "The sleep document contains duplicate identities or dates.": "sleep.error.duplicate",
-  "The selected Vault changed; nothing was written.": "sleep.error.vaultChanged",
-  "A valid changeId is required; nothing was written.": "sleep.error.changeId",
-  "The changeId belongs to a different sleep edit; nothing was written.": "sleep.error.changeReused",
-  "Sleep records changed; read them again before editing. Nothing was written.": "sleep.error.revision",
-  "Explicitly supply the sleep endpoint to change; nothing was written.": "sleep.error.emptyPatch",
-  "The sleep record does not exist; nothing was written.": "sleep.error.missing",
-  "Another sleep record occupies the target get-up date; it was not overwritten.": "sleep.error.occupied",
-  "An explicit valid YYYY-MM-DD date is required; clarify ambiguous dates first.": "sleep.error.date",
-  "A valid actual endpoint UTC offset is required.": "sleep.error.offset",
-  "A point time in HH:MM and its actual date are required.": "sleep.error.point",
-  "A time range needs reliable ordered bounds and the reported wording.": "sleep.error.range",
-  "Keep valid original wording for the uncertain time.": "sleep.error.wording",
-  "Get-up precedes sleep onset; correct the actual dates. Nothing was written.": "sleep.error.reversed",
-  "The actual get-up date must match the record’s get-up date.": "sleep.error.index",
-  "The sleep duration does not match the reported endpoints.": "sleep.error.duration",
-  "Select a Vault before reading sleep records.": "sleep.error.chooseRead",
-  "Select a Vault before saving sleep records.": "sleep.error.chooseSave",
-  "The canonical sleep operation failed.": "sleep.error.operation",
-  "Sleep writing is temporarily unavailable": "sleep.error.busy",
-  "Selected Vault changed; no sleep records read.": "sleep.error.boundRead",
-  "请检查实际日期与时间；夏令时切换中不存在的时间不能保存。": "sleep.invalidLocalTime",
-  "Check the actual local date and time; a nonexistent daylight-saving time cannot be saved.": "sleep.invalidLocalTime",
-  "文档已保存，但读回结果已经变化；请重新读取核对。": "sleep.readbackChanged",
-  "Document saved, but the readback changed; read the record again to verify.": "sleep.readbackChanged",
-  "尚未确认保存读回。": "sleep.unconfirmed",
-  "Saved readback is unconfirmed.": "sleep.unconfirmed"
-};
-
-function localizeSleepDiagnostic(message: string, language: InterfaceLanguage): string | null {
-  const diagnostic = message.startsWith("Error: ") ? message.slice("Error: ".length) : message;
-  const key = sleepDiagnosticKeys[diagnostic];
-  if (key) return interfaceCopy(key, language);
-  const readback = /^作息已保存，但无法确认读回：([\s\S]*)$/.exec(diagnostic);
-  if (readback) return interfaceCopy("sleep.readbackUnavailable",language,{
-    error:localizeSleepDiagnostic(readback[1],language) ?? readback[1],
-  });
-  const concurrent = /^作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ([\s\S]+)。请检查后刷新 Today 或 Habits。$/.exec(diagnostic);
-  if (concurrent) return interfaceCopy("sleep.error.concurrentChange",language,{path:concurrent[1]});
-  const invalid = /^作息正本无效：([\s\S]*)$/.exec(diagnostic);
-  if (invalid) return interfaceCopy("sleep.invalidDocument",language,{error:invalid[1]});
-  const storage = /^(?:作息正本操作失败：|The canonical sleep operation failed: )([\s\S]*)$/.exec(diagnostic);
-  if (storage) return interfaceCopy("sleep.storageDiagnostic",language,{
-    error:localizeProtectedStorageDiagnostic(storage[1],language) ?? storage[1],
-  });
-  return null;
-}
-
 export function localizeApplicationError(
   error: string,
   language: InterfaceLanguage,
@@ -2566,10 +2350,9 @@ export function localizeApplicationError(
     return language === "zh" ? error : `Document saved, but the display refresh failed: ${detail}; read the record again to verify.`;
   }
   const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
-  const sleepDiagnostic = localizeSleepDiagnostic(applicationDiagnostic,language);
-  if (sleepDiagnostic) return sleepDiagnostic;
-  const protectedStorage = localizeProtectedStorageDiagnostic(applicationDiagnostic,language);
-  if (protectedStorage) return protectedStorage;
+  if (applicationDiagnostic === "文档已保存，但读回结果已经变化；请重新读取核对。") {
+    return language === "zh" ? applicationDiagnostic : "Document saved, but the readback changed; read the record again to verify.";
+  }
   if (language === "zh") {
     if (applicationDiagnostic === "Codex CLI was not found. Install the documented standalone Codex CLI, then refresh the connection. Local features remain available.") return "找不到 Codex CLI。请按文档自行安装独立 Codex CLI，再刷新连接。本地功能仍可使用。";
     const runtimeUnavailable = /^No compatible Codex CLI could start\. Install or update the documented standalone Codex CLI, then refresh\. Last check: ([\s\S]+)$/.exec(applicationDiagnostic);
@@ -2597,6 +2380,8 @@ export function localizeApplicationError(
     if (exact) return exact;
     const dailyRecordDiagnostic = chineseDailyRecordDiagnostic(error);
     if (dailyRecordDiagnostic) return dailyRecordDiagnostic;
+    const dayTaskStorageDiagnostic = chineseDayTaskStorageDiagnostic(applicationDiagnostic);
+    if (dayTaskStorageDiagnostic) return dayTaskStorageDiagnostic;
     const prefix = chineseErrorPrefixes.find(([source]) => error.startsWith(source));
     if (prefix) return `${prefix[1]}${error.slice(prefix[0].length)}`;
     const localWrite = /^Could not (prepare|write|activate) the local (appearance preference|interface language|Today workspace setting|background image): (.+)$/.exec(error);
