@@ -432,6 +432,22 @@ fn await_end(application: &CollaborationApplication, session: &str) -> Collabora
     }
 }
 
+fn await_fixture_queue_shutdown(application: &CollaborationApplication) {
+    // InjectedTransport has no title worker. A terminal reply can still be
+    // observed before the queue's final history load, which creates its parent
+    // directory. Shutdown signals cancellation; wait for the worker to leave
+    // before removing the fixture, without changing immediate result assertions.
+    application.shutdown().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !application.active_vault_workers.lock().unwrap().is_empty() {
+        assert!(
+            Instant::now() < deadline,
+            "queue did not quiesce before fixture teardown"
+        );
+        thread::yield_now();
+    }
+}
+
 #[test]
 fn actual_stdio_history_and_receipts_survive_application_reopen_without_hidden_content() {
     let root = isolated_root();
@@ -851,13 +867,7 @@ fn later_full_history_snapshots_preserve_first_native_readback() {
         fs::read_to_string(&file).unwrap(),
         "Later independent correction\nKeep unrelated paragraph\n"
     );
-    // InjectedTransport has no title worker, but the queue can still perform
-    // its final history load after the terminal reply becomes observable.
-    let deadline = Instant::now() + Duration::from_secs(3);
-    while !app.active_vault_workers.lock().unwrap().is_empty() {
-        assert!(Instant::now() < deadline, "queue did not quiesce before fixture teardown");
-        thread::yield_now();
-    }
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -1044,18 +1054,8 @@ fn managed_source_conflict_or_later_edit_keeps_observed_revision_and_original_ou
             fs::read_to_string(&path).unwrap(),
             "# Independent correction\nPreserve this content\n"
         );
-        // Completion is observable before the background worker's final history flush.
-        // Only teardown waits; all actual source/outcome assertions above stay immediate.
-        let cleanup_deadline = Instant::now() + Duration::from_secs(1);
-        loop {
-            match fs::remove_dir_all(&root) {
-                Ok(()) => break,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
-                Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty
-                    && Instant::now() < cleanup_deadline => thread::sleep(Duration::from_millis(20)),
-                Err(error) => panic!("isolated fixture teardown failed: {error}"),
-            }
-        }
+        await_fixture_queue_shutdown(&app);
+        fs::remove_dir_all(root).unwrap();
     }
 }
 
@@ -1411,6 +1411,7 @@ fn source_refresh_observations_are_scoped_and_do_not_change_canonical_task_revis
         saved.work_history[0].sequence
     );
     assert_eq!(tasks.read().unwrap().revision, before.revision);
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
