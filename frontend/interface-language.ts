@@ -69,6 +69,10 @@ const interfaceCopies = {
   "sleep.precisionLabel": { zh: "时间精度 · {habit} · {date}", en: "Time precision \u00b7 {habit} \u00b7 {date}" },
   "sleep.morePrecision": { zh: "记不准？保留范围、原话或明确未知", en: "Uncertain? Keep a range, original wording or explicit unknown" },
   "sleep.previewEmpty": { zh: "填写后显示实际日期 · 04:00 为日界", en: "Enter a time to see its actual date \u00b7 day starts at 04:00" },
+  "sleep.overview.axisHours": {zh:"{hours}h",en:"{hours}h"},
+  "sleep.overview.aboutElapsedValue": {zh:"约 {hours} 小时 {minutes} 分钟",en:"about {hours} h {minutes} min"},
+  "sleep.rangeCalendarPreview": {zh:"实际范围：{startDate} {startTime} → {endDate} {endTime} · 所选日期：{date}",en:"Actual range: {startDate} {startTime} → {endDate} {endTime} · selected day: {date}"},
+  "sleep.overview.dateReadout": {zh:"{date} · {metric} · {value}",en:"{date} · {metric} · {value}"},
   "sleep.calendarPreview": { zh: "实际日期：{date} {time} · 04:00 为日界", en: "Actual date: {date} {time} \u00b7 day starts at 04:00" },
   "sleep.fixedContext": { zh: "所选日期：{date} · 04:00 为日界", en: "Selected day: {date} \u00b7 day starts at 04:00" },
   "sleep.saving": { zh: "保存中…", en: "Saving\u2026" },
@@ -2959,6 +2963,19 @@ export function setInterfaceCopy(
   element.dataset.i18n = key;
   element.dataset.i18nVariables = JSON.stringify(variables);
   element.textContent = interfaceCopy(key, language, variables);
+}
+
+/** Retain a dynamic fixed attribute so in-place language changes can update it. */
+export function setInterfaceAttribute(
+  element: LocalizableElement,
+  attribute: 'aria-label' | 'title' | 'placeholder',
+  key: InterfaceCopyKey,
+  language: InterfaceLanguage,
+  variables: Readonly<Record<string, string | number>> = {},
+): void {
+  element.setAttribute?.('data-i18n-' + attribute, key);
+  element.dataset.i18nVariables = JSON.stringify(variables);
+  element.setAttribute?.(attribute, interfaceCopy(key, language, variables));
 }
 
 export function setInterfaceError(

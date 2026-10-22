@@ -69,6 +69,10 @@ impl TodayWorkspaceExchange for NoSelection {
 }
 struct FixedClock;
 impl TodayClock for FixedClock {
+    fn resolve_local_wall_time(&self, _: &str, _: u16) -> personal_dashboard_lib::today::LocalWallTimeResolution {
+        personal_dashboard_lib::today::LocalWallTimeResolution::Unique { utc_offset_minutes: -240 }
+    }
+
     fn current_date(&self) -> String {
         "2026-10-22".into()
     }
@@ -503,13 +507,15 @@ fn original_habit_actual_slot_reads_canonical_facts_by_identity_and_preserves_co
     );
     let after = app.habits().unwrap();
     let sleep = after.habit("sleep").unwrap().cell("2026-10-21").unwrap();
-    assert_eq!(sleep.actual_time_label.as_deref(), Some("次日 02:00"));
+    assert_eq!(sleep.actual_time_label,before.habit("sleep").unwrap().cell("2026-10-21").unwrap().actual_time_label);
+    assert_eq!(sleep.sleep_fact.as_ref().unwrap().day_relation,personal_dashboard_lib::habits::DayRelation::NextDay);
     assert_eq!(
         serde_json::to_value(sleep).unwrap()["sleepFact"]["habitKey"],
         "sleep"
     );
     let wake = after.habit("wake").unwrap().cell("2026-10-22").unwrap();
-    assert_eq!(wake.actual_time_label.as_deref(), Some("07:30"));
+    assert_eq!(wake.actual_time_label,before.habit("wake").unwrap().cell("2026-10-22").unwrap().actual_time_label);
+    assert_eq!(wake.sleep_fact.as_ref().unwrap().day_relation,personal_dashboard_lib::habits::DayRelation::SameDay);
     assert!(!wake.counts_as_completion);
     let previous = before.habit("sleep").unwrap().cell("2026-10-21").unwrap();
     assert_eq!(sleep.counts_as_completion, previous.counts_as_completion);
@@ -1216,5 +1222,164 @@ fn today_corrections_replace_stable_points_and_uncertainty_remains_unlocated_wit
             .count(),
         0
     );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn habit_time_preview_uses_the_application_lived_day_and_local_clock_resolution() {
+    let root = vault("time-preview");
+    let workflow = application(&root);
+    let point = workflow
+        .resolve_habit_sleep_point("2026-09-09", "02:00", true)
+        .unwrap();
+    assert_eq!(point.date, "2026-09-10");
+    assert_eq!(point.time, "02:00");
+    assert_eq!(point.utc_offset_minutes, -240);
+    assert!(point.approximate);
+    assert!(workflow
+        .resolve_habit_sleep_point("2026-02-30", "02:00", false)
+        .is_err());
+    for time in ["24:00", "7:000", "007:0", " 7:00", "07: 0", "０7:00"] {
+        assert!(
+            workflow
+                .resolve_habit_sleep_point("2026-09-09", time, false)
+                .is_err(),
+            "{time}"
+        );
+    }
+    assert!(!root
+        .join("life/.personal-dashboard/sleep/v1/sessions.json")
+        .exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn overview_projects_circular_clocks_and_same_record_elapsed_samples() {
+    let root = vault("overview-statistics");
+    let workflow = application(&root);
+    save(
+        &workflow,
+        json!({"wakeDate":"2026-10-21","changeId":"overview-a","sleepOnset":point("2026-10-20","23:50",-240),"getUp":point("2026-10-21","07:20",-240)}),
+    );
+    save(
+        &workflow,
+        json!({"wakeDate":"2026-10-22","changeId":"overview-b","sleepOnset":{"kind":"point","date":"2026-10-22","time":"00:10","utcOffsetMinutes":-240,"approximate":true},"getUp":point("2026-10-22","08:10",-240)}),
+    );
+    let view = serde_json::to_value(workflow.sleep_records().unwrap()).unwrap();
+    let overview = &view["overview"];
+    assert_eq!(overview["date"], "2026-10-22");
+    let stats = overview["statistics"].as_array().unwrap();
+    let onset = stats
+        .iter()
+        .find(|s| s["metric"] == "sleep" && s["period"] == 7)
+        .unwrap();
+    assert_eq!(onset["mean"], 0);
+    assert_eq!(onset["count"], 2);
+    assert_eq!(onset["approximate"], true);
+    assert_eq!(onset["earliestApproximate"], false);
+    assert_eq!(onset["latestApproximate"], true);
+    let duration = stats
+        .iter()
+        .find(|s| s["metric"] == "duration" && s["period"] == 30)
+        .unwrap();
+    assert_eq!(duration["mean"], 465);
+    assert_eq!(duration["earliest"], 450);
+    assert_eq!(duration["latest"], 480);
+    assert_eq!(overview["durations"][0]["date"], "2026-10-21");
+    assert_eq!(overview["durations"][0]["minutes"], 450);
+    let records=workflow.sleep_records().unwrap().records;
+    save(&workflow,json!({"wakeDate":"2026-10-21","recordId":records[0].id,"changeId":"round-a","sleepOnset":point("2026-10-20","23:59",-240)}));
+    let rounded=save(&workflow,json!({"wakeDate":"2026-10-22","recordId":records[1].id,"changeId":"round-b","sleepOnset":point("2026-10-22","00:00",-240)}));
+    let rounded=serde_json::to_value(rounded).unwrap();
+    let stats=rounded["overview"]["statistics"].as_array().unwrap();
+    assert_eq!(stats.iter().find(|s|s["metric"]=="sleep"&&s["period"]==7).unwrap()["mean"],0);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn manual_range_preview_preserves_both_actual_dates_and_cross_boundary_uncertainty() {
+    let root = vault("range-preview");
+    let workflow = application(&root);
+    let crossing = workflow
+        .resolve_habit_sleep_range("2026-09-09", "03:00", "05:00", "between three and five")
+        .unwrap();
+    let json = serde_json::to_value(&crossing).unwrap();
+    assert_eq!(json["start"]["date"], "2026-09-10");
+    assert_eq!(json["end"]["date"], "2026-09-10");
+    assert_eq!(json["start"]["time"], "03:00");
+    assert_eq!(json["end"]["time"], "05:00");
+    let view = workflow.sleep_records().unwrap();
+    let saved=workflow.save_habit_sleep_time(serde_json::from_value(json!({"habitKey":"sleep","livedDate":"2026-09-09","endpoint":crossing,"targetBinding":view.target_binding,"expectedRevision":view.revision,"changeId":"crossing-range"})).unwrap()).unwrap();
+    assert_eq!(saved.facts[0].lived_date, None);
+    assert_eq!(saved.records[0].estimated_duration_minutes, None);
+    let midnight = serde_json::to_value(
+        workflow
+            .resolve_habit_sleep_range("2026-09-09", "23:00", "01:00", "night range")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(midnight["start"]["date"], "2026-09-09");
+    assert_eq!(midnight["end"]["date"], "2026-09-10");
+    let morning = serde_json::to_value(
+        workflow
+            .resolve_habit_sleep_range("2026-09-09", "07:00", "08:00", "morning range")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(morning["start"]["date"], "2026-09-09");
+    assert_eq!(morning["end"]["date"], "2026-09-09");
+    fs::remove_dir_all(root).unwrap();
+}
+
+struct TransitionClock;
+impl TodayClock for TransitionClock {
+    fn current_date(&self) -> String {
+        "2026-10-22".into()
+    }
+    fn current_time_label(&self) -> String {
+        "09:00".into()
+    }
+    fn current_timestamp_label(&self) -> String {
+        "2026-10-22T09:00:00-04:00".into()
+    }
+    fn resolve_local_wall_time(
+        &self,
+        date: &str,
+        minute: u16,
+    ) -> personal_dashboard_lib::today::LocalWallTimeResolution {
+        use personal_dashboard_lib::today::LocalWallTimeResolution::*;
+        match (date, minute) {
+            ("2026-03-08", 150) => Nonexistent,
+            ("2026-11-01", 90) => Ambiguous,
+            _ => Unique {
+                utc_offset_minutes: -240,
+            },
+        }
+    }
+}
+#[test]
+fn point_and_range_preview_reject_nonexistent_and_ambiguous_actual_local_times() {
+    let root = vault("transition-preview");
+    let app = TodayApplication::new(Selected(root.clone()), NoSelection, TransitionClock);
+    assert!(app
+        .resolve_habit_sleep_point("2026-03-07", "02:30", false)
+        .unwrap_err()
+        .contains("不存在"));
+    assert!(app
+        .resolve_habit_sleep_range("2026-03-07", "23:00", "02:30", "original")
+        .unwrap_err()
+        .contains("不存在"));
+    assert!(app
+        .resolve_habit_sleep_point("2026-10-31", "01:30", false)
+        .unwrap_err()
+        .contains("重复"));
+    assert!(app
+        .resolve_habit_sleep_range("2026-10-31", "23:00", "01:30", "original")
+        .unwrap_err()
+        .contains("重复"));
+    assert!(!root
+        .join("life/.personal-dashboard/sleep/v1/sessions.json")
+        .exists());
     fs::remove_dir_all(root).unwrap();
 }

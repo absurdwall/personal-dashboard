@@ -1,5 +1,8 @@
 //! Canonical reported endpoints. Night identity and endpoint lived-day projection are independent.
 use serde::{Deserialize, Serialize};
+#[path = "sleep_overview.rs"]
+mod overview;
+pub use overview::SleepOverview;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -88,6 +91,7 @@ pub struct SleepView {
     pub revision: Option<String>,
     pub records: Vec<SleepRecord>,
     pub facts: Vec<SleepEndpointFact>,
+    pub overview: Option<SleepOverview>,
 }
 /// A read-only endpoint projection. Its date never comes from the night index.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -527,6 +531,7 @@ fn view(path: &Path, document: Document, revision: Option<String>) -> SleepView 
         revision,
         facts: document.records.iter().flat_map(record_facts).collect(),
         records: document.records,
+        overview: None,
     }
 }
 fn endpoint_lived_date(endpoint: &SleepEndpoint) -> Option<String> {
@@ -637,16 +642,7 @@ pub(crate) fn project_habits(view: &mut crate::habits::HabitSnapshotView, sleep:
                 continue;
             }
             cell.sleep_fact = Some(fact.clone());
-            cell.actual_time_label = match &fact.endpoint {
-                SleepEndpoint::Point { point } => Some(
-                    if fact.day_relation == crate::habits::DayRelation::NextDay {
-                        format!("次日 {}", point.time)
-                    } else {
-                        point.time.clone()
-                    },
-                ),
-                _ => None,
-            };
+
         }
     }
 }
@@ -662,11 +658,32 @@ fn validate_date(date: &str) -> Result<(), String> {
         .map(|_| ())
         .ok_or_else(|| "需要明确、有效的 YYYY-MM-DD 日期；日期含糊时请先澄清。".into())
 }
-fn point_seconds(point: &SleepPoint) -> Result<i64, String> {
-    validate_date(&point.date)?;
-    if point.time.len() != 5 {
+pub(crate) fn clock_minutes(time: &str) -> Result<u16, String> {
+    let (hour, minute) = time
+        .split_once(':')
+        .ok_or("需要 HH:MM 单点时间及实际日期。")?;
+    if hour.len() != 2
+        || minute.len() != 2
+        || !hour.bytes().all(|byte| byte.is_ascii_digit())
+        || !minute.bytes().all(|byte| byte.is_ascii_digit())
+    {
         return Err("需要 HH:MM 单点时间及实际日期。".into());
     }
+    let hour: u16 = hour
+        .parse()
+        .map_err(|_| "需要 HH:MM 单点时间及实际日期。")?;
+    let minute: u16 = minute
+        .parse()
+        .map_err(|_| "需要 HH:MM 单点时间及实际日期。")?;
+    if time.len() != 5 || hour > 23 || minute > 59 {
+        return Err("需要 HH:MM 单点时间及实际日期。".into());
+    }
+    Ok(hour * 60 + minute)
+}
+
+fn point_seconds(point: &SleepPoint) -> Result<i64, String> {
+    validate_date(&point.date)?;
+    clock_minutes(&point.time)?;
     if !(-840..=840).contains(&point.utc_offset_minutes) {
         return Err("需要有效的实际端点时区偏移。".into());
     }

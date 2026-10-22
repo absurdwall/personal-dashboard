@@ -22,15 +22,17 @@ const canonicalBoundary = String.raw`
 
 test('selected Today Habit time saves through the shared context workflow and reads back in its original recording region', {skip:process.platform!=='darwin'},()=>{
   const result=probe(830,`
-    await until(()=>document.querySelector('[data-habit-time-edit="sleep"]'));
+    await until(()=>document.querySelector('[data-habit-time-edit="sleep"]')&&!document.querySelector('[data-habit-time-edit="sleep"]').disabled);
     document.querySelector('[data-habit-time-edit="sleep"]').click();
     const form=document.querySelector('[data-habit-time-form="sleep"]');
     const input=form.querySelector('[data-habit-time-point]');
     input.value='02:00';input.dispatchEvent(new Event('input',{bubbles:true}));
     const approximate=form.querySelector('[data-habit-time-approximate]');approximate.click();
+    await until(()=>form.querySelector('[data-habit-time-preview]').textContent.includes('2026-08-11'));
     const preview=form.querySelector('[data-habit-time-preview]').textContent;
-    const fields=[...form.querySelectorAll('input,select')].map(n=>({type:n.type,name:n.name}));
-    form.requestSubmit();
+    const liveForm=document.querySelector('[data-habit-time-form="sleep"]');
+    const fields=[...liveForm.querySelectorAll('input,select')].map(n=>({type:n.type,name:n.name}));
+    liveForm.requestSubmit();
     await until(()=>calls.some(c=>c.command==='save_habit_sleep_time'));
     await until(()=>!document.querySelector('[data-habit-time-form="sleep"]'));
     const habitRegion=document.querySelector('#historical-habit-corrections');
@@ -227,11 +229,13 @@ for(const [width,height]of [[830,758],[969,723],[1280,720]])for(const language o
       const timeTrigger=document.querySelector('[data-habit-time-edit="wake"]');timeTrigger.focus();timeTrigger.click();
       const editForm=document.querySelector('[data-habit-time-form="wake"]');
       const control=editForm.querySelector('[data-habit-time-point]');control.value='07:55';control.dispatchEvent(new Event('input',{bubbles:true}));
-      return JSON.stringify({focus:document.activeElement===control,label:timeTrigger.getAttribute('aria-label'),preview:editForm.querySelector('[data-habit-time-preview]').textContent,details:editForm.querySelector('details').open,fieldTypes:[...editForm.querySelectorAll('input')].map(i=>i.type),rootWidth:document.querySelector('#habit-time-records').scrollWidth,rootClient:document.querySelector('#habit-time-records').clientWidth,form:rect(editForm),body:document.documentElement.scrollWidth,viewport:innerWidth,sleepEntry:document.querySelector('[data-habit-time-edit="sleep"]')!==null,errors:window.probeErrors});
+      const initiallyFocused=document.activeElement===control;
+      await until(()=>editForm.querySelector('[data-habit-time-preview]').textContent.includes('07:55'));
+      return JSON.stringify({focus:initiallyFocused,label:timeTrigger.getAttribute('aria-label'),preview:editForm.querySelector('[data-habit-time-preview]').textContent,liveValue:document.querySelector('[data-habit-time-form="wake"] [data-habit-time-point]').value,liveFocused:document.activeElement===document.querySelector('[data-habit-time-form="wake"] [data-habit-time-point]'),details:editForm.querySelector('details').open,fieldTypes:[...editForm.querySelectorAll('input')].map(i=>i.type),rootWidth:document.querySelector('#habit-time-records').scrollWidth,rootClient:document.querySelector('#habit-time-records').clientWidth,form:rect(editForm),body:document.documentElement.scrollWidth,viewport:innerWidth,sleepEntry:document.querySelector('[data-habit-time-edit="sleep"]')!==null,errors:window.probeErrors});
     `,true,height,{interface_language_preferences:{interfaceLanguage:language}},canonicalBoundary+String.raw`
       view.habitTimeHabits=[{key:'wake',name:'CANONICAL USER NAME',localizedNames:{en:'Canonical renamed wake with a longer personal name',zh:'改名后的起床习惯与保留的个人长名称'}}];
     `);
-    assert.equal(result.focus,true);
+    assert.equal(result.focus,true);assert.equal(result.liveValue,'07:55');assert.equal(result.liveFocused,true);
     assert.match(result.label,language==='en'?/Canonical renamed wake/:/改名后的起床/);
     assert.match(result.preview,/2026-08-10.*07:55/);
     assert.equal(result.details,false);
@@ -258,3 +262,22 @@ test('a failed canonical read stays unavailable rather than claiming the actual 
   assert.match(result.status,/Synthetic canonical read failure/);
   assert.deepEqual(result.errors,[]);
 });
+
+for(const [start,end,startDate,endDate]of [['03:00','05:00','2026-08-11','2026-08-11'],['23:00','01:00','2026-08-10','2026-08-11'],['07:00','08:00','2026-08-10','2026-08-10']]){
+  test(`range preview shows both actual dates before saving ${start}–${end}`,{skip:process.platform!=='darwin'},()=>{
+    const result=probe(969,`
+      await until(()=>document.querySelector('[data-habit-time-edit="sleep"]')&&!document.querySelector('[data-habit-time-edit="sleep"]').disabled);
+      document.querySelector('[data-habit-time-edit="sleep"]').click();
+      const select=document.querySelector('[data-habit-time-kind]');select.value='range';select.dispatchEvent(new Event('change',{bubbles:true}));
+      const form=document.querySelector('[data-habit-time-form="sleep"]');
+      const time=form.querySelector('[data-habit-time-point]'),end=form.querySelector('[data-habit-time-end]'),original=form.querySelector('[data-habit-time-original]');
+      time.value=${JSON.stringify(start)};end.value=${JSON.stringify(end)};original.value='Original range wording';end.dispatchEvent(new Event('input',{bubbles:true}));
+      await until(()=>form.querySelector('[data-habit-time-preview]').textContent.includes(${JSON.stringify(end)}));
+      const preview=form.querySelector('[data-habit-time-preview]').textContent;
+      document.querySelector('[data-habit-time-form="sleep"]').requestSubmit();await until(()=>calls.some(c=>c.command==='save_habit_sleep_time'));
+      return JSON.stringify({preview,input:calls.find(c=>c.command==='save_habit_sleep_time').args.input,dates:form.querySelectorAll('input[type="date"]').length,errors:window.probeErrors});
+    `,true,723,{},canonicalBoundary);
+    assert.match(result.preview,new RegExp(startDate+' '+start));assert.match(result.preview,new RegExp(endDate+' '+end));
+    assert.equal(result.input.endpoint.start.date,startDate);assert.equal(result.input.endpoint.end.date,endDate);assert.equal(result.input.endpoint.reportedText,'Original range wording');assert.equal(result.dates,0);assert.deepEqual(result.errors,[]);
+  });
+}

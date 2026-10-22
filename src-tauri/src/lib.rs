@@ -789,6 +789,27 @@ fn sleep_records(application: State<'_, DesktopTodayApplication>) -> Result<slee
 }
 
 #[tauri::command]
+fn resolve_habit_sleep_point(
+    application: State<'_, DesktopTodayApplication>,
+    lived_date: String,
+    time: String,
+    approximate: bool,
+) -> Result<sleep::SleepPoint, String> {
+    application.resolve_habit_sleep_point(&lived_date, &time, approximate)
+}
+
+#[tauri::command]
+fn resolve_habit_sleep_range(
+    application: State<'_, DesktopTodayApplication>,
+    lived_date: String,
+    start_time: String,
+    end_time: String,
+    reported_text: String,
+) -> Result<sleep::SleepEndpoint, String> {
+    application.resolve_habit_sleep_range(&lived_date, &start_time, &end_time, &reported_text)
+}
+
+#[tauri::command]
 fn save_habit_sleep_time(application: State<'_, DesktopTodayApplication>, input: sleep::HabitSleepMutationInput) -> Result<sleep::SleepView, String> {
     application.save_habit_sleep_time(input)
 }
@@ -1298,6 +1319,8 @@ pub fn run() {
             sleep_records,
             save_sleep_record,
         save_habit_sleep_time,
+        resolve_habit_sleep_point,
+        resolve_habit_sleep_range,
             daily_view,
             read_daily_view,
             calendar_month,
@@ -1396,6 +1419,8 @@ pub fn run() {
         sleep_records,
         save_sleep_record,
         save_habit_sleep_time,
+        resolve_habit_sleep_point,
+        resolve_habit_sleep_range,
         daily_view,
         read_daily_view,
         calendar_month,
