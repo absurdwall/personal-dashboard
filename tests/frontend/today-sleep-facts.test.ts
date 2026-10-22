@@ -171,3 +171,24 @@ for(const actualDate of [null,'2026-08-11'])for(const language of ['en','zh'])te
   else{assert.match(result.text,language==='zh'?/实际日期未知/:/Actual calendar date unknown/);assert.doesNotMatch(result.text,language==='zh'?/实际日期：2026-08-10/:/Actual date: 2026-08-10/);}
   assert.equal(result.markers,0);assert.deepEqual(result.errors,[]);
 });
+
+for(const [kind,endpoint,english,chinese]of [
+  ['point',{kind:'point',date:'2026-08-11',time:'02:00',utcOffsetMinutes:-240,approximate:true},'next day about 02:00','次日 约 02:00'],
+  ['range',{kind:'range',start:{date:'2026-08-11',time:'02:00',utcOffsetMinutes:-240,approximate:true},end:{date:'2026-08-11',time:'03:00',utcOffsetMinutes:-240},reportedText:'原话 about {start}'},'next day about 02:00–next day 03:00 · 原话 about {start}','次日 约 02:00–次日 03:00 · 原话 about {start}'],
+  ['text',{kind:'text',text:'原话 next day {time}'},'Original wording: 原话 next day {time}','原话：原话 next day {time}'],
+] as const)test(`catalog-only language refresh keeps existing ${kind} endpoint nodes and raw wording`,{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const node=document.querySelector('[data-sleep-fact-time]');await until(()=>node);
+    const copy=document.querySelector('[data-sleep-fact-copy]');
+    const before={time:node.textContent,copy:copy.textContent};
+    require('./interface-language.js').applyInterfaceLanguage('zh');
+    const chinese={time:node.textContent,copy:copy.textContent,same:document.querySelector('[data-sleep-fact-time]')===node};
+    require('./interface-language.js').applyInterfaceLanguage('en');
+    return JSON.stringify({before,chinese,english:node.textContent,same:document.querySelector('[data-sleep-fact-time]')===node,errors:window.probeErrors});
+  `,false,723,{},boundary+`
+    const endpoint=${JSON.stringify(endpoint)};const updated={...fact,endpoint};canonical.facts=[updated];
+    view.timeAxis.confirmedFacts=[oldFact];view.timeAxis.unlocatedConfirmedFacts=[{...sleepEntry,startMinute:null,endMinute:null,sleepFact:updated}];
+  `);
+  assert.equal(result.before.time,english);assert.equal(result.chinese.time,chinese);assert.equal(result.english,english);assert.equal(result.chinese.same,true);assert.equal(result.same,true);
+  assert.ok(result.chinese.copy.includes(chinese));assert.deepEqual(result.errors,[]);
+});

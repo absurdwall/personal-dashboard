@@ -11877,3 +11877,18 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 .habit-detail-panel[data-sleep-detail="true"] .habit-detail-heading .secondary-button,
 .habit-detail-panel[data-sleep-detail="true"] .habit-detail-actions>.secondary-button{min-height:0;padding:5px 8px;font-size:10px;line-height:1.4}
 .habit-detail-panel[data-sleep-detail="true"] .habit-detail-actions{gap:5px 9px;margin:5px 0 8px}
+
+/* Generated chat titles stay one line; their full text remains in DOM and title. */
+.collaboration-session-button strong,
+#collaboration-chat-heading {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.collaboration-chat-heading > div:first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}

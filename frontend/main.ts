@@ -1,7 +1,7 @@
 import {shiftDateOnly} from "./date-only.js";
 import { HabitSleepOverview } from "./habit-sleep-overview.js";
 import { HabitTimeEntry, createHabitTimeEntryButton } from "./habit-time-entry.js";
-import { SleepFactPresentation, isSleepHabitKey, formatSleepEndpoint, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
+import { SleepFactPresentation, isSleepHabitKey, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
 import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
@@ -56,8 +56,10 @@ import {
   localizeCollaborationDiagnostic,
   localizeWorkHistoryDiagnostic,
   localizeHabitActualTimeLabel,
+  habitActualTimeCopy,
   localizeHabitCoverageLabel,
   localizeHabitDetail,
+  setHabitDetailCopy,
   localizeHabitGoalLabel,
   updateTodayAxisMarkerAccessibleName,
   setApplicationMessage,
@@ -2794,6 +2796,11 @@ function renderCollaborationContextPane(
   }
 }
 
+function setCollaborationSessionTitle(target:HTMLElement,title:string|null|undefined,fallback:InterfaceCopyKey):void {
+  if(title){setRawText(target,title);target.removeAttribute('data-i18n-title');target.title=title;}
+  else {setCopy(target,fallback);setInterfaceAttribute(target,'title',fallback,currentInterfaceLanguage);}
+}
+
 function renderCollaborationSessionList(sessions: readonly CollaborationSessionView[]): void {
   if (!collaborationSessionList) return;
   collaborationSessionList.replaceChildren();
@@ -2811,7 +2818,7 @@ function renderCollaborationSessionList(sessions: readonly CollaborationSessionV
     button.dataset.sessionId = session.id;
     button.setAttribute("aria-pressed", String(session.id === currentCollaborationSession?.id));
     const title = document.createElement("strong");
-    title.textContent = session.title || t("collaboration.untitledSession");
+    setCollaborationSessionTitle(title,session.title,"collaboration.untitledSession");
     const dates = document.createElement("small");
     const activityDates = session.activityDates
       .map(collaborationDateLabel)
@@ -4699,10 +4706,7 @@ function renderCollaborationWorkspace(): void {
 
   const session = currentCollaborationSession;
   if (collaborationChatHeading) {
-    setRawText(
-      collaborationChatHeading,
-      session?.title || (session ? t("collaboration.untitledSession") : t("collaboration.noSession")),
-    );
+    setCollaborationSessionTitle(collaborationChatHeading,session?.title,session?"collaboration.untitledSession":"collaboration.noSession");
   }
   if (collaborationChatDate) {
     setRawText(
@@ -6672,8 +6676,8 @@ function renderTodayTimeAxisEntries(
       appendAxisEntryTimeLabel(timeLabel, original, original.lane);
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
-      if (entry.sleepFact) title.dataset.sleepFactTitle = "";
-      title.textContent = entry.sleepFact ? sleepFactPresentation.name(entry.sleepFact) : entry.task
+      if (entry.sleepFact) {title.dataset.sleepFactTitle = "";sleepFactPresentation.appendName(title,entry.sleepFact);}
+      else title.textContent = entry.task
         ? entry.text
         : original.lane === "arrangement"
           ? stripLeadingAxisTimeLabel(
@@ -9309,7 +9313,6 @@ const habitCompletionExplanationLabels: Record<
 
 function habitProgressLabel(habit: HabitView): string {
   if (habit.completedCount === null) {
-    if (habit.today.sleepFact) return formatSleepEndpoint(habit.today.sleepFact, currentInterfaceLanguage);
     return habit.today.actualTimeLabel
       ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage)
       : t("habits.actualUnknown");
@@ -9474,8 +9477,8 @@ function habitRow(habit: HabitView): HTMLElement {
   value.className = "habit-snapshot-value";
   const progress = document.createElement("strong");
   const todayState = document.createElement("small");
-  progress.textContent = isSleepHabitKey(habit.key)
-    ? habitSleepOverview.value(habit.key, habit.today.date, habit.today.actualTimeLabel ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage) : undefined) : habitProgressLabel(habit);
+  if (isSleepHabitKey(habit.key)) habitSleepOverview.setValue(progress,habit.key,habit.today.date,habit.today.actualTimeLabel?habitActualTimeCopy(habit.today.actualTimeLabel,habit.today.details):undefined);
+  else progress.textContent=habitProgressLabel(habit);
   if (isSleepHabitKey(habit.key)) {
     progress.classList.toggle("habit-sleep-described-value", !/^\d{2}:\d{2}$/.test(progress.textContent));
   }
@@ -10193,11 +10196,11 @@ function renderSleepHabitSelection(): boolean {
     ?? habit.recent.find(item => item.date === selected.date) ?? (habit.today.date === selected.date ? habit.today : null);
   if (cell) {
     const state = document.createElement("span");
-    setCopy(state, "habits.statusCoverage", {status: t(habitStatusLabels[cell.status]), coverage: cell.coverage});
+    setInterfaceCopy(state, "habits.statusCoverage", currentInterfaceLanguage, {status: {copy:habitStatusLabels[cell.status]}, coverage: cell.coverage});
     const sources = document.createElement("ul");
     for (const line of cell.details) {
       const item = document.createElement("li");
-      item.textContent = localizeHabitDetail(line, currentInterfaceLanguage);
+      setHabitDetailCopy(item,line,currentInterfaceLanguage);
       sources.append(item);
     }
     for (const change of canonical?.localChanges ?? []) {
@@ -10253,13 +10256,6 @@ function renderSelectedHabitCell(): void {
     }),
   );
   detail.replaceChildren(heading, state, details);
-  if (isSleepHabitKey(habit.key) && cell.date <= habit.today.date) {
-    const actual = document.createElement("p");
-    setCopy(actual, "sleep.actualValue", { value: habitSleepOverview.value(habit.key, cell.date,
-      cell.actualTimeLabel ? localizeHabitActualTimeLabel(cell.actualTimeLabel, currentInterfaceLanguage) : undefined) });
-    detail.append(actual);
-    detail.append(createHabitTimeEntryButton({habitKey:habit.key,date:cell.date,habitName:displayHabitName(habit)},currentInterfaceLanguage));
-  }
   const correctionDate = historicalHabitCorrectionDate(cell.date, habit.today.date);
   const snapshot = currentHabitSnapshot;
   if (

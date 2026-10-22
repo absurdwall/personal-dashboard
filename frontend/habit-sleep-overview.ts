@@ -1,10 +1,10 @@
 import {shiftDateOnly} from './date-only.js';
-import {interfaceCopy, setInterfaceCopy, setInterfaceAttribute, setInterfaceError, type InterfaceCopyKey, type InterfaceLanguage} from './interface-language.js';
-import {formatSleepEndpoint, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
+import {setInterfaceCopy, setInterfaceAttribute, setInterfaceError, type InterfaceCopyKey, type InterfaceLanguage,type InterfaceCopyVariables,type InterfaceCopyValue} from './interface-language.js';
+import {sleepEndpointCopy,setSleepCopy,setSleepEndpointCopy, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
 
 type HabitKey=SleepHabitKey;
 type Metric=HabitKey|'duration';
-type Sample=Readonly<{date:string;value:number|null;approximate:boolean;label:string}>;
+type Sample=Readonly<{date:string;value:number|null;approximate:boolean;label:InterfaceCopyValue}>;
 type HabitContext=Readonly<{key:HabitKey;name:string;date:string}>;
 const svgNamespace='http://www.w3.org/2000/svg';
 function element<K extends keyof HTMLElementTagNameMap>(tag:K,className='',text=''):HTMLElementTagNameMap[K]{
@@ -70,35 +70,35 @@ export class HabitSleepOverview {
   open(key:HabitKey):void{this.metric=key;this.period=7;this.selected=null;}
   accept(view:SleepView):void{this.view=view;this.error=null;}
   unavailable(error:string):void{this.view=null;this.error=error;}
-  private t(key:InterfaceCopyKey,values:Record<string,string|number>={}):string{return interfaceCopy(key,this.language(),values);}
-  private copyElement<K extends keyof HTMLElementTagNameMap>(tag:K,className:string,key:InterfaceCopyKey,values:Record<string,string|number>={}):HTMLElementTagNameMap[K]{
+  private copyElement<K extends keyof HTMLElementTagNameMap>(tag:K,className:string,key:InterfaceCopyKey,values:InterfaceCopyVariables={}):HTMLElementTagNameMap[K]{
     const node=element(tag,className);setInterfaceCopy(node,key,this.language(),values);return node;
   }
-  private copyAttribute(node:HTMLElement,attribute:'aria-label'|'title'|'placeholder',key:InterfaceCopyKey,values:Record<string,string|number>={}):void{
+  private copyAttribute(node:HTMLElement,attribute:'aria-label'|'title'|'placeholder',key:InterfaceCopyKey,values:InterfaceCopyVariables={}):void{
     setInterfaceAttribute(node,attribute,key,this.language(),values);
   }
   private errorElement():HTMLElement{const node=element('p','habit-sleep-read-error');setInterfaceError(node,'sleep.loadFailed',this.error!,this.language());return node;}
   private facts(key:HabitKey,date:string):readonly SleepEndpointFact[]{return this.view?.facts.filter(f=>f.habitKey===key&&f.livedDate===date)??[];}
-  value(key:HabitKey,date:string,fallback?:string):string{
-    if(this.error)return this.t('sleep.unavailableValue');
-    const matches=this.facts(key,date);return matches.length>1?this.t('sleep.conflictValue'):!matches.length&&fallback?fallback:formatSleepEndpoint(matches[0],this.language());
+  private valueCopy(key:HabitKey,date:string,fallback?:InterfaceCopyValue):InterfaceCopyValue {
+    if(this.error)return {copy:'sleep.unavailableValue'};
+    const matches=this.facts(key,date);
+    if(matches.length>1)return {copy:'sleep.conflictValue'};
+    if(!matches.length&&fallback)return fallback;
+    return sleepEndpointCopy(matches[0]);
   }
-  private elapsed(value:number):string{
-    const rounded=Math.round(value),hours=Math.floor(rounded/60),minutes=rounded%60;
-    return this.t('sleep.overview.elapsedValue',{hours,minutes});
-  }
+  setValue(target:HTMLElement,key:HabitKey,date:string,fallback?:InterfaceCopyValue):void{setSleepCopy(target,this.valueCopy(key,date,fallback),this.language());}
   private sample(metric:Metric,date:string):Sample{
     if(metric!=='duration'){
       const matches=this.facts(metric,date),endpoint=matches.length===1?matches[0].endpoint:null;
-      return {date,value:endpoint?.kind==='point'?minute(endpoint.time):null,approximate:endpoint?.kind==='point'&&Boolean(endpoint.approximate),label:this.value(metric,date)};
+      return {date,value:endpoint?.kind==='point'?minute(endpoint.time):null,approximate:endpoint?.kind==='point'&&Boolean(endpoint.approximate),label:this.valueCopy(metric,date)};
     }
     const sample=this.view?.overview?.durations.find(sample=>sample.date===date);
     const value=sample?.minutes??null,approximate=sample?.approximate??false;
-    const display=value===null?this.t('sleep.overview.noPair'):this.elapsed(value);
-    return {date,value,approximate,label:approximate?this.t('sleep.aboutTime',{time:display}):display};
+    const rounded=Math.round(value??0);
+    const display:InterfaceCopyValue=value===null?{copy:'sleep.overview.noPair'}:{copy:'sleep.overview.elapsedValue',variables:{hours:Math.floor(rounded/60),minutes:rounded%60}};
+    return {date,value,approximate,label:approximate?{copy:'sleep.aboutTime',variables:{time:display}}:display};
   }
 
-  private metricName(metric:Metric):string{return this.t(metric==='wake'?'sleep.overview.wake':metric==='sleep'?'sleep.overview.onset':'sleep.overview.duration');}
+  private metricName(metric:Metric):InterfaceCopyValue{return {copy:metric==='wake'?'sleep.overview.wake':metric==='sleep'?'sleep.overview.onset':'sleep.overview.duration'};}
   private statistics(samples:readonly Sample[],date:string):HTMLElement{
     const root=element('div','habit-detail-stats habit-sleep-statistics');
     const overview=this.view?.overview;
@@ -163,15 +163,15 @@ export class HabitSleepOverview {
   }
   dayEvidence(key:HabitKey,date:string):HTMLElement{
     const root=element('div','habit-sleep-day-values');
-    root.append(this.copyElement('p','','sleep.actualValue',{value:this.value(key,date)}));
+    root.append(this.copyElement('p','','sleep.actualValue',{value:this.valueCopy(key,date)}));
     const matches=this.facts(key,date);
     for(const fact of matches){
-      if(matches.length>1)root.append(element('p','',formatSleepEndpoint(fact,this.language())));
+      if(matches.length>1){const value=element('p');setSleepEndpointCopy(value,fact,this.language());root.append(value);}
       if(fact.endpoint.kind==='point')root.append(this.copyElement('p','habit-sleep-calendar-date','sleep.overview.actualDate',{date:fact.endpoint.date,time:fact.endpoint.time}));
       else if(fact.endpoint.kind==='text')root.append(this.copyElement('p','habit-sleep-calendar-date',fact.endpoint.date?'sleep.fact.actualDate':'sleep.fact.actualDateUnknown',{value:fact.endpoint.date??''}));
     }
     if(this.selected?.metric==='duration'&&this.selected.date===date){
-      root.append(element('p','',this.sample('duration',date).label));
+      const value=element('p');setSleepCopy(value,this.sample('duration',date).label,this.language());root.append(value);
       const sample=this.view?.overview?.durations.find(sample=>sample.date===date);
       if(sample)root.append(this.copyElement('p','habit-sleep-pair','sleep.overview.pair',{onsetDate:sample.onset.date,onsetTime:sample.onset.time,wakeDate:sample.getUp.date,wakeTime:sample.getUp.time}));
     }
@@ -192,7 +192,7 @@ export class HabitSleepOverview {
       const button=element('button','habit-sleep-day');button.type='button';button.dataset.habitKey=context.key;button.dataset.habitDate=sample.date;
       button.style.gridColumn=String(index+2);
       button.textContent=new Intl.DateTimeFormat(this.language()==='zh'?'zh-CN':'en-US',{weekday:'narrow',timeZone:'UTC'}).format(new Date(sample.date+'T12:00:00Z')).replace('周','');
-      const values={date:sample.date,metric:context.name,value:this.value(context.key,sample.date)};
+      const values={date:sample.date,metric:context.name,value:this.valueCopy(context.key,sample.date)};
       this.copyAttribute(button,'aria-label','sleep.overview.dateReadout',values);this.copyAttribute(button,'title','sleep.overview.dateReadout',values);
       button.classList.toggle('is-missing',sample.value===null);
       button.addEventListener('click',()=>this.selected={metric:context.key,date:sample.date});
