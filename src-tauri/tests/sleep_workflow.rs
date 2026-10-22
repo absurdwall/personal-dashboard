@@ -461,7 +461,7 @@ fn uncertain_endpoints_keep_explicit_context_and_partial_correction_preserves_ot
         json!({"recordId":first.records[0].id,"wakeDate":"2026-10-22","changeId":"correct-actual-date", "getUp":point("2026-10-23","03:30",-240)}),
     );
     assert_eq!(corrected.records[0].id, first.records[0].id);
-    assert_eq!(corrected.records[0].wake_date, "2026-10-22");
+    assert_eq!(corrected.records[0].night_index, "2026-10-22");
     assert_eq!(
         serde_json::to_value(&corrected).unwrap()["facts"][1]["livedDate"],
         "2026-10-22"
@@ -1937,6 +1937,68 @@ fn contextless_reported_date_is_only_possible_overlap_evidence_until_an_explicit
             .unwrap()
             .count(),
         0
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn legacy_night_index_keeps_the_wake_date_wire_key_and_stored_bytes_through_read_and_retry() {
+    let root = vault("night-index-wire-compatibility");
+    let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let legacy = serde_json::to_vec(&json!({"schemaVersion":1,"operations":[],"records":[{
+        "id":"legacy-night","wakeDate":"2026-10-22","sleepOnset":{"kind":"unknown"},
+        "getUp":{"kind":"unknown"},"estimatedDurationMinutes":null
+    }]}))
+    .unwrap();
+    fs::write(&path, &legacy).unwrap();
+    let app = application(&root);
+    let opened = app.sleep_records().unwrap();
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        legacy,
+        "reading never migrates the legacy document"
+    );
+    let wire = json!({"recordId":"legacy-night","wakeDate":"2026-10-22","sleepOnset":null,
+        "getUp":{"kind":"point","date":"2026-10-23","time":"03:30","utcOffsetMinutes":-240,"approximate":false},
+        "changeId":"same-night-correction","targetBinding":opened.target_binding,"expectedRevision":opened.revision});
+    let input: SleepMutationInput = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&input).unwrap(),
+        wire,
+        "mutation boundary retains the exact flat public shape"
+    );
+    let saved = app.save_sleep_record(input.clone()).unwrap();
+    let expected_record = json!({"id":"legacy-night","wakeDate":"2026-10-22","sleepOnset":{"kind":"unknown"},
+        "getUp":{"kind":"point","date":"2026-10-23","time":"03:30","utcOffsetMinutes":-240,"approximate":false},
+        "estimatedDurationMinutes":null});
+    assert_eq!(
+        serde_json::to_value(&saved.records[0]).unwrap(),
+        expected_record,
+        "night identity remains independent of the actual wake endpoint date"
+    );
+    let bytes = fs::read(&path).unwrap();
+    let stored: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(stored["schemaVersion"], 1);
+    assert_eq!(stored["records"], json!([expected_record]));
+    for forbidden in ["nightIndex", "night_index", "wake_date"] {
+        assert!(stored["records"][0].get(forbidden).is_none());
+        assert!(serde_json::to_value(&input)
+            .unwrap()
+            .get(forbidden)
+            .is_none());
+    }
+    let reopened = application(&root).sleep_records().unwrap();
+    assert_eq!(reopened, saved);
+    assert_eq!(
+        app.save_sleep_record(input).unwrap(),
+        saved,
+        "the same delivery retains its idempotency receipt and revision"
+    );
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        bytes,
+        "read and duplicate delivery leave canonical bytes unchanged"
     );
     fs::remove_dir_all(root).unwrap();
 }
