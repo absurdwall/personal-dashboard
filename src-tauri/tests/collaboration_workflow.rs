@@ -2601,18 +2601,21 @@ impl TitleControl {
         }
     }
 }
-struct TitleRuntime { base: FakeAppServer, title: Arc<TitleControl>, fail_reply: bool }
+struct TitleRuntime { base: FakeAppServer, title: Arc<TitleControl>, fail_next_reply: bool }
 impl AppServerTransport for TitleRuntime {
     fn inspect(&mut self) -> Result<RuntimeConnectionView, String> { self.base.inspect() }
     fn start_chatgpt_login(&mut self) -> Result<(), String> { self.base.start_chatgpt_login() }
     fn start_thread(&mut self, model: Option<&str>, instructions: &str) -> Result<String, String> { self.base.start_thread(model, instructions) }
     fn resume_thread(&mut self, id: &str) -> Result<(), String> { self.base.resume_thread(id) }
     fn send_turn(&mut self, request: RuntimeTurnRequest) -> Result<RuntimeTurnResult, String> {
-        if self.fail_reply { Err("Synthetic first reply failed".into()) } else { self.base.send_turn(request) }
+        if std::mem::take(&mut self.fail_next_reply) { Err("Synthetic first reply failed".into()) } else { self.base.send_turn(request) }
     }
     fn send_turn_cancellable(&mut self, request: RuntimeTurnRequest, cancellation: Arc<AtomicBool>) -> Result<RuntimeTurnResult, String> {
         let result = self.base.send_turn_cancellable(request, cancellation);
-        if self.fail_reply { Err("Synthetic first reply failed".into()) } else { result }
+        if std::mem::take(&mut self.fail_next_reply) { Err("Synthetic first reply failed".into()) } else { result }
+    }
+    fn reconcile_turn(&mut self, thread_id: &str, execution_id: &str) -> Result<RuntimeRunReconciliation, String> {
+        self.base.reconcile_turn(thread_id, execution_id)
     }
     fn session_title_generator(&self) -> Option<personal_dashboard_lib::collaboration::RuntimeSessionTitleGenerator> {
         let control = self.title.clone();
@@ -2630,7 +2633,7 @@ fn title_application(directory: &IsolatedDirectory, title: Arc<TitleControl>, fa
 fn title_application_with_gate(directory: &IsolatedDirectory, title: Arc<TitleControl>, fail_reply: bool, gate: Option<Arc<FakeTurnGate>>) -> CollaborationApplication {
     CollaborationApplication::with_adapters(
         Arc::new(FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"))),
-        Box::new(TitleRuntime { title, fail_reply, base: FakeAppServer {
+        Box::new(TitleRuntime { title, fail_next_reply: fail_reply, base: FakeAppServer {
             prompts: Arc::new(Mutex::new(Vec::new())), calls: Arc::new(Mutex::new(Vec::new())),
             read_only_text_turns_available: true, switch_vault_on_inspect: None, turn_gate: gate,
             reconciliations: Arc::new(Mutex::new(HashMap::new())), memory_call: None,
@@ -2808,7 +2811,7 @@ fn opening_reply_keeps_title_completion_observable_when_another_session_is_selec
 }
 
 #[test]
-fn failed_opening_reply_stops_pending_title_work_without_reopen_or_later_message_retry() {
+fn failed_opening_waits_without_polling_or_replaying_until_a_new_success_after_reopen() {
     let directory = IsolatedDirectory::new();
     let title = Arc::new(TitleControl::default());
     let gate = Arc::new(FakeTurnGate::default());
@@ -2821,11 +2824,152 @@ fn failed_opening_reply_stops_pending_title_work_without_reopen_or_later_message
     wait_for_run_state(&app, &first.id, "interrupted");
     assert!(pending);
     assert!(!app.session("synthetic-vault", &first.id).unwrap().title_generation_pending);
-    let reopened = title_application(&directory, title.clone(), false);
+    let later_gate = Arc::new(FakeTurnGate::default());
+    let reopened = title_application_with_gate(&directory, title.clone(), false, Some(later_gate.clone()));
     assert!(!reopened.session("synthetic-vault", &first.id).unwrap().title_generation_pending);
+    assert_eq!(later_gate.started_len(), 0, "reopening must not replay a request");
+    assert!(title.requests.lock().unwrap().is_empty(), "reopening alone must not start naming");
+    title.release(Ok("Recovered opening title"));
     reopened.submit_message("synthetic-vault", &first.id, "2026-09-27", "A later successful reply").unwrap();
+    later_gate.wait_for_started(1);
+    let later_pending = reopened.list_sessions("2026-09-27").unwrap().into_iter()
+        .find(|session| session.id == first.id).unwrap().title_generation_pending;
+    later_gate.release_all();
     wait_until_finished(&reopened, &first.id);
+    assert!(later_pending, "the first successful reply must remain observable across chat selection");
+    wait_for_title(&reopened, &first.id, "Recovered opening title");
+    let requests = title.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].opening_message, "Failed opening name");
+    assert_eq!(requests[0].first_reply, "Synthetic reply for A later successful reply.");
     assert!(!reopened.session("synthetic-vault", &first.id).unwrap().title_generation_pending);
+}
+
+
+#[test]
+fn first_successful_reply_after_a_failed_request_names_the_original_opening_once() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    // Pre-release the synthetic generator so RED cannot leave a naming worker blocked.
+    title.release(Ok("Recovered reading and walking plan"));
+    let app = title_application(&directory, title.clone(), true);
+    let session = app.create_session("2026-09-27").unwrap();
+    let opening = "请保留原始开场的完整内容：今天想讨论阅读与散步安排。\n还有下周如何继续这一计划的背景。";
+    let failed = app.submit_message("synthetic-vault", &session.id, "2026-09-27", opening).unwrap();
+    wait_for_run_state(&app, &session.id, "interrupted");
     assert!(title.requests.lock().unwrap().is_empty());
-    assert_eq!(reopened.session("synthetic-vault", &first.id).unwrap().title, "Failed opening name");
+    app.reconcile_run_for_selected_vault(&session.id, failed.run_id.as_deref().unwrap()).unwrap();
+    app.submit_message("synthetic-vault", &session.id, "2026-09-27", "请继续，给出第一个建议").unwrap();
+    wait_until_finished(&app, &session.id);
+    wait_for_title(&app, &session.id, "Recovered reading and walking plan");
+    let saved = app.session("synthetic-vault", &session.id).unwrap();
+    assert_eq!(saved.messages[0].text, opening);
+    assert_eq!(saved.messages[0].delivery_state, "interrupted");
+    assert_eq!(saved.messages[2].text, "Synthetic reply based on current context.");
+    let requests = title.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].opening_message, opening);
+    assert_eq!(requests[0].first_reply, "Synthetic reply based on current context.");
+    drop(requests);
+    app.submit_message("synthetic-vault", &session.id, "2026-09-27", "Another successful reply").unwrap();
+    wait_until_finished(&app, &session.id);
+    let reopened = title_application(&directory, title.clone(), false);
+    assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().title, saved.title);
+    reopened.submit_message("synthetic-vault", &session.id, "2026-09-27", "Continue after reopening").unwrap();
+    wait_until_finished(&reopened, &session.id);
+    assert_eq!(title.requests.lock().unwrap().len(), 1, "later successful replies and reopening never rename again");
+    assert_eq!(reopened.list_sessions("2026-09-27").unwrap().into_iter().find(|s| s.id == session.id).unwrap().title, saved.title);
+}
+
+#[test]
+fn recovering_a_saved_first_reply_does_not_replay_naming_or_name_from_a_later_reply() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    title.release(Ok("Must not replace the temporary title"));
+    let app = title_application(&directory, title.clone(), true);
+    let session = app.create_session("2026-09-27").unwrap();
+    let failed = app.submit_message("synthetic-vault", &session.id, "2026-09-27", "Recover this original opening").unwrap();
+    wait_for_run_state(&app, &session.id, "interrupted");
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let reconciliations = Arc::new(Mutex::new(HashMap::from([(
+        failed.run_id.clone().unwrap(),
+        RuntimeRunReconciliation::Completed {
+            text: "The actual first successful reply was already saved by the runtime.".into(),
+            runtime_turn_id: "runtime-turn-recovered".into(),
+            external_actions: Vec::new(), work_history: None,
+        },
+    )])));
+    let recovery = new_application_with_controls(&directory, prompts.clone(), Arc::new(Mutex::new(Vec::new())), None, reconciliations);
+    let recovered = recovery.reconcile_run_for_selected_vault(&session.id, failed.run_id.as_deref().unwrap()).unwrap();
+    assert_eq!(recovered.messages[1].text, "The actual first successful reply was already saved by the runtime.");
+    assert!(prompts.lock().unwrap().is_empty(), "checking the saved result must not send a new runtime request");
+    assert!(title.requests.lock().unwrap().is_empty());
+    let reopened = title_application(&directory, title.clone(), false);
+    reopened.submit_message("synthetic-vault", &session.id, "2026-09-27", "This is a later reply, not the first reply").unwrap();
+    wait_until_finished(&reopened, &session.id);
+    assert!(!reopened.session("synthetic-vault", &session.id).unwrap().title_generation_pending);
+    assert!(title.requests.lock().unwrap().is_empty(), "a later reply must not trigger naming after the first reply was recovered");
+    assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().title, "Recover this original opening");
+}
+
+#[test]
+fn an_existing_successful_reply_with_stale_waiting_state_is_not_renamed_by_a_later_reply() {
+    let directory = IsolatedDirectory::new();
+    let original = new_application(&directory, Arc::new(Mutex::new(Vec::new())));
+    let session = original.create_session("2026-09-27").unwrap();
+    original.submit_message("synthetic-vault", &session.id, "2026-09-27", "Existing completed conversation").unwrap();
+    wait_until_finished(&original, &session.id);
+    let store = FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut state = store.load().unwrap();
+    let stored = state.sessions.iter_mut().find(|s| s.id == session.id).unwrap();
+    stored.title_generation.as_mut().unwrap().status = personal_dashboard_lib::collaboration::SessionTitleStatus::WaitingForReply;
+    store.save(&state).unwrap();
+    let title = Arc::new(TitleControl::default());
+    title.release(Ok("Must not rename an existing successful conversation"));
+    let reopened = title_application(&directory, title.clone(), false);
+    reopened.submit_message("synthetic-vault", &session.id, "2026-09-27", "A later reply cannot become the first reply").unwrap();
+    wait_until_finished(&reopened, &session.id);
+    assert!(!reopened.session("synthetic-vault", &session.id).unwrap().title_generation_pending);
+    assert!(title.requests.lock().unwrap().is_empty());
+    assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().title, "Existing completed conversation");
+}
+
+#[test]
+fn queued_followup_does_not_replace_the_opening_or_first_reply_used_for_naming() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    title.release(Ok("Opening and first reply only"));
+    let gate = Arc::new(FakeTurnGate::default());
+    let app = title_application_with_gate(&directory, title.clone(), false, Some(gate.clone()));
+    let session = app.create_session("2026-09-27").unwrap();
+    app.submit_message("synthetic-vault", &session.id, "2026-09-27", "Original opening while still running").unwrap();
+    gate.wait_for_started(1);
+    app.submit_message("synthetic-vault", &session.id, "2026-09-27", "Queued followup before the first reply").unwrap();
+    gate.release_all();
+    wait_until_finished(&app, &session.id);
+    wait_for_title(&app, &session.id, "Opening and first reply only");
+    assert_eq!(app.session("synthetic-vault", &session.id).unwrap().messages.len(), 4);
+    let requests = title.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].opening_message, "Original opening while still running");
+    assert_eq!(requests[0].first_reply, "Synthetic reply for Original opening while still running.");
+}
+
+#[test]
+fn a_name_chosen_after_a_failed_request_is_preserved_when_the_first_success_arrives() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    title.release(Ok("Must not overwrite the chosen name"));
+    let app = title_application(&directory, title.clone(), true);
+    let session = app.create_session("2026-09-27").unwrap();
+    app.submit_message("synthetic-vault", &session.id, "2026-09-27", "Failed original opening").unwrap();
+    wait_for_run_state(&app, &session.id, "interrupted");
+    let store = FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut state = store.load().unwrap();
+    state.sessions.iter_mut().find(|stored| stored.id == session.id).unwrap().title = "Human chosen name".into();
+    store.save(&state).unwrap();
+    app.submit_message("synthetic-vault", &session.id, "2026-09-27", "First successful reply after the chosen name").unwrap();
+    wait_until_finished(&app, &session.id);
+    assert_eq!(app.session("synthetic-vault", &session.id).unwrap().title, "Human chosen name");
+    assert!(title.requests.lock().unwrap().is_empty());
 }
