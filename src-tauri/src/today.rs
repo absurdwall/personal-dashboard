@@ -2299,7 +2299,7 @@ where
         vault: &Path,
     ) -> Result<crate::sleep::SleepView, String> {
         let result = crate::sleep::SleepWorkflow::new(vault).read();
-        self.confirm_sleep_vault(vault)?;
+        self.confirm_selected_vault(vault)?;
         result.map(|view| view.project_overview(&self.clock.current_lived_date()))
     }
 
@@ -2377,18 +2377,18 @@ where
     pub fn save_habit_sleep_time(&self, input: crate::sleep::HabitSleepMutationInput) -> Result<crate::sleep::SleepView, String> {
         let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
         let result = crate::sleep::SleepWorkflow::new(&vault).save_habit_time(input);
-        self.confirm_sleep_vault(&vault)?;
+        self.confirm_selected_vault(&vault)?;
         result.map(|view| view.project_overview(&self.clock.current_lived_date()))
     }
 
     pub fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
         let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
         let result = crate::sleep::SleepWorkflow::new(&vault).save(input);
-        self.confirm_sleep_vault(&vault)?;
+        self.confirm_selected_vault(&vault)?;
         result.map(|view| view.project_overview(&self.clock.current_lived_date()))
     }
 
-    fn confirm_sleep_vault(&self, captured: &Path) -> Result<(), String> {
+    fn confirm_selected_vault(&self, captured: &Path) -> Result<(), String> {
         if self.persistence.load_selected_vault()?.as_deref() != Some(captured) {
             return Err("所选 Vault 在操作期间改变；结果属于原 Vault，请重新读取核对。".into());
         }
@@ -3633,7 +3633,7 @@ where
         }
         let sleep = VaultSleepRead::read(&vault);
         let result = self.habits_for_vault(&sleep);
-        self.confirm_sleep_vault(&vault)?;
+        self.confirm_selected_vault(&vault)?;
         result
     }
 
@@ -4224,7 +4224,7 @@ where
         } else {
             self.reload_vault(&vault, date.to_owned())
         }?;
-        self.confirm_sleep_vault(&vault)?;
+        self.confirm_selected_vault(&vault)?;
         Ok(view)
     }
 
@@ -7350,12 +7350,18 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
         Some(day.unix_days() * 1440 + hour.parse::<i64>().ok()? * 60 + minute.parse::<i64>().ok()?)
     };
     for fact in &sleep.facts {
-        // Legacy uncertainty without a lived-date context is only shown when its
-        // actual date/bounds explicitly overlap this day. The night index is not evidence.
+        // Legacy uncertainty is possible overlap evidence, never a guessed lived
+        // owner. A civil date spans two 04:00 windows; retain that actual source date.
+        // The night index is not evidence.
         let belongs = match fact.lived_date.as_deref() {
             Some(lived_date) => lived_date == date,
             None => match &fact.endpoint {
-                SleepEndpoint::Text { date: Some(actual_date), .. } => actual_date == date,
+                SleepEndpoint::Text { date: Some(actual_date), .. } => {
+                    CalendarDate::parse(actual_date).is_some_and(|actual| {
+                        let start = actual.unix_days() * 1440;
+                        start < window_start + 1440 && start + 1440 > window_start
+                    })
+                }
                 SleepEndpoint::Range { start, end, .. } => {
                     matches!((point_minute(start), point_minute(end)), (Some(start), Some(end))
                         if start < window_start + 1440 && end >= window_start)
@@ -7372,6 +7378,11 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
             _ => "",
         };
         let mut entry = unlocated_axis_entry(None, text, date);
+        entry.source_date = match &fact.endpoint {
+            SleepEndpoint::Text { date: Some(actual_date), .. } => actual_date.clone(),
+            SleepEndpoint::Range { start, .. } => start.date.clone(),
+            _ => entry.source_date,
+        };
         entry.sleep_fact = Some(fact.clone());
         if let SleepEndpoint::Point { point } = &fact.endpoint {
             let projected = point_minute(point).map(|minute| minute - day.unix_days() * 1440);

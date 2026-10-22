@@ -4,7 +4,7 @@ import {probe} from './helpers/complete-page.ts';
 
 const boundary=String.raw`
   const oldFact={...view.timeAxis.currentArrangement[0],planId:null,timeEditable:false,planPrecision:null,period:null,title:null,text:'Existing unchanged Daily Record fact',sourceDate:view.date,startMinute:720,endMinute:null,continuesFromPreviousDay:false,continuesIntoNextDay:false};
-  const fact={recordId:'canonical-night-1',habitKey:'sleep',livedDate:view.date,dayRelation:'next-day',endpoint:{kind:'point',date:'2026-08-11',time:'02:00',utcOffsetMinutes:-240,approximate:true}};
+  const fact={recordId:'canonical-night-1',clockPlotMinutes:120,habitKey:'sleep',livedDate:view.date,dayRelation:'next-day',endpoint:{kind:'point',date:'2026-08-11',time:'02:00',utcOffsetMinutes:-240,approximate:true}};
   const sleepEntry={...oldFact,text:'',sourceDate:'2026-08-11',startMinute:1560,sleepFact:fact};
   view.habitTimeHabits=[{key:'sleep',name:'My bedtime',localizedNames:{}}];
   view.timeAxis.confirmedFacts=[oldFact,sleepEntry];
@@ -53,7 +53,7 @@ test('saving the existing Habit time entry immediately refreshes the same Today 
     window.__TAURI__.core.invoke=async(command,args)=>{
       if(command==='save_habit_sleep_time'){
         calls.push({command,args});
-        canonical={...canonical,revision:'revision-2',facts:[{...fact,endpoint:{kind:'point',date:'2026-08-11',time:'01:45',utcOffsetMinutes:-240,approximate:true}}]};
+        canonical={...canonical,revision:'revision-2',facts:[{...fact,clockPlotMinutes:105,endpoint:{kind:'point',date:'2026-08-11',time:'01:45',utcOffsetMinutes:-240,approximate:true}}]};
         view.timeAxis.confirmedFacts=[oldFact,{...sleepEntry,startMinute:1545,sleepFact:canonical.facts[0]}];
         return structuredClone(canonical);
       }
@@ -91,7 +91,7 @@ for(const [width,height,kind] of [[830,758,'range'],[969,723,'text'],[1280,720,'
         view.state='error';view.dailyRecordAvailability='error';view.message='Synthetic unavailable Daily Record';
         view.habitTimeHabits[0].name='My bedtime · Long unchanged canonical Habit name for narrow-window review';
         view.timeAxis.confirmedFacts=[sleepEntry];
-        const uncertain={recordId:'canonical-uncertain',habitKey:'wake',livedDate:view.date,dayRelation:'unresolved',endpoint:${JSON.stringify(endpoint)}};
+        const uncertain={recordId:'canonical-uncertain',clockPlotMinutes:null,habitKey:'wake',livedDate:view.date,dayRelation:'unresolved',endpoint:${JSON.stringify(endpoint)}};
         view.timeAxis.unlocatedConfirmedFacts=[{...oldFact,text:'',startMinute:null,sleepFact:uncertain}];
         canonical.facts.push(uncertain);
       `);
@@ -163,7 +163,7 @@ for(const actualDate of [null,'2026-08-11'])for(const language of ['en','zh'])te
     const evidence=document.querySelector('#today-confirmed-facts-unlocated');
     return JSON.stringify({text:evidence.textContent,markers:document.querySelectorAll('.today-axis-marker[data-sleep-record-id]').length,errors:window.probeErrors});
   `,false,723,{interface_language_preferences:{interfaceLanguage:language}},boundary+`
-    const original={...fact,dayRelation:'unresolved',endpoint:{kind:'text',date:${JSON.stringify(actualDate)},text:'around 2 a.m., not normalized'}};
+    const original={...fact,clockPlotMinutes:null,dayRelation:'unresolved',endpoint:{kind:'text',date:${JSON.stringify(actualDate)},text:'around 2 a.m., not normalized'}};
     view.timeAxis.confirmedFacts=[oldFact];view.timeAxis.unlocatedConfirmedFacts=[{...oldFact,startMinute:null,sleepFact:original}];canonical.facts=[original];
   `);
   assert.match(result.text,/around 2 a.m., not normalized/);assert.match(result.text,/2026-08-10/,'lived-day context remains explicit');
@@ -186,9 +186,33 @@ for(const [kind,endpoint,english,chinese]of [
     require('./interface-language.js').applyInterfaceLanguage('en');
     return JSON.stringify({before,chinese,english:node.textContent,same:document.querySelector('[data-sleep-fact-time]')===node,errors:window.probeErrors});
   `,false,723,{},boundary+`
-    const endpoint=${JSON.stringify(endpoint)};const updated={...fact,endpoint};canonical.facts=[updated];
+    const endpoint=${JSON.stringify(endpoint)};const updated={...fact,endpoint,clockPlotMinutes:endpoint.kind==='point'?120:null};canonical.facts=[updated];
     view.timeAxis.confirmedFacts=[oldFact];view.timeAxis.unlocatedConfirmedFacts=[{...sleepEntry,startMinute:null,endMinute:null,sleepFact:updated}];
   `);
   assert.equal(result.before.time,english);assert.equal(result.chinese.time,chinese);assert.equal(result.english,english);assert.equal(result.chinese.same,true);assert.equal(result.same,true);
   assert.ok(result.chinese.copy.includes(chinese));assert.deepEqual(result.errors,[]);
+});
+
+
+test('contextless actual-date evidence stays explicitly unassigned through in-place language changes',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const toggle=document.querySelector('#today-unlocated-time-shortcut');if(toggle.getAttribute('aria-expanded')!=='true')toggle.click();
+    await until(()=>!document.querySelector('#today-unlocated-time-region').hidden);
+    const evidence=document.querySelector('#today-confirmed-facts-unlocated');
+    const endpointNode=evidence.querySelector('[data-sleep-fact-time]');
+    const english=evidence.textContent;
+    require('./interface-language.js').applyInterfaceLanguage('zh');
+    const chinese=evidence.textContent;
+    require('./interface-language.js').applyInterfaceLanguage('en');
+    return JSON.stringify({english,chinese,restored:evidence.textContent,same:evidence.querySelector('[data-sleep-fact-time]')===endpointNode,markers:document.querySelectorAll('.today-axis-marker[data-sleep-record-id]').length,errors:window.probeErrors});
+  `,false,723,{},boundary+String.raw`
+    const original={...fact,clockPlotMinutes:null,livedDate:null,dayRelation:'unresolved',endpoint:{kind:'text',date:'2026-08-11',text:'around two, original wording'}};
+    view.timeAxis.confirmedFacts=[oldFact];view.timeAxis.unlocatedConfirmedFacts=[{...oldFact,sourceDate:'2026-08-11',startMinute:null,sleepFact:original}];canonical.facts=[original];
+  `);
+  assert.match(result.english,/Lived-day attribution unknown · may overlap the selected day/);
+  assert.match(result.chinese,/所属日未确定 · 可能与所选日重叠/);
+  assert.match(result.english,/Actual date: 2026-08-11/);assert.match(result.chinese,/实际日期：2026-08-11/);
+  assert.match(result.english,/around two, original wording/);assert.match(result.chinese,/around two, original wording/);
+  assert.doesNotMatch(result.english,/Context: 2026-08-10/);assert.equal(result.restored,result.english);
+  assert.equal(result.same,true);assert.equal(result.markers,0);assert.deepEqual(result.errors,[]);
 });

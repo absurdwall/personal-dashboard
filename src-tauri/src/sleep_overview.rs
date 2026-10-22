@@ -20,14 +20,6 @@ impl OverviewMetric {
             Self::Duration => None,
         }
     }
-    fn ordered_minutes(self, value: i64) -> i64 {
-        let anchor = match self {
-            Self::Wake => 480,
-            Self::Sleep => 60,
-            Self::Duration => return value,
-        };
-        anchor + (value - anchor + 720).rem_euclid(1440) - 720
-    }
     fn mean(self, values: &[i64]) -> Option<i64> {
         if values.is_empty() {
             return None;
@@ -51,6 +43,15 @@ impl OverviewMetric {
             }
         }
     }
+}
+
+/// One clock phase for both endpoint plots and ordered overview statistics.
+pub(crate) fn clock_plot_minutes(habit_key: SleepHabitKey, minutes: i64) -> i64 {
+    let anchor = match habit_key {
+        SleepHabitKey::Wake => 480,
+        SleepHabitKey::Sleep => 60,
+    };
+    anchor + (minutes - anchor + 720).rem_euclid(1440) - 720
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,6 +137,7 @@ impl SleepView {
         ] {
             for period in [7, 30] {
                 let mut values = Vec::new();
+                let mut ordered = Vec::new();
                 let mut approximate = false;
                 let mut qualities = Vec::new();
                 for offset in 0..period {
@@ -143,6 +145,7 @@ impl SleepView {
                     if metric == OverviewMetric::Duration {
                         if let Some(sample) = durations.iter().find(|sample| sample.date == day) {
                             values.push(sample.minutes);
+                            ordered.push(sample.minutes);
                             qualities.push(sample.approximate);
                             approximate |= sample.approximate;
                         }
@@ -160,6 +163,9 @@ impl SleepView {
                                 let minutes = crate::sleep::clock_minutes(&point.time)
                                     .expect("validated canonical time");
                                 values.push(i64::from(minutes));
+                                ordered.push(
+                                    fact.clock_plot_minutes.expect("canonical point coordinate"),
+                                );
                                 qualities.push(point.approximate);
                                 approximate |= point.approximate;
                             }
@@ -167,10 +173,6 @@ impl SleepView {
                     }
                 }
                 let mean = metric.mean(&values);
-                let ordered: Vec<_> = values
-                    .iter()
-                    .map(|value| metric.ordered_minutes(*value))
-                    .collect();
                 let earliest = (values.len() > 1).then(|| *ordered.iter().min().unwrap());
                 let latest = (values.len() > 1).then(|| *ordered.iter().max().unwrap());
                 let extreme_approximate = |extreme: Option<i64>| {

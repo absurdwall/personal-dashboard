@@ -10,7 +10,7 @@ export type SleepEndpoint =
   | Readonly<{kind:'text';date?:string|null;text:string}>
   | Readonly<{kind:'unknown'}>
   | Readonly<{kind:'unrecorded'}>;
-export type SleepEndpointFact = Readonly<{recordId:string;habitKey:SleepHabitKey;livedDate:string|null;dayRelation:'same-day'|'next-day'|'unresolved';endpoint:SleepEndpoint}>;
+export type SleepEndpointFact = Readonly<{recordId:string;habitKey:SleepHabitKey;livedDate:string|null;dayRelation:'same-day'|'next-day'|'unresolved';clockPlotMinutes:number|null;endpoint:SleepEndpoint}>;
 export type SleepRecord = Readonly<{id:string;wakeDate:string;sleepOnset:SleepEndpoint;getUp:SleepEndpoint;estimatedDurationMinutes:number|null}>;
 export type SleepDurationSample=Readonly<{date:string;minutes:number;approximate:boolean;onset:SleepPoint;getUp:SleepPoint}>;
 export type SleepOverviewStatistics=Readonly<{metric:'wake'|'sleep'|'duration';period:7|30;count:number;mean:number|null;earliest:number|null;latest:number|null;approximate:boolean;earliestApproximate:boolean;latestApproximate:boolean}>;
@@ -66,6 +66,7 @@ export class SleepFactPresentation {
     if(actual){const date=document.createElement('span');setInterfaceCopy(date,'sleep.fact.actualDate',this.language(),{value:actual});target.append(date);}
     else if(endpoint.kind==='text'){const date=document.createElement('span');setInterfaceCopy(date,'sleep.fact.actualDateUnknown',this.language());target.append(date);}
     if(fact.livedDate){const context=document.createElement('span');setInterfaceCopy(context,'sleep.fixedContext',this.language(),{date:fact.livedDate});target.append(context);}
+    else {const context=document.createElement('span');setInterfaceCopy(context,'sleep.fact.livedDateUnknown',this.language());target.append(context);}
   }
   correctionButton(fact:SleepEndpointFact,canCorrect:boolean):HTMLButtonElement{
     const button=document.createElement('button');button.type='button';button.className='secondary-button';

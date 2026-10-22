@@ -1750,3 +1750,193 @@ fn habit_snapshot_captures_one_canonical_revision_for_cells_charts_and_statistic
         .any(|f| f.habit_key.as_str() == "wake"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn canonical_plot_coordinates_and_overview_extrema_share_one_clock_phase_without_changing_raw_times(
+) {
+    let root = vault("canonical-clock-plot");
+    let app = application(&root);
+    for (index, (wake_date, date, time)) in [
+        ("2026-10-19", "2026-10-18", "23:50"),
+        ("2026-10-20", "2026-10-20", "00:10"),
+        ("2026-10-21", "2026-10-21", "03:50"),
+        ("2026-10-22", "2026-10-21", "04:10"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut onset = point(date, time, -240);
+        onset["approximate"] = json!(index == 0);
+        let mut input =
+            json!({"wakeDate":wake_date,"changeId":format!("plot-{index}"),"sleepOnset":onset});
+        if index == 2 {
+            input["getUp"] = point("2026-10-21", "13:30", -240);
+        }
+        save(&app, input);
+    }
+    let view = serde_json::to_value(app.sleep_records().unwrap()).unwrap();
+    let facts = view["facts"].as_array().unwrap();
+    let onsets = facts
+        .iter()
+        .filter(|f| f["habitKey"] == "sleep")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        onsets
+            .iter()
+            .map(|f| f["clockPlotMinutes"].clone())
+            .collect::<Vec<_>>(),
+        vec![json!(-10), json!(10), json!(230), json!(250)]
+    );
+    assert_eq!(
+        onsets
+            .iter()
+            .map(|f| f["endpoint"]["time"].clone())
+            .collect::<Vec<_>>(),
+        vec![
+            json!("23:50"),
+            json!("00:10"),
+            json!("03:50"),
+            json!("04:10")
+        ]
+    );
+    assert_eq!(onsets[0]["endpoint"]["approximate"], true);
+    assert_eq!(
+        facts.iter().find(|f| f["habitKey"] == "wake").unwrap()["clockPlotMinutes"],
+        810
+    );
+    for period in [7, 30] {
+        let stats = view["overview"]["statistics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["metric"] == "sleep" && s["period"] == period)
+            .unwrap();
+        assert_eq!(stats["earliest"], -10);
+        assert_eq!(stats["latest"], 250);
+        assert_eq!(stats["mean"], 120);
+        assert_eq!(stats["count"], 4);
+        assert_eq!(stats["earliestApproximate"], true);
+        assert_eq!(stats["latestApproximate"], false);
+    }
+    let daytime = save(
+        &app,
+        json!({"wakeDate":"2026-10-18","changeId":"daytime-sleep","sleepOnset":point("2026-10-17","13:30",-240)}),
+    );
+    let daytime = serde_json::to_value(daytime).unwrap();
+    let fact = daytime["facts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["endpoint"]["time"] == "13:30" && f["habitKey"] == "sleep")
+        .unwrap();
+    assert_eq!(
+        fact["clockPlotMinutes"], -630,
+        "the sleep anchor differs from wake without changing the reported clock"
+    );
+    assert_eq!(fact["endpoint"]["date"], "2026-10-17");
+    let document: serde_json::Value = serde_json::from_slice(
+        &fs::read(root.join("life/.personal-dashboard/sleep/v1/sessions.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(document["schemaVersion"], 1);
+    for record in document["records"].as_array().unwrap() {
+        assert!(record.get("clockPlotMinutes").is_none());
+        assert!(record["sleepOnset"].get("clockPlotMinutes").is_none());
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn contextless_reported_date_is_only_possible_overlap_evidence_until_an_explicit_lived_context_is_supplied(
+) {
+    let root = vault("legacy-text-possible-days");
+    let app = application(&root);
+    let saved = save(
+        &app,
+        json!({"wakeDate":"2026-10-22","changeId":"legacy-contextless",
+        "sleepOnset":{"kind":"text","date":"2026-10-21","text":"around two; original wording is not a clock"},"getUp":{"kind":"unknown"}}),
+    );
+    let id = saved.records[0].id.clone();
+    for date in ["2026-10-20", "2026-10-21"] {
+        let view = app.read_date(date).unwrap();
+        let evidence = view
+            .time_axis
+            .unlocated_confirmed_facts
+            .iter()
+            .filter(|entry| entry.sleep_fact.is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            evidence.len(),
+            1,
+            "actual civil date can overlap either adjacent lived window: {date}"
+        );
+        let entry = evidence[0];
+        let fact = entry.sleep_fact.as_ref().unwrap();
+        assert!(fact.lived_date.is_none());
+        assert!(entry.start_minute.is_none());
+        assert_eq!(entry.source_date, "2026-10-21");
+        assert_eq!(fact.record_id, id);
+        assert_eq!(
+            serde_json::to_value(&fact.endpoint).unwrap()["date"],
+            "2026-10-21"
+        );
+        assert!(view
+            .time_axis
+            .confirmed_facts
+            .iter()
+            .all(|entry| entry.sleep_fact.is_none()));
+    }
+    for date in ["2026-10-19", "2026-10-22"] {
+        let view = app.read_date(date).unwrap();
+        assert!(
+            view.time_axis
+                .unlocated_confirmed_facts
+                .iter()
+                .all(|entry| entry.sleep_fact.is_none()),
+            "no dated evidence belongs to unrelated day or the night index: {date}"
+        );
+    }
+    let canonical = serde_json::to_value(app.sleep_records().unwrap()).unwrap();
+    assert_eq!(
+        canonical["facts"].as_array().unwrap().len(),
+        2,
+        "contextless unknown remains independently readable without guessing a day"
+    );
+    assert!(canonical["overview"]["statistics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|s| s["count"] == 0));
+    let corrected = save(
+        &app,
+        json!({"recordId":id,"wakeDate":"2026-10-22","changeId":"explicit-context",
+        "sleepOnset":{"kind":"text","date":"2026-10-21","text":"around two; original wording is not a clock"},"sleepOnsetLivedDate":"2026-10-20"}),
+    );
+    assert_eq!(corrected.records[0].id, id);
+    let selected = app.read_date("2026-10-20").unwrap();
+    let entry = selected
+        .time_axis
+        .unlocated_confirmed_facts
+        .iter()
+        .find(|entry| entry.sleep_fact.is_some())
+        .unwrap();
+    assert_eq!(entry.source_date, "2026-10-21");
+    assert_eq!(
+        entry.sleep_fact.as_ref().unwrap().lived_date.as_deref(),
+        Some("2026-10-20")
+    );
+    assert!(app
+        .read_date("2026-10-21")
+        .unwrap()
+        .time_axis
+        .unlocated_confirmed_facts
+        .iter()
+        .all(|entry| entry.sleep_fact.is_none()));
+    assert_eq!(
+        fs::read_dir(root.join("life/Journal/Daily"))
+            .unwrap()
+            .count(),
+        0
+    );
+    fs::remove_dir_all(root).unwrap();
+}
