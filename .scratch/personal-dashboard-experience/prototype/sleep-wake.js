@@ -332,7 +332,7 @@ function render() {
   $('#page').innerHTML = page==='today' ? todayPage() : page==='habits' ? habitsPage() : page==='sleep' ? sleepDetailPage() : page==='collaboration' ? collaborationPage() : `<div class="sw-page">${header(page==='tasks'?'任务':'日历','其他页面在本局部原型中保持示意')}</div>`;
   bindPage();
 }
-function rangeFor(raw, prefix) {
+function rangeFor(raw) {
   const normalized = raw.trim();
   const arabic = normalized.match(/([0-2]?\d)\s*(?:点|時|时)\s*多/);
   const chinese = normalized.match(/([一二三四五六七八九十])\s*点\s*多/);
@@ -375,7 +375,7 @@ function readField(name,root) {
   if (kind==='unknown') return unknown();
   if (kind==='range') {
     const raw = $(`#${name}-range`,root).value.trim();
-    return raw ? rangeFor(raw,name) : null;
+    return raw ? rangeFor(raw) : null;
   }
   const input = $(`#${name}-time`,root).value;
   if (!input) return null;
