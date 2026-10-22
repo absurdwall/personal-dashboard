@@ -218,6 +218,13 @@ struct StorageDocumentLabels {
     external_document: &'static str,
 }
 
+/// Per-operation legacy copy alternatives; the document descriptor chooses one.
+struct StorageDiagnosticContext<'a> {
+    daily_record: &'a str,
+    day_tasks: &'a str,
+    habit_completions: &'a str,
+}
+
 enum StorageOperationMessage {
     DailyRecordArgument,
     DayTasksArgument,
@@ -372,34 +379,30 @@ impl StorageDocumentKind {
 
     fn operation_message(
         self,
-        daily_record: &str,
-        day_tasks: &str,
-        habit_completions: &str,
+        context: StorageDiagnosticContext<'_>,
         fallback_punctuation: &str,
     ) -> String {
         let failure_label = match self.descriptor().operation_message {
-            StorageOperationMessage::DailyRecordArgument => return daily_record.into(),
-            StorageOperationMessage::DayTasksArgument => return day_tasks.into(),
-            StorageOperationMessage::HabitCompletionsArgument => return habit_completions.into(),
+            StorageOperationMessage::DailyRecordArgument => return context.daily_record.into(),
+            StorageOperationMessage::DayTasksArgument => return context.day_tasks.into(),
+            StorageOperationMessage::HabitCompletionsArgument => return context.habit_completions.into(),
             StorageOperationMessage::Fixed(label) => label,
         };
         format!("{failure_label}{fallback_punctuation}")
     }
 
-    fn text(self, daily_record: &str, day_tasks: &str, habit_completions: &str) -> String {
-        self.operation_message(daily_record, day_tasks, habit_completions, "。")
+    fn text(self, context: StorageDiagnosticContext<'_>) -> String {
+        self.operation_message(context, "。")
     }
 
     fn error(
         self,
-        daily_record: &str,
-        day_tasks: &str,
-        habit_completions: &str,
+        context: StorageDiagnosticContext<'_>,
         error: impl std::fmt::Display,
     ) -> String {
         format!(
             "{}{}",
-            self.operation_message(daily_record, day_tasks, habit_completions, "："),
+            self.operation_message(context, "："),
             error
         )
     }
@@ -509,16 +512,20 @@ pub(crate) fn create_new_file(
     let labels = kind.descriptor().labels;
     let parent = path.parent().ok_or_else(|| {
         kind.text(
-            "The Daily Record has no parent directory.",
-            "The day-task document has no parent directory.",
-            "The local habit-completion document has no parent directory.",
+            StorageDiagnosticContext {
+                daily_record: "The Daily Record has no parent directory.",
+                day_tasks: "The day-task document has no parent directory.",
+                habit_completions: "The local habit-completion document has no parent directory.",
+            },
         )
     })?;
     fs::create_dir_all(parent).map_err(|error| {
         kind.error(
-            "Could not create the Daily Record directory: ",
-            "Could not create the day-task document directory: ",
-            "Could not create the local habit-completion document directory: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not create the Daily Record directory: ",
+                day_tasks: "Could not create the day-task document directory: ",
+                habit_completions: "Could not create the local habit-completion document directory: ",
+            },
             error,
         )
     })?;
@@ -528,9 +535,11 @@ pub(crate) fn create_new_file(
         .and_then(|_| output.sync_all())
         .map_err(|error| {
             kind.error(
-                "Could not prepare the new Daily Record: ",
-                "Could not prepare the new day-task document: ",
-                "Could not prepare the new local habit-completion document: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not prepare the new Daily Record: ",
+                    day_tasks: "Could not prepare the new day-task document: ",
+                    habit_completions: "Could not prepare the new local habit-completion document: ",
+                },
                 error,
             )
         });
@@ -543,15 +552,19 @@ pub(crate) fn create_new_file(
         let _ = fs::remove_file(&temporary);
         return Err(if error.kind() == std::io::ErrorKind::AlreadyExists {
             kind.text(
-                "该日期的 Daily Record 已被另一个写入创建。请刷新后重试；现有内容未被覆盖。",
-                "这一天的任务正本已被另一个写入创建。请刷新后重试；现有任务未被覆盖。",
-                "本地习惯完成正本已被另一个写入创建。请刷新 Habits 后重试；现有内容未被覆盖。",
+                StorageDiagnosticContext {
+                    daily_record: "该日期的 Daily Record 已被另一个写入创建。请刷新后重试；现有内容未被覆盖。",
+                    day_tasks: "这一天的任务正本已被另一个写入创建。请刷新后重试；现有任务未被覆盖。",
+                    habit_completions: "本地习惯完成正本已被另一个写入创建。请刷新 Habits 后重试；现有内容未被覆盖。",
+                },
             )
         } else {
             kind.error(
-                "Could not exclusively activate the new Daily Record: ",
-                "Could not exclusively activate the new day-task document: ",
-                "Could not exclusively activate the new local habit-completion document: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not exclusively activate the new Daily Record: ",
+                    day_tasks: "Could not exclusively activate the new day-task document: ",
+                    habit_completions: "Could not exclusively activate the new local habit-completion document: ",
+                },
                 error,
             )
         });
@@ -578,9 +591,11 @@ where
     let labels = kind.descriptor().labels;
     let current = fs::read(path).map_err(|error| {
         kind.error(
-            "Could not re-read today's daily record: ",
-            "Could not re-read the day-task document: ",
-            "Could not re-read the local habit-completion document: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not re-read today's daily record: ",
+                day_tasks: "Could not re-read the day-task document: ",
+                habit_completions: "Could not re-read the local habit-completion document: ",
+            },
             error,
         )
     })?;
@@ -595,9 +610,11 @@ where
             fs::metadata(path)
                 .map_err(|error| {
                     kind.error(
-                        "Could not inspect today's daily record permissions: ",
-                        "Could not inspect the day-task document permissions: ",
-                        "Could not inspect the local habit-completion document permissions: ",
+                        StorageDiagnosticContext {
+                            daily_record: "Could not inspect today's daily record permissions: ",
+                            day_tasks: "Could not inspect the day-task document permissions: ",
+                            habit_completions: "Could not inspect the local habit-completion document permissions: ",
+                        },
                         error,
                     )
                 })?
@@ -605,9 +622,11 @@ where
         )
         .map_err(|error| {
             kind.error(
-                "Could not preserve today's daily record permissions: ",
-                "Could not preserve the day-task document permissions: ",
-                "Could not preserve the local habit-completion document permissions: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not preserve today's daily record permissions: ",
+                    day_tasks: "Could not preserve the day-task document permissions: ",
+                    habit_completions: "Could not preserve the local habit-completion document permissions: ",
+                },
                 error,
             )
         })?;
@@ -616,9 +635,11 @@ where
             .and_then(|_| output.sync_all())
             .map_err(|error| {
                 kind.error(
-                    "Could not write today's daily record update: ",
-                    "Could not write the day-task document update: ",
-                    "Could not write the local habit-completion document update: ",
+                    StorageDiagnosticContext {
+                        daily_record: "Could not write today's daily record update: ",
+                        day_tasks: "Could not write the day-task document update: ",
+                        habit_completions: "Could not write the local habit-completion document update: ",
+                    },
                     error,
                 )
             })?;
@@ -658,9 +679,11 @@ where
             sync_parent(&recovery, kind)?;
             fs::remove_file(&temporary).map_err(|error| {
                 kind.error(
-                    "Could not remove the completed daily record snapshot: ",
-                    "Could not remove the completed day-task snapshot: ",
-                    "Could not remove the completed local habit-completion snapshot: ",
+                    StorageDiagnosticContext {
+                        daily_record: "Could not remove the completed daily record snapshot: ",
+                        day_tasks: "Could not remove the completed day-task snapshot: ",
+                        habit_completions: "Could not remove the completed local habit-completion snapshot: ",
+                    },
                     error,
                 )
             })?;
@@ -684,26 +707,32 @@ where
     })?;
     let active_after_rollback = fs::read(path).map_err(|error| {
         kind.error(
-            "Could not verify today's daily record after conflict rollback: ",
-            "Could not verify the day-task document after conflict rollback: ",
-            "Could not verify the local habit-completion document after conflict rollback: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not verify today's daily record after conflict rollback: ",
+                day_tasks: "Could not verify the day-task document after conflict rollback: ",
+                habit_completions: "Could not verify the local habit-completion document after conflict rollback: ",
+            },
             error,
         )
     })?;
     let exchanged_candidate = fs::read(&temporary).map_err(|error| {
         kind.error(
-            "Could not verify the rejected daily record candidate: ",
-            "Could not verify the rejected day-task candidate: ",
-            "Could not verify the rejected local habit-completion candidate: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not verify the rejected daily record candidate: ",
+                day_tasks: "Could not verify the rejected day-task candidate: ",
+                habit_completions: "Could not verify the rejected local habit-completion candidate: ",
+            },
             error,
         )
     })?;
     if active_after_rollback == displaced && exchanged_candidate == updated {
         fs::remove_file(&temporary).map_err(|error| {
             kind.error(
-                "Could not remove the rejected daily record candidate: ",
-                "Could not remove the rejected day-task candidate: ",
-                "Could not remove the rejected local habit-completion candidate: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not remove the rejected daily record candidate: ",
+                    day_tasks: "Could not remove the rejected day-task candidate: ",
+                    habit_completions: "Could not remove the rejected local habit-completion candidate: ",
+                },
                 error,
             )
         })?;
@@ -722,9 +751,11 @@ fn prepare_recovery_directory(path: &Path, kind: StorageDocumentKind) -> Result<
     let recovery_directory = recovery_directory_for(path, kind)?;
     fs::create_dir_all(&recovery_directory).map_err(|error| {
         kind.error(
-            "Could not create the Daily Record recovery directory; no write was attempted: ",
-            "Could not create the day-task recovery directory; no write was attempted: ",
-            "Could not create the local habit-completion recovery directory; no write was attempted: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not create the Daily Record recovery directory; no write was attempted: ",
+                day_tasks: "Could not create the day-task recovery directory; no write was attempted: ",
+                habit_completions: "Could not create the local habit-completion recovery directory; no write was attempted: ",
+            },
             error,
         )
     })
@@ -740,9 +771,11 @@ fn preserve_displaced_inode(
         .duration_since(UNIX_EPOCH)
         .map_err(|error| {
             kind.error(
-                "Could not create a recovery snapshot nonce: ",
-                "Could not create a day-task recovery snapshot nonce: ",
-                "Could not create a local habit-completion recovery snapshot nonce: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not create a recovery snapshot nonce: ",
+                    day_tasks: "Could not create a day-task recovery snapshot nonce: ",
+                    habit_completions: "Could not create a local habit-completion recovery snapshot nonce: ",
+                },
                 error,
             )
         })?
@@ -763,14 +796,23 @@ fn preserve_displaced_inode(
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
-                return Err(kind.error("Could not preserve the Daily Record inode actually displaced during activation: ", "Could not preserve the day-task document inode actually displaced during activation: ", "Could not preserve the local habit-completion document inode actually displaced during activation: ", error))
+                return Err(kind.error(
+                    StorageDiagnosticContext {
+                        daily_record: "Could not preserve the Daily Record inode actually displaced during activation: ",
+                        day_tasks: "Could not preserve the day-task document inode actually displaced during activation: ",
+                        habit_completions: "Could not preserve the local habit-completion document inode actually displaced during activation: ",
+                    },
+                    error,
+                ))
             }
         }
     }
     Err(kind.text(
-        "Could not reserve a unique recovery path for the Daily Record inode actually displaced during activation.",
-        "Could not reserve a unique recovery path for the day-task document inode actually displaced during activation.",
-        "Could not reserve a unique recovery path for the local habit-completion document inode actually displaced during activation.",
+        StorageDiagnosticContext {
+            daily_record: "Could not reserve a unique recovery path for the Daily Record inode actually displaced during activation.",
+            day_tasks: "Could not reserve a unique recovery path for the day-task document inode actually displaced during activation.",
+            habit_completions: "Could not reserve a unique recovery path for the local habit-completion document inode actually displaced during activation.",
+        },
     ))
 }
 
@@ -780,9 +822,11 @@ fn recovery_directory_for(path: &Path, kind: StorageDocumentKind) -> Result<Path
         .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "life"))
         .ok_or_else(|| {
         kind.text(
-            "Today's Daily Record has no location for a same-volume recovery snapshot.",
-            "The day-task document has no location for a same-volume recovery snapshot.",
-            "The local habit-completion document has no location for a same-volume recovery snapshot.",
+            StorageDiagnosticContext {
+                daily_record: "Today's Daily Record has no location for a same-volume recovery snapshot.",
+                day_tasks: "The day-task document has no location for a same-volume recovery snapshot.",
+                habit_completions: "The local habit-completion document has no location for a same-volume recovery snapshot.",
+            },
         )
     })?;
     Ok(life.join(".personal-dashboard/recovery/today"))
@@ -796,9 +840,11 @@ fn create_temporary_file(
         .duration_since(UNIX_EPOCH)
         .map_err(|error| {
             kind.error(
-                "Could not create a daily record update nonce: ",
-                "Could not create a day-task update nonce: ",
-                "Could not create a local habit-completion update nonce: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not create a daily record update nonce: ",
+                    day_tasks: "Could not create a day-task update nonce: ",
+                    habit_completions: "Could not create a local habit-completion update nonce: ",
+                },
                 error,
             )
         })?
@@ -818,18 +864,22 @@ fn create_temporary_file(
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
                 return Err(kind.error(
-                    "Could not prepare today's daily record update: ",
-                    "Could not prepare the day-task document update: ",
-                    "Could not prepare the local habit-completion document update: ",
+                    StorageDiagnosticContext {
+                        daily_record: "Could not prepare today's daily record update: ",
+                        day_tasks: "Could not prepare the day-task document update: ",
+                        habit_completions: "Could not prepare the local habit-completion document update: ",
+                    },
                     error,
                 ))
             }
         }
     }
     Err(kind.text(
-        "Could not reserve a unique temporary daily record path.",
-        "Could not reserve a unique temporary day-task document path.",
-        "Could not reserve a unique temporary local habit-completion document path.",
+        StorageDiagnosticContext {
+            daily_record: "Could not reserve a unique temporary daily record path.",
+            day_tasks: "Could not reserve a unique temporary day-task document path.",
+            habit_completions: "Could not reserve a unique temporary local habit-completion document path.",
+        },
     ))
 }
 
@@ -852,9 +902,11 @@ fn preserve_conflict_snapshot(
     let recovery_directory = recovery_directory_for(path, kind)?;
     fs::create_dir_all(&recovery_directory).map_err(|error| {
         kind.error(
-            "Could not create the Daily Record recovery directory: ",
-            "Could not create the day-task recovery directory: ",
-            "Could not create the local habit-completion recovery directory: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not create the Daily Record recovery directory: ",
+                day_tasks: "Could not create the day-task recovery directory: ",
+                habit_completions: "Could not create the local habit-completion recovery directory: ",
+            },
             error,
         )
     })?;
@@ -862,9 +914,11 @@ fn preserve_conflict_snapshot(
         .duration_since(UNIX_EPOCH)
         .map_err(|error| {
             kind.error(
-                "Could not create a conflict snapshot nonce: ",
-                "Could not create a day-task conflict snapshot nonce: ",
-                "Could not create a local habit-completion conflict snapshot nonce: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not create a conflict snapshot nonce: ",
+                    day_tasks: "Could not create a day-task conflict snapshot nonce: ",
+                    habit_completions: "Could not create a local habit-completion conflict snapshot nonce: ",
+                },
                 error,
             )
         })?
@@ -882,9 +936,11 @@ fn preserve_conflict_snapshot(
             Ok(()) => {
                 fs::remove_file(temporary).map_err(|error| {
                     kind.error(
-                        "Could not finalize the conflict recovery snapshot: ",
-                        "Could not finalize the day-task conflict recovery snapshot: ",
-                        "Could not finalize the local habit-completion conflict recovery snapshot: ",
+                        StorageDiagnosticContext {
+                            daily_record: "Could not finalize the conflict recovery snapshot: ",
+                            day_tasks: "Could not finalize the day-task conflict recovery snapshot: ",
+                            habit_completions: "Could not finalize the local habit-completion conflict recovery snapshot: ",
+                        },
                         error,
                     )
                 })?;
@@ -893,36 +949,44 @@ fn preserve_conflict_snapshot(
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
                 return Err(kind.error(
-                    "Could not preserve the concurrent daily record snapshot: ",
-                    "Could not preserve the concurrent day-task snapshot: ",
-                    "Could not preserve the concurrent local habit-completion snapshot: ",
+                    StorageDiagnosticContext {
+                        daily_record: "Could not preserve the concurrent daily record snapshot: ",
+                        day_tasks: "Could not preserve the concurrent day-task snapshot: ",
+                        habit_completions: "Could not preserve the concurrent local habit-completion snapshot: ",
+                    },
                     error,
                 ))
             }
         }
     }
     Err(kind.text(
-        "Could not reserve a unique daily record conflict snapshot path.",
-        "Could not reserve a unique day-task conflict snapshot path.",
-        "Could not reserve a unique local habit-completion conflict snapshot path.",
+        StorageDiagnosticContext {
+            daily_record: "Could not reserve a unique daily record conflict snapshot path.",
+            day_tasks: "Could not reserve a unique day-task conflict snapshot path.",
+            habit_completions: "Could not reserve a unique local habit-completion conflict snapshot path.",
+        },
     ))
 }
 
 fn sync_parent(path: &Path, kind: StorageDocumentKind) -> Result<(), String> {
     let parent = path.parent().ok_or_else(|| {
         kind.text(
-            "Today's daily record has no parent directory.",
-            "The day-task document has no parent directory.",
-            "The local habit-completion document has no parent directory.",
+            StorageDiagnosticContext {
+                daily_record: "Today's daily record has no parent directory.",
+                day_tasks: "The day-task document has no parent directory.",
+                habit_completions: "The local habit-completion document has no parent directory.",
+            },
         )
     })?;
     fs::File::open(parent)
         .and_then(|directory| directory.sync_all())
         .map_err(|error| {
             kind.error(
-                "Could not sync today's daily record directory: ",
-                "Could not sync the day-task document directory: ",
-                "Could not sync the local habit-completion document directory: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not sync today's daily record directory: ",
+                    day_tasks: "Could not sync the day-task document directory: ",
+                    habit_completions: "Could not sync the local habit-completion document directory: ",
+                },
                 error,
             )
         })
@@ -944,16 +1008,20 @@ pub(crate) fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKi
 
     let left = CString::new(left.as_os_str().as_bytes()).map_err(|_| {
         kind.text(
-            "The temporary daily record path contains a NUL byte.",
-            "The temporary day-task document path contains a NUL byte.",
-            "The temporary local habit-completion document path contains a NUL byte.",
+            StorageDiagnosticContext {
+                daily_record: "The temporary daily record path contains a NUL byte.",
+                day_tasks: "The temporary day-task document path contains a NUL byte.",
+                habit_completions: "The temporary local habit-completion document path contains a NUL byte.",
+            },
         )
     })?;
     let right = CString::new(right.as_os_str().as_bytes()).map_err(|_| {
         kind.text(
-            "The daily record path contains a NUL byte.",
-            "The day-task document path contains a NUL byte.",
-            "The local habit-completion document path contains a NUL byte.",
+            StorageDiagnosticContext {
+                daily_record: "The daily record path contains a NUL byte.",
+                day_tasks: "The day-task document path contains a NUL byte.",
+                habit_completions: "The local habit-completion document path contains a NUL byte.",
+            },
         )
     })?;
     // SAFETY: both C strings are NUL-terminated and remain alive for the duration of the call.
@@ -962,9 +1030,11 @@ pub(crate) fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKi
         Ok(())
     } else {
         Err(kind.error(
-            "Could not atomically exchange today's daily record: ",
-            "Could not atomically exchange the day-task document: ",
-            "Could not atomically exchange the local habit-completion document: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not atomically exchange today's daily record: ",
+                day_tasks: "Could not atomically exchange the day-task document: ",
+                habit_completions: "Could not atomically exchange the local habit-completion document: ",
+            },
             std::io::Error::last_os_error(),
         ))
     }
@@ -973,9 +1043,11 @@ pub(crate) fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKi
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn atomic_exchange(_left: &Path, _right: &Path, kind: StorageDocumentKind) -> Result<(), String> {
     Err(kind.text(
-        "Atomic conditional Daily Record replacement is currently supported only on macOS.",
-        "Atomic conditional day-task replacement is currently supported only on macOS.",
-        "Atomic conditional local habit-completion replacement is currently supported only on macOS.",
+        StorageDiagnosticContext {
+            daily_record: "Atomic conditional Daily Record replacement is currently supported only on macOS.",
+            day_tasks: "Atomic conditional day-task replacement is currently supported only on macOS.",
+            habit_completions: "Atomic conditional local habit-completion replacement is currently supported only on macOS.",
+        },
     ))
 }
 

@@ -16,12 +16,10 @@ impl DiagnosticVoicePreflight {
 mod tests {
     use super::*;
     #[test]
-    fn a_claim_is_consumed_before_any_permission_or_capture_outcome() {
-        for _outcome in ["success", "failure", "cancel"] {
-            let gate = DiagnosticVoicePreflight::new();
-            assert!(gate.claim().is_ok());
-            assert_eq!(gate.claim(), Err("capture-unavailable".into()));
-        }
+    fn a_claim_consumes_the_only_attempt_without_a_reset() {
+        let gate = DiagnosticVoicePreflight::new();
+        assert!(gate.claim().is_ok());
+        assert_eq!(gate.claim(), Err("capture-unavailable".into()));
     }
     #[test]
     fn concurrent_claims_across_owners_allow_exactly_one_attempt() {

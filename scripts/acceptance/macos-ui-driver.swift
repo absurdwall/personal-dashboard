@@ -3992,15 +3992,18 @@ func assertControlReceivesHitTest(_ control: AXUIElement, label: String) throws 
 
 // Measure current two-column/single layouts and the attached context overlay.
 // specification: mode | history label | chat title | context label | draft | send label
+// Short-window modes check context evidence and composer reachability separately.
 func assertCollaborationColumns(_ application: AXUIElement, specification: String) throws {
     let parts = specification.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-    guard parts.count == 6, ["two", "single", "two-context", "single-context"].contains(parts[0]),
+    guard parts.count == 6, ["two", "single", "two-context", "single-context", "single-scroll", "single-scroll-evidence", "single-scroll-context"].contains(parts[0]),
           let window = mainWindow(application), let windowFrame = frame(window) else { throw DriverError.usage }
     let single = parts[0].hasPrefix("single")
-    let contextOpen = parts[0].hasSuffix("-context")
+    let scrollLayout = parts[0].hasPrefix("single-scroll")
+    let evidencePhase = parts[0] == "single-scroll-evidence"
+    let contextOpen = parts[0].hasSuffix("-context") || evidencePhase
     let chat = try regionFrame(application, label: parts[2])
     guard chat.width >= (single ? 200 : 360), chat.minX >= windowFrame.minX, chat.maxX <= windowFrame.maxX,
-          chat.minY >= windowFrame.minY, chat.maxY <= windowFrame.maxY else {
+          (scrollLayout || (chat.minY >= windowFrame.minY && chat.maxY <= windowFrame.maxY)) else {
         throw DriverError.unexpectedText("conversation has unusable rendered bounds: \(chat), window=\(windowFrame)")
     }
     if !single {
@@ -4016,11 +4019,13 @@ func assertCollaborationColumns(_ application: AXUIElement, specification: Strin
           stringAttribute(input, "AXValue") == parts[4], inputFrame.width >= 120, inputFrame.height >= 24,
           sendFrame.width >= 24, sendFrame.height >= 20,
           chat.contains(inputFrame), chat.contains(sendFrame),
-          windowFrame.contains(inputFrame), windowFrame.contains(sendFrame) else {
+          (evidencePhase || (windowFrame.contains(inputFrame) && windowFrame.contains(sendFrame))) else {
         throw DriverError.unexpectedText("retained composer/input/Send must remain visible within the conversation")
     }
-    try assertControlReceivesHitTest(input, label: "retained message draft")
-    try assertControlReceivesHitTest(send, label: parts[5])
+    if !evidencePhase {
+        try assertControlReceivesHitTest(input, label: "retained message draft")
+        try assertControlReceivesHitTest(send, label: parts[5])
+    }
     if contextOpen {
         let context = try regionFrame(application, label: parts[3])
         let chatHeading = findTextPaths(application, parts[2]).compactMap { path -> CGRect? in
@@ -4034,29 +4039,32 @@ func assertCollaborationColumns(_ application: AXUIElement, specification: Strin
               contextHeading.width > 0, contextHeading.height > 0 else {
             throw DriverError.unexpectedText("context must be an attached readable overlay below the heading and above the raised composer: context=\(context), chat=\(chat), input=\(inputFrame)")
         }
-        try assertDisjointFrames((label: parts[3], frame: contextHeading), (label: "draft input", frame: inputFrame), unit: "context heading/composer control")
-        let contextRoot = findTextPaths(application, parts[3]).flatMap { $0.ancestors + [$0.element] }.first { element in
-            stringAttribute(element, "AXRole") == "AXGroup" && frame(element) == context && nodeText(element).localizedCaseInsensitiveContains(parts[3])
-        }
-        var readableBody: CGRect?
-        if let root = contextRoot {
-            _ = walk(root) { element in
-                guard stringAttribute(element, "AXRole") == "AXStaticText", !nodeText(element).isEmpty,
-                      let bounds = frame(element), bounds.minY >= contextHeading.maxY else { return false }
-                let readable = bounds.intersection(context).intersection(windowFrame).intersection(
-                    CGRect(x: chat.minX, y: contextHeading.maxY, width: chat.width, height: inputFrame.minY - contextHeading.maxY)
-                )
-                guard !readable.isNull, readable.width > 0, readable.height >= 20 else { return false }
-                readableBody = readable
-                return true
+        if !scrollLayout || evidencePhase {
+            guard windowFrame.contains(contextHeading) else { throw DriverError.unexpectedText("context heading must be visible during the evidence stage") }
+            try assertDisjointFrames((label: parts[3], frame: contextHeading), (label: "draft input", frame: inputFrame), unit: "context heading/composer control")
+            let contextRoot = findTextPaths(application, parts[3]).flatMap { $0.ancestors + [$0.element] }.first { element in
+                stringAttribute(element, "AXRole") == "AXGroup" && frame(element) == context && nodeText(element).localizedCaseInsensitiveContains(parts[3])
             }
+            var readableBody: CGRect?
+            if let root = contextRoot {
+                _ = walk(root) { element in
+                    guard stringAttribute(element, "AXRole") == "AXStaticText", !nodeText(element).isEmpty,
+                          let bounds = frame(element), bounds.minY >= contextHeading.maxY else { return false }
+                    let readable = bounds.intersection(context).intersection(windowFrame).intersection(
+                        CGRect(x: chat.minX, y: contextHeading.maxY, width: chat.width, height: inputFrame.minY - contextHeading.maxY)
+                    )
+                    guard !readable.isNull, readable.width > 0, readable.height >= 20 else { return false }
+                    readableBody = readable
+                    return true
+                }
+            }
+            guard let body = readableBody else { throw DriverError.unexpectedText("attached context must expose readable body content above the raised composer") }
+            print("Rendered attached context overlay: context=\(context), readable body=\(body), input=\(inputFrame), Send=\(sendFrame)")
         }
-        guard let body = readableBody else { throw DriverError.unexpectedText("attached context must expose readable body content above the raised composer") }
-        print("Rendered attached context overlay: context=\(context), readable body=\(body), input=\(inputFrame), Send=\(sendFrame)")
     } else if visibleText(application, parts[3]) != nil {
         throw DriverError.unexpectedText("collapsed context must not expose its old pane: \(parts[3])")
     }
-    print("Rendered Collaboration \(parts[0]); conversation=\(chat); retained draft and Send are not occluded")
+    print("Rendered Collaboration \(parts[0]); conversation=\(chat); \(evidencePhase ? "context evidence is readable; draft retained" : "retained draft and Send are not occluded")")
 }
 
 func renderedLeafFrame(_ application: AXUIElement, label: String) throws -> CGRect {

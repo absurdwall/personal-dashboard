@@ -17,6 +17,11 @@ export type SleepOverviewStatistics=Readonly<{metric:'wake'|'sleep'|'duration';p
 export type SleepOverview=Readonly<{date:string;durations:readonly SleepDurationSample[];statistics:readonly SleepOverviewStatistics[]}>;
 export type SleepView = Readonly<{targetBinding:string;revision:string|null;records:readonly SleepRecord[];facts:readonly SleepEndpointFact[];overview?:SleepOverview|null}>;
 
+/** Keep every canonical match; multiple records remain an explicit conflict. */
+export function sleepFactsForLivedDate(facts:readonly SleepEndpointFact[]|undefined,key:SleepHabitKey,date:string|undefined):readonly SleepEndpointFact[]{
+  return facts?.filter(fact=>fact.habitKey===key&&fact.livedDate===date)??[];
+}
+
 /** Endpoint grammar retains semantic catalog values until the active language is known. */
 export function sleepEndpointCopy(fact:SleepEndpointFact|null|undefined):InterfaceCopyValue {
   const endpoint=fact?.endpoint;

@@ -6489,7 +6489,7 @@ NODE
   launch_app_waiting_for_text "Today" 30
   run_driver press "Collaboration" 10
   run_driver press "$session_title" 10
-  for window_size in "1440x900" "1040x800" "640x720" "1440x900"; do
+  for window_size in "1440x900" "1040x800" "640x800" "1440x900"; do
     index=$((index + 1))
     current_step="checking collaboration columns at $window_size"
     run_driver set-size "$window_size" 10
@@ -6498,17 +6498,17 @@ NODE
     run_driver capture-window "$captures/collaboration-$index-$window_size.png" 10
     run_driver dump-text "" 10 > "$captures/collaboration-$index-$window_size-accessibility.txt"
     case "$window_size" in
-      "640x720") mode=single ;;
+      "640x800") mode=single ;;
       *) mode=two ;;
     esac
     run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context|$draft|Send" 10
     if [[ "$mode" != "single" ]]; then run_driver assert-window-visible "New chat" 10; fi
     run_driver assert-text "$draft" 10
   done
-  for window_size in "1440x900" "1040x800" "640x720"; do
+  for window_size in "1440x900" "1040x800" "640x800"; do
     current_step="checking attached context disclosure and retained composer at $window_size"
     run_driver set-size "$window_size" 10
-    case "$window_size" in "640x720") mode=single ;; *) mode=two ;; esac
+    case "$window_size" in "640x800") mode=single ;; *) mode=two ;; esac
     run_driver press "Context" 10
     run_driver assert-collaboration-columns "$mode-context|Sessions|$session_title|Current context|$draft|Send" 10
     run_driver assert-window-visible "Current context" 10
@@ -6519,6 +6519,33 @@ NODE
     run_driver assert-focused-text "Context" 10
     run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context|$draft|Send" 10
   done
+  # The shipped <=720px/<=740px content viewport deliberately scrolls rather
+  # than squeezing its 42rem conversation. Verify access in separate stages.
+  current_step="checking short narrow Collaboration scroll reachability"
+  run_driver set-size "640x720" 10
+  run_driver assert-size "640x720" 10
+  run_driver scroll-text-visible "$draft" 10
+  run_driver scroll-text-visible "Send" 10
+  run_driver focus "$draft" 10
+  run_driver assert-visible-focus "$draft" 10
+  run_driver assert-collaboration-columns "single-scroll|Sessions|$session_title|Current context|$draft|Send" 10
+  run_driver capture-window "$captures/collaboration-short-composer.png" 10
+  run_driver scroll-text-visible "Context" 10
+  run_driver assert-window-visible "Context" 10
+  run_driver press "Context" 10
+  run_driver scroll-text-visible "Current context" 10
+  run_driver assert-collaboration-columns "single-scroll-evidence|Sessions|$session_title|Current context|$draft|Send" 10
+  run_driver capture-window "$captures/collaboration-short-context.png" 10
+  run_driver scroll-text-visible "$draft" 10
+  run_driver scroll-text-visible "Send" 10
+  run_driver focus "$draft" 10
+  run_driver assert-visible-focus "$draft" 10
+  run_driver assert-collaboration-columns "single-scroll-context|Sessions|$session_title|Current context|$draft|Send" 10
+  run_driver scroll-text-visible "Close current work context" 10
+  run_driver assert-window-visible "Close current work context" 10
+  run_driver press "Close current work context" 10
+  run_driver assert-focused-text "Context" 10
+  run_driver assert-window-visible "Context" 10
   current_step="checking manual history collapse with the attached context closed"
   run_driver set-size "1040x800" 10
   run_driver press "Toggle sessions sidebar" 10
