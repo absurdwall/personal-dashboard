@@ -4,9 +4,7 @@ use std::fs;
 
 #[test]
 fn reported_night_is_read_back_supplemented_and_reopened_without_copying_daily_data() {
-    let root = std::env::temp_dir().join(format!("pd-sleep-{}", std::process::id()));
-    fs::create_dir_all(root.join(".obsidian")).unwrap();
-    fs::create_dir_all(root.join("life/Journal/Daily")).unwrap();
+    let root = vault("reported-night");
     let workflow = SleepWorkflow::new(&root);
     let opened = workflow.read().unwrap();
     let first = workflow.save(serde_json::from_value::<SleepMutationInput>(json!({
