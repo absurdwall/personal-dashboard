@@ -138,7 +138,7 @@ NODE
   habit_sleep_assert_record "$canonical" supplemented "$identity" || fail "historical sleep did not supplement the same night"
   run_driver wait-active-text "Actual: next day 02:00" 20
   run_driver press "Daytime" 10
-  run_driver click-axis-card "Go to bed" 10
+  run_driver press-contains "Open next day 02:00: Go to bed" 10
   run_driver wait-text "2026-09-10 02:00" 20
   run_driver wait-text "Reported sleep fact" 10
   run_driver wait-text "Canonical record: $(cat "$identity")" 10
@@ -159,12 +159,12 @@ NODE
   run_driver press "Save time · Wake up · 2026-09-10" 10
   habit_sleep_assert_record "$canonical" corrected "$identity" || fail "correction did not preserve identity and other endpoint"
   run_driver press "Daytime" 10
-  run_driver click-axis-card "Wake up" 10
+  run_driver press-contains "Open 07:35: Wake up" 10
   run_driver wait-text "2026-09-10 07:35" 20
   run_driver wait-text "Canonical record: $(cat "$identity")" 10
   run_driver wait-text "Actual date: 2026-09-10 07:35 · UTC−04:00" 10
   run_driver press "Close fact details" 10
-  run_driver assert-axis-card-absent "Go to bed|next day 02:00" 10
+  run_driver assert-absent-text "Open next day 02:00: Go to bed" 10
   run_driver capture-window "$captures/sleep-current-today-en.png" 10
   habit_sleep_assert_preserved
   saved_hash="$(shasum -a 256 "$canonical" | awk '{print $1}')"
