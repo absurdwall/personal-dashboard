@@ -208,15 +208,8 @@ SLEEP
   else
     current_step="retaining real synthetic dictation as an editable unsent draft"
     experience_124_driver type-text "Message|Synthetic keyboard before dictation." 10
-    experience_124_driver press-exact "Start dictation" 10
-    experience_124_driver wait-text "Recording · You can speak" 45
-    sleep 6
-    experience_124_driver press-exact "Stop dictation" 10
-    experience_124_driver wait-text "personal dashboard" 30
-    experience_124_driver assert-state "Start dictation|enabled" 30
-    experience_124_driver assert-absent-text "Microphone stopped · Finishing transcript" 2
-    experience_124_driver assert-absent-text "Transcription ready. Review or edit" 2
-    experience_124_driver assert-absent-text "completeness is unconfirmed" 2
+    capture_synthetic_composer_dictation experience_124_driver press-exact "personal dashboard" 6
+    assert_synthetic_composer_dictation_complete experience_124_driver
     experience_124_readback voice 10 >/dev/null || fail "real transcript/draft state was not confirmed"
     experience_124_driver capture-window "$captures/07-real-voice-unsent-draft.png" 10
   fi

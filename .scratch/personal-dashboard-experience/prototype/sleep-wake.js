@@ -178,15 +178,9 @@ function metricStats(selectedMetric, dates) {
   for (const date of dates) {
     const record = records.get(date);
     if (!record) continue;
-    if (selectedMetric === 'duration') {
-      const value = durationValue(record);
-      if (value && (value.kind==='exact'||value.kind==='approx')) { valid++; values.push({value:value.minutes,approximate:value.kind==='approx'}); }
-    } else {
-      const value = record[selectedMetric];
-      if (hasValue(value)) valid++;
-      const point = pointMinutesForAverage(record,selectedMetric);
-      if (point) values.push(point);
-    }
+    const point = pointMinutesForAverage(record,selectedMetric);
+    if (selectedMetric === 'duration' ? point !== null : hasValue(record[selectedMetric])) valid++;
+    if (point) values.push(point);
   }
   let average = null;
   if (values.length) {
