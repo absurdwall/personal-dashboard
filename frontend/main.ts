@@ -1,3 +1,5 @@
+import { HabitTimeEntry } from "./habit-time-entry.js";
+import { formatSleepEndpoint, type SleepEndpointFact } from "./sleep-facts.js";
 import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
@@ -415,6 +417,7 @@ type TodayView = Readonly<{
   tasks: TasksView;
   dayTasks: DayTaskListView;
   habitCorrections: HabitCorrectionView;
+  habitTimeHabits?: readonly Readonly<{key:string;name:string;localizedNames:HabitLocalizedNames}>[];
   timeAxis: TimeAxisView;
 }>;
 
@@ -473,6 +476,7 @@ type HabitCellView = Readonly<{
   hasRecord: boolean;
   countsAsCompletion: boolean;
   actualTimeLabel: string | null;
+  sleepFact?: SleepEndpointFact | null;
   localCompletionState: HabitLocalCompletionState;
   hasExternalCompletion: boolean;
   completionSourceLabels: readonly string[];
@@ -2031,6 +2035,7 @@ function resetVaultScopedWorkspaceState(): void {
   stashCalendarTaskCreateDraft();
   taskEditDrafts.clear();
   historicalHabitArrival.clear();
+  habitTimeEntry?.clear();
   habitDetailRequests.invalidate();
   taskRequests.invalidate();
   todayTaskRequests.invalidate();
@@ -5347,6 +5352,15 @@ async function openCollaborationForEveningReview(targetDate: string): Promise<bo
   return opened.preservedDraft;
 }
 
+const habitTimeRoot = document.querySelector<HTMLElement>("#habit-time-records");
+const habitTimeEntry = habitTimeRoot ? new HabitTimeEntry(habitTimeRoot, {
+  language: () => currentInterfaceLanguage,
+  invoke: (command, args) => window.__TAURI__.core.invoke(command, args),
+  track: operation => { void pendingWrites.track(operation); },
+  saved: () => { void refreshHabits(); },
+  openCollaboration: () => showWorkspaceDestination("collaboration", true),
+}) : null;
+
 const eveningReviewEntryButton = document.querySelector<HTMLButtonElement>("#today-start-review");
 const eveningReviewEntryStatus = document.querySelector<HTMLElement>("#today-review-entry-status");
 const eveningReviewEntry = eveningReviewEntryButton && eveningReviewEntryStatus
@@ -7519,19 +7533,18 @@ function renderToday(view: TodayView, keepTaskEditorsOpen = false): void {
     }
   }
   showTodayPhase(currentTodayPhase);
-  const arrival = !view.isToday ? historicalHabitArrival.forDate(view.date) : null;
+  const arrival = historicalHabitArrival.forDate(view.date);
   if (arrival) {
     showTodayPhase("daytime");
-    window.requestAnimationFrame(() => {
-      if (
-        currentWorkspaceDestination !== "today" ||
-        !historicalHabitCorrections ||
-        historicalHabitCorrections.hidden ||
-        !historicalHabitArrival.consume(arrival, currentTodayView?.date ?? null)
-      ) return;
-      historicalHabitCorrections.scrollIntoView({ block: "start" });
-      historicalHabitCorrections.focus({ preventScroll: true });
-    });
+    if (arrival.habitKey && currentWorkspaceDestination === "today" && historicalHabitArrival.consume(arrival, currentTodayView?.date ?? null)) {
+      habitTimeEntry?.focus(arrival.habitKey);
+    } else if (!arrival.habitKey) {
+      window.requestAnimationFrame(() => {
+        if (currentWorkspaceDestination !== "today" || !historicalHabitCorrections || historicalHabitCorrections.hidden || !historicalHabitArrival.consume(arrival, currentTodayView?.date ?? null)) return;
+        historicalHabitCorrections.scrollIntoView({ block: "start" });
+        historicalHabitCorrections.focus({ preventScroll: true });
+      });
+    }
   }
   if (startsTodaySession) {
     todayAxisFollowState = "following";
@@ -7772,9 +7785,15 @@ function renderTodayTasks(
 
 function renderHistoricalHabitCorrections(view: TodayView): void {
   if (!historicalHabitCorrections) return;
-  historicalHabitCorrections.hidden = view.isToday;
-  if (view.isToday) return;
   const corrections = view.habitCorrections;
+  const timeHabits = view.habitTimeHabits ?? [];
+  historicalHabitCorrections.hidden = view.isToday && timeHabits.length === 0;
+  habitTimeEntry?.present({ date: corrections.date, vaultPath: view.vaultPath ?? "", canRecord: corrections.canRecord && view.vaultAvailability === "available", habits: timeHabits.map(habit => ({ key: habit.key, name: displayHabitName(habit) })) });
+  if (historicalHabitCorrections.hidden) return;
+  const heading = document.querySelector<HTMLElement>("#historical-habit-heading");
+  const sectionLabel = historicalHabitCorrections.querySelector<HTMLElement>(".section-label");
+  if (heading) setCopy(heading, timeHabits.length > 0 ? "sleep.habitRecords" : "history.habitHeading");
+  if (sectionLabel) setCopy(sectionLabel, timeHabits.length > 0 ? "sleep.selectedContext" : "history.section");
   if (historicalHabitDate) historicalHabitDate.textContent = corrections.date;
   if (historicalHabitStatus) {
     if (historicalHabitCompletionStatus?.copyKey && historicalHabitCompletionStatus.error) {
@@ -7796,11 +7815,11 @@ function renderHistoricalHabitCorrections(view: TodayView): void {
   if (historicalHabitBoundary) {
     setCopy(
       historicalHabitBoundary,
-      corrections.canRecord ? "history.habitBoundary" : "history.futureBoundary",
+      corrections.canRecord ? (timeHabits.length > 0 ? "sleep.recordBoundary" : "history.habitBoundary") : "history.futureBoundary",
     );
   }
   if (!historicalHabitList) return;
-  const habits = corrections.habits.filter((habit) => habit.canRecordCompletion);
+  const habits = corrections.habits.filter((habit) => !view.isToday && habit.canRecordCompletion);
   historicalHabitList.replaceChildren(
     ...habits.map((habit) => {
       const presentation = historicalHabitCorrectionPresentation(habit);
@@ -7873,7 +7892,7 @@ function renderHistoricalHabitCorrections(view: TodayView): void {
       return row;
     }),
   );
-  if (habits.length === 0) {
+  if (habits.length === 0 && timeHabits.length === 0) {
     const empty = document.createElement("p");
     empty.className = "day-task-empty";
     setCopy(empty, "history.noCompletionHabits");
@@ -9195,6 +9214,7 @@ const habitCompletionExplanationLabels: Record<
 
 function habitProgressLabel(habit: HabitView): string {
   if (habit.completedCount === null) {
+    if (habit.today.sleepFact) return formatSleepEndpoint(habit.today.sleepFact, currentInterfaceLanguage);
     return habit.today.actualTimeLabel
       ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage)
       : t("habits.actualUnknown");
@@ -10041,6 +10061,20 @@ function renderSelectedHabitCell(): void {
     }),
   );
   detail.replaceChildren(heading, state, details);
+  if ((habit.key === "wake" || habit.key === "sleep") && cell.date <= habit.today.date) {
+    if (cell.sleepFact) {
+      const actual = document.createElement("p");
+      setCopy(actual, "sleep.actualValue", { value: formatSleepEndpoint(cell.sleepFact, currentInterfaceLanguage) });
+      detail.append(actual);
+    }
+    const entry = document.createElement("button");
+    entry.type = "button";
+    entry.className = "secondary-button";
+    entry.dataset.habitTimeOpen = habit.key;
+    entry.dataset.habitTimeDate = cell.date;
+    setCopy(entry, "sleep.viewOrAddTime", { date: cell.date });
+    detail.append(entry);
+  }
   const correctionDate = historicalHabitCorrectionDate(cell.date, habit.today.date);
   const snapshot = currentHabitSnapshot;
   if (
@@ -15060,6 +15094,7 @@ function showWorkspaceDestination(
     todayUnlocatedOverride = null;
     todaySidebarReadingPosition = null;
     historicalHabitArrival.clear();
+    habitTimeEntry?.clear();
     todayPresentationRequests.invalidate();
     todayClockRequests.invalidate();
     todayTaskRequests.invalidate();
@@ -16079,6 +16114,16 @@ habitsDestination?.addEventListener("change", (event) => {
 });
 
 habitsDestination?.addEventListener("click", (event) => {
+  const timeEntry = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-time-open][data-habit-time-date]");
+  if (timeEntry) {
+    const key = timeEntry.dataset.habitTimeOpen;
+    const date = timeEntry.dataset.habitTimeDate;
+    if ((key === "wake" || key === "sleep") && date && selectedHabitCell?.habitKey === key && selectedHabitCell.date === date) {
+      showWorkspaceDestination("today", true, date);
+      historicalHabitArrival.select(date, key);
+    }
+    return;
+  }
   const detailBack = (event.target as HTMLElement).closest<HTMLButtonElement>("#habit-detail-back");
   if (detailBack) {
     closeHabitDetail();

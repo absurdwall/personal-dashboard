@@ -76,7 +76,7 @@ impl TodayClock for FixedClock {
         "09:00".into()
     }
     fn current_timestamp_label(&self) -> String {
-        "2026-10-22T09:00-04:00".into()
+        "2026-10-22T09:00:00-04:00".into()
     }
 }
 fn application(root: &Path) -> TodayApplication<Selected, NoSelection, FixedClock> {
@@ -646,5 +646,65 @@ fn replay_cannot_confirm_an_endpoint_whose_lived_day_context_was_later_changed()
         .unwrap_err()
         .contains("读回"));
     assert_eq!(app.sleep_records().unwrap(), corrected);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn today_time_entry_uses_canonical_habit_names_lifecycle_and_start_dates_without_changing_completion_context(
+) {
+    let root = vault("entry-catalog");
+    let path = root.join(personal_dashboard_lib::habits::SNAPSHOT_RELATIVE_PATH);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut snapshot: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["generatedAt"] = json!("2026-10-22T08:00:00-04:00");
+    snapshot["range"] = json!({"from":"2026-08-03","to":"2026-10-22"});
+    snapshot["habits"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|h| ["wake", "sleep"].contains(&h["key"].as_str().unwrap()));
+    fs::write(path, serde_json::to_vec(&snapshot).unwrap()).unwrap();
+    let app = application(&root);
+    let before = app.habits().unwrap();
+    app.save_habit_definition(serde_json::from_value(json!({"operationId":"rename-wake","targetBinding":before.catalog_target_binding,"expectedRevision":before.catalog_revision,"habitKey":"wake","language":"en","name":"My renamed wake","startDate":null,"emoji":null,"group":null,"goal":null})).unwrap()).unwrap();
+    let today = serde_json::to_value(app.read_date("2026-10-22").unwrap()).unwrap();
+    assert_eq!(
+        today["habitTimeHabits"][0]["localizedNames"]["en"],
+        "My renamed wake"
+    );
+    let catalog = app.habits().unwrap();
+    app.set_habit_active(serde_json::from_value(json!({"operationId":"pause-wake","targetBinding":catalog.catalog_target_binding,"expectedRevision":catalog.catalog_revision,"habitKey":"wake","active":false})).unwrap()).unwrap();
+    let today = serde_json::to_value(app.read_date("2026-10-22").unwrap()).unwrap();
+    assert_eq!(today["habitTimeHabits"].as_array().unwrap().len(), 1);
+    assert_eq!(today["habitTimeHabits"][0]["key"], "sleep");
+    let history = serde_json::to_value(app.read_date("2026-10-21").unwrap()).unwrap();
+    assert!(history["habitTimeHabits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|h| h["key"] == "wake" && h["localizedNames"]["en"] == "My renamed wake"));
+    let catalog = app.habits().unwrap();
+    app.save_habit_definition(serde_json::from_value(json!({"operationId":"later-start-sleep","targetBinding":catalog.catalog_target_binding,"expectedRevision":catalog.catalog_revision,"habitKey":"sleep","language":"en","name":"Later start sleep","startDate":"2026-10-23","emoji":null,"group":null,"goal":null})).unwrap()).unwrap();
+    let today = serde_json::to_value(app.read_date("2026-10-22").unwrap()).unwrap();
+    assert!(today["habitTimeHabits"].as_array().unwrap().is_empty());
+    assert_eq!(
+        fs::read_dir(root.join("life/Journal/Daily"))
+            .unwrap()
+            .count(),
+        0
+    );
+    save(
+        &app,
+        json!({"wakeDate":"2026-06-02","changeId":"preserve-older-time","sleepOnset":point("2026-06-01","23:50",-240)}),
+    );
+    let older = serde_json::to_value(app.read_date("2026-06-01").unwrap()).unwrap();
+    assert!(
+        older["habitTimeHabits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|habit| habit["key"] == "sleep"),
+        "canonical earlier endpoints survive an edited future start beyond the snapshot window"
+    );
     fs::remove_dir_all(root).unwrap();
 }

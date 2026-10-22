@@ -1,12 +1,12 @@
-type Arrival = Readonly<{ date: string }>;
+type Arrival = Readonly<{ date: string; habitKey?: "wake" | "sleep" }>;
 
 // An explicit entry gets one arrival. Deferred layout work must still belong to
 // that same entry, even when the user returns to the same date later.
 export class HistoricalHabitArrival {
   private pending: Arrival | null = null;
 
-  select(date: string): void {
-    this.pending = { date };
+  select(date: string, habitKey?: "wake" | "sleep"): void {
+    this.pending = { date, habitKey };
   }
 
   clear(): void {
