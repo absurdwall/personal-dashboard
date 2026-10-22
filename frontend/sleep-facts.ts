@@ -1,13 +1,16 @@
 import {interfaceCopy, type InterfaceLanguage} from './interface-language.js';
 
+export type SleepHabitKey='wake'|'sleep';
+export function isSleepHabitKey(value:unknown):value is SleepHabitKey{return value==='wake'||value==='sleep';}
+
 export type SleepPoint = Readonly<{date:string;time:string;utcOffsetMinutes:number;approximate?:boolean}>;
 export type SleepEndpoint =
   | (SleepPoint & Readonly<{kind:'point'}>)
   | Readonly<{kind:'range';start:SleepPoint;end:SleepPoint;reportedText:string}>
-  | Readonly<{kind:'text';date:string;text:string}>
+  | Readonly<{kind:'text';date?:string|null;text:string}>
   | Readonly<{kind:'unknown'}>
   | Readonly<{kind:'unrecorded'}>;
-export type SleepEndpointFact = Readonly<{recordId:string;habitKey:string;livedDate:string|null;dayRelation:'same-day'|'next-day'|'unresolved';endpoint:SleepEndpoint}>;
+export type SleepEndpointFact = Readonly<{recordId:string;habitKey:SleepHabitKey;livedDate:string|null;dayRelation:'same-day'|'next-day'|'unresolved';endpoint:SleepEndpoint}>;
 export type SleepRecord = Readonly<{id:string;wakeDate:string;sleepOnset:SleepEndpoint;getUp:SleepEndpoint;estimatedDurationMinutes:number|null}>;
 export type SleepDurationSample=Readonly<{date:string;minutes:number;approximate:boolean;onset:SleepPoint;getUp:SleepPoint}>;
 export type SleepOverviewStatistics=Readonly<{metric:'wake'|'sleep'|'duration';period:7|30;count:number;mean:number|null;earliest:number|null;latest:number|null;approximate:boolean;earliestApproximate:boolean;latestApproximate:boolean}>;

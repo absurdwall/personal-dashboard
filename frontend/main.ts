@@ -1,6 +1,6 @@
 import { HabitSleepOverview } from "./habit-sleep-overview.js";
 import { HabitTimeEntry, createHabitTimeEntryButton } from "./habit-time-entry.js";
-import { formatSleepEndpoint, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
+import { isSleepHabitKey, formatSleepEndpoint, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
 import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
@@ -61,6 +61,7 @@ import {
   updateTodayAxisMarkerAccessibleName,
   setApplicationMessage,
   setInterfaceCopy,
+  setInterfaceAttribute,
   setInterfaceError,
   type HabitDetail,
   type InterfaceCopyKey,
@@ -5955,6 +5956,10 @@ function appendAxisSourceIdentity(target: HTMLElement, entry: TimeAxisEntryView)
     const date = document.createElement("span");
     setCopy(date, "sleep.fact.actualDate", { value: actual });
     target.append(date);
+  } else if (endpoint.kind === "text") {
+    const date = document.createElement("span");
+    setCopy(date, "sleep.fact.actualDateUnknown");
+    target.append(date);
   }
   if (fact.livedDate) {
     const context = document.createElement("span");
@@ -9523,10 +9528,10 @@ function habitRow(habit: HabitView): HTMLElement {
   value.className = "habit-snapshot-value";
   const progress = document.createElement("strong");
   const todayState = document.createElement("small");
-  progress.textContent = habit.key === "wake" || habit.key === "sleep"
+  progress.textContent = isSleepHabitKey(habit.key)
     ? habitSleepOverview.value(habit.key, habit.today.date, habit.today.sleepFact ? formatSleepEndpoint(habit.today.sleepFact, currentInterfaceLanguage) : habit.today.actualTimeLabel ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage) : undefined) : habitProgressLabel(habit);
   progress.title = progress.textContent;
-  if (habit.key === "wake" || habit.key === "sleep") {
+  if (isSleepHabitKey(habit.key)) {
     progress.classList.toggle("habit-sleep-described-value", !/^\d{2}:\d{2}$/.test(progress.textContent));
   }
   setCopy(todayState, "habits.todayStatus", { status: t(habitStatusLabels[habit.today.status]) });
@@ -9537,13 +9542,13 @@ function habitRow(habit: HabitView): HTMLElement {
   const recent = document.createElement("div");
   recent.className = "habit-recent";
   const recentLabel = document.createElement("span");
-  setCopy(recentLabel, habit.key === "wake" || habit.key === "sleep" ? "sleep.overview.recent" : "habits.recent");
+  setCopy(recentLabel, isSleepHabitKey(habit.key) ? "sleep.overview.recent" : "habits.recent");
   const recentCells = document.createElement("div");
   recentCells.className = "habit-recent-cells";
   recentCells.replaceChildren(
     ...habit.recent.map((cell) => habitCellButton(habit, cell, true)),
   );
-  recent.append(recentLabel, habit.key === "wake" || habit.key === "sleep"
+  recent.append(recentLabel, isSleepHabitKey(habit.key)
     ? habitSleepOverview.mini({key: habit.key, name: displayHabitName(habit), date: habit.today.date}) : recentCells);
 
   const expand = document.createElement("button");
@@ -9553,10 +9558,10 @@ function habitRow(habit: HabitView): HTMLElement {
   expand.setAttribute("aria-expanded", "false");
   setHabitHistoryDisclosureCopy(expand, habit, false);
 
-  if (habit.key === "wake" || habit.key === "sleep") {
+  if (isSleepHabitKey(habit.key)) {
     delete expand.dataset.habitExpand;
     expand.dataset.habitOpen = habit.key;
-    expand.setAttribute("aria-label", t("habits.openDetails", { habit: displayHabitName(habit) }));
+    setInterfaceAttribute(expand, "aria-label", "habits.openDetails", currentInterfaceLanguage, { habit: displayHabitName(habit) });
     const detail = document.createElement("div");
     detail.className = "habit-cell-detail habit-sleep-day-evidence";
     detail.dataset.habitDetail = habit.key;
@@ -9686,7 +9691,7 @@ function renderHabitDetailPanel(): void {
     : currentHabitSnapshot?.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
   habitsCurrentTodayView.hidden = true;
   habitDetailPanel.hidden = false;
-  habitDetailPanel.dataset.sleepDetail = String(selectedHabitDetailKey === "wake" || selectedHabitDetailKey === "sleep");
+  habitDetailPanel.dataset.sleepDetail = String(isSleepHabitKey(selectedHabitDetailKey));
   if (habitDetailHeading) {
     const name = habit ? displayHabitName(habit) : selectedHabitDetailKey;
     const emoji = habit?.definition?.emoji;
@@ -9893,7 +9898,7 @@ function renderHabitDetailPanel(): void {
     }
   }
 
-  if (habit.key === "wake" || habit.key === "sleep") {
+  if (isSleepHabitKey(habit.key)) {
     const evidence = document.createElement("details");
     evidence.className = "habit-sleep-evidence";
     const summary = document.createElement("summary");
@@ -9950,12 +9955,12 @@ async function loadHabitDetailHistory(habitKey: string, revealSleepDetail = fals
 
 function openHabitDetail(habitKey: string): void {
   selectedHabitDetailKey = habitKey;
-  if (habitKey === "wake" || habitKey === "sleep") habitSleepOverview.open(habitKey);
+  if (isSleepHabitKey(habitKey)) habitSleepOverview.open(habitKey);
   currentHabitDetailHistory = null;
   habitDetailRecordLimit = 20;
   habitDetailLoadError = null;
   habitDetailLifecycleNotice = null;
-  void loadHabitDetailHistory(habitKey, habitKey === "wake" || habitKey === "sleep");
+  void loadHabitDetailHistory(habitKey, isSleepHabitKey(habitKey));
 }
 
 function closeHabitDetail(): void {
@@ -10226,7 +10231,7 @@ function renderCanonicalHabitDetail(): void {
 
 function renderSleepHabitSelection(): boolean {
   const selected = selectedHabitCell;
-  if (!selected || (selected.habitKey !== "wake" && selected.habitKey !== "sleep")) return false;
+  if (!selected || !isSleepHabitKey(selected.habitKey)) return false;
   const habit = currentHabitSnapshot?.habits.find(item => item.key === selected.habitKey);
   const row = [...(habitsDestination?.querySelectorAll<HTMLElement>(".habit-snapshot-row") ?? [])]
     .find(item => item.dataset.habitKey === selected.habitKey);
@@ -10303,7 +10308,7 @@ function renderSelectedHabitCell(): void {
     }),
   );
   detail.replaceChildren(heading, state, details);
-  if ((habit.key === "wake" || habit.key === "sleep") && cell.date <= habit.today.date) {
+  if (isSleepHabitKey(habit.key) && cell.date <= habit.today.date) {
     if (cell.sleepFact) {
       const actual = document.createElement("p");
       setCopy(actual, "sleep.actualValue", { value: formatSleepEndpoint(cell.sleepFact, currentInterfaceLanguage) });
@@ -11027,7 +11032,7 @@ async function refreshHabits(forSelection = false): Promise<void> {
   try {
     const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot", { vaultPath });
     if (!isCurrent()) return;
-    if (view.habits.some(habit => habit.key === "wake" || habit.key === "sleep")) {
+    if (view.habits.some(habit => isSleepHabitKey(habit.key))) {
       try {
         const sleep = await window.__TAURI__.core.invoke<SleepView>("sleep_records", { vaultPath });
         if (!isCurrent()) return;
@@ -16381,7 +16386,7 @@ habitsDestination?.addEventListener("click", (event) => {
     if (vaultSelectionInProgress) return;
     const key = timeEntry.dataset.habitTimeOpen;
     const date = timeEntry.dataset.habitTimeDate;
-    if ((key === "wake" || key === "sleep") && date && selectedHabitCell?.habitKey === key && selectedHabitCell.date === date) {
+    if (isSleepHabitKey(key) && date && selectedHabitCell?.habitKey === key && selectedHabitCell.date === date) {
       showWorkspaceDestination("today", true, date);
       historicalHabitArrival.select(date, key);
     }

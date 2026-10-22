@@ -1,8 +1,8 @@
 import {setInterfaceCopy,setInterfaceAttribute,setInterfaceError,type InterfaceLanguage,type InterfaceCopyKey} from './interface-language.js';
-import {formatSleepEndpoint,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint} from './sleep-facts.js';
+import {isSleepHabitKey,formatSleepEndpoint,type SleepHabitKey,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint} from './sleep-facts.js';
 
 type Context=Readonly<{date:string;vaultPath:string;canRecord:boolean;habits:readonly Readonly<{key:string;name:string}>[]}>;
-type Draft={habitKey:string;kind:SleepEndpoint['kind'];time:string;endTime:string;approximate:boolean;text:string;expanded:boolean;recordId?:string;targetBinding:string;expectedRevision:string|null;changeId:string};
+type Draft={habitKey:SleepHabitKey;kind:SleepEndpoint['kind'];time:string;endTime:string;approximate:boolean;text:string;textDate:string|null;expanded:boolean;recordId?:string;targetBinding:string;expectedRevision:string|null;changeId:string};
 type Options=Readonly<{
   language:()=>InterfaceLanguage;
   invoke:<T>(command:string,args?:Record<string,unknown>)=>Promise<T>;
@@ -30,7 +30,7 @@ export class HabitTimeEntry {
   private saving=false;
   private selectionPending=false;
   private status:Readonly<{key:InterfaceCopyKey;error?:string}>|null=null;
-  private pendingFocus:string|null=null;
+  private pendingFocus:SleepHabitKey|null=null;
   constructor(private readonly root:HTMLElement,private readonly options:Options){}
   private identity(context:Context|null):string{return context?`${context.vaultPath}\n${context.date}`:'';}
   clear():void{
@@ -51,7 +51,7 @@ export class HabitTimeEntry {
     if(context.habits.length>0&&!this.selectionPending)void this.read();
   }
   focus(habitKey:string):void{
-    if(!this.context?.habits.some(habit=>habit.key===habitKey))return;
+    if(!isSleepHabitKey(habitKey)||!this.context?.habits.some(habit=>habit.key===habitKey))return;
     this.pendingFocus=habitKey;
     if(this.data)this.open(habitKey,true);
   }
@@ -69,13 +69,13 @@ export class HabitTimeEntry {
       this.status={key:'sleep.loadFailed',error:String(error)};this.render();
     }
   }
-  private facts(key:string):readonly SleepEndpointFact[]{return this.data?.facts.filter(f=>f.habitKey===key&&f.livedDate===this.context?.date)??[];}
-  private fact(key:string):SleepEndpointFact|null{const matches=this.facts(key);return matches.length===1?matches[0]:null;}
-  private open(key:string,focus=false):void{
+  private facts(key:SleepHabitKey):readonly SleepEndpointFact[]{return this.data?.facts.filter(f=>f.habitKey===key&&f.livedDate===this.context?.date)??[];}
+  private fact(key:SleepHabitKey):SleepEndpointFact|null{const matches=this.facts(key);return matches.length===1?matches[0]:null;}
+  private open(key:SleepHabitKey,focus=false):void{
     if(this.selectionPending||!this.data||!this.context?.canRecord||this.saving)return;
     if(this.facts(key).length>1){this.pendingFocus=null;this.status={key:'sleep.conflictHelp'};this.render();return;}
     const fact=this.fact(key),endpoint=fact?.endpoint;
-    this.draft={habitKey:key,kind:endpoint?.kind??'point',time:endpoint?.kind==='point'?endpoint.time:endpoint?.kind==='range'?endpoint.start.time:'',endTime:endpoint?.kind==='range'?endpoint.end.time:'',approximate:endpoint?.kind==='point'?Boolean(endpoint.approximate):false,text:endpoint?.kind==='text'?endpoint.text:endpoint?.kind==='range'?endpoint.reportedText:'',expanded:Boolean(endpoint&&endpoint.kind!=='point'),recordId:fact?.recordId,targetBinding:this.data.targetBinding,expectedRevision:this.data.revision,changeId:`habit-time-${globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random()}`}`};
+    this.draft={habitKey:key,kind:endpoint?.kind??'point',time:endpoint?.kind==='point'?endpoint.time:endpoint?.kind==='range'?endpoint.start.time:'',endTime:endpoint?.kind==='range'?endpoint.end.time:'',approximate:endpoint?.kind==='point'?Boolean(endpoint.approximate):false,text:endpoint?.kind==='text'?endpoint.text:endpoint?.kind==='range'?endpoint.reportedText:'',textDate:endpoint?.kind==='text'?endpoint.date??null:null,expanded:Boolean(endpoint&&endpoint.kind!=='point'),recordId:fact?.recordId,targetBinding:this.data.targetBinding,expectedRevision:this.data.revision,changeId:`habit-time-${globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random()}`}`};
     this.pendingFocus=null;this.status=null;this.render();
     if(focus){const target=this.root.querySelector<HTMLInputElement>(`[data-habit-time-form="${key}"] [data-habit-time-point]`);this.root.scrollIntoView({block:'nearest'});target?.focus({preventScroll:true});}
   }
@@ -86,15 +86,16 @@ export class HabitTimeEntry {
     this.root.replaceChildren();
     const context=this.context;if(!context)return;
     for(const habit of context.habits){
+      const key=habit.key;if(!isSleepHabitKey(key))continue;
       const row=document.createElement('section');row.className='habit-time-row';row.dataset.habitTimeRow=habit.key;
       const header=document.createElement('header'),name=document.createElement('strong'),edit=document.createElement('button');
       name.textContent=habit.name;edit.type='button';edit.className='secondary-button';edit.dataset.habitTimeEdit=habit.key;
-      const matches=this.facts(habit.key),conflict=matches.length>1;
-      const fact=this.fact(habit.key),values={habit:habit.name,date:context.date};
+      const matches=this.facts(key),conflict=matches.length>1;
+      const fact=this.fact(key),values={habit:habit.name,date:context.date};
       this.copy(edit,fact?'sleep.correctTime':'sleep.recordTime');
       setInterfaceAttribute(edit,'aria-label',fact?'sleep.correctTimeLabel':'sleep.recordTimeLabel',this.options.language(),values);
       edit.disabled=this.selectionPending||this.saving||!context.canRecord||!this.data||conflict;
-      edit.addEventListener('click',()=>this.open(habit.key,true));header.append(name,edit);
+      edit.addEventListener('click',()=>this.open(key,true));header.append(name,edit);
       const value=document.createElement('p');value.className='day-task-meta';value.dataset.habitTimeValue=habit.key;
       if(conflict)this.copy(value,'sleep.conflictValue');else if(!this.data)this.copy(value,this.status?.error?'sleep.unavailableValue':'sleep.readingValue');else this.copy(value,'sleep.actualValue',{value:formatSleepEndpoint(fact,this.options.language())});
       row.append(header,value);
@@ -128,7 +129,11 @@ export class HabitTimeEntry {
     let previewRequest=0;
     const updatePreview=async()=>{
       const request=++previewRequest;
-      if(draft.kind!=='point'&&draft.kind!=='range'){this.copy(preview,'sleep.fixedContext',{date:context.date});return;}
+      if(draft.kind!=='point'&&draft.kind!=='range'){
+        if(draft.kind==='text')this.copy(preview,draft.textDate?'sleep.textCalendarKnown':'sleep.textCalendarUnknown',{date:context.date,actualDate:draft.textDate??''});
+        else this.copy(preview,'sleep.fixedContext',{date:context.date});
+        return;
+      }
       this.copy(preview,'sleep.previewEmpty');
       try{
         if(draft.kind==='range'){
@@ -171,7 +176,7 @@ export class HabitTimeEntry {
       let endpoint:SleepEndpoint;
       if(draft.kind==='point')endpoint={kind:'point',...await this.resolvePoint(context.date,draft.time,draft.approximate)};
       else if(draft.kind==='range')endpoint=await this.resolveRange(context.date,draft);
-      else if(draft.kind==='text')endpoint={kind:'text',date:context.date,text:draft.text};
+      else if(draft.kind==='text')endpoint={kind:'text',date:draft.textDate??null,text:draft.text};
       else endpoint={kind:draft.kind};
       if(generation!==this.generation||this.identity(context)!==this.identity(this.context)||this.draft!==draft)return false;
       const input={habitKey:draft.habitKey,livedDate:context.date,endpoint,recordId:draft.recordId,changeId:draft.changeId,targetBinding:draft.targetBinding,expectedRevision:draft.expectedRevision};

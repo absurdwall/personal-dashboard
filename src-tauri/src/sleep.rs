@@ -38,7 +38,9 @@ pub enum SleepEndpoint {
         reported_text: String,
     },
     Text {
-        date: String,
+        /// The reported actual calendar date, absent when it was not established.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        date: Option<String>,
         text: String,
     },
     Unknown,
@@ -84,7 +86,7 @@ impl SleepEndpoint {
                     return Err("端点与所选 lived day 不一致或跨越边界；未写入。".into());
                 }
             }
-            SleepEndpoint::Text { date, .. } => {
+            SleepEndpoint::Text { date: Some(date), .. } => {
                 let previous = crate::today::TodayClockView {
                     date: date.clone(),
                     time: "00:00".into(),
@@ -97,7 +99,7 @@ impl SleepEndpoint {
                     return Err("端点与所选 lived day 不一致或跨越边界；未写入。".into());
                 }
             }
-            SleepEndpoint::Unrecorded => {}
+            SleepEndpoint::Text { date: None, .. } | SleepEndpoint::Unrecorded => {}
             SleepEndpoint::Unknown => {}
         }
         Ok(context)
@@ -118,7 +120,9 @@ impl SleepEndpoint {
                 }
             }
             SleepEndpoint::Text { date, text } => {
-                validate_date(date)?;
+                if let Some(date) = date {
+                    validate_date(date)?;
+                }
                 if text.trim().is_empty() || text.len() > 2000 {
                     return Err("请保留有效的模糊时间原文。".into());
                 }
@@ -181,11 +185,51 @@ pub struct SleepMutationInput {
     pub target_binding: String,
     pub expected_revision: Option<String>,
 }
+/// The only stable Habit identities that own canonical sleep endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub enum SleepHabitKey {
+    Sleep,
+    Wake,
+}
+impl SleepHabitKey {
+    pub fn parse(key: &str) -> Result<Self, &'static str> {
+        match key {
+            "sleep" => Ok(Self::Sleep),
+            "wake" => Ok(Self::Wake),
+            _ => Err("需要稳定的 wake 或 sleep Habit 身份；未写入。"),
+        }
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sleep => "sleep",
+            Self::Wake => "wake",
+        }
+    }
+    fn opposite(self) -> Self {
+        match self {
+            Self::Sleep => Self::Wake,
+            Self::Wake => Self::Sleep,
+        }
+    }
+}
+impl TryFrom<String> for SleepHabitKey {
+    type Error = &'static str;
+    fn try_from(key: String) -> Result<Self, Self::Error> {
+        Self::parse(&key)
+    }
+}
+impl From<SleepHabitKey> for String {
+    fn from(key: SleepHabitKey) -> Self {
+        key.as_str().to_owned()
+    }
+}
+
 /// The lightweight entry's fixed Habit/date context; no night index is exposed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HabitSleepMutationInput {
-    pub habit_key: String,
+    pub habit_key: SleepHabitKey,
     pub lived_date: String,
     pub endpoint: SleepEndpoint,
     pub record_id: Option<String>,
@@ -207,7 +251,7 @@ pub struct SleepView {
 #[serde(rename_all = "camelCase")]
 pub struct SleepEndpointFact {
     pub record_id: String,
-    pub habit_key: String,
+    pub habit_key: SleepHabitKey,
     pub lived_date: Option<String>,
     pub day_relation: crate::habits::DayRelation,
     pub endpoint: SleepEndpoint,
@@ -340,9 +384,6 @@ impl<S: SleepStore> SleepWorkflow<S> {
             return Err("所选 Vault 已改变；未写入。".into());
         }
         validate_date(&input.lived_date)?;
-        if !["sleep", "wake"].contains(&input.habit_key.as_str()) {
-            return Err("需要稳定的 wake 或 sleep Habit 身份；未写入。".into());
-        }
         let context = if matches!(input.endpoint, SleepEndpoint::Unrecorded)
             || (matches!(input.endpoint, SleepEndpoint::Range { .. })
                 && input.endpoint.lived_date().is_none())
@@ -355,7 +396,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         input.endpoint.validate()?;
         input.endpoint.validate_context(context.clone())?;
         let (_, document, _) = self.load()?;
-        let onset = input.habit_key == "sleep";
+        let onset = input.habit_key == SleepHabitKey::Sleep;
         if let Some(receipt) = document.operations.iter().find(|r| r.id == input.change_id) {
             let previous = &receipt.input;
             let endpoint = if onset {
@@ -415,7 +456,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         if input.record_id.is_none() && matching.is_empty() {
             if let SleepEndpoint::Point { point } = &input.endpoint {
                 let incoming = point_seconds(point)?;
-                let opposite_key = if onset { "wake" } else { "sleep" };
+                let opposite_key = input.habit_key.opposite();
                 for candidate in &document.records {
                     if candidate.wake_date == night_date {
                         continue;
@@ -646,8 +687,8 @@ fn view(path: &Path, document: Document, revision: Option<String>) -> SleepView 
 
 fn record_facts(record: &SleepRecord) -> Vec<SleepEndpointFact> {
     [
-        ("sleep", &record.sleep_onset, &record.sleep_onset_lived_date),
-        ("wake", &record.get_up, &record.get_up_lived_date),
+        (SleepHabitKey::Sleep, &record.sleep_onset, &record.sleep_onset_lived_date),
+        (SleepHabitKey::Wake, &record.get_up, &record.get_up_lived_date),
     ]
     .into_iter()
     .filter(|(_, endpoint, _)| !matches!(endpoint, SleepEndpoint::Unrecorded))
@@ -656,7 +697,7 @@ fn record_facts(record: &SleepRecord) -> Vec<SleepEndpointFact> {
         let day_relation = endpoint.day_relation(lived_date.as_deref());
         SleepEndpointFact {
             record_id: record.id.clone(),
-            habit_key: key.into(),
+            habit_key: key,
             lived_date,
             day_relation,
             endpoint: endpoint.clone(),
@@ -668,15 +709,15 @@ fn record_facts(record: &SleepRecord) -> Vec<SleepEndpointFact> {
 /// Enrich the existing cells without changing completion, goal or source evidence.
 pub(crate) fn project_habits(view: &mut crate::habits::HabitSnapshotView, sleep: &SleepView) {
     for habit in &mut view.habits {
-        if !["sleep", "wake"].contains(&habit.key.as_str()) {
+        let Ok(key) = SleepHabitKey::parse(&habit.key) else {
             continue;
-        }
+        };
         for cell in std::iter::once(&mut habit.today)
             .chain(habit.recent.iter_mut())
             .chain(habit.history.iter_mut())
         {
             let mut facts = sleep.facts.iter().filter(|fact| {
-                fact.habit_key == habit.key
+                fact.habit_key == key
                     && fact.lived_date.as_deref() == Some(cell.date.as_str())
             });
             let Some(fact) = facts.next() else {
@@ -793,7 +834,7 @@ pub fn tool_spec(description: &str) -> serde_json::Value {
         .push(json!("kind"));
     let endpoint = json!({"oneOf":[point_endpoint,
         {"type":"object","properties":{"kind":{"const":"range"},"start":point,"end":point,"reportedText":{"type":"string"}},"required":["kind","start","end","reportedText"],"additionalProperties":false},
-        {"type":"object","properties":{"kind":{"const":"text"},"date":{"type":"string"},"text":{"type":"string"}},"required":["kind","date","text"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"text"},"date":{"type":["string","null"],"description":"Actual calendar YYYY-MM-DD only when explicitly known; omit or null when wording does not establish it. Never copy livedDate or wakeDate into this field."},"text":{"type":"string"}},"required":["kind","text"],"additionalProperties":false},
         {"type":"object","properties":{"kind":{"enum":["unknown","unrecorded"]}},"required":["kind"],"additionalProperties":false}]});
     json!({"name":"dashboard_sleep_records","description":description,
     "inputSchema":{"oneOf":[

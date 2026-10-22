@@ -925,7 +925,7 @@ fn invalid_context_and_storage_redirection_fail_without_writing_or_daily_side_ef
         ("sleep", "2026-10-21", point("2026-10-22", "02:00:30", -240)),
         ("sleep", "2026-10-21", point("2026-10-22", "24:00", -240)),
     ] {
-        assert!(app.save_habit_sleep_time(serde_json::from_value(json!({"habitKey":habit,"livedDate":day,"endpoint":endpoint,"changeId":"bad-entry","targetBinding":opened.target_binding,"expectedRevision":opened.revision})).unwrap()).is_err());
+        assert!(serde_json::from_value(json!({"habitKey":habit,"livedDate":day,"endpoint":endpoint,"changeId":"bad-entry","targetBinding":opened.target_binding,"expectedRevision":opened.revision})).map_err(|error| error.to_string()).and_then(|input| app.save_habit_sleep_time(input)).is_err());
         assert_eq!(app.sleep_records().unwrap(), opened);
         assert!(!root
             .join("life/.personal-dashboard/sleep/v1/sessions.json")
@@ -1524,4 +1524,95 @@ fn path_bound_sleep_and_habit_reads_reject_same_basename_vaults_before_and_after
     );
     assert!(app.habits_for_selected_vault(a.to_str().unwrap()).is_ok());
     fs::remove_dir_all(parent).unwrap();
+}
+
+#[test]
+fn sleep_habit_identity_rejects_other_keys_at_the_public_json_boundary() {
+    use personal_dashboard_lib::sleep::{HabitSleepMutationInput, SleepEndpointFact};
+    let root = vault("typed-habit-identity");
+    let app = application(&root);
+    let opened = app.sleep_records().unwrap();
+    let input = json!({"habitKey":"wake","livedDate":"2026-10-22","endpoint":point("2026-10-22","07:20",-240),"changeId":"typed-key","targetBinding":opened.target_binding,"expectedRevision":opened.revision});
+    for key in ["reading", "renamed-sleep", "", "Wake"] {
+        let mut invalid = input.clone();
+        invalid["habitKey"] = json!(key);
+        let diagnostic = serde_json::from_value::<HabitSleepMutationInput>(invalid)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(diagnostic, "需要稳定的 wake 或 sleep Habit 身份；未写入。");
+    }
+    assert!(!root
+        .join("life/.personal-dashboard/sleep/v1/sessions.json")
+        .exists());
+    for key in ["wake", "sleep"] {
+        let mut valid = input.clone();
+        valid["habitKey"] = json!(key);
+        let decoded: HabitSleepMutationInput = serde_json::from_value(valid).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap()["habitKey"], key);
+    }
+    let saved = app
+        .save_habit_sleep_time(serde_json::from_value(input).unwrap())
+        .unwrap();
+    let mut fact = serde_json::to_value(&saved.facts[0]).unwrap();
+    assert_eq!(fact["habitKey"], "wake");
+    fact["habitKey"] = json!("reading");
+    assert_eq!(
+        serde_json::from_value::<SleepEndpointFact>(fact)
+            .unwrap_err()
+            .to_string(),
+        "需要稳定的 wake 或 sleep Habit 身份；未写入。"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn original_wording_retains_lived_context_without_claiming_an_actual_calendar_date() {
+    let root = vault("unknown-text-calendar-date");
+    let app = application(&root);
+    let opened = app.sleep_records().unwrap();
+    let input = json!({"habitKey":"sleep","livedDate":"2026-10-21","endpoint":{"kind":"text","date":null,"text":"around 2 a.m., not normalized"},"changeId":"original-only","targetBinding":opened.target_binding,"expectedRevision":opened.revision});
+    let saved = app
+        .save_habit_sleep_time(serde_json::from_value(input).unwrap())
+        .unwrap();
+    let fact = serde_json::to_value(&saved.facts[0]).unwrap();
+    assert_eq!(fact["livedDate"], "2026-10-21");
+    assert_eq!(fact["dayRelation"], "unresolved");
+    assert!(fact["endpoint"]["date"].is_null());
+    assert_eq!(fact["endpoint"]["text"], "around 2 a.m., not normalized");
+    assert_eq!(saved.records[0].estimated_duration_minutes, None);
+    let selected = app.read_date("2026-10-21").unwrap();
+    assert_eq!(selected.time_axis.unlocated_confirmed_facts.len(), 1);
+    assert!(app
+        .read_date("2026-10-22")
+        .unwrap()
+        .time_axis
+        .unlocated_confirmed_facts
+        .is_empty());
+    assert_eq!(application(&root).sleep_records().unwrap(), saved);
+    let known = app.save_habit_sleep_time(serde_json::from_value(json!({"habitKey":"sleep","livedDate":"2026-10-21","recordId":saved.records[0].id,"endpoint":{"kind":"text","date":"2026-10-22","text":"original wording with an explicitly known actual date"},"changeId":"known-text-date","targetBinding":saved.target_binding,"expectedRevision":saved.revision})).unwrap()).unwrap();
+    let reopened = serde_json::to_value(application(&root).sleep_records().unwrap()).unwrap();
+    assert_eq!(reopened["facts"][0]["endpoint"]["date"], "2026-10-22");
+    assert_eq!(reopened["facts"][0]["livedDate"], "2026-10-21");
+    assert_eq!(known.records[0].id, saved.records[0].id);
+    let mut invalid = json!({"habitKey":"sleep","livedDate":"2026-10-21","recordId":known.records[0].id,"endpoint":{"kind":"text","date":"not-a-date","text":"untouched wording"},"changeId":"invalid-text-date","targetBinding":known.target_binding,"expectedRevision":known.revision});
+    assert!(app
+        .save_habit_sleep_time(serde_json::from_value(invalid.clone()).unwrap())
+        .is_err());
+    invalid["endpoint"] = json!({"kind":"text","date":null,"text":""});
+    assert!(app
+        .save_habit_sleep_time(serde_json::from_value(invalid).unwrap())
+        .is_err());
+    assert_eq!(app.sleep_records().unwrap(), known);
+    let schema = personal_dashboard_lib::sleep::tool_spec("Synthetic tool");
+    let text = &schema["inputSchema"]["oneOf"][2]["properties"]["input"]["properties"]["endpoint"]
+        ["oneOf"][2];
+    assert!(text["properties"]["date"]["type"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("null")));
+    assert!(!text["required"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("date")));
+    fs::remove_dir_all(root).unwrap();
 }

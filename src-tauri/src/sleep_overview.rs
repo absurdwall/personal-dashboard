@@ -1,6 +1,6 @@
 //! Read-only Habit overview semantics; the frontend owns only chart geometry.
 use crate::{
-    sleep::{SleepEndpoint, SleepPoint, SleepView},
+    sleep::{SleepEndpoint, SleepHabitKey, SleepPoint, SleepView},
     today::CalendarDate,
 };
 use serde::{Deserialize, Serialize};
@@ -13,10 +13,10 @@ pub enum OverviewMetric {
     Duration,
 }
 impl OverviewMetric {
-    fn habit_key(self) -> Option<&'static str> {
+    fn habit_key(self) -> Option<SleepHabitKey> {
         match self {
-            Self::Wake => Some("wake"),
-            Self::Sleep => Some("sleep"),
+            Self::Wake => Some(SleepHabitKey::Wake),
+            Self::Sleep => Some(SleepHabitKey::Sleep),
             Self::Duration => None,
         }
     }
@@ -88,7 +88,7 @@ impl SleepView {
             return self;
         };
         let mut durations = Vec::new();
-        for fact in self.facts.iter().filter(|fact| fact.habit_key == "wake") {
+        for fact in self.facts.iter().filter(|fact| fact.habit_key == SleepHabitKey::Wake) {
             let Some(date) = fact.lived_date.as_ref() else {
                 continue;
             };
@@ -96,7 +96,7 @@ impl SleepView {
                 .facts
                 .iter()
                 .filter(|other| {
-                    other.habit_key == "wake" && other.lived_date.as_ref() == Some(date)
+                    other.habit_key == SleepHabitKey::Wake && other.lived_date.as_ref() == Some(date)
                 })
                 .count()
                 != 1
@@ -151,7 +151,7 @@ impl SleepView {
                             .facts
                             .iter()
                             .filter(|fact| {
-                                Some(fact.habit_key.as_str()) == metric.habit_key()
+                                Some(fact.habit_key) == metric.habit_key()
                                     && fact.lived_date.as_deref() == Some(&day)
                             })
                             .collect();

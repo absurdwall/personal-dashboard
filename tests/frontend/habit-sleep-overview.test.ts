@@ -525,3 +525,12 @@ test('cancelling a picker resumes the selected Sleep date evidence in the origin
   `);
   assert.equal(result.before,0);assert.match(result.date,/2026-08-09/);assert.deepEqual(result.errors,[]);
 });
+
+test('the rendered Sleep detail disclosure keeps its catalog accessible name across language changes',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    const row=document.querySelector('.habit-snapshot-row[data-habit-key="sleep"]'),button=row.querySelector('.habit-expand');
+    const before=button.getAttribute('aria-label');require('./interface-language.js').applyInterfaceLanguage('zh');const zh=button.getAttribute('aria-label');require('./interface-language.js').applyInterfaceLanguage('en');
+    return JSON.stringify({before,zh,after:button.getAttribute('aria-label'),same:row.querySelector('.habit-expand')===button,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary);
+  assert.equal(result.before,result.after);assert.match(result.zh,/详情/);assert.doesNotMatch(result.zh,/历史/);assert.equal(result.same,true);assert.deepEqual(result.errors,[]);
+});

@@ -14,15 +14,17 @@ function fixture(failReads = false) {
   const rendered: string[] = [];
   const observations: unknown[] = [];
   const commands: string[] = [];
+  const habitReadPaths: unknown[] = [];
   const request = { invalidate() { rendered.push("invalidate"); } };
   const context = vm.createContext({ Promise, currentWorkspaceDestination: "today",
     selectedTodayDate: "2026-10-09", currentTodayView: {date: "2026-10-09", vault: "vault-a"},
     selectedCalendarDate: null, currentCalendarSummaryView: null, selectedHabitCell: {date: "2026-10-09"},
     currentHabitDateView: null, currentHabitSnapshot: {vault: "vault-a"}, currentCalendarMonth: null,
-    collaborationVaultSelectionRevision: 1, vaultSelectionInProgress: false,
+    collaborationVaultSelectionRevision: 1, vaultSelectionInProgress: false, selectedVaultPath: "/Synthetic/A/Shared",
     todayStatus: {dataset: {}}, todayPresentationFresh: true,
     window: {__TAURI__: {core: {async invoke(command: string, args: unknown) {
       commands.push(command);
+      if (command === "habit_snapshot") habitReadPaths.push((args as {vaultPath:string}).vaultPath);
       if (command === "collaboration_record_refresh") { observations.push(args); return; }
       await barrier;
       if (failReads) throw new Error("Vault A read failed");
@@ -39,7 +41,7 @@ function fixture(failReads = false) {
     renderCalendarReadError() {rendered.push("calendar-error");}, setCopyError() {rendered.push("today-error");}, t: (key: string) => key,
   });
   vm.runInContext(production, context);
-  return {context, release, rendered, observations, commands,
+  return {context, release, rendered, observations, commands, habitReadPaths,
     run() { return vm.runInContext("refreshCanonicalDateProjections('2026-10-09', {sessionId:'session-a',executionId:'run-a',trigger:'confirmedEffect'})", context); }};
 }
 
@@ -47,10 +49,12 @@ for (const failed of [false, true]) {
   test(`delayed ${failed ? "failed" : "successful"} Vault A refresh cannot mutate Vault B projections or observations`, async () => {
     const f = fixture(failed); const pending = f.run();
     f.context.collaborationVaultSelectionRevision = 2;
+    f.context.selectedVaultPath = "/Synthetic/B/Shared";
     f.context.currentTodayView = {date: "2026-10-09", vault: "vault-b"};
     f.context.currentHabitSnapshot = {vault: "vault-b"};
     f.context.currentHabitDateView = {vault: "vault-b"};
     f.release(); await pending;
+    assert.deepEqual(f.habitReadPaths, ["/Synthetic/A/Shared"], "the delayed read keeps its originating full Vault path");
     assert.deepEqual(f.rendered, []);
     assert.deepEqual(f.observations, []);
     assert.equal(f.context.currentTodayView.vault, "vault-b");
@@ -68,6 +72,7 @@ test("a refresh started during a Vault switch does not issue selected-source rea
 
 test("same-Vault refresh retains stale source state separately from applied rendering", async () => {
   const f = fixture(); const pending = f.run(); f.release(); await pending;
+  assert.deepEqual(f.habitReadPaths, ["/Synthetic/A/Shared"]);
   assert.ok(f.rendered.includes("today") && f.rendered.includes("habits"));
   const observation = f.observations[0] as any;
   assert.equal(observation.executionId, "run-a");

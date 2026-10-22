@@ -332,3 +332,18 @@ test('a bound canonical-read rejection uses paired English copy while retaining 
   `);
   assert.match(result.text,/Selected Vault changed; no sleep records read\./);assert.doesNotMatch(result.text,/所选/);assert.equal(result.raw,'所选 Vault 已改变；未读取作息。');assert.equal(result.disabled,true);assert.deepEqual(result.errors,[]);
 });
+
+for(const knownDate of [null,'2026-08-11'])test(`original wording preserves its ${knownDate?'explicit':'unknown'} actual date independently of the selected lived day`,{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    await until(()=>!document.querySelector('[data-habit-time-edit="sleep"]').disabled);
+    document.querySelector('[data-habit-time-edit="sleep"]').click();
+    const kind=document.querySelector('[data-habit-time-kind]');kind.value='text';kind.dispatchEvent(new Event('change',{bubbles:true}));
+    const form=document.querySelector('[data-habit-time-form="sleep"]'),text=form.querySelector('[data-habit-time-original]');text.value='around 2 a.m., not normalized';text.dispatchEvent(new Event('input',{bubbles:true}));
+    const preview=form.querySelector('[data-habit-time-preview]').textContent;form.requestSubmit();await until(()=>calls.some(c=>c.command==='save_habit_sleep_time'));
+    return JSON.stringify({preview,input:calls.find(c=>c.command==='save_habit_sleep_time').args.input,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    ${knownDate?`sleepState.facts=[{recordId:'legacy-text',habitKey:'sleep',livedDate:view.date,dayRelation:'unresolved',endpoint:{kind:'text',date:'2026-08-11',text:'legacy explicit-date wording'}}];`:''}
+  `);
+  assert.equal(result.input.livedDate,'2026-08-10');assert.equal(result.input.endpoint.date,knownDate);
+  assert.equal(result.input.endpoint.text,'around 2 a.m., not normalized');assert.match(result.preview,knownDate?/2026-08-11/:/actual calendar date.*unknown/i);assert.deepEqual(result.errors,[]);
+});
