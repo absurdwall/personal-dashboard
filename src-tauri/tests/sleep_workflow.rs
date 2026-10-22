@@ -547,11 +547,12 @@ fn a_selection_change_while_reading_discards_the_previous_vault_result() {
         &application(&original),
         json!({"wakeDate":"2026-10-22","changeId":"private-original","getUp":point("2026-10-22","07:30",-240)}),
     );
+    let reads = Arc::new(AtomicUsize::new(0));
     let app = TodayApplication::new(
         SwitchAfterCapture {
             original: original.clone(),
             replacement: replacement.clone(),
-            reads: Arc::new(AtomicUsize::new(0)),
+            reads: reads.clone(),
         },
         NoSelection,
         FixedClock,
@@ -560,6 +561,8 @@ fn a_selection_change_while_reading_discards_the_previous_vault_result() {
         .sleep_records()
         .expect_err("a late result belongs to the captured Vault, not the new selection");
     assert!(error.contains("Vault"));
+    reads.store(0, Ordering::SeqCst);
+    assert!(app.read_date("2026-10-22").expect_err("Today must reject a late projection from the old Vault").contains("Vault"));
     assert!(!replacement
         .join("life/.personal-dashboard/sleep/v1/sessions.json")
         .exists());
@@ -705,6 +708,204 @@ fn today_time_entry_uses_canonical_habit_names_lifecycle_and_start_dates_without
             .iter()
             .any(|habit| habit["key"] == "sleep"),
         "canonical earlier endpoints survive an edited future start beyond the snapshot window"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn today_reads_endpoint_points_on_their_own_lived_days_without_a_daily_record() {
+    let root = vault("today-independent");
+    let app = application(&root);
+    let saved = save(
+        &app,
+        json!({"wakeDate":"2026-10-22","changeId":"today-points",
+        "sleepOnset":point("2026-10-22","02:00",-240),"getUp":point("2026-10-22","07:30",-240)}),
+    );
+    let wednesday = serde_json::to_value(app.read_date("2026-10-21").unwrap()).unwrap();
+    assert_eq!(
+        wednesday["timeAxis"]["confirmedFacts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        wednesday["timeAxis"]["confirmedFacts"][0]["startMinute"],
+        1560
+    );
+    assert_eq!(
+        wednesday["timeAxis"]["confirmedFacts"][0]["endMinute"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        wednesday["timeAxis"]["confirmedFacts"][0]["sleepFact"]["recordId"],
+        saved.records[0].id
+    );
+    assert_eq!(
+        wednesday["timeAxis"]["confirmedFacts"][0]["sleepFact"]["endpoint"]["date"],
+        "2026-10-22"
+    );
+    let thursday = app.read_date("2026-10-22").unwrap();
+    assert_eq!(thursday.time_axis.confirmed_facts.len(), 1);
+    assert_eq!(
+        thursday.time_axis.confirmed_facts[0].start_minute,
+        Some(450)
+    );
+    assert_eq!(
+        application(&root).read_date("2026-10-22").unwrap(),
+        thursday
+    );
+    assert_eq!(
+        fs::read_dir(root.join("life/Journal/Daily"))
+            .unwrap()
+            .count(),
+        0
+    );
+    assert!(!root
+        .join("life/.personal-dashboard/habit-completions/v1/completions.json")
+        .exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn today_keeps_independent_sources_visible_when_either_daily_record_or_sleep_is_unreadable() {
+    let root = vault("today-source-failures");
+    let app = application(&root);
+    save(
+        &app,
+        json!({"wakeDate":"2026-10-22","changeId":"source-fact","getUp":point("2026-10-22","07:30",-240)}),
+    );
+    let daily = root.join("life/Journal/Daily/2026/2026-10/2026-10-22.md");
+    fs::create_dir_all(daily.parent().unwrap()).unwrap();
+    let original = include_str!("fixtures/today-time-axis.md").replace("2026-08-10", "2026-10-22");
+    fs::write(&daily, &original).unwrap();
+    let ready = app.read_date("2026-10-22").unwrap();
+    assert_eq!(ready.time_axis.confirmed_facts.len(), 2);
+    assert_eq!(ready.time_axis.unlocated_confirmed_facts.len(), 1);
+    for bytes in [b"invalid daily record".as_slice(), &[0xff, 0xfe]] {
+        fs::write(&daily, bytes).unwrap();
+        let broken = app
+            .read_date("2026-10-22")
+            .expect("available independent facts survive Daily Record errors");
+        assert_eq!(
+            broken.daily_record_availability,
+            personal_dashboard_lib::today::DailyRecordAvailability::Error
+        );
+        assert_eq!(broken.time_axis.confirmed_facts.len(), 1);
+        assert_eq!(broken.time_axis.confirmed_facts[0].start_minute, Some(450));
+        assert_eq!(fs::read(&daily).unwrap(), bytes);
+    }
+    fs::remove_file(&daily).unwrap();
+    fs::create_dir(&daily).unwrap();
+    assert_eq!(
+        app.read_date("2026-10-22")
+            .unwrap()
+            .time_axis
+            .confirmed_facts
+            .len(),
+        1
+    );
+    fs::remove_dir(&daily).unwrap();
+    fs::write(&daily, &original).unwrap();
+    fs::write(
+        root.join("life/.personal-dashboard/sleep/v1/sessions.json"),
+        b"invalid sleep",
+    )
+    .unwrap();
+    let broken_sleep = serde_json::to_value(app.read_date("2026-10-22").unwrap()).unwrap();
+    assert_eq!(
+        broken_sleep["timeAxis"]["confirmedFacts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(broken_sleep["timeAxis"]["sleepError"].as_str().is_some());
+    assert_eq!(fs::read_to_string(&daily).unwrap(), original);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn today_corrections_replace_stable_points_and_uncertainty_remains_unlocated_without_night_index_guessing(
+) {
+    let root = vault("today-precision");
+    let app = application(&root);
+    let first = save(
+        &app,
+        json!({"wakeDate":"2026-10-22","changeId":"precision-first",
+        "sleepOnset":{"kind":"point","date":"2026-10-22","time":"03:59","utcOffsetMinutes":-240,"approximate":true},
+        "getUp":{"kind":"unknown"},"getUpLivedDate":"2026-10-22"}),
+    );
+    let original = serde_json::to_value(app.read_date("2026-10-21").unwrap()).unwrap();
+    assert_eq!(
+        original["timeAxis"]["confirmedFacts"][0]["startMinute"],
+        1679
+    );
+    assert_eq!(
+        original["timeAxis"]["confirmedFacts"][0]["sleepFact"]["endpoint"]["approximate"],
+        true
+    );
+    let corrected = save(
+        &app,
+        json!({"recordId":first.records[0].id,"wakeDate":"2026-10-22","changeId":"boundary-correction","sleepOnset":point("2026-10-22","04:00",-240)}),
+    );
+    assert!(app
+        .read_date("2026-10-21")
+        .unwrap()
+        .time_axis
+        .confirmed_facts
+        .is_empty());
+    let next = serde_json::to_value(app.read_date("2026-10-22").unwrap()).unwrap();
+    assert_eq!(
+        next["timeAxis"]["confirmedFacts"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(next["timeAxis"]["confirmedFacts"][0]["startMinute"], 240);
+    assert_eq!(
+        next["timeAxis"]["confirmedFacts"][0]["sleepFact"]["recordId"],
+        first.records[0].id
+    );
+    assert_eq!(
+        next["timeAxis"]["unlocatedConfirmedFacts"][0]["sleepFact"]["endpoint"]["kind"],
+        "unknown"
+    );
+    assert_eq!(
+        serde_json::to_value(application(&root).read_date("2026-10-22").unwrap()).unwrap(),
+        next
+    );
+    save(
+        &app,
+        json!({"recordId":corrected.records[0].id,"wakeDate":"2026-10-22","changeId":"range-crosses-day",
+      "sleepOnset":{"kind":"range","start":{"date":"2026-10-22","time":"03:30","utcOffsetMinutes":-240},"end":{"date":"2026-10-22","time":"04:30","utcOffsetMinutes":-240},"reportedText":"三点半到四点半之间"},"getUp":{"kind":"text","date":"2026-10-22","text":"八点多吧"}}),
+    );
+    let uncertain = serde_json::to_value(app.read_date("2026-10-22").unwrap()).unwrap();
+    assert!(uncertain["timeAxis"]["confirmedFacts"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        uncertain["timeAxis"]["unlocatedConfirmedFacts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        uncertain["timeAxis"]["unlocatedConfirmedFacts"][0]["sleepFact"]["endpoint"]
+            ["reportedText"],
+        "三点半到四点半之间"
+    );
+    assert!(app
+        .read_date("2026-10-23")
+        .unwrap()
+        .time_axis
+        .unlocated_confirmed_facts
+        .is_empty());
+    assert_eq!(
+        fs::read_dir(root.join("life/Journal/Daily"))
+            .unwrap()
+            .count(),
+        0
     );
     fs::remove_dir_all(root).unwrap();
 }

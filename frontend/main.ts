@@ -210,6 +210,7 @@ type DaytimeView = Readonly<{
 }>;
 
 type TimeAxisEntryView = Readonly<{
+  sleepFact?: SleepEndpointFact;
   planId?: string | null;
   timeEditable?: boolean;
   planPrecision?: "broad" | "approximatePoint" | "exactPoint" | "exactRange" | "unlocated" | null;
@@ -233,6 +234,7 @@ type TimedTodayAxisEntry = TimeAxisEntryView & Readonly<{
 }>;
 
 type TimeAxisView = Readonly<{
+  sleepError?: string;
   currentArrangement: readonly TimeAxisEntryView[];
   confirmedFacts: readonly TimeAxisEntryView[];
   unlocatedCurrentArrangement: readonly TimeAxisEntryView[];
@@ -1999,6 +2001,8 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
     renderTodayTasks(currentTodayView);
     renderLegacyDayTasks(currentTodayView.dayTasks);
     renderHistoricalHabitCorrections(currentTodayView);
+    closeTodayAxisFactPopup(false);
+    renderTodayTimeAxis(currentTodayView);
   }
   updateWorkspaceSidebarPresentation();
   updateTodayUnlocatedPresentation();
@@ -5357,7 +5361,11 @@ const habitTimeEntry = habitTimeRoot ? new HabitTimeEntry(habitTimeRoot, {
   language: () => currentInterfaceLanguage,
   invoke: (command, args) => window.__TAURI__.core.invoke(command, args),
   track: operation => { void pendingWrites.track(operation); },
-  saved: () => { void refreshHabits(); },
+  saved: () => {
+    const date = currentTodayView?.date;
+    void refreshHabits();
+    if (date) void refreshToday(date, true);
+  },
   openCollaboration: () => showWorkspaceDestination("collaboration", true),
 }) : null;
 
@@ -5904,7 +5912,70 @@ function canEditTodayPlanTime(entry: TimeAxisEntryView): boolean {
     !entry.continuesFromPreviousDay && !entry.continuesIntoNextDay;
 }
 
+function sleepFactHabitName(fact: SleepEndpointFact): string {
+  const habit = currentTodayView?.habitTimeHabits?.find(habit => habit.key === fact.habitKey);
+  return habit ? displayHabitName(habit) : t(fact.habitKey === "sleep" ? "sleep.fact.onset" : "sleep.fact.getUp");
+}
+
+function appendAxisEntryCopy(target: HTMLElement, entry: TimeAxisEntryView): void {
+  if (entry.sleepFact) {
+    setCopy(target, "sleep.fact.value", {
+      habit: sleepFactHabitName(entry.sleepFact),
+      value: formatSleepEndpoint(entry.sleepFact, currentInterfaceLanguage),
+    });
+  } else target.textContent = entry.text;
+}
+
+function appendAxisSourceIdentity(target: HTMLElement, entry: TimeAxisEntryView): void {
+  const fact = entry.sleepFact;
+  const label = document.createElement("span");
+  if (!fact) {
+    setCopy(label, "today.sourceDate", { date: entry.sourceDate });
+    target.append(label);
+    return;
+  }
+  setCopy(label, "sleep.fact.canonicalRecord", { id: fact.recordId });
+  target.append(label);
+  const point = (value: { date: string; time: string; utcOffsetMinutes: number }): string => {
+    const offset = value.utcOffsetMinutes;
+    const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
+    const minutes = String(Math.abs(offset) % 60).padStart(2, "0");
+    return `${value.date} ${value.time} · UTC${offset < 0 ? "−" : "+"}${hours}:${minutes}`;
+  };
+  const endpoint = fact.endpoint;
+  const actual = endpoint.kind === "point" ? point(endpoint) : endpoint.kind === "range"
+    ? `${point(endpoint.start)} – ${point(endpoint.end)}` : endpoint.kind === "text" ? endpoint.date : null;
+  if (actual) {
+    const date = document.createElement("span");
+    setCopy(date, "sleep.fact.actualDate", { value: actual });
+    target.append(date);
+  }
+  if (fact.livedDate) {
+    const context = document.createElement("span");
+    setCopy(context, "sleep.fixedContext", { date: fact.livedDate });
+    target.append(context);
+  }
+}
+
+function appendSleepFactCorrection(target: HTMLElement, entry: TimeAxisEntryView): void {
+  const fact = entry.sleepFact;
+  if (!fact) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary-button";
+  if (fact.livedDate === currentTodayView?.date && habitTimeEntry &&
+      currentTodayView.habitTimeHabits?.some(habit => habit.key === fact.habitKey)) {
+    setCopy(button, "sleep.correctTimeLabel", { habit: sleepFactHabitName(fact), date: fact.livedDate! });
+    button.addEventListener("click", () => { closeTodayAxisFactPopup(false); habitTimeEntry.focus(fact.habitKey); });
+  } else {
+    setCopy(button, "sleep.openCollaboration");
+    button.addEventListener("click", () => { closeTodayAxisFactPopup(false); showWorkspaceDestination("collaboration", true); });
+  }
+  target.append(button);
+}
+
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
+  if (entry.sleepFact) return formatSleepEndpoint(entry.sleepFact, currentInterfaceLanguage);
   if(entry.task) {
     const task=currentTodayView?.tasks.tasks.find(task=>task.id===entry.task!.id);
     if(task?.date&&task.time) {
@@ -5935,6 +6006,10 @@ function appendAxisEntryTimeLabel(
   entry: TimeAxisEntryView,
   lane: TodayAxisLaneId,
 ): void {
+  if (entry.sleepFact) {
+    target.textContent = formatSleepEndpoint(entry.sleepFact, currentInterfaceLanguage);
+    return;
+  }
   let key: InterfaceCopyKey;
   let variables: Record<string, string> = {};
   if (!entry.task && entry.startMinute === null) {
@@ -5963,6 +6038,7 @@ function axisEntryMetadataCopyKeys(
   entry: TimeAxisEntryView,
   lane: TodayAxisLaneId,
 ): readonly InterfaceCopyKey[] {
+  if (entry.sleepFact) return ["sleep.fact.source"];
   if (entry.task) {
     return [
       "today.sourceTask",
@@ -5995,6 +6071,10 @@ function axisEntryDetails(
 ): HTMLDetailsElement {
   const details = document.createElement("details");
   details.className = "today-axis-entry-detail";
+  if (entry.sleepFact) {
+    details.dataset.sleepRecordId = entry.sleepFact.recordId;
+    details.dataset.sleepHabitKey = entry.sleepFact.habitKey;
+  }
   details.id = `today-axis-${lane}-entry-${index}`;
   const summary = document.createElement("summary");
   const time = document.createElement(entry.startMinute === null ? "span" : "time");
@@ -6004,14 +6084,12 @@ function axisEntryDetails(
     time.setAttribute("datetime", `${entry.startMinute >= 1440 ? nextAxisDate(currentTodayView?.date ?? entry.sourceDate) : (currentTodayView?.date ?? entry.sourceDate)}T${formatAxisMinute(entry.startMinute)}`);
   }
   const excerpt = document.createElement("span");
-  excerpt.textContent = entry.text;
+  appendAxisEntryCopy(excerpt, entry);
   summary.append(time, excerpt);
   {
     const continuation = document.createElement("span");
     continuation.className = "today-axis-entry-summary-metadata";
-    const sourceDate = document.createElement("span");
-    setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
-    continuation.append(sourceDate);
+    appendAxisSourceIdentity(continuation, entry);
     if (entry.continuesFromPreviousDay) {
       const label = document.createElement("span");
       setCopy(label, "today.continuesFromPrevious");
@@ -6029,7 +6107,7 @@ function axisEntryDetails(
   appendAxisEntryMetadata(sourceStatus, entry, lane);
   summary.append(sourceStatus);
   const copy = document.createElement("p");
-  copy.textContent = entry.text;
+  appendAxisEntryCopy(copy, entry);
   details.append(summary, copy);
   const metadata = document.createElement("div");
   metadata.className = "today-axis-entry-metadata";
@@ -6039,9 +6117,7 @@ function axisEntryDetails(
     metadata.append(period);
   }
   appendAxisEntryMetadata(metadata, entry, lane);
-  const sourceDate = document.createElement("span");
-  setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
-  metadata.append(sourceDate);
+  appendAxisSourceIdentity(metadata, entry);
   if (entry.continuesFromPreviousDay) {
     const continuation = document.createElement("span");
     setCopy(continuation, "today.continuesFromPrevious");
@@ -6053,6 +6129,7 @@ function axisEntryDetails(
     metadata.append(continuation);
   }
   details.append(metadata);
+  appendSleepFactCorrection(details, entry);
   // Broad or unlocated plans are readable summaries; only precise timeline
   // markers expose the plan-time editor.
   if (lane !== "arrangement" || !hasExactPlanTime(entry)) return details;
@@ -6573,6 +6650,10 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-completed", entry.task?.state === "completed");
       marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
       if (entry.task) marker.dataset.taskId = entry.task.id;
+      if (entry.sleepFact) {
+        marker.dataset.sleepRecordId = entry.sleepFact.recordId;
+        marker.dataset.sleepHabitKey = entry.sleepFact.habitKey;
+      }
       const editablePlan = original.lane === "arrangement" && canEditTodayPlanTime(original);
       if (editablePlan) marker.dataset.planId = original.planId!;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
@@ -6602,7 +6683,7 @@ function renderTodayTimeAxisEntries(
       if (readOnlyArrangement) link.classList.add("is-read-only");
       link.draggable = false;
       link.dataset.axisItemTime = axisEntryTimeLabel(original, original.lane);
-      link.dataset.axisItemText = entry.text;
+      link.dataset.axisItemText = entry.sleepFact ? sleepFactHabitName(entry.sleepFact) : entry.text;
       link.dataset.axisMetadataCopyKeys = JSON.stringify(
         axisEntryMetadataCopyKeys(entry, entry.lane),
       );
@@ -6612,7 +6693,7 @@ function renderTodayTimeAxisEntries(
       appendAxisEntryTimeLabel(timeLabel, original, original.lane);
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
-      title.textContent = entry.task
+      title.textContent = entry.sleepFact ? sleepFactHabitName(entry.sleepFact) : entry.task
         ? entry.text
         : original.lane === "arrangement"
           ? stripLeadingAxisTimeLabel(
@@ -6816,13 +6897,11 @@ function openTodayAxisFactPopup(entry: TimeAxisEntryView, marker: HTMLElement): 
 
   const copy = document.createElement("p");
   copy.className = "today-axis-fact-popup-copy";
-  copy.textContent = entry.text;
+  appendAxisEntryCopy(copy, entry);
   const metadata = document.createElement("div");
   metadata.className = "today-axis-entry-metadata";
   appendAxisEntryMetadata(metadata, entry, "facts");
-  const sourceDate = document.createElement("span");
-  setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
-  metadata.append(sourceDate);
+  appendAxisSourceIdentity(metadata, entry);
   if (entry.continuesFromPreviousDay) {
     const continuation = document.createElement("span");
     setCopy(continuation, "today.continuesFromPrevious");
@@ -6834,7 +6913,9 @@ function openTodayAxisFactPopup(entry: TimeAxisEntryView, marker: HTMLElement): 
     metadata.append(continuation);
   }
   todayAxisFactPopupContent.append(time, copy, metadata);
+  appendSleepFactCorrection(todayAxisFactPopupContent, entry);
   if (!todayAxisFactPopup.open) todayAxisFactPopup.show();
+  positionTodayAxisFactPopup();
   window.requestAnimationFrame(() => {
     positionTodayAxisFactPopup();
     todayAxisFactPopupClose?.focus({ preventScroll: true });
@@ -7348,6 +7429,14 @@ function renderToday(view: TodayView, keepTaskEditorsOpen = false): void {
   if (todayStatus) {
     setAppMessage(todayStatus, view.message);
     todayStatus.dataset.state = view.state;
+    if (view.timeAxis.sleepError) {
+      const dailyStatus = document.createElement("span");
+      setAppMessage(dailyStatus, view.message);
+      const error = document.createElement("span");
+      setCopyError(error, "sleep.loadFailed", view.timeAxis.sleepError);
+      delete todayStatus.dataset.applicationMessage;
+      todayStatus.replaceChildren(dailyStatus, document.createTextNode(" · "), error);
+    }
   }
   if (selectTodayVaultButton) {
     selectTodayVaultButton.hidden = view.vaultAvailability === "available";
@@ -7355,7 +7444,8 @@ function renderToday(view: TodayView, keepTaskEditorsOpen = false): void {
   }
 
   const ready = view.state === "ready";
-  const readable = ready || view.state === "missing";
+  const readable = ready || view.state === "missing" || view.timeAxis.confirmedFacts.some(entry => entry.sleepFact) ||
+    view.timeAxis.unlocatedConfirmedFacts.some(entry => entry.sleepFact);
   if (todayReady) {
     todayReady.hidden = !readable;
   }
