@@ -1781,6 +1781,7 @@ pub struct CollaborationActionResultView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredSessionTitle {
+    /// Opening execution while waiting; successful execution once naming starts.
     pub execution_id: String,
     pub temporary_title: String,
     pub status: SessionTitleStatus,
@@ -6920,6 +6921,13 @@ impl CollaborationApplication {
                             external_app_ids: Vec::new(),
                             external_actions: Vec::new(),
                             pending_external_approval: None,                        });
+                        // Recovery only reads a saved reply; it never replays naming.
+                        // A later live reply must not take this first reply's place.
+                        if let Some(title) = session.title_generation.as_mut() {
+                            if title.status == SessionTitleStatus::WaitingForReply {
+                                title.status = SessionTitleStatus::Failed;
+                            }
+                        }
                         if session.run_id.as_deref() == Some(execution_id) {
                             session.run_state = "completed".into();
                             session.progress = "The saved App Server result was recovered and attached to this request. No turn was resent.".into();
@@ -8031,10 +8039,14 @@ impl CollaborationApplication {
                     "Reply saved. Check each action's source result; unconfirmed actions remain unfinished.".into();
             }
             let job = session.title_generation.as_mut().filter(|title|
-                title.execution_id == run_id && title.status == SessionTitleStatus::WaitingForReply
+                title.status == SessionTitleStatus::WaitingForReply
                 && title.temporary_title == session.title).and_then(|title| {
-                    let opening = session.messages.iter().find(|message| message.role == "user" && message.execution_id.as_deref() == Some(run_id))?;
-                    if !can_generate { title.status = SessionTitleStatus::Failed; return None; }
+                    let opening = session.messages.iter().find(|message| message.role == "user")?;
+                    let first_reply = session.messages.iter().find(|message| message.role == "assistant")?;
+                    if first_reply.execution_id.as_deref() != Some(run_id) || !can_generate {
+                        title.status = SessionTitleStatus::Failed; return None;
+                    }
+                    title.execution_id = run_id.to_owned();
                     title.status = SessionTitleStatus::Generating;
                     Some(RuntimeSessionTitleRequest { cancellation: title_cancellation.clone(), opening_message: opening.text.clone(), first_reply: text.to_owned(),
                         model: selected_model, reasoning_effort: selected_effort })
@@ -8264,7 +8276,9 @@ impl CollaborationApplication {
         self.update_state(|state| {
             for session in &mut state.sessions {
                 if let Some(title) = session.title_generation.as_mut() {
-                    if matches!(title.status, SessionTitleStatus::Generating | SessionTitleStatus::WaitingForReply) {
+                    // An interrupted naming attempt is never replayed. Waiting has
+                    // not started naming and remains eligible for a new successful reply.
+                    if title.status == SessionTitleStatus::Generating {
                         title.status = SessionTitleStatus::Failed;
                     }
                 }
@@ -8554,7 +8568,6 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
         title_generation_pending: session.title_generation.as_ref().is_some_and(|title| {
             title.status == SessionTitleStatus::Generating
                 || (title.status == SessionTitleStatus::WaitingForReply
-                    && session.run_id.as_deref() == Some(title.execution_id.as_str())
                     && matches!(session.run_state.as_str(), "queued" | "reading" | "thinking" | "stopping"))
         }),
         id: session.id.clone(),
