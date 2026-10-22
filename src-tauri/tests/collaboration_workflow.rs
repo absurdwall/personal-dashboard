@@ -1,6 +1,6 @@
 use personal_dashboard_lib::collaboration::{
     AppServerTransport, CollaborationApplication, CollaborationClock, CollaborationContextSource,
-    CollaborationContextView, CollaborationState, CollaborationStore, ContextPaneView,
+    CollaborationContextView, CollaborationSessionView, CollaborationState, CollaborationStore, ContextPaneView,
     DashboardContextReader, ExternalToolActionView, FileCollaborationStore, ModelOptionView,
     RuntimeConnectionView, RuntimeDynamicToolCall, RuntimeDynamicToolHandler,
     RuntimeDynamicToolResult, RuntimeRunReconciliation, RuntimeTurnRequest, RuntimeTurnResult,
@@ -2584,6 +2584,8 @@ fn evening_entry_leaves_active_same_date_work_running_in_its_original_session() 
 
 #[derive(Default)]
 struct TitleControl {
+    turn_requests: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
+    reconciliations: Arc<Mutex<HashMap<String, RuntimeRunReconciliation>>>,
     requests: Mutex<Vec<personal_dashboard_lib::collaboration::RuntimeSessionTitleRequest>>,
     result: Mutex<Option<Result<String, String>>>,
     changed: Condvar,
@@ -2633,13 +2635,30 @@ fn title_application(directory: &IsolatedDirectory, title: Arc<TitleControl>, fa
 fn title_application_with_gate(directory: &IsolatedDirectory, title: Arc<TitleControl>, fail_reply: bool, gate: Option<Arc<FakeTurnGate>>) -> CollaborationApplication {
     CollaborationApplication::with_adapters(
         Arc::new(FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"))),
-        Box::new(TitleRuntime { title, fail_next_reply: fail_reply, base: FakeAppServer {
-            prompts: Arc::new(Mutex::new(Vec::new())), calls: Arc::new(Mutex::new(Vec::new())),
+        Box::new(TitleRuntime { title: title.clone(), fail_next_reply: fail_reply, base: FakeAppServer {
+            prompts: title.turn_requests.clone(), calls: Arc::new(Mutex::new(Vec::new())),
             read_only_text_turns_available: true, switch_vault_on_inspect: None, turn_gate: gate,
-            reconciliations: Arc::new(Mutex::new(HashMap::new())), memory_call: None,
+            reconciliations: title.reconciliations.clone(), memory_call: None,
             memory_tool_results: Arc::new(Mutex::new(Vec::new())),
         }}), Arc::new(FixtureContext), Arc::new(FixedClock), directory.path().to_path_buf(), "Synthetic instructions".into())
 }
+fn title_recovery_application(
+    directory: &IsolatedDirectory,
+    title: Arc<TitleControl>,
+    opening: &str,
+    first_reply: &str,
+) -> (CollaborationApplication, CollaborationSessionView) {
+    let original = title_application(directory, Arc::new(TitleControl::default()), true);
+    let session = original.create_session("2026-09-27").unwrap();
+    let failed = original.submit_message("synthetic-vault", &session.id, "2026-09-27", opening).unwrap();
+    wait_for_run_state(&original, &session.id, "interrupted");
+    title.reconciliations.lock().unwrap().insert(failed.run_id.clone().unwrap(), RuntimeRunReconciliation::Completed {
+        text: first_reply.into(), runtime_turn_id: "runtime-turn-recovered".into(),
+        external_actions: Vec::new(), work_history: None,
+    });
+    (title_application(directory, title, false), failed)
+}
+
 fn wait_for_title(application: &CollaborationApplication, id: &str, expected: &str) {
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
@@ -2882,35 +2901,37 @@ fn first_successful_reply_after_a_failed_request_names_the_original_opening_once
 }
 
 #[test]
-fn recovering_a_saved_first_reply_does_not_replay_naming_or_name_from_a_later_reply() {
+fn recovering_the_first_successful_reply_starts_naming_once_without_replaying_the_turn() {
     let directory = IsolatedDirectory::new();
+    let opening = "恢复首次成功回复时应保留原始开场全文，而不是只用临时标题。\n这里是第二行背景，继续讨论阅读与散步。";
     let title = Arc::new(TitleControl::default());
-    title.release(Ok("Must not replace the temporary title"));
-    let app = title_application(&directory, title.clone(), true);
-    let session = app.create_session("2026-09-27").unwrap();
-    let failed = app.submit_message("synthetic-vault", &session.id, "2026-09-27", "Recover this original opening").unwrap();
-    wait_for_run_state(&app, &session.id, "interrupted");
-    let prompts = Arc::new(Mutex::new(Vec::new()));
-    let reconciliations = Arc::new(Mutex::new(HashMap::from([(
-        failed.run_id.clone().unwrap(),
-        RuntimeRunReconciliation::Completed {
-            text: "The actual first successful reply was already saved by the runtime.".into(),
-            runtime_turn_id: "runtime-turn-recovered".into(),
-            external_actions: Vec::new(), work_history: None,
-        },
-    )])));
-    let recovery = new_application_with_controls(&directory, prompts.clone(), Arc::new(Mutex::new(Vec::new())), None, reconciliations);
-    let recovered = recovery.reconcile_run_for_selected_vault(&session.id, failed.run_id.as_deref().unwrap()).unwrap();
+    // Pre-release the synthetic title result so RED never blocks a title worker.
+    title.release(Ok("Recovered reading and walking"));
+    let (recovery, session) = title_recovery_application(&directory, title.clone(), opening,
+        "The actual first successful reply was already saved by the runtime.");
+    assert!(title.turn_requests.lock().unwrap().is_empty());
+    assert!(title.requests.lock().unwrap().is_empty(), "opening alone must not start naming");
+    let recovered = recovery.reconcile_run_for_selected_vault(&session.id, session.run_id.as_deref().unwrap()).unwrap();
+    assert_eq!(recovered.messages[0].text, opening);
     assert_eq!(recovered.messages[1].text, "The actual first successful reply was already saved by the runtime.");
-    assert!(prompts.lock().unwrap().is_empty(), "checking the saved result must not send a new runtime request");
-    assert!(title.requests.lock().unwrap().is_empty());
+    assert!(title.turn_requests.lock().unwrap().is_empty(), "checking the saved result must not resend the business turn");
+    wait_for_title(&recovery, &session.id, "Recovered reading and walking");
+    let requests = title.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].opening_message, opening);
+    assert_eq!(requests[0].first_reply, "The actual first successful reply was already saved by the runtime.");
+    drop(requests);
+    assert!(recovery.reconcile_run_for_selected_vault(&session.id, session.run_id.as_deref().unwrap()).is_err());
+    assert!(title.turn_requests.lock().unwrap().is_empty(), "duplicate check must not resend the business turn");
+    recovery.submit_message("synthetic-vault", &session.id, "2026-09-27", "This is a later reply, not the first reply").unwrap();
+    wait_until_finished(&recovery, &session.id);
     let reopened = title_application(&directory, title.clone(), false);
-    reopened.submit_message("synthetic-vault", &session.id, "2026-09-27", "This is a later reply, not the first reply").unwrap();
+    assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().title, "Recovered reading and walking");
+    reopened.submit_message("synthetic-vault", &session.id, "2026-09-27", "Continue after reopening").unwrap();
     wait_until_finished(&reopened, &session.id);
-    assert!(!reopened.session("synthetic-vault", &session.id).unwrap().title_generation_pending);
-    assert!(title.requests.lock().unwrap().is_empty(), "a later reply must not trigger naming after the first reply was recovered");
-    assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().title, "Recover this original opening");
+    assert_eq!(title.requests.lock().unwrap().len(), 1, "checks, later replies and reopening must not rename again");
 }
+
 
 #[test]
 fn an_existing_successful_reply_with_stale_waiting_state_is_not_renamed_by_a_later_reply() {
@@ -2972,4 +2993,74 @@ fn a_name_chosen_after_a_failed_request_is_preserved_when_the_first_success_arri
     wait_until_finished(&app, &session.id);
     assert_eq!(app.session("synthetic-vault", &session.id).unwrap().title, "Human chosen name");
     assert!(title.requests.lock().unwrap().is_empty());
+}
+
+
+#[test]
+fn recovered_reply_title_failure_or_empty_result_does_not_retry_on_check_or_later_reply() {
+    for outcome in [Err("Synthetic recovered-title failure"), Ok("  \n ")] {
+        let directory = IsolatedDirectory::new();
+        let title = Arc::new(TitleControl::default());
+        title.release(outcome);
+        let (app, session) = title_recovery_application(&directory, title.clone(),
+            "Recovered opening remains recognizable", "Recovered first reply stays intact.");
+        app.reconcile_run_for_selected_vault(&session.id, session.run_id.as_deref().unwrap()).unwrap();
+        title.wait_started(1);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while app.session("synthetic-vault", &session.id).unwrap().title_generation_pending {
+            assert!(std::time::Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(title.turn_requests.lock().unwrap().is_empty());
+        assert!(app.reconcile_run_for_selected_vault(&session.id, session.run_id.as_deref().unwrap()).is_err());
+        let reopened = title_application(&directory, title.clone(), false);
+        reopened.submit_message("synthetic-vault", &session.id, "2026-09-27", "Continue after failed recovered title").unwrap();
+        wait_until_finished(&reopened, &session.id);
+        assert_eq!(title.requests.lock().unwrap().len(), 1);
+        assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().title, "Recovered opening remains recognizable");
+    }
+}
+
+#[test]
+fn recovered_reply_title_is_pending_then_discarded_if_the_app_reopens_during_naming() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    let (app, session) = title_recovery_application(&directory, title.clone(),
+        "Recovered opening temporary title", "Recovered first reply.");
+    let recovered = app.reconcile_run_for_selected_vault(&session.id, session.run_id.as_deref().unwrap()).unwrap();
+    title.wait_started(1);
+    let pending_in_list = app.list_sessions("2026-09-27").unwrap().into_iter().find(|s| s.id == session.id).unwrap().title_generation_pending;
+    let reopened = title_application(&directory, title.clone(), false);
+    let pending_after_reopen = reopened.session("synthetic-vault", &session.id).unwrap().title_generation_pending;
+    // Release before asserting so a regression cannot strand the synthetic worker.
+    title.release(Ok("Discard this late recovered title"));
+    reopened.submit_message("synthetic-vault", &session.id, "2026-09-27", "Continue without another title attempt").unwrap();
+    wait_until_finished(&reopened, &session.id);
+    assert!(recovered.title_generation_pending);
+    assert!(pending_in_list);
+    assert!(!pending_after_reopen);
+    assert_eq!(title.requests.lock().unwrap().len(), 1);
+    assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().title, "Recovered opening temporary title");
+}
+
+#[test]
+fn recovered_first_reply_preserves_a_chosen_name_and_does_not_initialize_legacy_naming() {
+    for legacy in [false, true] {
+        let directory = IsolatedDirectory::new();
+        let title = Arc::new(TitleControl::default());
+        title.release(Ok("Must not replace the saved name"));
+        let (app, session) = title_recovery_application(&directory, title.clone(),
+            "Original temporary title", "Recovered first reply.");
+        let store = FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+        let mut state = store.load().unwrap();
+        let stored = state.sessions.iter_mut().find(|s| s.id == session.id).unwrap();
+        if legacy { stored.title_generation = None; }
+        else { stored.title = "Human chosen title".into(); }
+        store.save(&state).unwrap();
+        let recovered = app.reconcile_run_for_selected_vault(&session.id, session.run_id.as_deref().unwrap()).unwrap();
+        assert_eq!(recovered.title, if legacy { "Original temporary title" } else { "Human chosen title" });
+        assert!(!recovered.title_generation_pending);
+        assert!(title.requests.lock().unwrap().is_empty());
+        assert!(title.turn_requests.lock().unwrap().is_empty());
+    }
 }

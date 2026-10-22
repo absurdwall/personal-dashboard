@@ -1836,6 +1836,34 @@ pub struct StoredCollaborationSession {
     pub drafts_by_date: HashMap<String, String>,
 }
 
+impl StoredCollaborationSession {
+    fn claim_title_generation(
+        &mut self,
+        execution_id: &str,
+        can_generate: bool,
+        settings: &CollaborationSettings,
+    ) -> Option<RuntimeSessionTitleRequest> {
+        let title = self.title_generation.as_mut().filter(|title|
+            title.status == SessionTitleStatus::WaitingForReply
+                && title.temporary_title == self.title)?;
+        let opening = self.messages.iter().find(|message| message.role == "user")?;
+        let first_reply = self.messages.iter().find(|message| message.role == "assistant")?;
+        if first_reply.execution_id.as_deref() != Some(execution_id) || !can_generate {
+            title.status = SessionTitleStatus::Failed;
+            return None;
+        }
+        title.execution_id = execution_id.to_owned();
+        title.status = SessionTitleStatus::Generating;
+        Some(RuntimeSessionTitleRequest {
+            cancellation: RuntimeShutdownHandle::default(),
+            opening_message: opening.text.clone(),
+            first_reply: first_reply.text.clone(),
+            model: settings.selected_model.clone(),
+            reasoning_effort: settings.selected_reasoning_effort.clone(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollaborationState {
@@ -6853,11 +6881,12 @@ impl CollaborationApplication {
             return Ok(session);
         };
 
-        let mut reconciliation = self
-            .runtime
-            .try_lock()
-            .map_err(|_| "Codex runtime is busy; wait for the current activity to finish, then check the saved result again.".to_string())?
-            .reconcile_turn(&thread_id, execution_id)?;
+        let (mut reconciliation, title_generator) = {
+            let mut runtime = self.runtime.try_lock()
+                .map_err(|_| "Codex runtime is busy; wait for the current activity to finish, then check the saved result again.".to_string())?;
+            let reconciliation = runtime.reconcile_turn(&thread_id, execution_id)?;
+            (reconciliation, runtime.session_title_generator())
+        };
         let mut recovered_actions = match &mut reconciliation {
             RuntimeRunReconciliation::Completed {
                 external_actions, ..
@@ -6885,7 +6914,8 @@ impl CollaborationApplication {
         };
         let now = self.clock.current_timestamp();
         let message_date = self.clock.current_date();
-        let session = self.update_state(|state| {
+        let (session, title_job) = self.update_state(|state| {
+            let settings = state.settings.clone();
             let remaining_optional = history::ARCHIVE_OPTIONAL_BYTES.saturating_sub(state.sessions.iter().flat_map(|session|&session.work_history).map(history::optional_bytes).sum::<usize>());
             let session = matching_session_mut(state, &vault_key, session_id)?;
             let message = session
@@ -6921,13 +6951,6 @@ impl CollaborationApplication {
                             external_app_ids: Vec::new(),
                             external_actions: Vec::new(),
                             pending_external_approval: None,                        });
-                        // Recovery only reads a saved reply; it never replays naming.
-                        // A later live reply must not take this first reply's place.
-                        if let Some(title) = session.title_generation.as_mut() {
-                            if title.status == SessionTitleStatus::WaitingForReply {
-                                title.status = SessionTitleStatus::Failed;
-                            }
-                        }
                         if session.run_id.as_deref() == Some(execution_id) {
                             session.run_state = "completed".into();
                             session.progress = "The saved App Server result was recovered and attached to this request. No turn was resent.".into();
@@ -6992,8 +7015,14 @@ impl CollaborationApplication {
                 }.into();
             }
             session.last_activity_at = now.clone();
-            Ok(session_view(session))
+            let title_job = match &reconciliation {
+                RuntimeRunReconciliation::Completed { text, .. } if !text.trim().is_empty() =>
+                    session.claim_title_generation(execution_id, title_generator.is_some(), &settings),
+                _ => None,
+            };
+            Ok((session_view(session), title_job))
         })?;
+        self.launch_session_title(&vault_key, session_id, execution_id, title_job, title_generator);
         if !recovery_required_for_vault_state(
             &self.read_state(|state| state.clone())?,
             Some(&vault_key),
@@ -7973,12 +8002,10 @@ impl CollaborationApplication {
     ) -> Result<(), String> {
         let now = self.clock.current_timestamp();
         let today = self.clock.current_date();
-        let title_cancellation = RuntimeShutdownHandle::default();
         let can_generate = generator.is_some();
         let job = self.update_state(|state| {
             self.persist_pending_queue_pauses(state, vault_key)?;
-            let selected_model = state.settings.selected_model.clone();
-            let selected_effort = state.settings.selected_reasoning_effort.clone();
+            let settings = state.settings.clone();
             let session = matching_session_mut(state, vault_key, session_id)?;
             if session.run_id.as_deref() != Some(run_id) {
                 return Err("This collaboration run is no longer current.".into());
@@ -8038,37 +8065,36 @@ impl CollaborationApplication {
                 session.progress =
                     "Reply saved. Check each action's source result; unconfirmed actions remain unfinished.".into();
             }
-            let job = session.title_generation.as_mut().filter(|title|
-                title.status == SessionTitleStatus::WaitingForReply
-                && title.temporary_title == session.title).and_then(|title| {
-                    let opening = session.messages.iter().find(|message| message.role == "user")?;
-                    let first_reply = session.messages.iter().find(|message| message.role == "assistant")?;
-                    if first_reply.execution_id.as_deref() != Some(run_id) || !can_generate {
-                        title.status = SessionTitleStatus::Failed; return None;
-                    }
-                    title.execution_id = run_id.to_owned();
-                    title.status = SessionTitleStatus::Generating;
-                    Some(RuntimeSessionTitleRequest { cancellation: title_cancellation.clone(), opening_message: opening.text.clone(), first_reply: text.to_owned(),
-                        model: selected_model, reasoning_effort: selected_effort })
-                });
+            let job = session.claim_title_generation(run_id, can_generate, &settings);
             Ok(job)
         })?;
+        self.launch_session_title(vault_key, session_id, run_id, job, generator);
+        Ok(())
+    }
+
+    fn launch_session_title(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        job: Option<RuntimeSessionTitleRequest>,
+        generator: Option<RuntimeSessionTitleGenerator>,
+    ) {
         if let Some(job) = job {
             if let Ok(mut titles) = self.title_shutdowns.lock() {
-                titles.insert(session_id.to_owned(), title_cancellation);
+                titles.insert(session_id.to_owned(), job.cancellation.clone());
                 if self.shutting_down.load(Ordering::SeqCst) { job.cancellation.request_shutdown(); }
             }
             let application = self.clone();
             let vault = vault_key.to_owned();
             let session = session_id.to_owned();
-            let execution = run_id.to_owned();
+            let execution = execution_id.to_owned();
             let worker = thread::Builder::new().name("collaboration-session-title".into()).spawn(move || {
                 let result = generator.ok_or_else(|| "Title generation unavailable".to_owned()).and_then(|generate| generate(job));
                 application.finish_session_title(&vault, &session, &execution, result);
             });
-            if worker.is_err() { self.finish_session_title(vault_key, session_id, run_id, Err("Title worker unavailable".into())); }
+            if worker.is_err() { self.finish_session_title(vault_key, session_id, execution_id, Err("Title worker unavailable".into())); }
         }
-        Ok(())
     }
 
     fn finish_session_title(&self, vault_key: &str, session_id: &str, execution_id: &str, result: Result<String, String>) {
