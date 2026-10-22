@@ -20,6 +20,16 @@ pub struct SleepPoint {
     #[serde(default)]
     pub approximate: bool,
 }
+impl SleepPoint {
+    fn lived_date(&self) -> String {
+        crate::today::TodayClockView {
+            date: self.date.clone(),
+            time: self.time.clone(),
+        }
+        .lived_date()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
@@ -49,25 +59,10 @@ pub enum SleepEndpoint {
 impl SleepEndpoint {
     fn lived_date(&self) -> Option<String> {
         match self {
-            SleepEndpoint::Point { point } => Some(
-                crate::today::TodayClockView {
-                    date: point.date.clone(),
-                    time: point.time.clone(),
-                }
-                .lived_date(),
-            ),
+            SleepEndpoint::Point { point } => Some(point.lived_date()),
             SleepEndpoint::Range { start, end, .. } => {
-                let first = crate::today::TodayClockView {
-                    date: start.date.clone(),
-                    time: start.time.clone(),
-                }
-                .lived_date();
-                let last = crate::today::TodayClockView {
-                    date: end.date.clone(),
-                    time: end.time.clone(),
-                }
-                .lived_date();
-                (first == last).then_some(first)
+                let first = start.lived_date();
+                (first == end.lived_date()).then_some(first)
             }
             _ => None,
         }

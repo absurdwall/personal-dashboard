@@ -218,7 +218,22 @@ struct StorageDocumentLabels {
     external_document: &'static str,
 }
 
+enum StorageOperationMessage {
+    DailyRecordArgument,
+    DayTasksArgument,
+    HabitCompletionsArgument,
+    Fixed(&'static str),
+}
+
+struct StorageConflictMessages {
+    recovery_prefix: &'static str,
+    recovery_suffix: &'static str,
+    external_change: &'static str,
+}
+
 struct StorageDocumentDescriptor {
+    operation_message: StorageOperationMessage,
+    conflict_messages: StorageConflictMessages,
     file: StorageFileMetadata,
     labels: StorageDocumentLabels,
 }
@@ -227,6 +242,12 @@ impl StorageDocumentKind {
     fn descriptor(self) -> StorageDocumentDescriptor {
         match self {
             Self::DailyRecord => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::DailyRecordArgument,
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请在 Obsidian 中检查后刷新 Today。",
+                    external_change: "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。",
+                },
                 file: StorageFileMetadata {
                     recovery_stem: "daily-record",
                     extension: "md",
@@ -242,6 +263,12 @@ impl StorageDocumentKind {
                 },
             },
             Self::DayTasks => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::DayTasksArgument,
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请检查后刷新当天任务。",
+                    external_change: "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。",
+                },
                 file: StorageFileMetadata {
                     recovery_stem: "day-tasks",
                     extension: "json",
@@ -257,6 +284,12 @@ impl StorageDocumentKind {
                 },
             },
             Self::HabitCompletions => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::HabitCompletionsArgument,
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请检查后刷新 Habits。",
+                    external_change: "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。",
+                },
                 file: StorageFileMetadata {
                     recovery_stem: "habit-completions",
                     extension: "json",
@@ -272,6 +305,12 @@ impl StorageDocumentKind {
                 },
             },
             Self::HabitCatalog => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::Fixed("本地 Habit 定义正本操作失败"),
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 ",
+                    recovery_suffix: "；请刷新 Habits 后重试。",
+                    external_change: "本地 Habit 定义已在其他位置发生变化。请刷新 Habits 后再保存；外部内容未被覆盖。",
+                },
                 file: StorageFileMetadata {
                     recovery_stem: "habit-definitions",
                     extension: "json",
@@ -287,6 +326,12 @@ impl StorageDocumentKind {
                 },
             },
             Self::Tasks => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::Fixed("任务正本操作失败"),
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请刷新 Tasks 后重试。",
+                    external_change: "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。",
+                },
                 file: StorageFileMetadata {
                     recovery_stem: "tasks",
                     extension: "json",
@@ -302,6 +347,12 @@ impl StorageDocumentKind {
                 },
             },
             Self::SleepRecords => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::Fixed("作息正本操作失败"),
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请检查后刷新 Today 或 Habits。",
+                    external_change: "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。",
+                },
                 file: StorageFileMetadata {
                     recovery_stem: "sleep-records",
                     extension: "json",
@@ -326,13 +377,11 @@ impl StorageDocumentKind {
         habit_completions: &str,
         fallback_punctuation: &str,
     ) -> String {
-        let failure_label = match self {
-            Self::DailyRecord => return daily_record.into(),
-            Self::DayTasks => return day_tasks.into(),
-            Self::HabitCompletions => return habit_completions.into(),
-            Self::HabitCatalog => "本地 Habit 定义正本操作失败",
-            Self::Tasks => "任务正本操作失败",
-            Self::SleepRecords => "作息正本操作失败",
+        let failure_label = match self.descriptor().operation_message {
+            StorageOperationMessage::DailyRecordArgument => return daily_record.into(),
+            StorageOperationMessage::DayTasksArgument => return day_tasks.into(),
+            StorageOperationMessage::HabitCompletionsArgument => return habit_completions.into(),
+            StorageOperationMessage::Fixed(label) => label,
         };
         format!("{failure_label}{fallback_punctuation}")
     }
@@ -785,20 +834,13 @@ fn create_temporary_file(
 }
 
 fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -> String {
-    // These exhaustive branches carry distinct recovery instructions, not just document labels.
-    match (recovery, kind) {
-        (Some(path), StorageDocumentKind::DailyRecord) => format!("今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。", path.display()),
-        (Some(path), StorageDocumentKind::DayTasks) => format!("当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新当天任务。", path.display()),
-        (Some(path), StorageDocumentKind::HabitCompletions) => format!("本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
-        (Some(path), StorageDocumentKind::HabitCatalog) => format!("本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 {}；请刷新 Habits 后重试。", path.display()),
-        (Some(path), StorageDocumentKind::Tasks) => format!("任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请刷新 Tasks 后重试。", path.display()),
-        (Some(path), StorageDocumentKind::SleepRecords) => format!("作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Today 或 Habits。", path.display()),
-        (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::HabitCompletions) => "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::HabitCatalog) => "本地 Habit 定义已在其他位置发生变化。请刷新 Habits 后再保存；外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::Tasks) => "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::SleepRecords) => "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。".into(),
+    let messages = kind.descriptor().conflict_messages;
+    match recovery {
+        Some(path) => format!(
+            "{}{}{}",
+            messages.recovery_prefix, path.display(), messages.recovery_suffix
+        ),
+        None => messages.external_change.into(),
     }
 }
 
@@ -8710,36 +8752,69 @@ mod tests {
 
     #[test]
     fn atomic_exchange_detects_an_external_save_after_candidate_sync() {
-        let directory = TempDirectory::new();
-        let path = record_path(&directory);
-        let original = b"original daily record\n";
-        let external = b"external editor save\n";
-        let updated = b"dashboard candidate\n";
-        fs::write(&path, original).expect("original should be written");
+        for (kind, prefix, suffix) in [
+            (
+                StorageDocumentKind::DailyRecord,
+                "今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请在 Obsidian 中检查后刷新 Today。",
+            ),
+            (
+                StorageDocumentKind::DayTasks,
+                "当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请检查后刷新当天任务。",
+            ),
+            (
+                StorageDocumentKind::HabitCompletions,
+                "本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请检查后刷新 Habits。",
+            ),
+            (
+                StorageDocumentKind::HabitCatalog,
+                "本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 ",
+                "；请刷新 Habits 后重试。",
+            ),
+            (
+                StorageDocumentKind::Tasks,
+                "任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请刷新 Tasks 后重试。",
+            ),
+            (
+                StorageDocumentKind::SleepRecords,
+                "作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请检查后刷新 Today 或 Habits。",
+            ),
+        ] {
+            let directory = TempDirectory::new();
+            let path = record_path(&directory);
+            let original = b"original daily record\n";
+            let external = b"external editor save\n";
+            let updated = b"dashboard candidate\n";
+            fs::write(&path, original).expect("original should be written");
 
-        let error = save_file_if_unchanged(
-            &path,
-            original,
-            updated,
-            StorageDocumentKind::DailyRecord,
-            |_| fs::write(&path, external).map_err(|error| error.to_string()),
-        )
-        .expect_err("the save crossing candidate preparation must conflict");
+            let error = save_file_if_unchanged(&path, original, updated, kind, |_| {
+                fs::write(&path, external).map_err(|error| error.to_string())
+            })
+            .expect_err("the save crossing candidate preparation must conflict");
 
-        assert!(error.contains("并发变化"), "{error}");
-        assert_eq!(
-            fs::read(&path).expect("canonical record should remain readable"),
-            external
-        );
-        let recoveries = fs::read_dir(directory.0.join("life/.personal-dashboard/recovery/today"))
-            .expect("recovery directory should remain readable")
-            .collect::<Result<Vec<_>, _>>()
-            .expect("recovery entries should be readable");
-        assert_eq!(
-            recoveries.len(),
-            1,
-            "the original inode remains recoverable"
-        );
+            assert!(error.contains("并发变化"), "{error}");
+            assert_eq!(
+                fs::read(&path).expect("canonical record should remain readable"),
+                external
+            );
+            let recoveries = fs::read_dir(directory.0.join("life/.personal-dashboard/recovery/today"))
+                .expect("recovery directory should remain readable")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("recovery entries should be readable");
+            assert_eq!(
+                recoveries.len(),
+                1,
+                "the original inode remains recoverable"
+            );
+            assert_eq!(
+                error,
+                format!("{prefix}{}{suffix}", recoveries[0].path().display())
+            );
+        }
     }
 
     #[cfg(target_os = "macos")]

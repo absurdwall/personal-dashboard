@@ -9476,7 +9476,6 @@ function habitRow(habit: HabitView): HTMLElement {
   const todayState = document.createElement("small");
   progress.textContent = isSleepHabitKey(habit.key)
     ? habitSleepOverview.value(habit.key, habit.today.date, habit.today.actualTimeLabel ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage) : undefined) : habitProgressLabel(habit);
-  progress.title = progress.textContent;
   if (isSleepHabitKey(habit.key)) {
     progress.classList.toggle("habit-sleep-described-value", !/^\d{2}:\d{2}$/.test(progress.textContent));
   }
