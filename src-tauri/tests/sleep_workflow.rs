@@ -1,4 +1,6 @@
-use personal_dashboard_lib::sleep::SleepMutationInput;
+use personal_dashboard_lib::sleep::{
+    HabitSleepPointRequest, HabitSleepRangeRequest, SleepMutationInput,
+};
 use personal_dashboard_lib::today::{
     TodayApplication, TodayClock, TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
@@ -1247,20 +1249,21 @@ fn today_corrections_replace_stable_points_and_uncertainty_remains_unlocated_wit
 fn habit_time_preview_uses_the_application_lived_day_and_local_clock_resolution() {
     let root = vault("time-preview");
     let workflow = application(&root);
-    let point = workflow
-        .resolve_habit_sleep_point("2026-09-09", "02:00", true)
-        .unwrap();
+    let wire = json!({"livedDate":"2026-09-09","time":"02:00","approximate":true});
+    let request: HabitSleepPointRequest = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&request).unwrap(), wire, "point preview remains flat at the IPC boundary");
+    let point = workflow.resolve_habit_sleep_point(&request).unwrap();
     assert_eq!(point.date, "2026-09-10");
     assert_eq!(point.time, "02:00");
     assert_eq!(point.utc_offset_minutes, -240);
     assert!(point.approximate);
     assert!(workflow
-        .resolve_habit_sleep_point("2026-02-30", "02:00", false)
+        .resolve_habit_sleep_point(&HabitSleepPointRequest { lived_date: "2026-02-30".into(), time: "02:00".into(), approximate: false })
         .is_err());
     for time in ["24:00", "7:000", "007:0", " 7:00", "07: 0", "０7:00"] {
         assert!(
             workflow
-                .resolve_habit_sleep_point("2026-09-09", time, false)
+                .resolve_habit_sleep_point(&HabitSleepPointRequest { lived_date: "2026-09-09".into(), time: time.into(), approximate: false })
                 .is_err(),
             "{time}"
         );
@@ -1319,9 +1322,10 @@ fn overview_projects_circular_clocks_and_same_record_elapsed_samples() {
 fn manual_range_preview_preserves_both_actual_dates_and_cross_boundary_uncertainty() {
     let root = vault("range-preview");
     let workflow = application(&root);
-    let crossing = workflow
-        .resolve_habit_sleep_range("2026-09-09", "03:00", "05:00", "between three and five")
-        .unwrap();
+    let wire = json!({"livedDate":"2026-09-09","startTime":"03:00","endTime":"05:00","reportedText":"between three and five"});
+    let request: HabitSleepRangeRequest = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&request).unwrap(), wire, "range preview remains flat at the IPC boundary");
+    let crossing = workflow.resolve_habit_sleep_range(&request).unwrap();
     let json = serde_json::to_value(&crossing).unwrap();
     assert_eq!(json["start"]["date"], "2026-09-10");
     assert_eq!(json["end"]["date"], "2026-09-10");
@@ -1333,7 +1337,7 @@ fn manual_range_preview_preserves_both_actual_dates_and_cross_boundary_uncertain
     assert_eq!(saved.records[0].estimated_duration_minutes, None);
     let midnight = serde_json::to_value(
         workflow
-            .resolve_habit_sleep_range("2026-09-09", "23:00", "01:00", "night range")
+            .resolve_habit_sleep_range(&HabitSleepRangeRequest { lived_date: "2026-09-09".into(), start_time: "23:00".into(), end_time: "01:00".into(), reported_text: "night range".into() })
             .unwrap(),
     )
     .unwrap();
@@ -1341,7 +1345,7 @@ fn manual_range_preview_preserves_both_actual_dates_and_cross_boundary_uncertain
     assert_eq!(midnight["end"]["date"], "2026-09-10");
     let morning = serde_json::to_value(
         workflow
-            .resolve_habit_sleep_range("2026-09-09", "07:00", "08:00", "morning range")
+            .resolve_habit_sleep_range(&HabitSleepRangeRequest { lived_date: "2026-09-09".into(), start_time: "07:00".into(), end_time: "08:00".into(), reported_text: "morning range".into() })
             .unwrap(),
     )
     .unwrap();
@@ -1381,19 +1385,19 @@ fn point_and_range_preview_reject_nonexistent_and_ambiguous_actual_local_times()
     let root = vault("transition-preview");
     let app = TodayApplication::new(Selected(root.clone()), NoSelection, TransitionClock);
     assert!(app
-        .resolve_habit_sleep_point("2026-03-07", "02:30", false)
+        .resolve_habit_sleep_point(&HabitSleepPointRequest { lived_date: "2026-03-07".into(), time: "02:30".into(), approximate: false })
         .unwrap_err()
         .contains("不存在"));
     assert!(app
-        .resolve_habit_sleep_range("2026-03-07", "23:00", "02:30", "original")
+        .resolve_habit_sleep_range(&HabitSleepRangeRequest { lived_date: "2026-03-07".into(), start_time: "23:00".into(), end_time: "02:30".into(), reported_text: "original".into() })
         .unwrap_err()
         .contains("不存在"));
     assert!(app
-        .resolve_habit_sleep_point("2026-10-31", "01:30", false)
+        .resolve_habit_sleep_point(&HabitSleepPointRequest { lived_date: "2026-10-31".into(), time: "01:30".into(), approximate: false })
         .unwrap_err()
         .contains("重复"));
     assert!(app
-        .resolve_habit_sleep_range("2026-10-31", "23:00", "01:30", "original")
+        .resolve_habit_sleep_range(&HabitSleepRangeRequest { lived_date: "2026-10-31".into(), start_time: "23:00".into(), end_time: "01:30".into(), reported_text: "original".into() })
         .unwrap_err()
         .contains("重复"));
     assert!(!root

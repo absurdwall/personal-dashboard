@@ -1,5 +1,5 @@
 import {setInterfaceCopy,setInterfaceAttribute,setInterfaceError,type InterfaceLanguage,type InterfaceCopyKey,type InterfaceCopyVariables} from './interface-language.js';
-import {isSleepHabitKey,sleepFactsForLivedDate,sleepEndpointCopy,setSleepEndpointCopy,type SleepHabitKey,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint} from './sleep-facts.js';
+import {isSleepHabitKey,sleepFactsForLivedDate,sleepEndpointCopy,setSleepEndpointCopy,type SleepHabitKey,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint,type HabitSleepPointRequest,type HabitSleepRangeRequest} from './sleep-facts.js';
 
 type Context=Readonly<{date:string;vaultPath:string;canRecord:boolean;habits:readonly Readonly<{key:string;name:string}>[]}>;
 type Draft={habitKey:SleepHabitKey;kind:SleepEndpoint['kind'];time:string;endTime:string;approximate:boolean;text:string;textDate:string|null;expanded:boolean;recordId?:string;targetBinding:string;expectedRevision:string|null;changeId:string};
@@ -136,13 +136,10 @@ export class HabitTimeEntry {
       }
       this.copy(preview,'sleep.previewEmpty');
       try{
-        if(draft.kind==='range'){
-          const endpoint=await this.resolveRange(context.date,draft);
-          if(request===previewRequest&&this.draft===draft&&endpoint.kind==='range')this.copy(preview,'sleep.rangeCalendarPreview',{date:context.date,startDate:endpoint.start.date,startTime:endpoint.start.time,endDate:endpoint.end.date,endTime:endpoint.end.time});
-        }else{
-          const point=await this.resolvePoint(context.date,draft.time,draft.approximate);
-          if(request===previewRequest&&this.draft===draft)this.copy(preview,'sleep.calendarPreview',{date:point.date,time:point.time});
-        }
+        const endpoint=await this.resolveTimedDraft(context.date,draft);
+        if(request!==previewRequest||this.draft!==draft)return;
+        if(endpoint.kind==='range')this.copy(preview,'sleep.rangeCalendarPreview',{date:context.date,startDate:endpoint.start.date,startTime:endpoint.start.time,endDate:endpoint.end.date,endTime:endpoint.end.time});
+        else if(endpoint.kind==='point')this.copy(preview,'sleep.calendarPreview',{date:endpoint.date,time:endpoint.time});
       }catch{if(request===previewRequest&&this.draft===draft)this.copy(preview,'sleep.previewEmpty');}
     };
     const details=document.createElement('details');details.className='habit-time-precision';details.open=draft.expanded;
@@ -161,11 +158,13 @@ export class HabitTimeEntry {
     form.addEventListener('submit',event=>{event.preventDefault();edited();this.options.track(this.save(draft,context));});
     return form;
   }
-  private resolvePoint(livedDate:string,time:string,approximate:boolean):Promise<SleepPoint>{
-    return this.options.invoke<SleepPoint>('resolve_habit_sleep_point',{livedDate,time,approximate});
-  }
-  private resolveRange(livedDate:string,draft:Draft):Promise<SleepEndpoint>{
-    return this.options.invoke<SleepEndpoint>('resolve_habit_sleep_range',{livedDate,startTime:draft.time,endTime:draft.endTime,reportedText:draft.text});
+  private async resolveTimedDraft(livedDate:string,draft:Draft):Promise<SleepEndpoint>{
+    if(draft.kind==='range'){
+      const request:HabitSleepRangeRequest={livedDate,startTime:draft.time,endTime:draft.endTime,reportedText:draft.text};
+      return this.options.invoke<SleepEndpoint>('resolve_habit_sleep_range',request);
+    }
+    const request:HabitSleepPointRequest={livedDate,time:draft.time,approximate:draft.approximate};
+    return {kind:'point',...await this.options.invoke<SleepPoint>('resolve_habit_sleep_point',request)};
   }
   private async save(draft:Draft,context:Context):Promise<boolean>{
     if(this.selectionPending||this.saving||this.draft!==draft||this.identity(context)!==this.identity(this.context))return false;
@@ -174,8 +173,7 @@ export class HabitTimeEntry {
     this.saving=true;this.status=null;this.request+=1;this.render();
     try{
       let endpoint:SleepEndpoint;
-      if(draft.kind==='point')endpoint={kind:'point',...await this.resolvePoint(context.date,draft.time,draft.approximate)};
-      else if(draft.kind==='range')endpoint=await this.resolveRange(context.date,draft);
+      if(draft.kind==='point'||draft.kind==='range')endpoint=await this.resolveTimedDraft(context.date,draft);
       else if(draft.kind==='text')endpoint={kind:'text',date:draft.textDate??null,text:draft.text};
       else endpoint={kind:draft.kind};
       if(generation!==this.generation||this.identity(context)!==this.identity(this.context)||this.draft!==draft)return false;

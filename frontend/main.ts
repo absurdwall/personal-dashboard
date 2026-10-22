@@ -1,4 +1,5 @@
 import {shiftDateOnly} from "./date-only.js";
+import {formatClockMinutes} from "./clock-time.js";
 import { HabitSleepOverview } from "./habit-sleep-overview.js";
 import { HabitTimeEntry, createHabitTimeEntryButton } from "./habit-time-entry.js";
 import { SleepFactPresentation, isSleepHabitKey, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
@@ -5913,8 +5914,7 @@ function minutePosition(minute: number): number {
   return (minute - start) / (end - start);
 }
 function formatAxisMinute(minute: number): string {
-  minute %= 1440;
-  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+  return formatClockMinutes(minute, "signed");
 }
 
 type TodayAxisLaneId = "arrangement" | "facts" | "tasks" | "arrangement-unlocated" | "facts-unlocated";

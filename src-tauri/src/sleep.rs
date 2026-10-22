@@ -20,6 +20,25 @@ pub struct SleepPoint {
     #[serde(default)]
     pub approximate: bool,
 }
+/// Fixed lived-day point interpretation request; IPC retains these flat fields.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HabitSleepPointRequest {
+    pub lived_date: String,
+    pub time: String,
+    pub approximate: bool,
+}
+
+/// A reported range carries both wall times with one fixed lived-day context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HabitSleepRangeRequest {
+    pub lived_date: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub reported_text: String,
+}
+
 impl SleepPoint {
     fn lived_date(&self) -> String {
         crate::today::TodayClockView {

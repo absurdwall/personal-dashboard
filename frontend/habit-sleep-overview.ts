@@ -1,6 +1,7 @@
 import {shiftDateOnly} from './date-only.js';
+import {formatClockMinutes} from './clock-time.js';
 import {setInterfaceCopy, setInterfaceAttribute, setInterfaceError, type InterfaceCopyKey, type InterfaceLanguage,type InterfaceCopyVariables,type InterfaceCopyValue} from './interface-language.js';
-import {sleepFactsForLivedDate,sleepEndpointCopy,setSleepCopy,setSleepEndpointCopy, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
+import {sleepFactsForLivedDate,sleepEndpointCopy,sleepElapsedCopy,setSleepCopy,setSleepEndpointCopy, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
 
 type HabitKey=SleepHabitKey;
 type Metric=HabitKey|'duration';
@@ -13,10 +14,26 @@ function element<K extends keyof HTMLElementTagNameMap>(tag:K,className='',text=
 function svg(tag:string,attributes:Record<string,string|number>):SVGElement{
   const node=document.createElementNS(svgNamespace,tag);for(const [key,value]of Object.entries(attributes))node.setAttribute(key,String(value));return node;
 }
-function clock(minutes:number):string{
-  const value=(Math.round(minutes)%1440+1440)%1440;
-  return `${String(Math.floor(value/60)).padStart(2,'0')}:${String(value%60).padStart(2,'0')}`;
-}
+function clock(minutes:number):string{return formatClockMinutes(Math.round(minutes));}
+type MetricPresentation=Readonly<{
+  name:InterfaceCopyKey;domain:readonly [number,number];earliest:InterfaceCopyKey;latest:InterfaceCopyKey;
+  dateHabit:HabitKey;caption:InterfaceCopyKey;
+  value:(minutes:number,approximate:boolean)=>InterfaceCopyValue;
+  axis:(minutes:number,language:InterfaceLanguage)=>InterfaceCopyValue;
+}>;
+const clockPresentation={
+  earliest:'sleep.overview.earliest',latest:'sleep.overview.latest',caption:'sleep.overview.pointNote',
+  value:(minutes:number,approximate:boolean):InterfaceCopyValue=>approximate?{copy:'sleep.aboutTime',variables:{time:clock(minutes)}}:clock(minutes),
+  axis:(minutes:number):InterfaceCopyValue=>clock(minutes),
+} as const;
+const metrics:Record<Metric,MetricPresentation>={
+  wake:{...clockPresentation,name:'sleep.overview.wake',domain:[360,600],dateHabit:'wake'},
+  sleep:{...clockPresentation,name:'sleep.overview.onset',domain:[-60,180],dateHabit:'sleep'},
+  duration:{name:'sleep.overview.duration',domain:[180,660],earliest:'sleep.overview.shortest',latest:'sleep.overview.longest',dateHabit:'wake',caption:'sleep.overview.durationNote',
+    value:(minutes,approximate)=>sleepElapsedCopy(minutes,approximate,'statistic'),
+    axis:(minutes,language)=>({copy:'sleep.overview.axisHours',variables:{hours:new Intl.NumberFormat(language,{maximumFractionDigits:1}).format(minutes/60)}}),
+  },
+};
 /** Render only adjacent exact samples; nulls end a segment instead of bridging gaps. */
 function appendGapSeries(drawing:SVGElement,samples:readonly {value:number|null}[],x:(index:number)=>number,y:(value:number)=>number,strokeWidth:number):void{
   let segment:string[]=[];
@@ -37,7 +54,7 @@ function createSleepPlot(metric:Metric,samples:readonly PlotSample[],size:keyof 
   const frame=plotFrames[size],{width,height,left,top,bottom}=frame;
   const plotted=samples;
   const values=plotted.flatMap(sample=>sample.value===null?[]:[sample.value]);
-  const base=metric==='duration'?[180,660]:metric==='wake'?[360,600]:[-60,180];
+  const base=metrics[metric].domain;
   const low=Math.floor(Math.min(base[0],...values)/60)*60,high=Math.ceil(Math.max(base[1],...values)/60)*60;
   const x=(index:number)=>left+(index+.5)*(width-left)/samples.length;
   const y=(value:number)=>top+(high-value)/(high-low)*(height-top-bottom);
@@ -87,12 +104,10 @@ export class HabitSleepOverview {
     }
     const sample=this.view?.overview?.durations.find(sample=>sample.date===date);
     const value=sample?.minutes??null,approximate=sample?.approximate??false;
-    const rounded=Math.round(value??0);
-    const display:InterfaceCopyValue=value===null?{copy:'sleep.overview.noPair'}:{copy:'sleep.overview.elapsedValue',variables:{hours:Math.floor(rounded/60),minutes:rounded%60}};
-    return {date,value,approximate,label:approximate?{copy:'sleep.aboutTime',variables:{time:display}}:display};
+    return {date,value,approximate,label:value===null?{copy:'sleep.overview.noPair'}:sleepElapsedCopy(value,approximate,'sample')};
   }
 
-  private metricName(metric:Metric):InterfaceCopyValue{return {copy:metric==='wake'?'sleep.overview.wake':metric==='sleep'?'sleep.overview.onset':'sleep.overview.duration'};}
+  private metricName(metric:Metric):InterfaceCopyValue{return {copy:metrics[metric].name};}
   private statistics(samples:readonly Sample[],date:string):HTMLElement{
     const root=element('div','habit-detail-stats habit-sleep-statistics');
     const overview=this.view?.overview;
@@ -100,18 +115,15 @@ export class HabitSleepOverview {
     const fields:[string,InterfaceCopyKey,number|null|undefined,boolean][]=[
       ['count','sleep.overview.count',stats?.count,false],
       ['mean','sleep.overview.mean',stats?.mean,stats?.approximate??false],
-      ['earliest',this.metric==='duration'?'sleep.overview.shortest':'sleep.overview.earliest',stats?.earliest,stats?.earliestApproximate??false],
-      ['latest',this.metric==='duration'?'sleep.overview.longest':'sleep.overview.latest',stats?.latest,stats?.latestApproximate??false],
+      ['earliest',metrics[this.metric].earliest,stats?.earliest,stats?.earliestApproximate??false],
+      ['latest',metrics[this.metric].latest,stats?.latest,stats?.latestApproximate??false],
     ];
     for(const [name,key,value,approximate]of fields){
       const item=element('div','habit-detail-stat');item.dataset.sleepStat=name;
       const output=element('strong');
       if(name==='count')output.textContent=`${this.error||!stats?'—':value??0} / ${samples.length}`;
       else if(value==null)output.textContent='—';
-      else if(this.metric==='duration'){
-        const rounded=Math.round(value);setInterfaceCopy(output,approximate?'sleep.overview.aboutElapsedValue':'sleep.overview.elapsedValue',this.language(),{hours:Math.floor(rounded/60),minutes:rounded%60});
-      }else if(approximate)setInterfaceCopy(output,'sleep.aboutTime',this.language(),{time:clock(value)});
-      else output.textContent=clock(value);
+      else setSleepCopy(output,metrics[this.metric].value(value,approximate),this.language());
       item.append(this.copyElement('span','',key),output);root.append(item);
     }
     if(stats?.count&&stats.mean===null)root.append(this.copyElement('p','habit-sleep-mean-note','sleep.overview.noMean'));
@@ -122,7 +134,7 @@ export class HabitSleepOverview {
     const {drawing,frame,x,ticks,hasPoints}=createSleepPlot(this.metric,samples,'detail');
     for(const tick of ticks){
       const text=svg('text',{x:frame.left-8,y:tick.y+3,'text-anchor':'end',fill:'var(--parity-muted)','font-size':10});
-      if(this.metric==='duration')setInterfaceCopy(text,'sleep.overview.axisHours',this.language(),{hours:new Intl.NumberFormat(this.language(),{maximumFractionDigits:1}).format(tick.value/60)});else text.textContent=clock(tick.value);
+      setSleepCopy(text,metrics[this.metric].axis(tick.value,this.language()),this.language());
       drawing.append(text);
     }
     for(const [index,sample]of samples.entries())if(samples.length===7||index%5===0||index===samples.length-1){
@@ -132,7 +144,7 @@ export class HabitSleepOverview {
     const targets=element('div','habit-sleep-date-targets');targets.style.setProperty('--sleep-date-count',String(samples.length));
     const tooltip=this.copyElement('p','habit-sleep-detail-readout','sleep.overview.inspect');tooltip.setAttribute('role','status');
     for(const sample of samples){const button=element('button');button.type='button';button.dataset.habitDate=sample.date;
-      button.dataset.habitDetailDate=sample.date;button.dataset.habitDetailDateKey=this.metric==='duration'?'wake':this.metric;
+      button.dataset.habitDetailDate=sample.date;button.dataset.habitDetailDateKey=metrics[this.metric].dateHabit;
       const values={date:sample.date,metric:this.metricName(this.metric),value:sample.label};this.copyAttribute(button,'title','sleep.overview.dateReadout',values);this.copyAttribute(button,'aria-label','sleep.overview.dateReadout',values);
       const show=()=>setInterfaceCopy(tooltip,'sleep.overview.dateReadout',this.language(),values);button.addEventListener('focus',show);button.addEventListener('mouseenter',show);
       button.addEventListener('click',()=>this.selected={metric:this.metric,date:sample.date});targets.append(button);}
@@ -144,16 +156,16 @@ export class HabitSleepOverview {
     const root=element('section','habit-sleep-overview');this.copyAttribute(root,'aria-label','sleep.overview.label');root.dataset.sleepOverview='';root.dataset.sleepMetric=this.metric;
     const tabs=element('div','habit-sleep-metric-tabs');tabs.setAttribute('role','tablist');this.copyAttribute(tabs,'aria-label','sleep.overview.metrics');
     const replace=(selector:string)=>{const next=this.detail(context);root.replaceWith(next);next.querySelector<HTMLElement>(selector)?.focus({preventScroll:true});this.reveal();};
-    for(const metric of ['wake','sleep','duration'] as const){const button=this.copyElement('button','secondary-button',metric==='wake'?'sleep.overview.wake':metric==='sleep'?'sleep.overview.onset':'sleep.overview.duration');button.type='button';button.dataset.sleepMetric=metric;button.setAttribute('role','tab');button.setAttribute('aria-selected',String(this.metric===metric));button.addEventListener('click',()=>{this.metric=metric;replace(`[data-sleep-metric="${metric}"]`)});tabs.append(button);}
+    for(const metric of ['wake','sleep','duration'] as const){const button=this.copyElement('button','secondary-button',metrics[metric].name);button.type='button';button.dataset.sleepMetric=metric;button.setAttribute('role','tab');button.setAttribute('aria-selected',String(this.metric===metric));button.addEventListener('click',()=>{this.metric=metric;replace(`[data-sleep-metric="${metric}"]`)});tabs.append(button);}
     const ranges=element('div','habit-sleep-period-tabs');this.copyAttribute(ranges,'aria-label','sleep.overview.period');
     for(const period of [7,30] as const){const button=this.copyElement('button','secondary-button','sleep.overview.days',{count:period});button.type='button';button.dataset.sleepPeriod=String(period);button.setAttribute('aria-pressed',String(this.period===period));button.addEventListener('click',()=>{this.period=period;replace(`[data-sleep-period="${period}"]`)});ranges.append(button);}
     const samples=Array.from({length:this.period},(_,i)=>this.sample(this.metric,shiftDateOnly(context.date,i-this.period+1)));
-    root.append(tabs,ranges,this.statistics(samples,context.date),this.detailChart(context,samples),this.copyElement('p','habit-sleep-caption',this.metric==='duration'?'sleep.overview.durationNote':'sleep.overview.pointNote'));
+    root.append(tabs,ranges,this.statistics(samples,context.date),this.detailChart(context,samples),this.copyElement('p','habit-sleep-caption',metrics[this.metric].caption));
     if(this.error)root.append(this.errorElement());
     const history=element('details','habit-sleep-history');history.append(this.copyElement('summary','','sleep.overview.earlier'));
     const form=element('form');const label=element('label');label.append(this.copyElement('span','','sleep.overview.historyDate'));const date=element('input');date.type='date';date.required=true;date.max=context.date;date.value=context.date;date.dataset.sleepHistoryDate='';this.copyAttribute(date,'aria-label','sleep.overview.historyDate');label.append(date);
     const open=this.copyElement('button','secondary-button','sleep.overview.historyOpen');open.type='submit';form.append(label,open);
-    form.addEventListener('submit',event=>{event.preventDefault();if(!form.reportValidity())return;const button=element('button');button.type='button';button.dataset.habitDetailDate=date.value;button.dataset.habitDetailDateKey=this.metric==='duration'?'wake':this.metric;root.append(button);this.selected={metric:this.metric,date:date.value};button.click();button.remove();});history.append(form);root.append(history);return root;
+    form.addEventListener('submit',event=>{event.preventDefault();if(!form.reportValidity())return;const button=element('button');button.type='button';button.dataset.habitDetailDate=date.value;button.dataset.habitDetailDateKey=metrics[this.metric].dateHabit;root.append(button);this.selected={metric:this.metric,date:date.value};button.click();button.remove();});history.append(form);root.append(history);return root;
   }
   dayEvidence(key:HabitKey,date:string):HTMLElement{
     const root=element('div','habit-sleep-day-values');

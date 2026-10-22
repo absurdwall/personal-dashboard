@@ -2387,28 +2387,38 @@ where
     /// This is read-only; the canonical save still validates endpoint/context.
     pub fn resolve_habit_sleep_point(
         &self,
-        lived_date: &str,
-        time: &str,
-        approximate: bool,
+        request: &crate::sleep::HabitSleepPointRequest,
     ) -> Result<crate::sleep::SleepPoint, String> {
+        let crate::sleep::HabitSleepPointRequest {
+            lived_date,
+            time,
+            approximate,
+        } = request;
         let day = CalendarDate::parse(lived_date)
             .ok_or("需要明确、有效的 YYYY-MM-DD 日期；日期含糊时请先澄清。")?;
         let minutes = crate::sleep::clock_minutes(time)?;
         let date = if minutes < 240 { day.plus_days(1) } else { day }.to_string();
-        self.resolve_sleep_calendar_point(&date, time, approximate)
+        self.resolve_sleep_calendar_point(&date, time, *approximate)
     }
 
     /// A range advances chronologically from its first actual endpoint. Crossing
     /// the display boundary affects location, never the reported chronology.
     pub fn resolve_habit_sleep_range(
         &self,
-        lived_date: &str,
-        start_time: &str,
-        end_time: &str,
-        reported_text: &str,
+        request: &crate::sleep::HabitSleepRangeRequest,
     ) -> Result<crate::sleep::SleepEndpoint, String> {
+        let crate::sleep::HabitSleepRangeRequest {
+            lived_date,
+            start_time,
+            end_time,
+            reported_text,
+        } = request;
         crate::sleep::clock_minutes(end_time)?;
-        let start = self.resolve_habit_sleep_point(lived_date, start_time, false)?;
+        let start = self.resolve_habit_sleep_point(&crate::sleep::HabitSleepPointRequest {
+            lived_date: lived_date.clone(),
+            time: start_time.clone(),
+            approximate: false,
+        })?;
         let first = CalendarDate::parse(&start.date).expect("validated actual date");
         let end_date = if end_time < start_time {
             first.plus_days(1)
