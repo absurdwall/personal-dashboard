@@ -1931,6 +1931,8 @@ pub struct HabitTimeHabitView {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeAxisView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sleep_error: Option<String>,
     pub current_arrangement: Vec<TimeAxisEntryView>,
     pub confirmed_facts: Vec<TimeAxisEntryView>,
     pub unlocated_current_arrangement: Vec<TimeAxisEntryView>,
@@ -1972,6 +1974,8 @@ pub struct PlanTimeEditResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeAxisEntryView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sleep_fact: Option<crate::sleep::SleepEndpointFact>,
     pub plan_precision: Option<PlanTimePrecision>,
     /// Revision-bound source identity, absent for unsafe legacy sources and facts.
     pub plan_id: Option<String>,
@@ -4000,11 +4004,13 @@ where
                 time_axis: TimeAxisView::default(),
             });
         };
-        if receive_planning_input {
+        let view = if receive_planning_input {
             self.open_vault(&vault, date.to_owned())
         } else {
             self.reload_vault(&vault, date.to_owned())
-        }
+        }?;
+        self.confirm_sleep_vault(&vault)?;
+        Ok(view)
     }
 
     /// Create only a new, empty data directory. Existing folders are never converted.
@@ -5020,6 +5026,51 @@ where
     }
 
     fn render_vault(
+        &self,
+        vault: &Path,
+        date: String,
+        receive_planning_input: bool,
+    ) -> Result<TodayView, String> {
+        let mut view = match self.render_daily_vault(vault, date.clone(), receive_planning_input) {
+            Ok(view) => view,
+            Err(message) => {
+                // Keep selection transactional: a Daily Record read failure
+                // must not replace the previous Vault.
+                if self.persistence.load_selected_vault()?.as_deref() != Some(vault) {
+                    return Err(message);
+                }
+                // A Daily Record read/encoding failure does not hide independent sources.
+                let clock = self.clock.current_local_time();
+                let is_today = date == clock.lived_date();
+                let mut view = vault_error_view(
+                    date.clone(),
+                    is_today,
+                    is_today.then_some(clock.time),
+                    vault
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map(str::to_owned),
+                    Some(vault.to_string_lossy().into_owned()),
+                    VaultAvailability::Available,
+                    message,
+                );
+                view.tasks = self.shared_tasks_for(vault);
+                view.day_tasks = self.day_tasks_for(vault, &date, false);
+                view.habit_corrections = self.habit_corrections_for(vault, &date);
+                view.habit_time_habits = self.habit_time_context_for(vault, &date);
+                view
+            }
+        };
+        if view.vault_availability == VaultAvailability::Available {
+            match crate::sleep::SleepWorkflow::new(vault).read() {
+                Ok(sleep) => project_sleep_time_axis(&mut view.time_axis, &sleep, &date),
+                Err(error) => view.time_axis.sleep_error = Some(error),
+            }
+        }
+        Ok(view)
+    }
+
+    fn render_daily_vault(
         &self,
         vault: &Path,
         date: String,
@@ -7059,6 +7110,57 @@ fn plan_time_period(date: CalendarDate, start: u16, end: Option<u16>) -> String 
     }
 }
 
+/// Rebuilt from canonical endpoint identities on every read; never persisted into a Daily Record.
+fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepView, date: &str) {
+    use crate::sleep::SleepEndpoint;
+    let Some(day) = CalendarDate::parse(date) else {
+        return;
+    };
+    let window_start = day.unix_days() * 1440 + 240;
+    let point_minute = |point: &crate::sleep::SleepPoint| -> Option<i64> {
+        let day = CalendarDate::parse(&point.date)?;
+        let (hour, minute) = point.time.split_once(':')?;
+        Some(day.unix_days() * 1440 + hour.parse::<i64>().ok()? * 60 + minute.parse::<i64>().ok()?)
+    };
+    for fact in &sleep.facts {
+        // Legacy uncertainty without a lived-date context is only shown when its
+        // actual date/bounds explicitly overlap this day. The night index is not evidence.
+        let belongs = match fact.lived_date.as_deref() {
+            Some(lived_date) => lived_date == date,
+            None => match &fact.endpoint {
+                SleepEndpoint::Text {
+                    date: actual_date, ..
+                } => actual_date == date,
+                SleepEndpoint::Range { start, end, .. } => {
+                    matches!((point_minute(start), point_minute(end)), (Some(start), Some(end))
+                        if start < window_start + 1440 && end >= window_start)
+                }
+                _ => false,
+            },
+        };
+        if !belongs {
+            continue;
+        }
+        let text = match &fact.endpoint {
+            SleepEndpoint::Text { text, .. } => text.as_str(),
+            SleepEndpoint::Range { reported_text, .. } => reported_text.as_str(),
+            _ => "",
+        };
+        let mut entry = unlocated_axis_entry(None, text, date);
+        entry.sleep_fact = Some(fact.clone());
+        if let SleepEndpoint::Point { point } = &fact.endpoint {
+            let projected = point_minute(point).map(|minute| minute - day.unix_days() * 1440);
+            if let Some(minute) = projected.filter(|minute| (240..1680).contains(minute)) {
+                entry.start_minute = Some(minute as u16);
+                entry.source_date = point.date.clone();
+                axis.confirmed_facts.push(entry);
+                continue;
+            }
+        }
+        axis.unlocated_confirmed_facts.push(entry);
+    }
+}
+
 fn project_time_axis<C: TodayClock>(
     timeline: &[MorningBlockView],
     daytime: &DaytimeView,
@@ -7151,6 +7253,7 @@ fn project_axis_item<C: TodayClock>(
                 return;
             }
             located.push(TimeAxisEntryView {
+                sleep_fact: None,
                 plan_precision: None,
         plan_id: None,
                 time_editable: false,
@@ -7221,6 +7324,7 @@ fn project_axis_item<C: TodayClock>(
             let start = (start_absolute.max(window_start) - expected_day.unix_days() * 1440) as u16;
             let end = (end_absolute.min(window_end) - expected_day.unix_days() * 1440) as u16;
             located.push(TimeAxisEntryView {
+                sleep_fact: None,
                 plan_precision: None,
         plan_id: None,
                 time_editable: false,
@@ -7243,6 +7347,7 @@ fn unlocated_axis_entry(
     source_date: &str,
 ) -> TimeAxisEntryView {
     TimeAxisEntryView {
+        sleep_fact: None,
         plan_precision: None,
         plan_id: None,
         time_editable: false,
