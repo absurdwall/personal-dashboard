@@ -137,7 +137,8 @@ impl SleepEndpoint {
                 if let Some(date) = date {
                     validate_date(date)?;
                 }
-                if text.trim().is_empty() || text.len() > 2000 {
+                // Match the original-wording input's HTML maxlength (UTF-16 code units).
+                if text.trim().is_empty() || text.encode_utf16().count() > 2000 {
                     return Err("请保留有效的模糊时间原文。".into());
                 }
             }

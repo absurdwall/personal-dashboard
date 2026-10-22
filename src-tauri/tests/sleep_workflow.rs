@@ -1588,6 +1588,127 @@ fn sleep_habit_identity_rejects_other_keys_at_the_public_json_boundary() {
 }
 
 #[test]
+fn habit_original_wording_accepts_cjk_within_the_input_limit() {
+    let root = vault("original-wording-cjk");
+    let app = application(&root);
+    let opened = app.sleep_records().unwrap();
+    let wording = "睡".repeat(700);
+    let saved = app
+        .save_habit_sleep_time(
+            serde_json::from_value(json!({
+                "habitKey":"sleep", "livedDate":"2026-10-21",
+                "endpoint":{"kind":"text","text":wording}, "changeId":"cjk-wording",
+                "targetBinding":opened.target_binding, "expectedRevision":opened.revision,
+            }))
+            .unwrap(),
+        )
+        .expect("700 Chinese characters fit the 2000-unit original-wording input");
+    let reopened = application(&root).sleep_records().unwrap();
+    assert_eq!(reopened, saved);
+    assert_eq!(
+        serde_json::to_value(&reopened.facts[0]).unwrap()["endpoint"]["text"],
+        wording
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn habit_original_wording_limit_matches_utf16_without_truncating_or_adding_timing() {
+    // The mixed sample has 998 BMP units, 1000 surrogate-pair units and two spaces.
+    let mixed_boundary = format!(" {}{} ", "睡".repeat(998), "🌙".repeat(500));
+    for (label, wording, accepted) in [
+        ("ascii-2000", "a".repeat(2000), true),
+        ("ascii-2001", "a".repeat(2001), false),
+        ("cjk-2000", "睡".repeat(2000), true),
+        ("cjk-2001", "睡".repeat(2001), false),
+        ("emoji-1000", "🌙".repeat(1000), true),
+        ("emoji-1001", "🌙".repeat(1001), false),
+        ("mixed-2000", mixed_boundary.clone(), true),
+        ("mixed-2001", format!("{mixed_boundary}a"), false),
+        ("blank", " \t　 ".into(), false),
+    ] {
+        let root = vault(label);
+        let app = application(&root);
+        let opened = app.sleep_records().unwrap();
+        let baseline = app
+            .save_habit_sleep_time(
+                serde_json::from_value(json!({
+                    "habitKey":"wake", "livedDate":"2026-10-22",
+                    "endpoint":{"kind":"unknown"}, "changeId":"unknown-wake",
+                    "targetBinding":opened.target_binding, "expectedRevision":opened.revision,
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+        let before = fs::read(&path).unwrap();
+        let result = app.save_habit_sleep_time(
+            serde_json::from_value(json!({
+                "habitKey":"sleep", "livedDate":"2026-10-21", "recordId":baseline.records[0].id,
+                "endpoint":{"kind":"text","text":wording}, "changeId":"original-wording",
+                "targetBinding":baseline.target_binding, "expectedRevision":baseline.revision,
+            }))
+            .unwrap(),
+        );
+        if accepted {
+            let saved = result.unwrap_or_else(|error| panic!("{label}: {error}"));
+            let reopened = application(&root).sleep_records().unwrap();
+            assert_eq!(reopened, saved, "{label}");
+            assert_eq!(reopened.records[0].id, baseline.records[0].id);
+            assert_eq!(reopened.records[0].get_up, baseline.records[0].get_up);
+            assert_eq!(reopened.records[0].estimated_duration_minutes, None);
+            let fact = serde_json::to_value(&reopened.facts[0]).unwrap();
+            assert_eq!(fact["endpoint"]["text"], wording, "{label}");
+            assert!(fact["endpoint"]["date"].is_null());
+            let today = application(&root).read_date("2026-10-21").unwrap();
+            assert!(today.time_axis.confirmed_facts.is_empty());
+            assert_eq!(today.time_axis.unlocated_confirmed_facts.len(), 1);
+            let entry = &today.time_axis.unlocated_confirmed_facts[0];
+            assert_eq!(entry.start_minute, None);
+            assert_eq!(entry.end_minute, None);
+            assert_eq!(
+                serde_json::to_value(entry.sleep_fact.as_ref().unwrap()).unwrap()["endpoint"]
+                    ["text"],
+                wording,
+                "{label}"
+            );
+        } else {
+            assert_eq!(result.unwrap_err(), "请保留有效的模糊时间原文。", "{label}");
+            assert_eq!(
+                application(&root).sleep_records().unwrap(),
+                baseline,
+                "{label}"
+            );
+            assert_eq!(
+                fs::read(&path).unwrap(),
+                before,
+                "{label}: rejected save wrote data"
+            );
+        }
+        let wake_day = application(&root).read_date("2026-10-22").unwrap();
+        assert!(wake_day.time_axis.confirmed_facts.is_empty());
+        assert_eq!(wake_day.time_axis.unlocated_confirmed_facts.len(), 1);
+        let unknown = &wake_day.time_axis.unlocated_confirmed_facts[0];
+        assert_eq!(unknown.start_minute, None);
+        assert_eq!(unknown.end_minute, None);
+        assert_eq!(
+            serde_json::to_value(unknown.sleep_fact.as_ref().unwrap()).unwrap()["endpoint"]["kind"],
+            "unknown"
+        );
+        assert!(!root
+            .join("life/.personal-dashboard/habit-completions/v1/completions.json")
+            .exists());
+        assert_eq!(
+            fs::read_dir(root.join("life/Journal/Daily"))
+                .unwrap()
+                .count(),
+            0
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
 fn original_wording_retains_lived_context_without_claiming_an_actual_calendar_date() {
     let root = vault("unknown-text-calendar-date");
     let app = application(&root);
