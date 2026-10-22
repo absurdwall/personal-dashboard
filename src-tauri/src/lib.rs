@@ -813,7 +813,13 @@ fn resolve_habit_sleep_range(
 }
 
 #[tauri::command]
-fn save_habit_sleep_time(application: State<'_, DesktopTodayApplication>, input: sleep::HabitSleepMutationInput) -> Result<sleep::SleepView, String> {
+fn save_habit_sleep_time(
+    application: State<'_, DesktopTodayApplication>,
+    input: serde_json::Value,
+) -> Result<sleep::SleepView, String> {
+    // Decode inside the command so the domain's paired identity diagnostic is
+    // returned unchanged, rather than wrapped as a generic Tauri argument error.
+    let input = serde_json::from_value(input).map_err(|error| error.to_string())?;
     application.save_habit_sleep_time(input)
 }
 

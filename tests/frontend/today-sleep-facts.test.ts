@@ -155,3 +155,19 @@ test('live sleep translations update the same point and open fact popup without 
   assert.match(result.english.copy,/My bedtime.*next day about 02:00/);
   assert.deepEqual(result.errors,[]);
 });
+
+for(const actualDate of [null,'2026-08-11'])for(const language of ['en','zh'])test(`original text Today provenance keeps ${actualDate?'its known date':'the actual date unknown'} in ${language}`,{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const toggle=document.querySelector('#today-unlocated-time-shortcut');if(toggle.getAttribute('aria-expanded')!=='true')toggle.click();
+    await until(()=>!document.querySelector('#today-unlocated-time-region').hidden);
+    const evidence=document.querySelector('#today-confirmed-facts-unlocated');
+    return JSON.stringify({text:evidence.textContent,markers:document.querySelectorAll('.today-axis-marker[data-sleep-record-id]').length,errors:window.probeErrors});
+  `,false,723,{interface_language_preferences:{interfaceLanguage:language}},boundary+`
+    const original={...fact,dayRelation:'unresolved',endpoint:{kind:'text',date:${JSON.stringify(actualDate)},text:'around 2 a.m., not normalized'}};
+    view.timeAxis.confirmedFacts=[oldFact];view.timeAxis.unlocatedConfirmedFacts=[{...oldFact,startMinute:null,sleepFact:original}];canonical.facts=[original];
+  `);
+  assert.match(result.text,/around 2 a.m., not normalized/);assert.match(result.text,/2026-08-10/,'lived-day context remains explicit');
+  if(actualDate)assert.match(result.text,new RegExp((language==='zh'?'实际日期：':'Actual date: ')+actualDate));
+  else{assert.match(result.text,language==='zh'?/实际日期未知/:/Actual calendar date unknown/);assert.doesNotMatch(result.text,language==='zh'?/实际日期：2026-08-10/:/Actual date: 2026-08-10/);}
+  assert.equal(result.markers,0);assert.deepEqual(result.errors,[]);
+});

@@ -1,7 +1,7 @@
 import {interfaceCopy, setInterfaceCopy, setInterfaceAttribute, setInterfaceError, type InterfaceCopyKey, type InterfaceLanguage} from './interface-language.js';
-import {formatSleepEndpoint, type SleepEndpointFact, type SleepView} from './sleep-facts.js';
+import {formatSleepEndpoint, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
 
-type HabitKey='wake'|'sleep';
+type HabitKey=SleepHabitKey;
 type Metric=HabitKey|'duration';
 type Sample=Readonly<{date:string;value:number|null;approximate:boolean;label:string}>;
 type HabitContext=Readonly<{key:HabitKey;name:string;date:string}>;
@@ -168,6 +168,7 @@ export class HabitSleepOverview {
     for(const fact of matches){
       if(matches.length>1)root.append(element('p','',formatSleepEndpoint(fact,this.language())));
       if(fact.endpoint.kind==='point')root.append(this.copyElement('p','habit-sleep-calendar-date','sleep.overview.actualDate',{date:fact.endpoint.date,time:fact.endpoint.time}));
+      else if(fact.endpoint.kind==='text')root.append(this.copyElement('p','habit-sleep-calendar-date',fact.endpoint.date?'sleep.fact.actualDate':'sleep.fact.actualDateUnknown',{value:fact.endpoint.date??''}));
     }
     if(this.selected?.metric==='duration'&&this.selected.date===date){
       root.append(element('p','',this.sample('duration',date).label));

@@ -3680,7 +3680,7 @@ where
             }
             // Canonical history outlives pausing, start-date edits and the snapshot window.
             started || recorded.iter().any(|fact| {
-                fact.habit_key == habit.key && fact.lived_date.as_deref() == Some(date)
+                fact.habit_key.as_str() == habit.key && fact.lived_date.as_deref() == Some(date)
             })
         }).map(|habit| HabitTimeHabitView {
             key: habit.key,
@@ -7308,9 +7308,7 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
         let belongs = match fact.lived_date.as_deref() {
             Some(lived_date) => lived_date == date,
             None => match &fact.endpoint {
-                SleepEndpoint::Text {
-                    date: actual_date, ..
-                } => actual_date == date,
+                SleepEndpoint::Text { date: Some(actual_date), .. } => actual_date == date,
                 SleepEndpoint::Range { start, end, .. } => {
                     matches!((point_minute(start), point_minute(end)), (Some(start), Some(end))
                         if start < window_start + 1440 && end >= window_start)
