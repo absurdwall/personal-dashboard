@@ -1765,6 +1765,8 @@ let currentTodayPhase: TodayPhase = "morning";
 let todayPhaseSelectionRevision = 0;
 let todayAxisFollowState: TodayAxisFollowState = "following";
 let programmaticTodayAxisScrollUntil = 0;
+// The selected source identity survives presentation-only date navigation.
+let selectedVaultPath: string | null = null;
 let currentTodayView: TodayView | null = null;
 let currentTasksView: TasksView | null = null;
 let taskScope: TaskListScope = "all";
@@ -3806,7 +3808,7 @@ async function refreshCanonicalDateProjections(targetDate: string, evidence?: Co
   const calendarRequest = window.__TAURI__.core.invoke<CalendarMonthView>("calendar_month", { year, month })
     .then((value) => ({ ok: true as const, value }))
     .catch((error: unknown) => ({ ok: false as const, error }));
-  const habitRequest = window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot")
+  const habitRequest = window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot", { vaultPath: selectedVaultPath ?? "" })
     .then((value) => ({ ok: true as const, value }))
     .catch((error: unknown) => ({ ok: false as const, error }));
   const [today, calendar, habits] = await Promise.all([todayRequest, calendarRequest, habitRequest]);
@@ -7418,6 +7420,7 @@ function openTodayTaskEditorIds(view: TodayView): Set<string> {
 }
 
 function renderToday(view: TodayView, keepTaskEditorsOpen = false): void {
+  selectedVaultPath = view.vaultPath;
   closeTodayAxisTaskPopup(false, false);
   closeTodayAxisFactPopup(false);
   const openTaskEditors = keepTaskEditorsOpen ? openTodayTaskEditorIds(view) : new Set<string>();
@@ -8453,6 +8456,8 @@ async function selectTodayVault(createSpace = false): Promise<void> {
     if (collaborationMessageDraft) collaborationMessageDraft.value = unboundComposer.draft;
   };
   vaultSelectionInProgress = true;
+  habitDateRequests.invalidate();
+  habitTimeEntry?.setSelectionPending(true);
   collaborationVaultSelectionRevision += 1;
   collaborationVaultSwitchDraftWrites = [...collaborationDraftWrites.values()];
   try {
@@ -8460,6 +8465,7 @@ async function selectTodayVault(createSpace = false): Promise<void> {
   } catch (error) {
     collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
+    resumeHabitReadsAfterVaultSelection();
     renderCollaborationWorkspace();
     renderPendingWriteFailure();
     if (collaborationRunStatus) {
@@ -8504,7 +8510,7 @@ async function selectTodayVault(createSpace = false): Promise<void> {
         renderWorkspaceContextStatus: () =>
           renderWorkspaceContextStatus(currentWorkspaceDestination),
         openCalendar,
-        refreshHabits,
+        refreshHabits: () => refreshHabits(true),
         refreshTasks,
       },
     );
@@ -8516,10 +8522,25 @@ async function selectTodayVault(createSpace = false): Promise<void> {
   } finally {
     collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
+    resumeHabitReadsAfterVaultSelection();
     restoreUnboundComposer();
     renderCollaborationWorkspace();
     updateTodayOperationState(-1);
   }
+}
+
+function resumeHabitReadsAfterVaultSelection(): void {
+  habitTimeEntry?.setSelectionPending(false);
+  if (habitsStatus?.dataset.state === "loading" && currentHabitSnapshot) {
+    renderHabitSnapshotStatus(currentHabitSnapshot);
+  }
+  if (selectedHabitDetailKey && (habitDetailLoading || currentHabitDetailHistory?.habit.key !== selectedHabitDetailKey)) {
+    void loadHabitDetailHistory(selectedHabitDetailKey);
+  }
+  if (selectedHabitCell && !currentHabitDateView) {
+    void loadSelectedHabitDate(selectedHabitCell.habitKey, selectedHabitCell.date);
+  }
+  if (currentWorkspaceDestination === "habits" && !currentHabitSnapshot) void refreshHabits();
 }
 
 function renderVaultSelectionError(error: unknown, createSpace = false): void {
@@ -9901,20 +9922,26 @@ function revealHabitSleepDetail(): void {
 }
 
 async function loadHabitDetailHistory(habitKey: string, revealSleepDetail = false): Promise<void> {
+  if (vaultSelectionInProgress) return;
+  const vaultPath = selectedVaultPath ?? "";
+  const selectionRevision = collaborationVaultSelectionRevision;
   const request = habitDetailRequests.begin();
+  const isCurrent = () => habitDetailRequests.isCurrent(request) && selectedHabitDetailKey === habitKey &&
+    !vaultSelectionInProgress && selectedVaultPath === (vaultPath || null) &&
+    selectionRevision === collaborationVaultSelectionRevision;
   habitDetailLoading = true;
   habitDetailLoadError = null;
   renderHabitDetailPanel();
   try {
-    const loaded = await window.__TAURI__.core.invoke<HabitDetailHistoryView>("habit_detail_history", { habitKey });
-    if (!habitDetailRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    const loaded = await window.__TAURI__.core.invoke<HabitDetailHistoryView>("habit_detail_history", { habitKey, vaultPath });
+    if (!isCurrent()) return;
     currentHabitDetailHistory = loaded;
     habitDetailLoading = false;
     habitDetailLoadError = null;
     renderHabitDetailPanel();
     if (revealSleepDetail) revealHabitSleepDetail();
   } catch (error) {
-    if (!habitDetailRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    if (!isCurrent()) return;
     habitDetailLoading = false;
     habitDetailLoadError = String(error);
     renderHabitDetailPanel();
@@ -10310,19 +10337,20 @@ async function loadSelectedHabitDate(habitKey: string, date: string): Promise<vo
   habitNoteStatus = null;
   renderSelectedHabitCell();
   const request = habitDateRequests.begin();
+  if (vaultSelectionInProgress) return;
+  const vaultPath = selectedVaultPath;
+  const selectionRevision = collaborationVaultSelectionRevision;
+  const isCurrent = () => habitDateRequests.isCurrent(request) && !vaultSelectionInProgress &&
+    selectedHabitCell?.habitKey === habitKey && selectedHabitCell.date === date &&
+    selectedVaultPath === vaultPath && collaborationVaultSelectionRevision === selectionRevision;
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date });
-    if (
-      !habitDateRequests.isCurrent(request) ||
-      selectedHabitCell?.habitKey !== habitKey ||
-      selectedHabitCell.date !== date
-    ) {
-      return;
-    }
+    if (!isCurrent()) return;
+    if (view.vaultPath !== vaultPath) throw new Error("所选 Vault 已改变；未读取作息。");
     currentHabitDateView = view;
     renderSelectedHabitCell();
   } catch (error) {
-    if (!habitDateRequests.isCurrent(request)) return;
+    if (!isCurrent()) return;
     habitNoteStatus = {
       copyKey: "habits.loadDateFailed",
       error: String(error),
@@ -10831,6 +10859,35 @@ async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<boolean>
   }
 }
 
+function isLocallyEmptyHabitSnapshot(view: HabitSnapshotView): boolean {
+  return view.state === "missing" && view.habits.length === 0 &&
+    Boolean(view.catalogTargetBinding) && !view.catalogError && !view.readError;
+}
+
+function renderHabitSnapshotStatus(view: HabitSnapshotView): void {
+  const localEmpty = isLocallyEmptyHabitSnapshot(view);
+  if (habitsStatus) {
+    if (habitCompletionStatus?.copyKey && habitCompletionStatus.error) {
+      setCopyError(
+        habitsStatus,
+        habitCompletionStatus.copyKey,
+        habitCompletionStatus.error,
+      );
+    } else if (habitCompletionStatus?.copyKey) {
+      setCopy(habitsStatus, habitCompletionStatus.copyKey);
+    } else if (view.namesConfigurationState === "invalid") {
+      setCopy(habitsStatus, "habits.namesConfigInvalid");
+    } else if (view.readError) {
+      setCopyError(habitsStatus, "habits.loadFailed", view.readError);
+    } else if (localEmpty) {
+      setCopy(habitsStatus, "habits.localEmptyHelp");
+    } else {
+      setAppMessage(habitsStatus, view.message);
+    }
+    habitsStatus.dataset.state = habitCompletionStatus?.state ?? view.state;
+  }
+}
+
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   const snapshotChanged = currentHabitSnapshot !== view;
   currentHabitSnapshot = view;
@@ -10852,30 +10909,10 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
       ? applicationMessage(view.catalogError)
       : t("habits.add");
   }
-  const localEmpty = view.state === "missing" && view.habits.length === 0 &&
-    Boolean(view.catalogTargetBinding) && !view.catalogError && !view.readError;
+  const localEmpty = isLocallyEmptyHabitSnapshot(view);
   renderWorkspaceRailContext("habits");
   renderWorkspaceContextStatus(currentWorkspaceDestination);
-  if (habitsStatus) {
-    if (habitCompletionStatus?.copyKey && habitCompletionStatus.error) {
-      setCopyError(
-        habitsStatus,
-        habitCompletionStatus.copyKey,
-        habitCompletionStatus.error,
-      );
-    } else if (habitCompletionStatus?.copyKey) {
-      setCopy(habitsStatus, habitCompletionStatus.copyKey);
-    } else if (view.namesConfigurationState === "invalid") {
-      setCopy(habitsStatus, "habits.namesConfigInvalid");
-    } else if (view.readError) {
-      setCopyError(habitsStatus, "habits.loadFailed", view.readError);
-    } else if (localEmpty) {
-      setCopy(habitsStatus, "habits.localEmptyHelp");
-    } else {
-      setAppMessage(habitsStatus, view.message);
-    }
-    habitsStatus.dataset.state = habitCompletionStatus?.state ?? view.state;
-  }
+  renderHabitSnapshotStatus(view);
   if (habitsRange) {
     const rangeKey = view.displayRangeLabel && view.rangeLabel
       ? "habits.range"
@@ -10975,28 +11012,34 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   }
 }
 
-async function refreshHabits(): Promise<void> {
+async function refreshHabits(forSelection = false): Promise<void> {
+  if (vaultSelectionInProgress && !forSelection) return;
+  const vaultPath = selectedVaultPath ?? "";
+  const selectionRevision = collaborationVaultSelectionRevision;
   const request = habitSnapshotRequests.begin();
+  const isCurrent = () => habitSnapshotRequests.isCurrent(request) &&
+    selectedVaultPath === (vaultPath || null) && selectionRevision === collaborationVaultSelectionRevision &&
+    (!vaultSelectionInProgress || forSelection);
   if (habitsStatus) {
     setCopy(habitsStatus, "habits.loadingLocal");
     habitsStatus.dataset.state = "loading";
   }
   try {
-    const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot");
-    if (!habitSnapshotRequests.isCurrent(request)) return;
+    const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot", { vaultPath });
+    if (!isCurrent()) return;
     if (view.habits.some(habit => habit.key === "wake" || habit.key === "sleep")) {
       try {
-        const sleep = await window.__TAURI__.core.invoke<SleepView>("sleep_records");
-        if (!habitSnapshotRequests.isCurrent(request)) return;
+        const sleep = await window.__TAURI__.core.invoke<SleepView>("sleep_records", { vaultPath });
+        if (!isCurrent()) return;
         habitSleepOverview.accept(sleep);
       } catch (error) {
-        if (!habitSnapshotRequests.isCurrent(request)) return;
+        if (!isCurrent()) return;
         habitSleepOverview.unavailable(String(error));
       }
     } else habitSleepOverview.clear();
     renderHabitSnapshot(view);
   } catch (error) {
-    if (!habitSnapshotRequests.isCurrent(request)) return;
+    if (!isCurrent()) return;
     renderHabitSnapshot({
       state: "error",
       message: String(error),
@@ -16335,6 +16378,7 @@ habitsDestination?.addEventListener("change", (event) => {
 habitsDestination?.addEventListener("click", (event) => {
   const timeEntry = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-time-open][data-habit-time-date]");
   if (timeEntry) {
+    if (vaultSelectionInProgress) return;
     const key = timeEntry.dataset.habitTimeOpen;
     const date = timeEntry.dataset.habitTimeDate;
     if ((key === "wake" || key === "sleep") && date && selectedHabitCell?.habitKey === key && selectedHabitCell.date === date) {

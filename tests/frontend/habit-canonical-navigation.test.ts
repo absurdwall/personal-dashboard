@@ -15,6 +15,7 @@ function production(name: string) {
 test("canonical Habit arrival reads every exact key/date and discards an older date response", async () => {
   const requests: { date: string; resolve: (view: any) => void }[] = [];
   const context = vm.createContext({ selectedHabitCell: null, currentHabitDateView: null, habitNoteStatus: null,
+    vaultSelectionInProgress: false, selectedVaultPath: "/Synthetic/A", collaborationVaultSelectionRevision: 0,
     habitDateRequests: new LatestRequest(), renderSelectedHabitCell() {},
     window: { __TAURI__: { core: { invoke(command: string, { date }: { date: string }) {
       assert.equal(command, "read_daily_view");
@@ -24,8 +25,8 @@ test("canonical Habit arrival reads every exact key/date and discards an older d
   const first = vm.runInContext("loadSelectedHabitDate('reading', '2026-06-02')", context);
   const second = vm.runInContext("loadSelectedHabitDate('reading', '2026-06-03')", context);
   assert.deepEqual(requests.map(item => item.date), ["2026-06-02", "2026-06-03"]);
-  requests[1].resolve({ date: "2026-06-03", habitCorrections: { habits: [] } }); await second;
-  requests[0].resolve({ date: "2026-06-02", habitCorrections: { habits: [] } }); await first;
+  requests[1].resolve({ vaultPath: "/Synthetic/A", date: "2026-06-03", habitCorrections: { habits: [] } }); await second;
+  requests[0].resolve({ vaultPath: "/Synthetic/A", date: "2026-06-02", habitCorrections: { habits: [] } }); await first;
   assert.equal(context.currentHabitDateView.date, "2026-06-03");
 });
 

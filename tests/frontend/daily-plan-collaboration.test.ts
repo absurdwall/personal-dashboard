@@ -95,7 +95,7 @@ test("saved date operations refresh Today, Calendar, and Habits before the propo
   assert.ok(refresh, "date projection refresh helper exists");
   assert.match(refresh[0], /invoke<TodayView>\("read_daily_view", \{ date: targetDate \}\)/);
   assert.match(refresh[0], /invoke<CalendarMonthView>\("calendar_month", \{ year, month \}\)/);
-  assert.match(refresh[0], /invoke<HabitSnapshotView>\("habit_snapshot"\)/);
+  assert.match(refresh[0], /invoke<HabitSnapshotView>\("habit_snapshot",\s*\{\s*vaultPath:/);
   assert.match(refresh[0], /currentCalendarSummaryView\?\.date === targetDate/);
   assert.match(refresh[0], /selectedHabitCell\?\.date === targetDate/);
   assert.match(refresh[0], /currentHabitDateView = today\.value/);

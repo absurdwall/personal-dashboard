@@ -281,3 +281,54 @@ for(const [start,end,startDate,endDate]of [['03:00','05:00','2026-08-11','2026-0
     assert.equal(result.input.endpoint.start.date,startDate);assert.equal(result.input.endpoint.end.date,endDate);assert.equal(result.input.endpoint.reportedText,'Original range wording');assert.equal(result.dates,0);assert.deepEqual(result.errors,[]);
   });
 }
+
+test('a backend-selected Vault cannot supply a pending-selection editor with another Vault binding',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    await until(()=>document.querySelector('[data-habit-time-edit="wake"]')&&!document.querySelector('[data-habit-time-edit="wake"]').disabled);
+    document.querySelector('#workspace-settings').click();document.querySelector('[data-settings-section="data"]').click();document.querySelector('#settings-select-vault').click();
+    await until(()=>window.releaseSelection&&backendVault==='/Synthetic/B/Shared');
+    document.querySelector('[data-workspace-destination="today"]').click();
+    await until(()=>document.querySelector('[data-habit-time-edit="wake"]'));
+    const reads=calls.filter(c=>c.command==='sleep_records').length;
+    // The editor may be disabled while the selection response is held. If it is
+    // enabled, act as a user would; the assertion below catches an unsafe write.
+    await until(()=>document.querySelector('[data-habit-time-edit="wake"]').disabled||document.querySelector('[data-habit-time-value="wake"]').textContent.includes('PRIVATE_B_CONTEXT'));
+    const leaked=document.body.textContent.includes('PRIVATE_B_CONTEXT');
+    const entryTrigger=document.querySelector('[data-habit-time-edit="wake"]');
+    if(!entryTrigger.disabled){
+      entryTrigger.click();const kind=document.querySelector('[data-habit-time-kind]');kind.value='point';kind.dispatchEvent(new Event('change',{bubbles:true}));
+      const form=document.querySelector('[data-habit-time-form="wake"]');form.querySelector('[data-habit-time-point]').value='07:55';form.requestSubmit();await until(()=>calls.some(c=>c.command==='save_habit_sleep_time'));
+    }
+    const before=calls.filter(c=>c.command==='save_habit_sleep_time').map(c=>c.args.input);
+    const next=structuredClone(view);next.vaultPath='/Synthetic/B/Shared';next.date='2026-08-09';next.habitCorrections.date=next.date;next.habitCorrections.habits.forEach(h=>h.cell.date=next.date);
+    Object.assign(view,next);window.releaseSelection({view:next,changed:true});
+    await until(()=>document.querySelector('[data-habit-time-edit="wake"]')&&!document.querySelector('[data-habit-time-edit="wake"]').disabled);
+    return JSON.stringify({leaked,before,reads,paths:calls.filter(c=>c.command==='sleep_records').map(c=>c.args?.vaultPath??null),errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+String.raw`
+    view.vaultPath='/Synthetic/A/Shared';view.vaultName='Shared';let backendVault=view.vaultPath;
+    const selectedInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      if(command==='select_today_vault'){calls.push({command,args});backendVault='/Synthetic/B/Shared';return new Promise(resolve=>window.releaseSelection=resolve);}
+      if(command==='sleep_records'){
+        calls.push({command,args});if(args?.vaultPath&&args.vaultPath!==backendVault)throw '所选 Vault 已改变；未读取作息。';
+        if(backendVault==='/Synthetic/B/Shared')return {targetBinding:'binding-b',revision:'b1',records:[],facts:[{recordId:'private-b',habitKey:'wake',livedDate:'2026-08-10',dayRelation:'unresolved',endpoint:{kind:'text',date:'2026-08-10',text:'PRIVATE_B_CONTEXT'}}]};
+        return structuredClone(sleepState);
+      }
+      return selectedInvoke(command,args);
+    };
+  `);
+  assert.equal(result.leaked,false);assert.deepEqual(result.before,[],'no write may use B binding with A date while selection is pending');
+  assert.ok(result.paths.every(path=>path==='/Synthetic/A/Shared'||path==='/Synthetic/B/Shared'));assert.deepEqual(result.errors,[]);
+});
+
+
+test('a bound canonical-read rejection uses paired English copy while retaining its raw diagnostic',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    await until(()=>document.querySelector('[data-habit-time-status]'));
+    const status=document.querySelector('[data-habit-time-status]');
+    return JSON.stringify({text:status.textContent,raw:status.dataset.i18nError,disabled:document.querySelector('[data-habit-time-edit="wake"]').disabled,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    const boundInvoke=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>{if(command==='sleep_records')throw '所选 Vault 已改变；未读取作息。';return boundInvoke(command,args);};
+  `);
+  assert.match(result.text,/Selected Vault changed; no sleep records read\./);assert.doesNotMatch(result.text,/所选/);assert.equal(result.raw,'所选 Vault 已改变；未读取作息。');assert.equal(result.disabled,true);assert.deepEqual(result.errors,[]);
+});

@@ -1383,3 +1383,145 @@ fn point_and_range_preview_reject_nonexistent_and_ambiguous_actual_local_times()
         .exists());
     fs::remove_dir_all(root).unwrap();
 }
+
+struct ReplaceSleepDuringDailyRead {
+    path: PathBuf,
+    reads: std::cell::Cell<usize>,
+}
+impl personal_dashboard_lib::today::TodayRecordStore for ReplaceSleepDuringDailyRead {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        let reads = self.reads.get() + 1;
+        self.reads.set(reads);
+        if reads == 2 {
+            fs::write(
+                &self.path,
+                br#"{"schemaVersion":1,"records":[],"operations":[]}"#,
+            )
+            .unwrap();
+        }
+        personal_dashboard_lib::today::TodayRecordStore::load(
+            &personal_dashboard_lib::today::FileTodayRecordStore,
+            path,
+        )
+    }
+    fn save_if_unchanged(&self, _: &Path, _: &[u8], _: &[u8]) -> Result<(), String> {
+        Err("read-only fixture".into())
+    }
+}
+#[test]
+fn one_today_read_keeps_historical_time_entry_and_point_on_the_same_captured_sleep_view() {
+    let root = vault("coherent-sleep-view");
+    let snapshot_path = root.join(personal_dashboard_lib::habits::SNAPSHOT_RELATIVE_PATH);
+    fs::create_dir_all(snapshot_path.parent().unwrap()).unwrap();
+    fs::write(
+        snapshot_path,
+        include_bytes!("fixtures/habits-v1-complete.json"),
+    )
+    .unwrap();
+    let setup = application(&root);
+    let catalog = setup.habits().unwrap();
+    setup.save_habit_definition(serde_json::from_value(json!({"operationId":"later-start","targetBinding":catalog.catalog_target_binding,"expectedRevision":catalog.catalog_revision,"habitKey":"sleep","language":"en","name":"Sleep","startDate":"2026-10-23","emoji":null,"group":null,"goal":null})).unwrap()).unwrap();
+    let saved = save(
+        &setup,
+        json!({"wakeDate":"2026-10-22","changeId":"captured-point","sleepOnset":point("2026-10-22","02:00",-240)}),
+    );
+    let app = TodayApplication::with_record_store(
+        Selected(root.clone()),
+        NoSelection,
+        FixedClock,
+        ReplaceSleepDuringDailyRead {
+            path: root.join("life/.personal-dashboard/sleep/v1/sessions.json"),
+            reads: std::cell::Cell::new(0),
+        },
+    );
+    let first = app.read_date("2026-10-21").unwrap();
+    assert!(first
+        .habit_time_habits
+        .iter()
+        .any(|habit| habit.key == "sleep"));
+    assert_eq!(
+        first.time_axis.confirmed_facts.len(),
+        1,
+        "historical entry eligibility and its point must use the same captured read"
+    );
+    assert_eq!(
+        first.time_axis.confirmed_facts[0]
+            .sleep_fact
+            .as_ref()
+            .unwrap()
+            .record_id,
+        saved.records[0].id
+    );
+    let next = app.read_date("2026-10-21").unwrap();
+    assert!(!next
+        .habit_time_habits
+        .iter()
+        .any(|habit| habit.key == "sleep"));
+    assert!(next.time_axis.confirmed_facts.is_empty());
+    assert_eq!(first.vault_path, next.vault_path);
+    fs::remove_dir_all(root).unwrap();
+}
+
+struct SelectionReadSequence(std::cell::RefCell<std::collections::VecDeque<PathBuf>>);
+impl TodayWorkspacePersistence for SelectionReadSequence {
+    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        let mut paths = self.0.borrow_mut();
+        Ok(if paths.len() > 1 {
+            paths.pop_front()
+        } else {
+            paths.front().cloned()
+        })
+    }
+    fn save_selected_vault(&self, _: &Path) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[test]
+fn path_bound_sleep_and_habit_reads_reject_same_basename_vaults_before_and_after_reading() {
+    let parent = vault("path-bound-reads");
+    let a = parent.join("A/Shared");
+    let b = parent.join("B/Shared");
+    for path in [&a, &b] {
+        fs::create_dir_all(path.join(".obsidian")).unwrap();
+        fs::create_dir_all(path.join("life/Journal/Daily")).unwrap();
+    }
+    for change_during_read in [false, true] {
+        let selected = || {
+            SelectionReadSequence(std::cell::RefCell::new(
+                if change_during_read {
+                    vec![a.clone(), b.clone()]
+                } else {
+                    vec![b.clone()]
+                }
+                .into(),
+            ))
+        };
+        let app = TodayApplication::new(selected(), NoSelection, FixedClock);
+        let error = app.sleep_records_for_path(a.to_str().unwrap()).unwrap_err();
+        assert!(error.contains("所选 Vault"));
+        let app = TodayApplication::new(selected(), NoSelection, FixedClock);
+        let error = app
+            .habits_for_selected_vault(a.to_str().unwrap())
+            .unwrap_err();
+        assert!(error.contains("所选 Vault"));
+        let app = TodayApplication::new(selected(), NoSelection, FixedClock);
+        let error = app
+            .habit_detail_history_for_path("wake", a.to_str().unwrap())
+            .unwrap_err();
+        assert!(error.contains("所选 Vault"));
+    }
+    let app = TodayApplication::new(
+        SelectionReadSequence(std::cell::RefCell::new(vec![a.clone()].into())),
+        NoSelection,
+        FixedClock,
+    );
+    assert_eq!(
+        app.sleep_records_for_path(a.to_str().unwrap())
+            .unwrap()
+            .target_binding,
+        application(&a).sleep_records().unwrap().target_binding
+    );
+    assert!(app.habits_for_selected_vault(a.to_str().unwrap()).is_ok());
+    fs::remove_dir_all(parent).unwrap();
+}

@@ -28,6 +28,7 @@ export class HabitTimeEntry {
   private request=0;
   private generation=0;
   private saving=false;
+  private selectionPending=false;
   private status:Readonly<{key:InterfaceCopyKey;error?:string}>|null=null;
   private pendingFocus:string|null=null;
   constructor(private readonly root:HTMLElement,private readonly options:Options){}
@@ -35,11 +36,19 @@ export class HabitTimeEntry {
   clear():void{
     this.generation+=1;this.request+=1;this.context=null;this.data=null;this.draft=null;this.saving=false;this.pendingFocus=null;this.status=null;this.root.replaceChildren();
   }
+  /** Pause without discarding a draft when a picker is cancelled or reselects its Vault. */
+  setSelectionPending(pending:boolean):void{
+    this.selectionPending=pending;this.request+=1;this.render();
+    if(!pending&&this.context){
+      if(this.pendingFocus&&this.data)this.open(this.pendingFocus,true);
+      else if(!this.data&&this.context.habits.length>0)void this.read();
+    }
+  }
   present(context:Context):void{
     if(this.identity(context)!==this.identity(this.context))this.clear();
     this.context=context;
     this.render();
-    if(context.habits.length>0)void this.read();
+    if(context.habits.length>0&&!this.selectionPending)void this.read();
   }
   focus(habitKey:string):void{
     if(!this.context?.habits.some(habit=>habit.key===habitKey))return;
@@ -49,21 +58,21 @@ export class HabitTimeEntry {
 
   private copy(element:HTMLElement,key:InterfaceCopyKey,values:Record<string,string>={}):void{setInterfaceCopy(element,key,this.options.language(),values);}
   private async read():Promise<void>{
-    const context=this.context,token=++this.request;
+    const context=this.context;if(!context||this.selectionPending)return;const token=++this.request;
     try{
-      const data=await this.options.invoke<SleepView>('sleep_records');
-      if(token!==this.request||this.identity(context)!==this.identity(this.context))return;
+      const data=await this.options.invoke<SleepView>('sleep_records',{vaultPath:context.vaultPath});
+      if(this.selectionPending||token!==this.request||this.identity(context)!==this.identity(this.context))return;
       this.data=data;this.render();
       if(this.pendingFocus)this.open(this.pendingFocus,true);
     }catch(error){
-      if(token!==this.request||this.identity(context)!==this.identity(this.context))return;
+      if(this.selectionPending||token!==this.request||this.identity(context)!==this.identity(this.context))return;
       this.status={key:'sleep.loadFailed',error:String(error)};this.render();
     }
   }
   private facts(key:string):readonly SleepEndpointFact[]{return this.data?.facts.filter(f=>f.habitKey===key&&f.livedDate===this.context?.date)??[];}
   private fact(key:string):SleepEndpointFact|null{const matches=this.facts(key);return matches.length===1?matches[0]:null;}
   private open(key:string,focus=false):void{
-    if(!this.data||!this.context?.canRecord||this.saving)return;
+    if(this.selectionPending||!this.data||!this.context?.canRecord||this.saving)return;
     if(this.facts(key).length>1){this.pendingFocus=null;this.status={key:'sleep.conflictHelp'};this.render();return;}
     const fact=this.fact(key),endpoint=fact?.endpoint;
     this.draft={habitKey:key,kind:endpoint?.kind??'point',time:endpoint?.kind==='point'?endpoint.time:endpoint?.kind==='range'?endpoint.start.time:'',endTime:endpoint?.kind==='range'?endpoint.end.time:'',approximate:endpoint?.kind==='point'?Boolean(endpoint.approximate):false,text:endpoint?.kind==='text'?endpoint.text:endpoint?.kind==='range'?endpoint.reportedText:'',expanded:Boolean(endpoint&&endpoint.kind!=='point'),recordId:fact?.recordId,targetBinding:this.data.targetBinding,expectedRevision:this.data.revision,changeId:`habit-time-${globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random()}`}`};
@@ -84,7 +93,7 @@ export class HabitTimeEntry {
       const fact=this.fact(habit.key),values={habit:habit.name,date:context.date};
       this.copy(edit,fact?'sleep.correctTime':'sleep.recordTime');
       setInterfaceAttribute(edit,'aria-label',fact?'sleep.correctTimeLabel':'sleep.recordTimeLabel',this.options.language(),values);
-      edit.disabled=this.saving||!context.canRecord||!this.data||conflict;
+      edit.disabled=this.selectionPending||this.saving||!context.canRecord||!this.data||conflict;
       edit.addEventListener('click',()=>this.open(habit.key,true));header.append(name,edit);
       const value=document.createElement('p');value.className='day-task-meta';value.dataset.habitTimeValue=habit.key;
       if(conflict)this.copy(value,'sleep.conflictValue');else if(!this.data)this.copy(value,this.status?.error?'sleep.unavailableValue':'sleep.readingValue');else this.copy(value,'sleep.actualValue',{value:formatSleepEndpoint(fact,this.options.language())});
@@ -143,7 +152,7 @@ export class HabitTimeEntry {
     [time,end,text].forEach(input=>input.addEventListener('input',edited));check.addEventListener('change',edited);
     kind.addEventListener('change',()=>{edited();draft.kind=kind.value as SleepEndpoint['kind'];draft.expanded=true;this.render();});
     form.append(fields,preview,details);updatePreview();
-    form.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('input,button,select').forEach(control=>control.disabled=this.saving||!context.canRecord||Boolean(control.hidden));
+    form.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('input,button,select').forEach(control=>control.disabled=this.selectionPending||this.saving||!context.canRecord||Boolean(control.hidden));
     form.addEventListener('submit',event=>{event.preventDefault();edited();this.options.track(this.save(draft,context));});
     return form;
   }
@@ -154,7 +163,7 @@ export class HabitTimeEntry {
     return this.options.invoke<SleepEndpoint>('resolve_habit_sleep_range',{livedDate,startTime:draft.time,endTime:draft.endTime,reportedText:draft.text});
   }
   private async save(draft:Draft,context:Context):Promise<boolean>{
-    if(this.saving||this.draft!==draft||this.identity(context)!==this.identity(this.context))return false;
+    if(this.selectionPending||this.saving||this.draft!==draft||this.identity(context)!==this.identity(this.context))return false;
     if(this.facts(draft.habitKey).length>1){this.status={key:'sleep.conflictHelp'};this.render();return false;}
     const generation=this.generation;
     this.saving=true;this.status=null;this.request+=1;this.render();
