@@ -116,7 +116,8 @@ NODE
 
   current_step="reading the wake row and shared seven/thirty-day overview"
   run_driver press "Habits" 10
-  run_driver wait-active-text "07:30" 20
+  run_driver focus-contains "2026-09-10 · Wake up" 10
+  run_driver assert-focused-text "07:30" 10
   run_driver press "View Wake up details" 10
   run_driver wait-active-text "Wake time" 20
   run_driver press "30 days" 10
@@ -130,8 +131,7 @@ NODE
   run_driver wait-active-text "2026-09-09 · Go to bed" 20
   run_driver press "View or record time · Go to bed · 2026-09-09" 10
   run_driver wait-active-text "Selected day · 2026-09-09" 20
-  run_driver assert-focused-text "Record time · Go to bed · 2026-09-09" 10
-  run_driver press "Record time · Go to bed · 2026-09-09" 10
+  run_driver assert-focused-text "Actual time · Go to bed · 2026-09-09" 10
   run_driver type-text "Actual time · Go to bed · 2026-09-09|02:00" 10
   run_driver press "Save time · Go to bed · 2026-09-09" 10
   habit_sleep_assert_record "$canonical" supplemented "$identity" || fail "historical sleep did not supplement the same night"
@@ -148,8 +148,7 @@ NODE
   run_driver press-key "space" 10
   run_driver press "View or record time · Wake up · 2026-09-10" 10
   run_driver wait-active-text "Today · 2026-09-10" 20
-  run_driver wait-active-text "Actual: 07:30" 20
-  run_driver press "Correct time · Wake up · 2026-09-10" 10
+  run_driver assert-focused-text "Actual time · Wake up · 2026-09-10" 10
   run_driver type-text "Actual time · Wake up · 2026-09-10|07:35" 10
   run_driver press "Save time · Wake up · 2026-09-10" 10
   habit_sleep_assert_record "$canonical" corrected "$identity" || fail "correction did not preserve identity and other endpoint"
@@ -169,7 +168,8 @@ NODE
   run_driver press "Correct time · Wake up · 2026-09-10" 10
   run_driver press "Cancel time edit · Wake up · 2026-09-10" 10
   run_driver press "Habits" 10
-  run_driver wait-active-text "07:35" 20
+  run_driver focus-contains "2026-09-10 · Wake up" 10
+  run_driver assert-focused-text "07:35" 10
   run_driver press "View Go to bed details" 10
   run_driver wait-active-text "Sleep time" 20
   run_driver wait-active-text "02:00" 20

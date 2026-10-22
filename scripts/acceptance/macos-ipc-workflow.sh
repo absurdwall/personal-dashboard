@@ -352,7 +352,7 @@ run_final_gate() {
   done
 
   echo "Packaged IPC Personal Dashboard 4.0 local candidate gate passed"
-  echo "Coverage: integrated bilingual Today, Calendar, Habits, Settings, Tasks, appearance, and history workflows"
+  echo "Coverage: integrated bilingual Today, Calendar, Habits, Settings, Tasks, appearance, history, and canonical Habit sleep workflows"
   echo "Retirement: former 2.0 cutover and Exercise/Profile runtime scenarios remain explicit historical seams and are not part of normal-startup 4.0 acceptance"
   echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
   echo "Boundary: actual Drive cloud/version/trash acceptance remains a separate dependency and is not implied by this local gate"
