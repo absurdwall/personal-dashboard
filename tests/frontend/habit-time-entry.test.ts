@@ -3,6 +3,7 @@ import test from 'node:test';
 import {probe} from './helpers/complete-page.ts';
 
 const canonicalBoundary = String.raw`
+  const clockCoordinates={'01:50':110,'02:00':120,'07:10':430,'08:20':500,'08:40':520,'08:45':525,'07:30':450,'07:55':475};
   let sleepState={targetBinding:'sleep-target-synthetic',revision:null,records:[],facts:[]};
   const cell={date:view.date,coverage:'complete',status:'thresholdOnly',hasRecord:true,countsAsCompletion:true,localCompletionState:'none',hasExternalCompletion:true,completionSourceLabels:['Synthetic threshold'],actualTimeLabel:null,details:[],localRecords:[]};
   view.habitCorrections={...view.habitCorrections,habits:['wake','sleep'].map(key=>({key,name:'Renamed '+key,localizedNames:{},nameKnown:true,canRecordCompletion:false,goalLabel:'Daily time goal',localChangeCount:0,localChanges:[],cell:{...cell}}))};
@@ -12,7 +13,7 @@ const canonicalBoundary = String.raw`
     if(command==='sleep_records'){calls.push({command,args});return structuredClone(sleepState);}
     if(command==='save_habit_sleep_time'){
       calls.push({command,args});const input=args.input;
-      const fact={recordId:'stable-synthetic-night',habitKey:input.habitKey,livedDate:input.livedDate,dayRelation:input.endpoint.kind==='point'&&input.endpoint.time<'04:00'?'next-day':'same-day',endpoint:input.endpoint};
+      const fact={recordId:'stable-synthetic-night',habitKey:input.habitKey,livedDate:input.livedDate,dayRelation:input.endpoint.kind==='point'&&input.endpoint.time<'04:00'?'next-day':'same-day',endpoint:input.endpoint,clockPlotMinutes:input.endpoint.kind==='point'?clockCoordinates[input.endpoint.time]:null};
       sleepState={...sleepState,revision:'sleep-saved-'+calls.length,facts:[...sleepState.facts.filter(f=>f.habitKey!==fact.habitKey||f.livedDate!==fact.livedDate),...(input.endpoint.kind==='unrecorded'?[]:[fact])]};
       return structuredClone(sleepState);
     }
@@ -111,7 +112,7 @@ test('competing canonical endpoints are shown as a conflict with provenance inst
     button.click();
     return JSON.stringify({disabled:button.disabled,value:document.querySelector('[data-habit-time-value="wake"]').textContent,provenance:[...document.querySelectorAll('[data-habit-time-conflicts="wake"] li')].map(n=>n.textContent),forms:document.querySelectorAll('[data-habit-time-form="wake"]').length,saves:calls.filter(c=>c.command==='save_habit_sleep_time').length,errors:window.probeErrors});
   `,true,723,{},canonicalBoundary+String.raw`
-    sleepState={...sleepState,revision:'ambiguous-source',facts:['07:10','08:20'].map((time,index)=>({recordId:'competing-'+index,habitKey:'wake',livedDate:view.date,dayRelation:'same-day',endpoint:{kind:'point',date:view.date,time,utcOffsetMinutes:-240}}))};
+    sleepState={...sleepState,revision:'ambiguous-source',facts:['07:10','08:20'].map((time,index)=>({recordId:'competing-'+index,clockPlotMinutes:clockCoordinates[time],habitKey:'wake',livedDate:view.date,dayRelation:'same-day',endpoint:{kind:'point',date:view.date,time,utcOffsetMinutes:-240}}))};
   `);
   assert.equal(result.disabled,true);
   assert.match(result.value,/multiple|conflict/i);
@@ -149,7 +150,7 @@ test('a late read from a same-named Vault cannot replace the selected Vault time
       if(command==='sleep_records'&&view.vaultPath==='/Synthetic/A/Shared'){calls.push({command,args});return new Promise(resolve=>oldSleepReads.push(resolve));}
       if(command==='select_today_vault'){
         calls.push({command,args});view.vaultPath='/Synthetic/B/Shared';
-        sleepState={targetBinding:'vault-b-binding',revision:'b-revision',records:[],facts:[{recordId:'b-night',habitKey:'wake',livedDate:view.date,dayRelation:'same-day',endpoint:{kind:'point',date:view.date,time:'08:40',utcOffsetMinutes:-240}}]};
+        sleepState={targetBinding:'vault-b-binding',revision:'b-revision',records:[],facts:[{recordId:'b-night',clockPlotMinutes:520,habitKey:'wake',livedDate:view.date,dayRelation:'same-day',endpoint:{kind:'point',date:view.date,time:'08:40',utcOffsetMinutes:-240}}]};
         return {view:structuredClone(view),changed:true};
       }
       return selectedInvoke(command,args);
@@ -170,7 +171,7 @@ test('leaving and returning to the same Habit date discards a late save presenta
     const initialForm=document.querySelector('[data-habit-time-form="wake"]');initialForm.querySelector('[data-habit-time-point]').value='07:30';initialForm.requestSubmit();
     await until(()=>lateSave!==null);
     document.querySelector('#workspace-settings').click();
-    sleepState={...sleepState,revision:'latest-observed',facts:[{recordId:'latest-night',habitKey:'wake',livedDate:view.date,dayRelation:'same-day',endpoint:{kind:'point',date:view.date,time:'08:40',utcOffsetMinutes:-240}}]};
+    sleepState={...sleepState,revision:'latest-observed',facts:[{recordId:'latest-night',clockPlotMinutes:520,habitKey:'wake',livedDate:view.date,dayRelation:'same-day',endpoint:{kind:'point',date:view.date,time:'08:40',utcOffsetMinutes:-240}}]};
     document.querySelector('[data-workspace-destination="today"]').click();
     // Today read waits for writes; resolve the old effect after its editor scope has ended.
     lateSave({targetBinding:'sleep-target-synthetic',revision:'late-old-result',records:[],facts:[{recordId:'old-night',habitKey:'wake',livedDate:view.date,dayRelation:'same-day',endpoint:{kind:'text',date:view.date,text:'OLD_EDITOR_PRIVATE_MARKER'}}]});

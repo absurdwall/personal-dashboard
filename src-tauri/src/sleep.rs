@@ -341,6 +341,9 @@ pub struct SleepEndpointFact {
     pub habit_key: SleepHabitKey,
     pub lived_date: Option<String>,
     pub day_relation: crate::habits::DayRelation,
+    /// Derived clock coordinate for plotting/statistics; never a stored timestamp.
+    #[serde(default)]
+    pub clock_plot_minutes: Option<i64>,
     pub endpoint: SleepEndpoint,
 }
 
@@ -785,6 +788,13 @@ fn record_facts(record: &SleepRecord) -> Vec<SleepEndpointFact> {
             habit_key: key,
             lived_date,
             day_relation,
+            clock_plot_minutes: match endpoint {
+                SleepEndpoint::Point { point } => Some(overview::clock_plot_minutes(
+                    key,
+                    i64::from(clock_minutes(&point.time).expect("validated canonical time")),
+                )),
+                _ => None,
+            },
             endpoint: endpoint.clone(),
         }
     })

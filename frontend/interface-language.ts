@@ -44,6 +44,7 @@ const interfaceCopies = {
   "sleep.fact.getUp": { zh: "离床", en: "Get-up" },
   "sleep.fact.value": { zh: "{habit}：{value}", en: "{habit}: {value}" },
   "sleep.fact.canonicalRecord": { zh: "正本记录：{id}", en: "Canonical record: {id}" },
+  "sleep.fact.livedDateUnknown": {zh:"所属日未确定 · 可能与所选日重叠",en:"Lived-day attribution unknown · may overlap the selected day"},
   "sleep.fact.actualDateUnknown": { zh: "实际日期未知；保留原文", en: "Actual calendar date unknown; original wording retained" },
   "sleep.fact.actualDate": { zh: "实际日期：{value}", en: "Actual date: {value}" },
   "sleep.readingValue": {zh:"正在读取实际时间…",en:"Reading actual time…"},

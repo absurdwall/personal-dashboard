@@ -17,7 +17,6 @@ function clock(minutes:number):string{
   const value=(Math.round(minutes)%1440+1440)%1440;
   return `${String(Math.floor(value/60)).padStart(2,'0')}:${String(value%60).padStart(2,'0')}`;
 }
-function minute(time:string):number{const [hour,minutes]=time.split(':').map(Number);return hour*60+minutes;}
 /** Render only adjacent exact samples; nulls end a segment instead of bridging gaps. */
 function appendGapSeries(drawing:SVGElement,samples:readonly {value:number|null}[],x:(index:number)=>number,y:(value:number)=>number,strokeWidth:number):void{
   let segment:string[]=[];
@@ -26,11 +25,6 @@ function appendGapSeries(drawing:SVGElement,samples:readonly {value:number|null}
     if(sample.value===null)flush();else segment.push(`${x(index)},${y(sample.value)}`);
   }
   flush();
-}
-// A chart phase is independent of the04:00 ownership boundary. In particular,
-//03:50 and04:10 remain neighbors, just as23:50 and00:10 do.
-function clockMinutesAroundAnchor(value:number,key:HabitKey):number{
-  const center=key==='wake'?480:60;return center+((value-center+2160)%1440)-720;
 }
 
 type PlotSample=Readonly<{value:number|null;approximate:boolean}>;
@@ -41,7 +35,7 @@ const plotFrames={
 /** The two Habit plots share clock domains, gaps and approximate-point semantics. */
 function createSleepPlot(metric:Metric,samples:readonly PlotSample[],size:keyof typeof plotFrames){
   const frame=plotFrames[size],{width,height,left,top,bottom}=frame;
-  const plotted=samples.map(sample=>({...sample,value:sample.value===null?null:metric==='duration'?sample.value:clockMinutesAroundAnchor(sample.value,metric)}));
+  const plotted=samples;
   const values=plotted.flatMap(sample=>sample.value===null?[]:[sample.value]);
   const base=metric==='duration'?[180,660]:metric==='wake'?[360,600]:[-60,180];
   const low=Math.floor(Math.min(base[0],...values)/60)*60,high=Math.ceil(Math.max(base[1],...values)/60)*60;
@@ -89,7 +83,7 @@ export class HabitSleepOverview {
   private sample(metric:Metric,date:string):Sample{
     if(metric!=='duration'){
       const matches=this.facts(metric,date),endpoint=matches.length===1?matches[0].endpoint:null;
-      return {date,value:endpoint?.kind==='point'?minute(endpoint.time):null,approximate:endpoint?.kind==='point'&&Boolean(endpoint.approximate),label:this.valueCopy(metric,date)};
+      return {date,value:endpoint?.kind==='point'?matches[0].clockPlotMinutes??null:null,approximate:endpoint?.kind==='point'&&Boolean(endpoint.approximate),label:this.valueCopy(metric,date)};
     }
     const sample=this.view?.overview?.durations.find(sample=>sample.date===date);
     const value=sample?.minutes??null,approximate=sample?.approximate??false;
@@ -181,7 +175,7 @@ export class HabitSleepOverview {
   mini(context:HabitContext):HTMLElement{
     const root=element('div','habit-sleep-mini');root.setAttribute('role','group');this.copyAttribute(root,'aria-label','sleep.overview.recentLabel',{habit:context.name});root.dataset.sleepChart='mini';
     const dates=Array.from({length:7},(_,i)=>shiftDateOnly(context.date,i-6));
-    const samples=dates.map(date=>{const matches=this.facts(context.key,date),fact=matches.length===1?matches[0]:null,endpoint=fact?.endpoint;return {date,fact,value:endpoint?.kind==='point'?minute(endpoint.time):null,approximate:endpoint?.kind==='point'&&Boolean(endpoint.approximate)};});
+    const samples=dates.map(date=>{const matches=this.facts(context.key,date),fact=matches.length===1?matches[0]:null,endpoint=fact?.endpoint;return {date,fact,value:endpoint?.kind==='point'?fact?.clockPlotMinutes??null:null,approximate:endpoint?.kind==='point'&&Boolean(endpoint.approximate)};});
     const {drawing,frame,ticks,hasPoints}=createSleepPlot(context.key,samples,'mini');
     const scale=element('div','habit-sleep-scale');scale.setAttribute('aria-hidden','true');
     const plot=element('div','habit-sleep-plot');

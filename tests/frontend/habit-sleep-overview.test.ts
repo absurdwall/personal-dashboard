@@ -6,7 +6,13 @@ import {probe} from './helpers/complete-page.ts';
 // event handlers and WebKit layout run unchanged.
 const canonicalBoundary=String.raw`
   const point=(date,time,approximate=false)=>({kind:'point',date,time,utcOffsetMinutes:-240,approximate});
-  const fact=(recordId,habitKey,livedDate,endpoint)=>({recordId,habitKey,livedDate,endpoint,dayRelation:endpoint.kind==='point'&&endpoint.date!==livedDate?'next-day':'same-day'});
+  // Literal backend read-projection expectations, independent of the production phase rule.
+  const clockCoordinates={'00:00':0,'00:10':10,'01:00':60,'02:00':120,'02:15':135,'03:50':230,'04:10':250,'07:00':420,'07:20':440,'07:30':450,'08:00':480,'08:10':490,'08:40':520,'08:45':525,'12:00':720,'23:00':-60,'23:21':-39,'23:50':-10};
+  const fact=(recordId,habitKey,livedDate,endpoint)=>{
+    const clockPlotMinutes=endpoint.kind==='point'?clockCoordinates[endpoint.time]:null;
+    if(endpoint.kind==='point'&&!Number.isFinite(clockPlotMinutes))throw Error('Missing literal clock coordinate: '+endpoint.time);
+    return {recordId,habitKey,livedDate,endpoint,clockPlotMinutes,dayRelation:endpoint.kind==='point'&&endpoint.date!==livedDate?'next-day':'same-day'};
+  };
   let sleepState={targetBinding:'sleep-target',revision:'sleep-r1',records:[
     {id:'night-a',wakeDate:'2026-06-30',sleepOnset:point('2026-08-08','23:50'),getUp:point('2026-08-09','07:20'),estimatedDurationMinutes:450},
     {id:'night-b',wakeDate:'2026-08-10',sleepOnset:point('2026-08-10','00:10',true),getUp:point('2026-08-10','08:10'),estimatedDurationMinutes:480}

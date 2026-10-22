@@ -6499,37 +6499,49 @@ NODE
     run_driver dump-text "" 10 > "$captures/collaboration-$index-$window_size-accessibility.txt"
     case "$window_size" in
       "640x720") mode=single ;;
-      "1040x800") mode=two ;;
-      *) mode=three ;;
+      *) mode=two ;;
     esac
-    run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context" 10
+    run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context|$draft|Send" 10
     if [[ "$mode" != "single" ]]; then run_driver assert-window-visible "New chat" 10; fi
     run_driver assert-text "$draft" 10
   done
-  current_step="checking intermediate disclosure and manual collapse"
+  for window_size in "1440x900" "1040x800" "640x720"; do
+    current_step="checking attached context disclosure and retained composer at $window_size"
+    run_driver set-size "$window_size" 10
+    case "$window_size" in "640x720") mode=single ;; *) mode=two ;; esac
+    run_driver press "Context" 10
+    run_driver assert-collaboration-columns "$mode-context|Sessions|$session_title|Current context|$draft|Send" 10
+    run_driver assert-window-visible "Current context" 10
+    run_driver focus "$draft" 10
+    run_driver assert-visible-focus "$draft" 10
+    run_driver capture-window "$captures/collaboration-context-$window_size.png" 10
+    run_driver press "Close current work context" 10
+    run_driver assert-focused-text "Context" 10
+    run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context|$draft|Send" 10
+  done
+  current_step="checking manual history collapse with the attached context closed"
   run_driver set-size "1040x800" 10
-  run_driver press "Current work" 10
-  run_driver assert-collaboration-columns "two-context|Sessions|$session_title|Current context" 10
-  run_driver scroll-text-visible "Current context" 10
-  run_driver assert-window-visible "Current context" 10
-  run_driver capture-window "$captures/collaboration-context-disclosed.png" 10
-  run_driver scroll-text-visible "Current work" 10
-  run_driver press "Current work" 10
-  run_driver press "Session history" 10
-  run_driver assert-collaboration-columns "single|Sessions|$session_title|Current context" 10
-  run_driver press "Session history" 10
-  run_driver assert-collaboration-columns "two|Sessions|$session_title|Current context" 10
+  run_driver press "Toggle sessions sidebar" 10
+  run_driver assert-collaboration-columns "single|Sessions|$session_title|Current context|$draft|Send" 10
+  run_driver press "Toggle sessions sidebar" 10
+  run_driver assert-collaboration-columns "two|Sessions|$session_title|Current context|$draft|Send" 10
   current_step="checking bilingual collaboration and restart"
   run_driver press "Switch to Chinese" 10
-  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context" 10
+  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context|$draft|发送" 10
   run_driver assert-text "$draft" 10
+  run_driver press "上下文" 10
+  run_driver assert-collaboration-columns "two-context|会话|$session_title|当前 context|$draft|发送" 10
+  run_driver focus "$draft" 10
+  run_driver assert-visible-focus "$draft" 10
+  run_driver press "收起当前 context" 10
+  run_driver assert-focused-text "上下文" 10
   run_driver capture-window "$captures/collaboration-two-zh.png" 10
   stop_app || fail "isolated app did not stop before restart"
   launch_app_waiting_for_text "今天" 30
   run_driver press "协作" 10
   run_driver set-size "1040x800" 10
   run_driver press "$session_title" 10
-  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context" 10
+  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context|$draft|发送" 10
   run_driver assert-text "$draft" 10
   run_driver capture-window "$captures/collaboration-restarted-zh.png" 10
   echo "Packaged collaboration width/disclosure/bilingual/restart sequence passed; captures: $captures"
