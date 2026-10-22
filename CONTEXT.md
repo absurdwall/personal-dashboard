@@ -266,3 +266,27 @@ _Avoid_: Retroactive goal overwrite, rewritten completion evidence
 A Habit temporarily removed from everyday check-in views while retaining its
 identity, settings, completion history and statistics for viewing and recovery.
 _Avoid_: Deleted Habit, automatic failure, new Habit on recovery
+
+## Reported sleep and wake facts
+
+**Reported sleep record**:
+The selected-Vault canonical record of one explicitly identified night's reported
+sleep-onset and get-up endpoints. Its stable record identity and internal night
+index are independent of either endpoint's actual calendar date or display date.
+Each endpoint preserves a point (including an approximate marker), a reported
+range, original wording, explicit unknown, or unrecorded state.
+_Avoid_: Habit completion, copied Daily Record, physiological measurement
+
+**Sleep endpoint lived day**:
+The endpoint's own 04:00 local lived-day placement, derived from its actual date
+and time when available. Thursday 02:00 onset belongs to Wednesday's sleep Habit;
+Thursday 07:30 get-up belongs to Thursday's wake Habit. An uncertain endpoint may
+remain unlocated, while explicitly reported unknown/original wording may carry
+its selected lived-day context. The night index never assigns point placement.
+_Avoid_: Whole-night display date, fixed wake-date projection
+
+**Estimated onset-to-get-up duration**:
+Elapsed minutes between the same record's two reported points, using each
+actual calendar date and UTC offset. Approximate markers remain attached to the
+endpoints; ranges, original wording and missing endpoints yield no point duration.
+_Avoid_: Measured sleep duration, automatic Habit attainment

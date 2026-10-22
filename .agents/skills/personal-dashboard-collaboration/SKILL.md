@@ -86,3 +86,14 @@ Published source facts, dated goal thresholds and actual activity time remain
 separate from local save timestamps and ordinary dated notes. Read-only history
 never refreshes a snapshot or makes external mutations. Exact Habit/date links
 can open canonical evidence even when the snapshot does not cover that date.
+
+For reported sleep/onset or get-up times, use `dashboard_sleep_records` when
+registered. Read first; ordinary selected Habit/lived-date entry uses
+`saveHabitTime` with that fixed context and one endpoint. The application resolves
+a unique night and preserves the other endpoint. Resolve ambiguous dates or
+competing records with the user; corrections use the observed record identity.
+Keep actual dates and offsets, approximate points, ranges, original wording,
+explicit unknown and unrecorded values distinct. Each endpoint's 04:00 lived day
+is independent of the stable night index. Inspect canonical readback before
+claiming a save. Reported times remain separate from threshold check-ins and
+completion evidence. See the registered tool description for correction fields.

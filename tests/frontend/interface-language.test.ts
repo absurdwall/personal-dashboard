@@ -613,3 +613,18 @@ test('local-only Habit fixed metadata changes language without translating unkno
   assert.equal(localizeHabitCoverageLabel('My own 日常记录 · 3 个 complete 日期', 'en'), 'My own 日常记录 · 3 complete dates');
   assert.equal(localizeApplicationMessage('My own 本地完成按 lived day 记录；外部来源覆盖仍未知。', 'en'), 'My own 本地完成按 lived day 记录；外部来源覆盖仍未知。');
 });
+
+test("reported Habit-time workflow diagnostics localize without translating source paths or original words", () => {
+  for (const [diagnostic, expected] of [
+    ["端点与所选 lived day 不一致或跨越边界；未写入。", "The endpoint differs from the selected lived day or crosses its boundary; nothing was written."],
+    ["所选 Vault 在操作期间改变；结果属于原 Vault，请重新读取核对。", "The selected Vault changed during the operation; the result belongs to the original Vault. Read again to verify."],
+    ["同一 Habit 日期存在多条作息端点；请明确记录身份。", "Multiple sleep endpoints belong to this Habit date; specify the record identity."],
+    ["需要稳定的 wake 或 sleep Habit 身份；未写入。", "A stable wake or sleep Habit identity is required; nothing was written."],
+    ["目标夜晚已有不同日期的端点；请明确记录身份，未写入。", "The night already has an endpoint on another date; specify the record identity. Nothing was written."],
+    ["端点日期上下文需要对应的明确端点；未写入。", "Endpoint date context requires its explicit endpoint; nothing was written."],
+    ["作息正本无效：原话 PRIVATE_PATH /奇怪: 文件", "The sleep document is invalid: 原话 PRIVATE_PATH /奇怪: 文件"],
+  ]) {
+    assert.equal(localizeApplicationError(diagnostic, "en"), expected);
+    assert.equal(localizeApplicationError(diagnostic, "zh"), diagnostic);
+  }
+});

@@ -183,6 +183,7 @@ pub struct HabitCellView {
     pub has_external_completion: bool,
     pub completion_source_labels: Vec<String>,
     pub actual_time_label: Option<String>,
+    pub sleep_fact: Option<crate::sleep::SleepEndpointFact>,
     pub details: Vec<HabitDetailView>,
     pub local_records: Vec<HabitLocalRecordView>,
 }
@@ -336,6 +337,7 @@ pub struct HabitSnapshotView {
     pub catalog_target_binding: Option<String>,
     pub catalog_error: Option<String>,
     pub completion_error: Option<String>,
+    pub sleep_error: Option<String>,
     pub names_configuration_state: HabitNamesConfigurationState,
     pub summary: HabitSummaryView,
     pub habits: Vec<HabitView>,
@@ -436,6 +438,7 @@ impl HabitSnapshotView {
             catalog_target_binding: None,
             catalog_error: None,
             completion_error: None,
+            sleep_error: None,
             names_configuration_state: HabitNamesConfigurationState::Missing,
             summary: HabitSummaryView::default(),
             habits: Vec::new(),
@@ -879,6 +882,7 @@ pub fn project_snapshot_with_names_at_local_date(
         catalog_target_binding: None,
         catalog_error: None,
         completion_error: None,
+        sleep_error: None,
         names_configuration_state: names_configuration.state,
         summary,
         habits: projected,
@@ -1132,6 +1136,7 @@ fn project_cell(
             has_external_completion: false,
             completion_source_labels: Vec::new(),
             actual_time_label: None,
+            sleep_fact: None,
             details: vec![HabitDetailView::Future],
             local_records: Vec::new(),
         };
@@ -1292,6 +1297,7 @@ fn project_cell(
         local_completion_state,
         has_external_completion: completed,
         completion_source_labels,
+        sleep_fact: None,
         actual_time_label: actual.map(|time| match time.day_relation {
             DayRelation::SameDay => time.local_time.clone(),
             DayRelation::NextDay => format!("次日 {}", time.local_time),

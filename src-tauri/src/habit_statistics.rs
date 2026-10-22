@@ -627,6 +627,7 @@ mod tests {
             has_external_completion: false,
             completion_source_labels: Vec::new(),
             actual_time_label: None,
+            sleep_fact: None,
             details: Vec::new(),
             local_records: Vec::new(),
         };
