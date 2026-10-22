@@ -844,6 +844,13 @@ fn later_full_history_snapshots_preserve_first_native_readback() {
         fs::read_to_string(&file).unwrap(),
         "Later independent correction\nKeep unrelated paragraph\n"
     );
+    // InjectedTransport has no title worker, but the queue can still perform
+    // its final history load after the terminal reply becomes observable.
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !app.active_vault_workers.lock().unwrap().is_empty() {
+        assert!(Instant::now() < deadline, "queue did not quiesce before fixture teardown");
+        thread::yield_now();
+    }
     fs::remove_dir_all(root).unwrap();
 }
 

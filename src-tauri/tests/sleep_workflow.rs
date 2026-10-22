@@ -370,3 +370,31 @@ fn unreadable_canonical_readback_reports_post_save_uncertainty_without_repairing
     assert_eq!(fs::read(root.join("life/.personal-dashboard/sleep/v1/sessions.json")).unwrap(),replacement);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn stale_target_binding_rejects_before_loading_another_vault_or_its_diagnostics() {
+    use personal_dashboard_lib::sleep::{FileSleepStore,SleepStore};
+    use std::sync::{Arc,atomic::{AtomicUsize,Ordering}};
+    struct CountingStore(Arc<AtomicUsize>);
+    impl SleepStore for CountingStore {
+        fn load(&self,path:&std::path::Path)->Result<Option<Vec<u8>>,String>{self.0.fetch_add(1,Ordering::SeqCst);FileSleepStore.load(path)}
+        fn save_if_unchanged(&self,path:&std::path::Path,expected:&[u8],updated:&[u8])->Result<(),String>{FileSleepStore.save_if_unchanged(path,expected,updated)}
+        fn create_new(&self,path:&std::path::Path,document:&[u8])->Result<(),String>{FileSleepStore.create_new(path,document)}
+    }
+    let original=vault("stale-binding-original");let replacement=vault("stale-binding-replacement");
+    let original_workflow=SleepWorkflow::new(&original);
+    let before=save(&original_workflow,json!({"wakeDate":"2026-10-21","changeId":"original-private-night","getUp":{"kind":"unknown"}}));
+    let relative="life/.personal-dashboard/sleep/v1/sessions.json";
+    let original_bytes=fs::read(original.join(relative)).unwrap();
+    let replacement_bytes=serde_json::to_vec(&json!({"schemaVersion":1,"records":[{"id":"replacement-private-night","wakeDate":"2026-10-21","sleepOnset":{"kind":"PRIVATE_B_SLEEP_MARKER"},"getUp":{"kind":"unrecorded"},"estimatedDurationMinutes":null}],"operations":[]})).unwrap();
+    fs::create_dir_all(replacement.join(relative).parent().unwrap()).unwrap();fs::write(replacement.join(relative),&replacement_bytes).unwrap();
+    let loads=Arc::new(AtomicUsize::new(0));
+    let workflow=SleepWorkflow::with_store(&replacement,CountingStore(loads.clone()));
+    let input=serde_json::from_value(json!({"recordId":before.records[0].id,"wakeDate":"2026-10-21","changeId":"stale-original-edit","targetBinding":before.target_binding,"expectedRevision":before.revision,"getUp":{"kind":"unknown"}})).unwrap();
+    let error=workflow.save(input).unwrap_err();
+    assert_eq!(fs::read(original.join(relative)).unwrap(),original_bytes);
+    assert_eq!(fs::read(replacement.join(relative)).unwrap(),replacement_bytes);
+    fs::remove_dir_all(original).unwrap();fs::remove_dir_all(replacement).unwrap();
+    assert_eq!(loads.load(Ordering::SeqCst),0,"another Vault must not be loaded before target rejection: {error}");
+    assert_eq!(error,"所选 Vault 已改变；未写入。");
+}

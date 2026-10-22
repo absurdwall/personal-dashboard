@@ -169,6 +169,10 @@ impl<S: SleepStore> SleepWorkflow<S> {
     }
     pub fn save(&self, input: SleepMutationInput) -> Result<SleepView, String> {
         let _guard = WRITE_LOCK.lock().map_err(|_| "作息写入暂不可用")?;
+        // Reject stale callers before loading another Vault's document or diagnostics.
+        if input.target_binding != binding(&self.path()?) {
+            return Err("所选 Vault 已改变；未写入。".into());
+        }
         let (path, mut document, original) = self.load()?;
         let revision = original
             .as_ref()
