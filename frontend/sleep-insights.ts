@@ -62,7 +62,7 @@ function average(values: readonly number[], circular: boolean): number | null {
   if (Math.hypot(x, y) < 1e-8) return null;
   return ((Math.atan2(y, x) * dayMinutes / (2 * Math.PI)) + dayMinutes) % dayMinutes;
 }
-function distance(value: number, center: number): number {
+function signedClockOffsetMinutes(value: number, center: number): number {
   return ((value - center + 2160) % dayMinutes) - 720;
 }
 function statistics(parent: HTMLElement, points: readonly Sample[], metric: SleepMetric): void {
@@ -80,7 +80,7 @@ function statistics(parent: HTMLElement, points: readonly Sample[], metric: Slee
   part("sleep.validSamples",{count:valid.length});
   part("sleep.average",{value:mean === null ? "—" : format(mean)});
   if (values.length >= 2 && mean !== null) {
-    const ordered = circular ? values.map(value => mean + distance(value, mean)) : values;
+    const ordered = circular ? values.map(value => mean + signedClockOffsetMinutes(value, mean)) : values;
     part(circular ? "sleep.earliest" : "sleep.shortest",{value:format(Math.min(...ordered))});
     part(circular ? "sleep.latest" : "sleep.longest",{value:format(Math.max(...ordered))});
   }
@@ -100,7 +100,7 @@ function chart(parent: HTMLElement, points: readonly Sample[], metric: SleepMetr
   const center = circular ? average(valid, true) ?? 0 : 0;
   const coordinates = points.map((point, index) => ({
     x: 700 * (index + .5) / points.length,
-    value: point.value === null ? null : circular ? distance(point.value, center) : point.value,
+    value: point.value === null ? null : circular ? signedClockOffsetMinutes(point.value, center) : point.value,
   }));
   const values = coordinates.flatMap(point => point.value === null ? [] : [point.value]);
   const min = values.length ? Math.min(...values) - 20 : 0;
