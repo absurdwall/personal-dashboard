@@ -11,6 +11,15 @@ type Options=Readonly<{
   openCollaboration:()=>void;
 }>;
 
+/** The same exact Habit/date action is shared by both inline evidence paths. */
+export function createHabitTimeEntryButton(context:Readonly<{habitKey:string;date:string;habitName:string}>,language:InterfaceLanguage):HTMLButtonElement{
+  const entry=document.createElement('button');entry.type='button';entry.className='secondary-button';
+  entry.dataset.habitTimeOpen=context.habitKey;entry.dataset.habitTimeDate=context.date;
+  setInterfaceCopy(entry,'sleep.viewOrAddTime',language,{date:context.date});
+  setInterfaceAttribute(entry,'aria-label','sleep.overview.viewOrRecord',language,{habit:context.habitName,date:context.date});
+  return entry;
+}
+
 /** One selected Habit/date editor over the same canonical application workflow as Collaboration. */
 export class HabitTimeEntry {
   private context:Context|null=null;

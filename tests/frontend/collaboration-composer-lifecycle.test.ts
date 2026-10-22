@@ -58,7 +58,16 @@ for (const {width,height,language,fixture,preflight} of scenarios) {
       const historyToggle=document.querySelector('#collaboration-toggle-history');
       if(historyToggle.getAttribute('aria-expanded')!=='true')historyToggle.click();
       await until(()=>historyToggle.getAttribute('aria-expanded')==='true');
-      await new Promise(resolve=>setTimeout(resolve,100));
+      // aria-expanded alone can describe the narrow overlay computed while the
+      // destination was hidden. Observe the real visible mode and history column
+      // before taking the baseline; ResizeObserver delivery is asynchronous.
+      const layout=document.querySelector('.collaboration-layout'),primary=document.querySelector('.collaboration-primary-layout'),history=document.querySelector('#collaboration-history-panel');
+      await settle(()=>{
+        const available=layout.getBoundingClientRect().width;
+        const mode=available<556?'single':available<900?'two':'three';
+        if(available<=0||layout.dataset.columns!==mode||primary.dataset.columns!==mode)return false;
+        return mode==='single'||(!history.hidden&&history.getBoundingClientRect().right<=document.querySelector('.collaboration-chat-pane').getBoundingClientRect().left);
+      });
       input.value='Keyboard text';input.dispatchEvent(new Event('input',{bubbles:true}));
       const keyboard={input:rect(input),controls:rect(controls),run:rect(document.querySelector('#collaboration-run-status'))};
       voice.click();await until(()=>status.dataset.state==='recording');document.title='recording';

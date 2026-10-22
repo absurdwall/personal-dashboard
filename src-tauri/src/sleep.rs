@@ -44,6 +44,115 @@ pub enum SleepEndpoint {
     Unknown,
     Unrecorded,
 }
+impl SleepEndpoint {
+    fn lived_date(&self) -> Option<String> {
+        match self {
+            SleepEndpoint::Point { point } => Some(
+                crate::today::TodayClockView {
+                    date: point.date.clone(),
+                    time: point.time.clone(),
+                }
+                .lived_date(),
+            ),
+            SleepEndpoint::Range { start, end, .. } => {
+                let first = crate::today::TodayClockView {
+                    date: start.date.clone(),
+                    time: start.time.clone(),
+                }
+                .lived_date();
+                let last = crate::today::TodayClockView {
+                    date: end.date.clone(),
+                    time: end.time.clone(),
+                }
+                .lived_date();
+                (first == last).then_some(first)
+            }
+            _ => None,
+        }
+    }
+
+    fn validate_context(&self, context: Option<String>) -> Result<Option<String>, String> {
+        if let Some(date) = context.as_ref() {
+            validate_date(date)?;
+        }
+        match self {
+            SleepEndpoint::Point { .. } | SleepEndpoint::Range { .. } => {
+                if context
+                    .as_ref()
+                    .is_some_and(|date| self.lived_date().as_ref() != Some(date))
+                {
+                    return Err("端点与所选 lived day 不一致或跨越边界；未写入。".into());
+                }
+            }
+            SleepEndpoint::Text { date, .. } => {
+                let previous = crate::today::TodayClockView {
+                    date: date.clone(),
+                    time: "00:00".into(),
+                }
+                .lived_date();
+                if context
+                    .as_ref()
+                    .is_some_and(|value| value != date && value != &previous)
+                {
+                    return Err("端点与所选 lived day 不一致或跨越边界；未写入。".into());
+                }
+            }
+            SleepEndpoint::Unrecorded => {}
+            SleepEndpoint::Unknown => {}
+        }
+        Ok(context)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        match self {
+            SleepEndpoint::Point { point } => {
+                point_seconds(point)?;
+            }
+            SleepEndpoint::Range {
+                start,
+                end,
+                reported_text,
+            } => {
+                if point_seconds(end)? < point_seconds(start)? || reported_text.trim().is_empty() {
+                    return Err("时间范围需要可靠且有序的上下界与原文。".into());
+                }
+            }
+            SleepEndpoint::Text { date, text } => {
+                validate_date(date)?;
+                if text.trim().is_empty() || text.len() > 2000 {
+                    return Err("请保留有效的模糊时间原文。".into());
+                }
+            }
+            SleepEndpoint::Unknown | SleepEndpoint::Unrecorded => {}
+        };
+        Ok(())
+    }
+
+    fn bounds(&self) -> Result<Option<(i64, i64)>, String> {
+        match self {
+            SleepEndpoint::Point { point } => {
+                let instant = point_seconds(point)?;
+                Ok(Some((instant, instant)))
+            }
+            SleepEndpoint::Range { start, end, .. } => {
+                Ok(Some((point_seconds(start)?, point_seconds(end)?)))
+            }
+            SleepEndpoint::Text { .. } | SleepEndpoint::Unknown | SleepEndpoint::Unrecorded => {
+                Ok(None)
+            }
+        }
+    }
+
+    fn day_relation(&self, lived_date: Option<&str>) -> crate::habits::DayRelation {
+        match (self, lived_date) {
+            (Self::Point { point }, Some(date)) if date != point.date => {
+                crate::habits::DayRelation::NextDay
+            }
+            (Self::Point { .. }, Some(_)) => crate::habits::DayRelation::SameDay,
+            _ => crate::habits::DayRelation::Unresolved,
+        }
+    }
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SleepRecord {
@@ -236,15 +345,15 @@ impl<S: SleepStore> SleepWorkflow<S> {
         }
         let context = if matches!(input.endpoint, SleepEndpoint::Unrecorded)
             || (matches!(input.endpoint, SleepEndpoint::Range { .. })
-                && endpoint_lived_date(&input.endpoint).is_none())
+                && input.endpoint.lived_date().is_none())
         {
             // A range crossing 04:00 remains unlocated, even when entered from one day's UI.
             None
         } else {
             Some(input.lived_date.clone())
         };
-        validate_endpoint(&input.endpoint)?;
-        validate_context(&input.endpoint, context.clone())?;
+        input.endpoint.validate()?;
+        input.endpoint.validate_context(context.clone())?;
         let (_, document, _) = self.load()?;
         let onset = input.habit_key == "sleep";
         if let Some(receipt) = document.operations.iter().find(|r| r.id == input.change_id) {
@@ -463,11 +572,11 @@ impl<S: SleepStore> SleepWorkflow<S> {
         record.wake_date = input.wake_date.clone();
         if let Some(value) = input.sleep_onset.clone() {
             record.sleep_onset_lived_date =
-                validate_context(&value, input.sleep_onset_lived_date.clone())?;
+                value.validate_context(input.sleep_onset_lived_date.clone())?;
             record.sleep_onset = value;
         }
         if let Some(value) = input.get_up.clone() {
-            record.get_up_lived_date = validate_context(&value, input.get_up_lived_date.clone())?;
+            record.get_up_lived_date = value.validate_context(input.get_up_lived_date.clone())?;
             record.get_up = value;
         }
         record.estimated_duration_minutes = duration_minutes(&record.sleep_onset, &record.get_up)?;
@@ -534,65 +643,7 @@ fn view(path: &Path, document: Document, revision: Option<String>) -> SleepView 
         overview: None,
     }
 }
-fn endpoint_lived_date(endpoint: &SleepEndpoint) -> Option<String> {
-    match endpoint {
-        SleepEndpoint::Point { point } => Some(
-            crate::today::TodayClockView {
-                date: point.date.clone(),
-                time: point.time.clone(),
-            }
-            .lived_date(),
-        ),
-        SleepEndpoint::Range { start, end, .. } => {
-            let first = crate::today::TodayClockView {
-                date: start.date.clone(),
-                time: start.time.clone(),
-            }
-            .lived_date();
-            let last = crate::today::TodayClockView {
-                date: end.date.clone(),
-                time: end.time.clone(),
-            }
-            .lived_date();
-            (first == last).then_some(first)
-        }
-        _ => None,
-    }
-}
-fn validate_context(
-    endpoint: &SleepEndpoint,
-    context: Option<String>,
-) -> Result<Option<String>, String> {
-    if let Some(date) = context.as_ref() {
-        validate_date(date)?;
-    }
-    match endpoint {
-        SleepEndpoint::Point { .. } | SleepEndpoint::Range { .. } => {
-            if context
-                .as_ref()
-                .is_some_and(|date| endpoint_lived_date(endpoint).as_ref() != Some(date))
-            {
-                return Err("端点与所选 lived day 不一致或跨越边界；未写入。".into());
-            }
-        }
-        SleepEndpoint::Text { date, .. } => {
-            let previous = crate::today::TodayClockView {
-                date: date.clone(),
-                time: "00:00".into(),
-            }
-            .lived_date();
-            if context
-                .as_ref()
-                .is_some_and(|value| value != date && value != &previous)
-            {
-                return Err("端点与所选 lived day 不一致或跨越边界；未写入。".into());
-            }
-        }
-        SleepEndpoint::Unrecorded => {}
-        SleepEndpoint::Unknown => {}
-    }
-    Ok(context)
-}
+
 fn record_facts(record: &SleepRecord) -> Vec<SleepEndpointFact> {
     [
         ("sleep", &record.sleep_onset, &record.sleep_onset_lived_date),
@@ -601,14 +652,8 @@ fn record_facts(record: &SleepRecord) -> Vec<SleepEndpointFact> {
     .into_iter()
     .filter(|(_, endpoint, _)| !matches!(endpoint, SleepEndpoint::Unrecorded))
     .map(|(key, endpoint, context)| {
-        let lived_date = endpoint_lived_date(endpoint).or_else(|| context.clone());
-        let day_relation = match (endpoint, lived_date.as_deref()) {
-            (SleepEndpoint::Point { point }, Some(date)) if date != point.date => {
-                crate::habits::DayRelation::NextDay
-            }
-            (SleepEndpoint::Point { .. }, Some(_)) => crate::habits::DayRelation::SameDay,
-            _ => crate::habits::DayRelation::Unresolved,
-        };
+        let lived_date = endpoint.lived_date().or_else(|| context.clone());
+        let day_relation = endpoint.day_relation(lived_date.as_deref());
         SleepEndpointFact {
             record_id: record.id.clone(),
             habit_key: key.into(),
@@ -642,7 +687,6 @@ pub(crate) fn project_habits(view: &mut crate::habits::HabitSnapshotView, sleep:
                 continue;
             }
             cell.sleep_fact = Some(fact.clone());
-
         }
     }
 }
@@ -700,48 +744,12 @@ fn point_seconds(point: &SleepPoint) -> Result<i64, String> {
     crate::today::timestamp_label_epoch_seconds(&timestamp)
         .ok_or_else(|| "需要 HH:MM 单点时间及实际日期。".into())
 }
-fn validate_endpoint(endpoint: &SleepEndpoint) -> Result<(), String> {
-    match endpoint {
-        SleepEndpoint::Point { point } => {
-            point_seconds(point)?;
-        }
-        SleepEndpoint::Range {
-            start,
-            end,
-            reported_text,
-        } => {
-            if point_seconds(end)? < point_seconds(start)? || reported_text.trim().is_empty() {
-                return Err("时间范围需要可靠且有序的上下界与原文。".into());
-            }
-        }
-        SleepEndpoint::Text { date, text } => {
-            validate_date(date)?;
-            if text.trim().is_empty() || text.len() > 2000 {
-                return Err("请保留有效的模糊时间原文。".into());
-            }
-        }
-        SleepEndpoint::Unknown | SleepEndpoint::Unrecorded => {}
-    };
-    Ok(())
-}
-fn endpoint_bounds(endpoint: &SleepEndpoint) -> Result<Option<(i64, i64)>, String> {
-    match endpoint {
-        SleepEndpoint::Point { point } => {
-            let instant = point_seconds(point)?;
-            Ok(Some((instant, instant)))
-        }
-        SleepEndpoint::Range { start, end, .. } => {
-            Ok(Some((point_seconds(start)?, point_seconds(end)?)))
-        }
-        SleepEndpoint::Text { .. } | SleepEndpoint::Unknown | SleepEndpoint::Unrecorded => Ok(None),
-    }
-}
 
 pub fn duration_minutes(start: &SleepEndpoint, end: &SleepEndpoint) -> Result<Option<i64>, String> {
-    let Some((earliest_onset, _)) = endpoint_bounds(start)? else {
+    let Some((earliest_onset, _)) = start.bounds()? else {
         return Ok(None);
     };
-    let Some((_, latest_get_up)) = endpoint_bounds(end)? else {
+    let Some((_, latest_get_up)) = end.bounds()? else {
         return Ok(None);
     };
     // Reject only when every possible get-up instant precedes every possible
@@ -759,10 +767,14 @@ pub fn duration_minutes(start: &SleepEndpoint, end: &SleepEndpoint) -> Result<Op
 
 fn validate_record(record: &SleepRecord) -> Result<(), String> {
     validate_date(&record.wake_date)?;
-    validate_endpoint(&record.sleep_onset)?;
-    validate_endpoint(&record.get_up)?;
-    validate_context(&record.sleep_onset, record.sleep_onset_lived_date.clone())?;
-    validate_context(&record.get_up, record.get_up_lived_date.clone())?;
+    record.sleep_onset.validate()?;
+    record.get_up.validate()?;
+    record
+        .sleep_onset
+        .validate_context(record.sleep_onset_lived_date.clone())?;
+    record
+        .get_up
+        .validate_context(record.get_up_lived_date.clone())?;
     if duration_minutes(&record.sleep_onset, &record.get_up)? != record.estimated_duration_minutes {
         return Err("作息时长与报告端点不一致。".into());
     }
