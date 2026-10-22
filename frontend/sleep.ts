@@ -168,7 +168,16 @@ export async function openSleepEditor(date: string, metric: SleepMetric = "sleep
           if(!sleepChanged&&!upChanged&&!moving) {dialog.close();return;}
           const saved=await window.__TAURI__.core.invoke<SleepView>("save_sleep_record",{input:{recordId:record?.id??null,wakeDate:wakeDate.value,changeId:crypto.randomUUID(),targetBinding:view.targetBinding,expectedRevision:view.revision,...(sleepChanged||moving?{sleepOnset}:{}),...(upChanged||moving?{getUp:getUpValue}:{})}});
           const actual=saved.records.find(r=>r.wakeDate===wakeDate.value);
-          if(!actual)throw Error(sleepText("sleep.unconfirmed"));
+          const otherRecords=view.records.filter(r=>r.id!==record?.id);
+          const confirmed=saved.targetBinding===view.targetBinding && !!saved.revision && !!actual
+            && (record ? actual.id===record.id : !!actual.id && !view.records.some(r=>r.id===actual.id))
+            && JSON.stringify(actual.sleepOnset)===JSON.stringify(sleepOnset)
+            && JSON.stringify(actual.getUp)===JSON.stringify(getUpValue)
+            && saved.records.length===otherRecords.length+1
+            && new Set(saved.records.map(r=>r.id)).size===saved.records.length
+            && new Set(saved.records.map(r=>r.wakeDate)).size===saved.records.length
+            && otherRecords.every(previous=>JSON.stringify(saved.records.find(r=>r.id===previous.id))===JSON.stringify(previous));
+          if(!confirmed)throw Error(sleepText("sleep.readbackChanged"));
           document.dispatchEvent(new CustomEvent("sleep-records-changed",{detail:saved}));
           dialog.close();
         }catch(error){setSleepError(status,error);}finally{save.disabled=false;}

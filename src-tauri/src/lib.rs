@@ -11,6 +11,8 @@ mod clock;
 pub mod collaboration;
 pub mod collaboration_memory;
 pub mod cutover;
+#[cfg(any(test, feature = "diagnostic-voice-gate"))]
+mod diagnostic_voice_preflight;
 pub mod exercise;
 pub mod habit_catalog;
 pub mod habit_producer;
@@ -43,6 +45,18 @@ fn collaboration_voice_gate_fixture() -> Result<Vec<u8>, String> {
         return Err("Fixture exceeds gate limit".into());
     }
     Ok(bytes)
+}
+
+#[cfg(feature = "diagnostic-voice-gate")]
+#[tauri::command]
+fn collaboration_voice_gate_claim_microphone_preflight() -> Result<(), String> {
+    static PREFLIGHT: diagnostic_voice_preflight::DiagnosticVoicePreflight = diagnostic_voice_preflight::DiagnosticVoicePreflight::new();
+    if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_none()
+        || std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE").is_none()
+        || std::env::var("PERSONAL_DASHBOARD_VOICE_GATE_LOCAL_MIC_PREFLIGHT").as_deref() != Ok("1") {
+        return Err("capture-unavailable".into());
+    }
+    PREFLIGHT.claim()
 }
 
 #[cfg(all(target_os = "macos", feature = "diagnostic-voice-gate"))]
@@ -1247,6 +1261,8 @@ pub fn run() {
             collaboration_voice_runtime_gate,
             #[cfg(feature = "diagnostic-voice-gate")]
             collaboration_voice_gate_request_microphone,
+            #[cfg(feature = "diagnostic-voice-gate")]
+            collaboration_voice_gate_claim_microphone_preflight,
             collaboration_dictation_start,
             collaboration_dictation_poll,
             collaboration_dictation_stop,
@@ -1342,6 +1358,8 @@ pub fn run() {
         collaboration_voice_runtime_gate,
         #[cfg(feature = "diagnostic-voice-gate")]
         collaboration_voice_gate_request_microphone,
+        #[cfg(feature = "diagnostic-voice-gate")]
+        collaboration_voice_gate_claim_microphone_preflight,
         collaboration_dictation_start,
         collaboration_dictation_poll,
         collaboration_dictation_stop,

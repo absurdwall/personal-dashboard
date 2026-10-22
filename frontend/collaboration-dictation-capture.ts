@@ -8,6 +8,7 @@ type DiagnosticReport = Readonly<Record<string, boolean | string>>;
 export class CollaborationDictationCapture {
   private fixtureEnabled = false;
   private localMicrophonePreflight = false;
+  private preflightConsumed = false;
   private reportState: Record<string, boolean | string> = {};
   private reportWrite = Promise.resolve();
 
@@ -34,7 +35,16 @@ export class CollaborationDictationCapture {
 
   async capture(signal?: AbortSignal): Promise<DictationAudioSource> {
     if (this.fixtureEnabled) {
-      if (this.localMicrophonePreflight) this.report({localMicrophonePreflightRequested:true});
+      if (this.localMicrophonePreflight) {
+        // Consume before any await. Neither report reset nor reconfiguration
+        // grants another attempt; the native claim also survives WebView reload.
+        this.report({localMicrophonePreflightRequested:false,localMicrophonePreflightStopped:false});
+        if (this.preflightConsumed) throw new Error("capture-unavailable");
+        this.preflightConsumed = true;
+        await this.invoke<void>("collaboration_voice_gate_claim_microphone_preflight", {})
+          .catch(() => { throw new Error("capture-unavailable"); });
+        this.report({localMicrophonePreflightRequested:true});
+      }
       const source = await captureDiagnosticDictationFixture(this.invoke, this.localMicrophonePreflight, signal);
       if (this.localMicrophonePreflight) this.report({localMicrophonePreflightStopped:true});
       return source;

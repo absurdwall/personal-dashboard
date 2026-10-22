@@ -91,15 +91,39 @@ impl Default for Document {
     }
 }
 
-pub struct SleepWorkflow {
-    vault: PathBuf,
+pub trait SleepStore {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String>;
+    fn save_if_unchanged(&self, path: &Path, expected: &[u8], updated: &[u8]) -> Result<(), String>;
+    fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String>;
 }
-impl SleepWorkflow {
-    pub fn new(vault: &Path) -> Self {
-        Self {
-            vault: vault.to_path_buf(),
+
+#[derive(Clone, Copy)]
+pub struct FileSleepStore;
+impl SleepStore for FileSleepStore {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        match fs::read(path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.to_string()),
         }
     }
+    fn save_if_unchanged(&self, path: &Path, expected: &[u8], updated: &[u8]) -> Result<(), String> {
+        crate::today::save_file_if_unchanged(path, expected, updated, crate::today::StorageDocumentKind::SleepRecords, |_| Ok(()))
+    }
+    fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String> {
+        crate::today::create_new_file(path, document, crate::today::StorageDocumentKind::SleepRecords)
+    }
+}
+
+pub struct SleepWorkflow<S = FileSleepStore> {
+    vault: PathBuf,
+    store: S,
+}
+impl SleepWorkflow<FileSleepStore> {
+    pub fn new(vault: &Path) -> Self { Self::with_store(vault, FileSleepStore) }
+}
+impl<S: SleepStore> SleepWorkflow<S> {
+    pub fn with_store(vault: &Path, store: S) -> Self { Self { vault: vault.to_path_buf(), store } }
     fn path(&self) -> Result<PathBuf, String> {
         crate::today::validate_compatible_vault(&self.vault)?;
         let mut path = self.vault.clone();
@@ -113,11 +137,7 @@ impl SleepWorkflow {
     }
     fn load(&self) -> Result<(PathBuf, Document, Option<Vec<u8>>), String> {
         let path = self.path()?;
-        let bytes = match fs::read(&path) {
-            Ok(b) => Some(b),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => return Err(e.to_string()),
-        };
+        let bytes = self.store.load(&path)?;
         let document: Document = match bytes.as_ref() {
             Some(b) => serde_json::from_slice(b).map_err(|e| format!("作息正本无效：{e}"))?,
             None => Document::default(),
@@ -161,6 +181,12 @@ impl SleepWorkflow {
         }
         if let Some(receipt) = document.operations.iter().find(|r| r.id == input.change_id) {
             if receipt.input == input {
+                let id = input.record_id.clone().unwrap_or_else(|| record_id_for_change(&input.change_id));
+                let confirmed = document.records.iter().find(|record| record.id == id).is_some_and(|record|
+                    record.wake_date == input.wake_date
+                    && input.sleep_onset.as_ref().is_none_or(|endpoint| endpoint == &record.sleep_onset)
+                    && input.get_up.as_ref().is_none_or(|endpoint| endpoint == &record.get_up));
+                if !confirmed { return Err(READBACK_CHANGED.into()); }
                 return Ok(view(&path, document, revision));
             }
             return Err("changeId 已用于不同作息修改；未写入。".into());
@@ -193,10 +219,7 @@ impl SleepWorkflow {
         let mut record = existing
             .map(|i| document.records[i].clone())
             .unwrap_or_else(|| SleepRecord {
-                id: format!(
-                    "sleep-{}",
-                    crate::today::document_revision(input.change_id.as_bytes())
-                ),
+                id: record_id_for_change(&input.change_id),
                 wake_date: input.wake_date.clone(),
                 sleep_onset: SleepEndpoint::Unrecorded,
                 get_up: SleepEndpoint::Unrecorded,
@@ -224,21 +247,20 @@ impl SleepWorkflow {
         });
         let bytes = serde_json::to_vec_pretty(&document).map_err(|e| e.to_string())?;
         match original {
-            Some(expected) => crate::today::save_file_if_unchanged(
-                &path,
-                &expected,
-                &bytes,
-                crate::today::StorageDocumentKind::SleepRecords,
-                |_| Ok(()),
-            )?,
-            None => crate::today::create_new_file(
-                &path,
-                &bytes,
-                crate::today::StorageDocumentKind::SleepRecords,
-            )?,
+            Some(expected) => self.store.save_if_unchanged(&path, &expected, &bytes)?,
+            None => self.store.create_new(&path, &bytes)?,
         }
-        self.read()
+        let (read_path, read_document, read_bytes) = self.load()
+            .map_err(|error| format!("作息已保存，但无法确认读回：{error}"))?;
+        if read_path != path || read_bytes.as_deref() != Some(bytes.as_slice()) {
+            return Err(READBACK_CHANGED.into());
+        }
+        Ok(view(&read_path, read_document, read_bytes.as_ref().map(|value| crate::today::document_revision(value))))
     }
+}
+const READBACK_CHANGED: &str = "文档已保存，但读回结果已经变化；请重新读取核对。";
+fn record_id_for_change(change_id: &str) -> String {
+    format!("sleep-{}", crate::today::document_revision(change_id.as_bytes()))
 }
 fn view(path: &Path, document: Document, revision: Option<String>) -> SleepView {
     SleepView {

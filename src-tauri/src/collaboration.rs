@@ -8551,7 +8551,12 @@ fn active_run_for_vault(
 
 fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionView {
     CollaborationSessionView {
-        title_generation_pending: session.title_generation.as_ref().is_some_and(|title| title.status == SessionTitleStatus::Generating),
+        title_generation_pending: session.title_generation.as_ref().is_some_and(|title| {
+            title.status == SessionTitleStatus::Generating
+                || (title.status == SessionTitleStatus::WaitingForReply
+                    && session.run_id.as_deref() == Some(title.execution_id.as_str())
+                    && matches!(session.run_state.as_str(), "queued" | "reading" | "thinking" | "stopping"))
+        }),
         id: session.id.clone(),
         title: session.title.clone(),
         created_date: session.created_date.clone(),

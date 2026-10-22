@@ -2610,6 +2610,10 @@ impl AppServerTransport for TitleRuntime {
     fn send_turn(&mut self, request: RuntimeTurnRequest) -> Result<RuntimeTurnResult, String> {
         if self.fail_reply { Err("Synthetic first reply failed".into()) } else { self.base.send_turn(request) }
     }
+    fn send_turn_cancellable(&mut self, request: RuntimeTurnRequest, cancellation: Arc<AtomicBool>) -> Result<RuntimeTurnResult, String> {
+        let result = self.base.send_turn_cancellable(request, cancellation);
+        if self.fail_reply { Err("Synthetic first reply failed".into()) } else { result }
+    }
     fn session_title_generator(&self) -> Option<personal_dashboard_lib::collaboration::RuntimeSessionTitleGenerator> {
         let control = self.title.clone();
         Some(Box::new(move |request| {
@@ -2621,11 +2625,14 @@ impl AppServerTransport for TitleRuntime {
     }
 }
 fn title_application(directory: &IsolatedDirectory, title: Arc<TitleControl>, fail_reply: bool) -> CollaborationApplication {
+    title_application_with_gate(directory, title, fail_reply, None)
+}
+fn title_application_with_gate(directory: &IsolatedDirectory, title: Arc<TitleControl>, fail_reply: bool, gate: Option<Arc<FakeTurnGate>>) -> CollaborationApplication {
     CollaborationApplication::with_adapters(
         Arc::new(FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"))),
         Box::new(TitleRuntime { title, fail_reply, base: FakeAppServer {
             prompts: Arc::new(Mutex::new(Vec::new())), calls: Arc::new(Mutex::new(Vec::new())),
-            read_only_text_turns_available: true, switch_vault_on_inspect: None, turn_gate: None,
+            read_only_text_turns_available: true, switch_vault_on_inspect: None, turn_gate: gate,
             reconciliations: Arc::new(Mutex::new(HashMap::new())), memory_call: None,
             memory_tool_results: Arc::new(Mutex::new(Vec::new())),
         }}), Arc::new(FixtureContext), Arc::new(FixedClock), directory.path().to_path_buf(), "Synthetic instructions".into())
@@ -2772,4 +2779,53 @@ fn a_name_saved_while_generation_is_pending_wins_over_the_late_model_result() {
         thread::sleep(Duration::from_millis(5));
     }
     assert_eq!(app.session("synthetic-vault", &session.id).unwrap().title, "Already chosen name");
+}
+
+#[test]
+fn opening_reply_keeps_title_completion_observable_when_another_session_is_selected() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    let gate = Arc::new(FakeTurnGate::default());
+    let app = title_application_with_gate(&directory, title.clone(), false, Some(gate.clone()));
+    let first = app.create_session("2026-09-27").unwrap();
+    app.submit_message("synthetic-vault", &first.id, "2026-09-27", "Opening still running").unwrap();
+    gate.wait_for_started(1);
+    let second = app.create_session("2026-09-27").unwrap();
+    let pending = app.list_sessions("2026-09-27").unwrap().into_iter().find(|s|s.id == first.id).unwrap().title_generation_pending;
+    // Release before asserting so the real transport worker never leaks on RED.
+    gate.release_all();
+    wait_until_finished(&app, &first.id);
+    title.wait_started(1);
+    title.release(Ok("Opening completed title"));
+    wait_for_title(&app, &first.id, "Opening completed title");
+    assert!(pending, "the opening reply must expose pending title work before its first reply completes");
+    assert!(!app.session("synthetic-vault", &first.id).unwrap().title_generation_pending);
+    assert!(app.session("synthetic-vault", &second.id).unwrap().messages.is_empty());
+    app.submit_message("synthetic-vault", &first.id, "2026-09-27", "Later message").unwrap();
+    wait_until_finished(&app, &first.id);
+    assert_eq!(title.requests.lock().unwrap().len(), 1);
+    assert_eq!(app.session("synthetic-vault", &first.id).unwrap().title, "Opening completed title");
+}
+
+#[test]
+fn failed_opening_reply_stops_pending_title_work_without_reopen_or_later_message_retry() {
+    let directory = IsolatedDirectory::new();
+    let title = Arc::new(TitleControl::default());
+    let gate = Arc::new(FakeTurnGate::default());
+    let app = title_application_with_gate(&directory, title.clone(), true, Some(gate.clone()));
+    let first = app.create_session("2026-09-27").unwrap();
+    app.submit_message("synthetic-vault", &first.id, "2026-09-27", "Failed opening name").unwrap();
+    gate.wait_for_started(1);
+    let pending = app.session("synthetic-vault", &first.id).unwrap().title_generation_pending;
+    gate.release_all();
+    wait_for_run_state(&app, &first.id, "interrupted");
+    assert!(pending);
+    assert!(!app.session("synthetic-vault", &first.id).unwrap().title_generation_pending);
+    let reopened = title_application(&directory, title.clone(), false);
+    assert!(!reopened.session("synthetic-vault", &first.id).unwrap().title_generation_pending);
+    reopened.submit_message("synthetic-vault", &first.id, "2026-09-27", "A later successful reply").unwrap();
+    wait_until_finished(&reopened, &first.id);
+    assert!(!reopened.session("synthetic-vault", &first.id).unwrap().title_generation_pending);
+    assert!(title.requests.lock().unwrap().is_empty());
+    assert_eq!(reopened.session("synthetic-vault", &first.id).unwrap().title, "Failed opening name");
 }

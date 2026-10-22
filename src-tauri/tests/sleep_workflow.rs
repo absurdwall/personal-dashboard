@@ -300,3 +300,73 @@ fn bound_order_uses_actual_offsets_even_when_local_clocks_appear_ordered() {
     assert!(!root.join("life/.personal-dashboard/sleep/v1/sessions.json").exists());
     fs::remove_dir_all(root).unwrap();
 }
+
+struct ReplaceAfterSleepActivation {
+    replacement: Vec<u8>,
+}
+impl personal_dashboard_lib::sleep::SleepStore for ReplaceAfterSleepActivation {
+    fn load(&self, path: &std::path::Path) -> Result<Option<Vec<u8>>, String> {
+        personal_dashboard_lib::sleep::SleepStore::load(&personal_dashboard_lib::sleep::FileSleepStore,path)
+    }
+    fn save_if_unchanged(&self, path: &std::path::Path, expected: &[u8], updated: &[u8]) -> Result<(), String> {
+        personal_dashboard_lib::sleep::SleepStore::save_if_unchanged(&personal_dashboard_lib::sleep::FileSleepStore,path,expected,updated)?;
+        fs::write(path,&self.replacement).map_err(|error|error.to_string())
+    }
+    fn create_new(&self, path: &std::path::Path, document: &[u8]) -> Result<(), String> {
+        personal_dashboard_lib::sleep::SleepStore::create_new(&personal_dashboard_lib::sleep::FileSleepStore,path,document)?;
+        fs::write(path,&self.replacement).map_err(|error|error.to_string())
+    }
+}
+
+#[test]
+fn a_canonical_change_after_activation_is_readback_unconfirmed_not_success_or_overwrite() {
+    for creating in [false,true] {
+        let root = vault("post-activation-readback");
+        let initial = SleepWorkflow::new(&root);
+        let before = if creating { initial.read().unwrap() } else { save(&initial,json!({"wakeDate":"2026-10-21","changeId":"initial-readback-night","getUp":{"kind":"unknown"}})) };
+        let external_root = vault("external-readback-document");
+        let external = SleepWorkflow::new(&external_root);
+        save(&external,json!({"wakeDate":"2026-10-21","changeId":"external-night","getUp":point("2026-10-21","09:20",-240)}));
+        let replacement = fs::read(external_root.join("life/.personal-dashboard/sleep/v1/sessions.json")).unwrap();
+        let workflow = SleepWorkflow::with_store(&root,ReplaceAfterSleepActivation{replacement:replacement.clone()});
+        let input = serde_json::from_value(json!({"recordId":before.records.first().map(|record|record.id.clone()),"wakeDate":"2026-10-21","changeId":"intended-correction","targetBinding":before.target_binding,"expectedRevision":before.revision,"getUp":point("2026-10-21","07:20",-240)})).unwrap();
+        let error = workflow.save(input).expect_err("another writer's canonical record must not be acknowledged as our save");
+        assert!(error.contains("已保存") && error.contains("读回"),"must distinguish post-write uncertainty: {error}");
+        assert!(!error.contains("未写入"));
+        assert_eq!(fs::read(root.join("life/.personal-dashboard/sleep/v1/sessions.json")).unwrap(),replacement);
+        assert_eq!(initial.read().unwrap().records[0].get_up,serde_json::from_value(point("2026-10-21","09:20",-240)).unwrap());
+        fs::remove_dir_all(root).unwrap();fs::remove_dir_all(external_root).unwrap();
+    }
+}
+
+#[test]
+fn duplicate_sleep_delivery_does_not_confirm_a_later_conflicting_canonical_record() {
+    let root = vault("replayed-readback-conflict");
+    let workflow = SleepWorkflow::new(&root);
+    let before = workflow.read().unwrap();
+    let input: SleepMutationInput = serde_json::from_value(json!({"wakeDate":"2026-10-21","changeId":"original-save","targetBinding":before.target_binding,"expectedRevision":before.revision,"getUp":point("2026-10-21","07:20",-240)})).unwrap();
+    workflow.save(input.clone()).unwrap();
+    let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+    let mut external:serde_json::Value=serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    external["records"][0]["getUp"]=json!({"kind":"point","date":"2026-10-21","time":"09:20","utcOffsetMinutes":-240,"approximate":false});
+    let replacement=serde_json::to_vec_pretty(&external).unwrap();fs::write(&path,&replacement).unwrap();
+    let error=workflow.save(input).expect_err("an old receipt does not confirm changed current endpoints");
+    assert!(error.contains("已保存") && error.contains("读回"));
+    assert!(!error.contains("未写入"));
+    assert_eq!(fs::read(&path).unwrap(),replacement,"never replay the old edit over a later writer");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn unreadable_canonical_readback_reports_post_save_uncertainty_without_repairing_it() {
+    let root = vault("unreadable-post-save");
+    let before = SleepWorkflow::new(&root).read().unwrap();
+    let replacement = b"invalid external JSON".to_vec();
+    let workflow = SleepWorkflow::with_store(&root,ReplaceAfterSleepActivation{replacement:replacement.clone()});
+    let input = serde_json::from_value(json!({"wakeDate":"2026-10-21","changeId":"readback-unavailable","targetBinding":before.target_binding,"expectedRevision":before.revision,"getUp":point("2026-10-21","07:20",-240)})).unwrap();
+    let error = workflow.save(input).unwrap_err();
+    assert!(error.starts_with("作息已保存，但无法确认读回："),"{error}");
+    assert!(!error.contains("未写入"));
+    assert_eq!(fs::read(root.join("life/.personal-dashboard/sleep/v1/sessions.json")).unwrap(),replacement);
+    fs::remove_dir_all(root).unwrap();
+}
