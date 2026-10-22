@@ -68,7 +68,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|assert-field-value|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-role-text|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-window|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-exact|press-contains|select-contains|select-contains-allow-unchanged|activate-owned|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|assert-focused-control|focus|focus-contains|press-key|type-text|assert-field-value|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-role-text|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-window|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-exact|press-contains|select-contains|select-contains-allow-unchanged|activate-owned|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -403,6 +403,53 @@ func waitForFocusedText(
     throw DriverError.timeout(
         "focused rendered control: \(text) (actual: \(lastFocusedText))"
     )
+}
+
+// Native time inputs focus an hour/minute child rather than the labeled area.
+// Resolve the exact editable control first; only AX identity/parentage can prove
+// that focus belongs to it. A shared ancestor or matching window text cannot.
+func waitForFocusedControl(
+    _ application: AXUIElement,
+    _ label: String,
+    timeout: TimeInterval
+) throws -> String {
+    let editableRoles = Set(["AXTextField", "AXTextArea", "AXDateTimeArea"])
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastState = "named editable control unavailable"
+    repeat {
+        let controls = findTextPaths(application, label).filter { path in
+            editableRoles.contains(stringAttribute(path.element, "AXRole")) &&
+                ["AXTitle", "AXDescription"].contains {
+                    stringAttribute(path.element, $0) == label
+                } &&
+                (path.ancestors + [path.element]).allSatisfy {
+                    visibleAttribute($0, "AXHidden")
+                }
+        }
+        guard controls.count <= 1 else {
+            throw DriverError.unexpectedText("ambiguous exact editable control: \(label)")
+        }
+        if let target = controls.first?.element, let focused = focusedElement(application) {
+            var cursor: AXUIElement? = focused
+            var visited = AXElementIdentitySet()
+            var roles: [String] = []
+            while let element = cursor, roles.count < 64, visited.insert(element) {
+                roles.append(stringAttribute(element, "AXRole"))
+                if CFEqual(element, target) {
+                    return "target=\(stringAttribute(target, "AXRole")), focused=\(stringAttribute(focused, "AXRole")), ancestorDistance=\(roles.count - 1)"
+                }
+                if ["AXWindow", "AXApplication"].contains(stringAttribute(element, "AXRole")) { break }
+                guard let parent = attribute(element, "AXParent"),
+                      CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+                cursor = unsafeDowncast(parent, to: AXUIElement.self)
+            }
+            lastState = "focused=\(nodeText(focused)); ancestry=\(roles.joined(separator: " → "))"
+        } else if !controls.isEmpty {
+            lastState = "named editable control found; focused element unavailable"
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("focus within exact editable control: \(label) (\(lastState))")
 }
 
 func focusPressable(
@@ -4246,6 +4293,10 @@ do {
         try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try waitForFocusedText(application, text, timeout: timeout)
         print("Focused rendered control contains: \(text)")
+    case "assert-focused-control":
+        try activateApplication(application, pid: pid, timeout: min(2, timeout))
+        let proof = try waitForFocusedControl(application, text, timeout: timeout)
+        print("Focus belongs to exact rendered control: \(text) (\(proof))")
     case "assert-centered":
         let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
         guard parts.count == 2, let tolerance = Double(parts[1]), tolerance >= 0 else {
