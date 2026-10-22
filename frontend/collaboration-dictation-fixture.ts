@@ -1,4 +1,4 @@
-import type { DictationAudioSource, DictationInvoke } from "./collaboration-dictation-runtime.js";
+import { captureMicrophone, type DictationAudioSource, type DictationInvoke } from "./collaboration-dictation-runtime.js";
 
 // The native feature/environment gate authorizes this synthetic source. It feeds
 // the ordinary composer/runtime without speaker playback. Microphone access is
@@ -11,11 +11,10 @@ export async function captureDiagnosticDictationFixture(invoke: DictationInvoke,
       .catch(() => "unavailable");
     if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
     if (authorization !== "authorized") throw new Error("capture-unavailable");
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
     let local: MediaStream | undefined;
     // Same-document capture access can affect WebKit ICE filtering. This stream
     // is never returned, stored, played or attached to a peer/cloud connection.
-    try { local = await navigator.mediaDevices.getUserMedia({audio:true,video:false}); }
+    try { local = (await captureMicrophone()).stream; }
     finally { local?.getTracks().forEach(track => track.stop()); }
     if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
   }

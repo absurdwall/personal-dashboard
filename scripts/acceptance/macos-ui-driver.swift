@@ -4045,20 +4045,40 @@ func assertCollaborationColumns(_ application: AXUIElement, specification: Strin
             let contextRoot = findTextPaths(application, parts[3]).flatMap { $0.ancestors + [$0.element] }.first { element in
                 stringAttribute(element, "AXRole") == "AXGroup" && frame(element) == context && nodeText(element).localizedCaseInsensitiveContains(parts[3])
             }
+            // Select a real context status paragraph, never a date label or
+            // card heading. A complete normal single line may be under 20px.
+            let normalBodyPrefixes = [
+                "Current content loaded · ", "Currently empty · ", "No record yet · ",
+                "已读取当前内容 · ", "当前为空 · ", "尚无记录 · "
+            ]
             var readableBody: CGRect?
+            var bodyDiagnostics: [String] = []
             if let root = contextRoot {
                 _ = walk(root) { element in
-                    guard stringAttribute(element, "AXRole") == "AXStaticText", !nodeText(element).isEmpty,
-                          let bounds = frame(element), bounds.minY >= contextHeading.maxY else { return false }
+                    let text = nodeText(element)
+                    guard stringAttribute(element, "AXRole") == "AXStaticText", !text.isEmpty,
+                          let bounds = frame(element) else { return false }
                     let readable = bounds.intersection(context).intersection(windowFrame).intersection(
                         CGRect(x: chat.minX, y: contextHeading.maxY, width: chat.width, height: inputFrame.minY - contextHeading.maxY)
                     )
-                    guard !readable.isNull, readable.width > 0, readable.height >= 20 else { return false }
-                    readableBody = readable
+                    let normalBody = normalBodyPrefixes.contains { text.hasPrefix($0) }
+                    bodyDiagnostics.append("text=\(String(text.prefix(180))) frame=\(bounds) intersection=\(readable) normalBody=\(normalBody)")
+                    guard normalBody, bounds.width > 0, bounds.height > 0,
+                          context.contains(bounds), windowFrame.contains(bounds),
+                          bounds.minY >= contextHeading.maxY, bounds.maxY <= inputFrame.minY else { return false }
+                    do {
+                        try assertControlReceivesHitTest(element, label: "normal context body: \(text)")
+                    } catch {
+                        bodyDiagnostics.append("body hit-test failed: \(error)")
+                        return false
+                    }
+                    readableBody = bounds
                     return true
                 }
             }
-            guard let body = readableBody else { throw DriverError.unexpectedText("attached context must expose readable body content above the raised composer") }
+            guard let body = readableBody else {
+                throw DriverError.unexpectedText("attached context must expose a complete normal body line above the composer with an unobstructed center; candidates=\(bodyDiagnostics.joined(separator: "; ")) contextRoot=\(contextRoot != nil)")
+            }
             print("Rendered attached context overlay: context=\(context), readable body=\(body), input=\(inputFrame), Send=\(sendFrame)")
         }
     } else if visibleText(application, parts[3]) != nil {

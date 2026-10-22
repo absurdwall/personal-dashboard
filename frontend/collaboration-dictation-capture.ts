@@ -1,5 +1,5 @@
 import { captureDiagnosticDictationFixture } from "./collaboration-dictation-fixture.js";
-import type { DictationAudioSource, DictationInvoke } from "./collaboration-dictation-runtime.js";
+import { captureMicrophone, type DictationAudioSource, type DictationInvoke } from "./collaboration-dictation-runtime.js";
 
 type DiagnosticIdentity = Readonly<{ diagnosticVoiceFixture?: boolean; diagnosticVoiceLocalMicrophonePreflight?: boolean }>;
 type DiagnosticReport = Readonly<Record<string, boolean | string>>;
@@ -49,7 +49,6 @@ export class CollaborationDictationCapture {
       if (this.localMicrophonePreflight) this.report({localMicrophonePreflightStopped:true});
       return source;
     }
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
-    return {stream: await navigator.mediaDevices.getUserMedia({audio:true,video:false})};
+    return captureMicrophone();
   }
 }

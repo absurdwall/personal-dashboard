@@ -32,7 +32,7 @@ function diagnosticFailure(error: unknown): string {
   return "unclassified-start-failure";
 }
 
-async function captureMicrophone(): Promise<DictationAudioSource> {
+export async function captureMicrophone(): Promise<DictationAudioSource> {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
   return {stream: await navigator.mediaDevices.getUserMedia({audio:true,video:false})};
 }
