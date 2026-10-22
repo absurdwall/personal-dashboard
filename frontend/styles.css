@@ -11871,4 +11871,9 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 .habit-sleep-day-evidence button{justify-self:start;padding:4px 7px;font-size:10px}
 .habit-sleep-day-values p{margin:2px 0;line-height:1.5}
 .habit-sleep-calendar-date,.habit-sleep-pair{font-size:9px;color:var(--parity-muted)}
-.habit-snapshot-row:is([data-habit-key="wake"],[data-habit-key="sleep"]) .habit-snapshot-value strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere}
+.habit-snapshot-row:is([data-habit-key="wake"],[data-habit-key="sleep"]) .habit-snapshot-value strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:normal;word-break:normal}
+.habit-snapshot-value strong.habit-sleep-described-value{font-family:inherit;font-size:9px;line-height:1.4}
+.habit-detail-panel[data-sleep-detail="true"] .habit-detail-status:empty{display:none}
+.habit-detail-panel[data-sleep-detail="true"] .habit-detail-heading .secondary-button,
+.habit-detail-panel[data-sleep-detail="true"] .habit-detail-actions>.secondary-button{min-height:0;padding:5px 8px;font-size:10px;line-height:1.4}
+.habit-detail-panel[data-sleep-detail="true"] .habit-detail-actions{gap:5px 9px;margin:5px 0 8px}

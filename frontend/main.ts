@@ -1864,7 +1864,7 @@ const habitSnapshotRequests = new LatestRequest();
 const habitDateRequests = new LatestRequest();
 const habitDetailRequests = new LatestRequest();
 const habitCompletionRequests = new LatestRequest();
-const habitSleepOverview = new HabitSleepOverview(() => currentInterfaceLanguage);
+const habitSleepOverview = new HabitSleepOverview(() => currentInterfaceLanguage, () => revealHabitSleepDetail());
 let currentHabitSnapshot: HabitSnapshotView | null = null;
 type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
 type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>;
@@ -2018,6 +2018,7 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
 
 async function chooseInterfaceLanguage(interfaceLanguage: InterfaceLanguage): Promise<void> {
   renderInterfaceLanguage({ interfaceLanguage });
+  revealHabitSleepDetail();
   await interfaceLanguageMutations.enqueue(
     () => window.__TAURI__.core.invoke<InterfaceLanguagePreferences>(
       "set_interface_language",
@@ -9504,6 +9505,9 @@ function habitRow(habit: HabitView): HTMLElement {
   progress.textContent = habit.key === "wake" || habit.key === "sleep"
     ? habitSleepOverview.value(habit.key, habit.today.date, habit.today.actualTimeLabel ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage) : undefined) : habitProgressLabel(habit);
   progress.title = progress.textContent;
+  if (habit.key === "wake" || habit.key === "sleep") {
+    progress.classList.toggle("habit-sleep-described-value", !/^\d{2}:\d{2}$/.test(progress.textContent));
+  }
   setCopy(todayState, "habits.todayStatus", { status: t(habitStatusLabels[habit.today.status]) });
   value.append(progress, todayState);
 
@@ -9661,6 +9665,7 @@ function renderHabitDetailPanel(): void {
     : currentHabitSnapshot?.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
   habitsCurrentTodayView.hidden = true;
   habitDetailPanel.hidden = false;
+  habitDetailPanel.dataset.sleepDetail = String(selectedHabitDetailKey === "wake" || selectedHabitDetailKey === "sleep");
   if (habitDetailHeading) {
     const name = habit ? displayHabitName(habit) : selectedHabitDetailKey;
     const emoji = habit?.definition?.emoji;
@@ -9877,7 +9882,25 @@ function renderHabitDetailPanel(): void {
   } else habitDetailContent.append(intro, actions, statsGrid, freshness, sourceCoverage, canonicalStatus, goals, lifecycleSection, recordsSection);
 }
 
-async function loadHabitDetailHistory(habitKey: string): Promise<void> {
+function revealHabitSleepDetail(): void {
+  const chart = habitDetailPanel?.querySelector<HTMLElement>('[data-sleep-chart="detail"]');
+  if (!chart || !workspaceInformation || !habitDetailPanel || habitDetailPanel.hidden || currentWorkspaceDestination !== "habits") return;
+  const viewport = workspaceInformation.getBoundingClientRect();
+  const plot = chart.getBoundingClientRect();
+  const panel = habitDetailPanel.getBoundingClientRect();
+  if (plot.bottom <= viewport.bottom && panel.top >= viewport.top) return;
+  const summary = habitsReady?.querySelector<HTMLElement>(".habits-week-summary");
+  // Keep the original side-by-side summary in view. At the existing stacked
+  // breakpoint, reveal the detail below that summary rather than its whole rail.
+  const target = summary && summary.getBoundingClientRect().right <= panel.left + 1
+    ? habitsReady : habitDetailPanel;
+  if (target) workspaceInformation.scrollTo({
+    top: workspaceInformation.scrollTop + target.getBoundingClientRect().top - viewport.top - 12,
+    behavior: "instant",
+  });
+}
+
+async function loadHabitDetailHistory(habitKey: string, revealSleepDetail = false): Promise<void> {
   const request = habitDetailRequests.begin();
   habitDetailLoading = true;
   habitDetailLoadError = null;
@@ -9889,6 +9912,7 @@ async function loadHabitDetailHistory(habitKey: string): Promise<void> {
     habitDetailLoading = false;
     habitDetailLoadError = null;
     renderHabitDetailPanel();
+    if (revealSleepDetail) revealHabitSleepDetail();
   } catch (error) {
     if (!habitDetailRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
     habitDetailLoading = false;
@@ -9904,7 +9928,7 @@ function openHabitDetail(habitKey: string): void {
   habitDetailRecordLimit = 20;
   habitDetailLoadError = null;
   habitDetailLifecycleNotice = null;
-  void loadHabitDetailHistory(habitKey);
+  void loadHabitDetailHistory(habitKey, habitKey === "wake" || habitKey === "sleep");
 }
 
 function closeHabitDetail(): void {
