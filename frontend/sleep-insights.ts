@@ -5,6 +5,7 @@ import type { SleepEndpoint, SleepMetric, SleepRecord, SleepView } from "./sleep
 
 type Sample = Readonly<{ date: string; value: number | null; approximate: boolean; label: string }>;
 const dayMinutes = 1440;
+function isClockMetric(metric: SleepMetric): boolean { return metric !== "duration"; }
 function shiftDate(date: string, days: number): string {
   const value = new Date(`${date}T12:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
@@ -67,7 +68,7 @@ function distance(value: number, center: number): number {
 function statistics(parent: HTMLElement, points: readonly Sample[], metric: SleepMetric): void {
   const valid = points.filter(point => point.value !== null);
   const values = valid.map(point => point.value!);
-  const circular = metric !== "duration";
+  const circular = isClockMetric(metric);
   const mean = average(values, circular);
   const format = circular ? clock : (value: number) => formatSleepDuration(value, sleepLanguage());
   const approximate = valid.filter(point => point.approximate).length;
@@ -95,10 +96,11 @@ function chart(parent: HTMLElement, points: readonly Sample[], metric: SleepMetr
   svg.setAttribute("role", "img");
   parent.append(svg);
   const valid = points.flatMap(point => point.value === null ? [] : [point.value]);
-  const center = metric === "duration" ? 0 : average(valid, true) ?? 0;
+  const circular = isClockMetric(metric);
+  const center = circular ? average(valid, true) ?? 0 : 0;
   const coordinates = points.map((point, index) => ({
     x: 700 * (index + .5) / points.length,
-    value: point.value === null ? null : metric === "duration" ? point.value : distance(point.value, center),
+    value: point.value === null ? null : circular ? distance(point.value, center) : point.value,
   }));
   const values = coordinates.flatMap(point => point.value === null ? [] : [point.value]);
   const min = values.length ? Math.min(...values) - 20 : 0;

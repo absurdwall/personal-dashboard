@@ -290,16 +290,26 @@ impl StorageDocumentKind {
         }
     }
 
+    fn operation_message(
+        self,
+        daily_record: &str,
+        day_tasks: &str,
+        habit_completions: &str,
+        fallback_punctuation: &str,
+    ) -> String {
+        let failure_label = match self {
+            Self::DailyRecord => return daily_record.into(),
+            Self::DayTasks => return day_tasks.into(),
+            Self::HabitCompletions => return habit_completions.into(),
+            Self::HabitCatalog => "本地 Habit 定义正本操作失败",
+            Self::Tasks => "任务正本操作失败",
+            Self::SleepRecords => "作息正本操作失败",
+        };
+        format!("{failure_label}{fallback_punctuation}")
+    }
+
     fn text(self, daily_record: &str, day_tasks: &str, habit_completions: &str) -> String {
-        match self {
-            Self::DailyRecord => daily_record,
-            Self::DayTasks => day_tasks,
-            Self::HabitCompletions => habit_completions,
-            Self::HabitCatalog => "本地 Habit 定义正本操作失败。",
-            Self::Tasks => "任务正本操作失败。",
-            Self::SleepRecords => "作息正本操作失败。",
-        }
-        .into()
+        self.operation_message(daily_record, day_tasks, habit_completions, "。")
     }
 
     fn error(
@@ -311,14 +321,7 @@ impl StorageDocumentKind {
     ) -> String {
         format!(
             "{}{}",
-            match self {
-                Self::DailyRecord => daily_record,
-                Self::DayTasks => day_tasks,
-                Self::HabitCompletions => habit_completions,
-                Self::HabitCatalog => "本地 Habit 定义正本操作失败：",
-                Self::Tasks => "任务正本操作失败：",
-                Self::SleepRecords => "作息正本操作失败：",
-            },
+            self.operation_message(daily_record, day_tasks, habit_completions, "："),
             error
         )
     }
