@@ -7,7 +7,9 @@ status: accepted
 Issue #124's 2026-10-22 redesign and #125 separate three identities: a stable
 reported night, each endpoint's actual calendar date/time/offset, and the 04:00
 lived day used by existing Habit and Today views. Backend implementation was
-separately authorized; production entry layout still requires visual approval.
+separately authorized; the revised visual reference was approved before
+production UI implementation, while final human acceptance of the native
+experience remains separately pending.
 
 Keep the selected-Vault sleep record independent of Daily Records, completions
 and snapshots. Reuse the protected compare-and-swap writer and explicit revision,
