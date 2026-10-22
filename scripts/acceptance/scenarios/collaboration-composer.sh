@@ -27,16 +27,9 @@ run_collaboration_composer_scenario() {
   run_driver press "New chat" 10
   run_driver type-text "Message|Synthetic keyboard before dictation." 10
   current_step="running real synthetic dictation through the production composer"
-  run_driver press "Start dictation" 10
-  run_driver wait-text "Recording · You can speak" 45
-  sleep "$seconds"
-  run_driver press "Stop dictation" 10
-  run_driver wait-text "$marker" 30
+  capture_synthetic_composer_dictation run_driver press "$marker" "$seconds"
   run_driver wait-text "Start dictation" 30
-  run_driver assert-state "Start dictation|enabled" 30
-  run_driver assert-absent-text "Microphone stopped · Finishing transcript" 2
-  run_driver assert-absent-text "Transcription ready. Review or edit" 2
-  run_driver assert-absent-text "completeness is unconfirmed" 2
+  assert_synthetic_composer_dictation_complete run_driver
   # Verify actual saved draft and absence of an automatic message before editing.
   node - "$file" "$marker" <<'NODE'
 const fs=require('node:fs');const [path,marker]=process.argv.slice(2);
