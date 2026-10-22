@@ -296,7 +296,7 @@ fn validate_endpoint(endpoint: &SleepEndpoint) -> Result<(), String> {
                 return Err("请保留有效的模糊时间原文。".into());
             }
         }
-        _ => {}
+        SleepEndpoint::Unknown | SleepEndpoint::Unrecorded => {}
     };
     Ok(())
 }
@@ -307,7 +307,7 @@ fn endpoint_bounds(endpoint: &SleepEndpoint) -> Result<Option<(i64, i64)>, Strin
             Ok(Some((instant, instant)))
         }
         SleepEndpoint::Range { start, end, .. } => Ok(Some((point_seconds(start)?, point_seconds(end)?))),
-        _ => Ok(None),
+        SleepEndpoint::Text { .. } | SleepEndpoint::Unknown | SleepEndpoint::Unrecorded => Ok(None),
     }
 }
 
@@ -335,7 +335,7 @@ fn validate_record(record: &SleepRecord) -> Result<(), String> {
         SleepEndpoint::Point { point } => Some(point.date.as_str()),
         SleepEndpoint::Range { end, .. } => Some(end.date.as_str()),
         SleepEndpoint::Text { date, .. } => Some(date.as_str()),
-        _ => None,
+        SleepEndpoint::Unknown | SleepEndpoint::Unrecorded => None,
     };
     if get_up_date.is_some_and(|date| date != record.wake_date) {
         return Err("起床端点的实际日期必须与记录起床日一致。".into());
