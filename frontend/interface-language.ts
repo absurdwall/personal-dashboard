@@ -5,6 +5,8 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
+  "sleep.readbackChanged": {zh:"文档已保存，但读回结果已经变化；请重新读取核对。",en:"Document saved, but the readback changed; read the record again to verify."},
+  "sleep.readbackUnavailable": {zh:"作息已保存，但无法确认读回：{error}",en:"Sleep was saved, but its readback could not be confirmed: {error}"},
   "sleep.invalidDocument": {zh:"作息正本无效：{error}",en:"The sleep document is invalid: {error}"},
   "sleep.storageDiagnostic": {zh:"作息正本操作失败：{error}",en:"The canonical sleep operation failed: {error}"},
   "sleep.label": { zh: "作息", en: "Sleep" },
@@ -2494,6 +2496,8 @@ const sleepDiagnosticKeys: Readonly<Record<string, InterfaceCopyKey>> = {
   "Selected Vault changed; no sleep records read.": "sleep.error.boundRead",
   "请检查实际日期与时间；夏令时切换中不存在的时间不能保存。": "sleep.invalidLocalTime",
   "Check the actual local date and time; a nonexistent daylight-saving time cannot be saved.": "sleep.invalidLocalTime",
+  "文档已保存，但读回结果已经变化；请重新读取核对。": "sleep.readbackChanged",
+  "Document saved, but the readback changed; read the record again to verify.": "sleep.readbackChanged",
   "尚未确认保存读回。": "sleep.unconfirmed",
   "Saved readback is unconfirmed.": "sleep.unconfirmed"
 };
@@ -2510,12 +2514,11 @@ export function localizeApplicationError(
     const detail = error.slice(savedRefreshPrefix.length, -savedRefreshSuffix.length);
     return language === "zh" ? error : `Document saved, but the display refresh failed: ${detail}; read the record again to verify.`;
   }
-  if (error === "文档已保存，但读回结果已经变化；请重新读取核对。") {
-    return language === "zh" ? error : "Document saved, but the readback changed; read the record again to verify.";
-  }
   const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
   const sleepKey = sleepDiagnosticKeys[applicationDiagnostic];
   if (sleepKey) return interfaceCopy(sleepKey, language);
+  const sleepReadback = /^作息已保存，但无法确认读回：([\s\S]*)$/.exec(applicationDiagnostic);
+  if (sleepReadback) return interfaceCopy("sleep.readbackUnavailable",language,{error:sleepReadback[1]});
   const invalidSleep = /^作息正本无效：([\s\S]*)$/.exec(applicationDiagnostic);
   if (invalidSleep) return interfaceCopy("sleep.invalidDocument", language, {error: invalidSleep[1]});
   const sleepStorage = /^作息正本操作失败：([\s\S]*)$/.exec(applicationDiagnostic);

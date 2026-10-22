@@ -1298,7 +1298,7 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
     assert_eq!(binding["skillVersion"], "1.6.0");
-    assert_eq!(binding["toolSetVersion"], "1.5.1");
+    assert_eq!(binding["toolSetVersion"], "1.5.2");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));
@@ -8450,4 +8450,23 @@ fn collaboration_sleep_read_rejects_selection_changed_at_the_adapter_boundary() 
     let result=results.lock().unwrap()[0].clone();
     assert!(!result.success,"a turn must not read the newly selected Vault: {}",result.text);
     assert!(!result.text.contains("OTHER VAULT PRIVATE SLEEP"));
+}
+
+#[test]
+fn stale_sleep_save_at_today_command_entry_does_not_expose_selected_vault_parse_diagnostics() {
+    let directory=IsolatedDirectory::new();
+    let original=directory.vault("sleep-stale-command-original");
+    let replacement=directory.vault("sleep-stale-command-selected");
+    let selection=MutableVault::new(&original);
+    let today=TodayApplication::new(selection.clone(),NoVaultPicker,FixedClock);
+    let before=today.sleep_records().unwrap();
+    let relative="life/.personal-dashboard/sleep/v1/sessions.json";
+    let private=serde_json::to_vec(&json!({"schemaVersion":1,"records":[{"id":"selected-private-night","wakeDate":"2026-09-27","sleepOnset":{"kind":"SELECTED_B_PRIVATE_PARSE_MARKER"},"getUp":{"kind":"unrecorded"},"estimatedDurationMinutes":null}],"operations":[]})).unwrap();
+    fs::create_dir_all(replacement.join(relative).parent().unwrap()).unwrap();fs::write(replacement.join(relative),&private).unwrap();
+    selection.select(&replacement);
+    let error=today.save_sleep_record(serde_json::from_value(json!({"wakeDate":"2026-09-27","changeId":"stale-command-save","targetBinding":before.target_binding,"expectedRevision":before.revision,"getUp":{"kind":"unknown"}})).unwrap()).unwrap_err();
+    assert_eq!(fs::read(replacement.join(relative)).unwrap(),private);
+    assert!(!original.join(relative).exists());
+    assert!(!error.contains("SELECTED_B_PRIVATE_PARSE_MARKER"),"another Vault's corrupt content escaped through the command result: {error}");
+    assert_eq!(error,"所选 Vault 已改变；未写入。");
 }

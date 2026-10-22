@@ -221,3 +221,52 @@ test('English sleep placeholder and errors use the shared language catalog witho
  assert.equal(result.reportedAfter,'八点多 English original');
  assert.deepEqual(result.errors,[]);
 });
+
+for(const mode of ['identity','requested endpoint','preserved endpoint','other record','Vault binding','unavailable readback']) {
+ test(`sleep editor keeps an unconfirmed ${mode} save response editable`, {skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const point=(date,time)=>({kind:'point',date,time,utcOffsetMinutes:-240,approximate:false});
+    responses.sleep_records={targetBinding:'readback-vault',revision:'readback-r1',records:[
+      {id:'night',wakeDate:view.date,sleepOnset:point('2026-08-09','23:50'),getUp:point(view.date,'07:20'),estimatedDurationMinutes:450},
+      {id:'older-night',wakeDate:'2026-08-09',sleepOnset:point('2026-08-08','23:50'),getUp:point('2026-08-09','07:20'),estimatedDurationMinutes:450}
+    ]};
+    document.querySelector('#refresh-today').click();
+    await until(()=>document.querySelector('#today-sleep-summary button').textContent.includes('07:20'));
+    document.querySelector('#today-sleep-summary button').click();
+    await until(()=>document.querySelector('.sleep-editor form'));
+    const dialog=document.querySelector('.sleep-editor'),input=dialog.querySelector('input[aria-label="Get-up time · Time"]');
+    input.value='08:20';let changedEvents=0;document.addEventListener('sleep-records-changed',()=>changedEvents++);
+    const invoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      if(command==='save_sleep_record'){
+        const saved=structuredClone(responses.sleep_records);saved.revision='readback-r2';saved.records[0].getUp=point(view.date,'08:20');saved.records[0].estimatedDurationMinutes=510;
+        const mode=${JSON.stringify(mode)};
+        if(mode==='unavailable readback')throw Error('作息已保存，但无法确认读回：Synthetic readback unavailable');
+        if(mode==='identity')saved.records[0].id='another-record-on-the-same-date';
+        if(mode==='requested endpoint')saved.records[0].getUp=point(view.date,'09:20');
+        if(mode==='preserved endpoint')saved.records[0].sleepOnset=point('2026-08-09','22:00');
+        if(mode==='other record')saved.records[1].getUp=point('2026-08-09','09:20');
+        if(mode==='Vault binding')saved.targetBinding='different-vault';
+        return saved;
+      }
+      return invoke(command,args);
+    };
+    dialog.querySelector('form').requestSubmit();await new Promise(resolve=>setTimeout(resolve,20));
+    const status=dialog.querySelector('[role=status]'),english=status.textContent,diagnostic=status.dataset.i18nError;
+    responses.set_interface_language={interfaceLanguage:'zh'};document.querySelector('#workspace-language').click();
+    await until(()=>document.documentElement.lang.startsWith('zh'));
+    const chinese=status.textContent;
+    responses.set_interface_language={interfaceLanguage:'en'};document.querySelector('#workspace-language').click();
+    await until(()=>document.documentElement.lang.startsWith('en'));
+    return JSON.stringify({open:dialog.open,content:input.value,status:english,chinese,englishAgain:status.textContent,diagnostic,changedEvents,errors:window.probeErrors});
+  `);
+  assert.equal(result.open,true,'an unrelated or changed readback must not close the editor as saved');
+  assert.equal(result.content,'08:20');
+  assert.match(result.status,/readback changed|readback could not be confirmed/i);
+  assert.match(result.chinese,/文档已保存，但读回结果已经变化|作息已保存，但无法确认读回/);
+  assert.equal(result.englishAgain,result.status);
+  assert.ok(result.diagnostic);
+  assert.equal(result.changedEvents,0);
+  assert.deepEqual(result.errors,[]);
+ });
+}

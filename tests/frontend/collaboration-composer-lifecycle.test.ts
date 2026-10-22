@@ -26,6 +26,7 @@ const mediaBoundary = String.raw`
   };
   const realInvoke=window.__TAURI__.core.invoke;
   window.__TAURI__.core.invoke=async(command,args)=>{
+    if(command==='collaboration_voice_gate_claim_microphone_preflight'){calls.push({command});if(window.preflightClaimed)throw Error('capture-unavailable');window.preflightClaimed=true;return;}
     if(command==='collaboration_voice_gate_request_microphone'){calls.push({command});if(window.holdNativePermission)await new Promise(resolve=>{window.releaseNativePermission=resolve;});const result=window.nativePermissionResult??'authorized';window.nativePermissionGranted=result==='authorized';return result;}
     if(command==='collaboration_voice_runtime_gate'){calls.push({command,args});return;}
     if(command==='collaboration_dictation_start'){calls.push({command,args});return {inputId:args.inputId,sdp:'v=0\r\na=ice-lite\r\na=ice-options:trickle\r\na=candidate:synthetic-private-marker\r\n'};}
