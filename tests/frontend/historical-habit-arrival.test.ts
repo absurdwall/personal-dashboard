@@ -32,3 +32,15 @@ test("leaving Today or switching Vault cancels deferred arrival even for the sam
   assert.equal(arrival.consume(target, "2026-09-07"), false);
   assert.equal(arrival.forDate("2026-09-07"), null);
 });
+
+test('same-date Habit changes retain only the latest exact input arrival', () => {
+  const arrival = new HistoricalHabitArrival();
+  arrival.select('2026-10-21', 'sleep');
+  const old = arrival.forDate('2026-10-21')!;
+  arrival.select('2026-10-21', 'wake');
+  assert.equal(arrival.consume(old, '2026-10-21'), false);
+  const current = arrival.forDate('2026-10-21')!;
+  assert.equal(current.habitKey, 'wake');
+  assert.equal(arrival.consume(current, '2026-10-21'), true);
+  assert.equal(arrival.forDate('2026-10-21'), null);
+});
