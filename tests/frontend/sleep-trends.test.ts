@@ -270,3 +270,82 @@ for(const mode of ['identity','requested endpoint','preserved endpoint','other r
   assert.deepEqual(result.errors,[]);
  });
 }
+
+test('sleep save recovery diagnostics switch language without changing paths or OS details', {skip:process.platform!=='darwin'},()=>{
+ const diagnostic='作息正本操作失败：Not a directory (os error 20); rollback also failed (作息正本操作失败：Permission denied: 原始尾串 (os error 13)); the actual displaced sleep-record document inode remains linked at /synthetic/life/作息: 原文.snapshot';
+ const path='/synthetic/life/作息: 原文.snapshot',os='Permission denied: 原始尾串 (os error 13)';
+ const moreCases=[
+  {raw:`作息正本操作失败：${os}; the complete sleep-record document is present at ${path} and can be verified by refreshing`,zh:'完整的作息正本位于',en:'the complete sleep-record document',opaque:[path,os]},
+  {raw:`The new sleep-record document is active, but its temporary hard link remains at ${path}: ${os}`,zh:'临时硬链接仍保留在',en:'temporary hard link remains',opaque:[path,os]},
+  {raw:`作息正本操作失败：${os}; activation was rolled back and the rejected sleep-record candidate remains at ${path}`,zh:'启用已回滚',en:'activation was rolled back',opaque:[path,os]},
+  {raw:`Could not verify the displaced sleep-record document after atomic exchange; its durable recovery link remains at ${path}: ${os}`,zh:'无法验证移出的作息正本',en:'Could not verify the displaced sleep-record document',opaque:[path,os]},
+  {raw:`Could not verify the sleep-record document after atomic exchange; the actual displaced inode remains recoverable at ${path}: ${os}`,zh:'实际移出的 inode 仍可恢复',en:'the actual displaced inode remains recoverable',opaque:[path,os]},
+  {raw:`作息正本操作失败：${os}; the displaced external sleep-record document remains at ${path} for recovery`,zh:'移出的外部作息正本仍保留在',en:'the displaced external sleep-record document',opaque:[path,os]},
+  {raw:'作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。',zh:'外部内容未被覆盖',en:'The canonical sleep document changed externally',opaque:[]},
+  {raw:`作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ${path}。请检查后刷新 Today 或 Habits。`,zh:'未静默丢弃交错内容',en:'Interleaved content was not silently discarded',opaque:[path]},
+  {raw:'作息已保存，但无法确认读回：作息正本无效：unknown field `用户:key` at line 4',zh:'作息正本无效',en:'The sleep document is invalid: unknown field `用户:key` at line 4',opaque:['unknown field `用户:key` at line 4']},
+ ];
+ const result=probe(969,`
+  responses.sleep_records={targetBinding:'sleep-error-vault',revision:'sleep-error-revision',records:[{id:'night',wakeDate:view.date,sleepOnset:{kind:'text',date:'2026-08-09',text:'用户原文 rollback also failed'},getUp:{kind:'point',date:view.date,time:'07:20',utcOffsetMinutes:-240,approximate:false},estimatedDurationMinutes:null}]};
+  let diagnostic=${JSON.stringify(diagnostic)};
+  const invoke=window.__TAURI__.core.invoke;
+  window.__TAURI__.core.invoke=async(command,args)=>{
+    if(command==='save_sleep_record')throw new Error(diagnostic);
+    if(command==='set_interface_language')return {interfaceLanguage:args.interfaceLanguage};
+    return invoke(command,args);
+  };
+  document.querySelector('#refresh-today').click();
+  await until(()=>document.querySelector('#today-sleep-summary button')?.textContent.includes('2026-08-10'));
+  document.querySelector('#today-sleep-summary button').click();
+  await until(()=>document.querySelector('.sleep-editor form'));
+  const dialog=document.querySelector('.sleep-editor');
+  dialog.querySelector('input[aria-label="Get-up time · Time"]').value='08:20';
+  dialog.querySelector('form').requestSubmit();
+  await until(()=>dialog.querySelector('[role=status]').textContent);
+  const status=dialog.querySelector('[role=status]');
+  const english=status.textContent;
+  document.querySelector('#workspace-language').click();
+  await until(()=>document.documentElement.lang.startsWith('zh'));
+  const chinese=status.textContent;
+  document.querySelector('#workspace-language').click();
+  await until(()=>document.documentElement.lang.startsWith('en'));
+  const first={english,chinese,englishAgain:status.textContent,diagnostic:status.dataset.i18nError};
+  const more=[];
+  for(const [index,fixture] of ${JSON.stringify(moreCases)}.entries()){
+    diagnostic=fixture.raw;
+    dialog.querySelector('input[aria-label="Get-up time · Time"]').value='08:'+String(21+index);
+    dialog.querySelector('form').requestSubmit();
+    await until(()=>status.dataset.i18nError==='Error: '+fixture.raw);
+    const en=status.textContent;
+    document.querySelector('#workspace-language').click();
+    await until(()=>document.documentElement.lang.startsWith('zh'));
+    const zh=status.textContent;
+    document.querySelector('#workspace-language').click();
+    await until(()=>document.documentElement.lang.startsWith('en'));
+    more.push({en,zh,enAgain:status.textContent,diagnostic:status.dataset.i18nError});
+  }
+  return JSON.stringify({...first,more,reported:dialog.querySelector('input[aria-label="Sleep onset · Original wording"]').value,open:dialog.open,errors:window.probeErrors});
+ `);
+ assert.match(result.chinese,/回滚也失败/);
+ assert.ok(!result.chinese.includes('rollback also failed'));
+ assert.match(result.english,/The canonical sleep operation failed: Not a directory \(os error 20\); rollback also failed \(The canonical sleep operation failed: Permission denied: 原始尾串 \(os error 13\)\)/);
+ assert.ok(!result.english.includes('作息正本操作失败'));
+ for(const rendered of [result.chinese,result.english]){
+  assert.ok(rendered.includes('/synthetic/life/作息: 原文.snapshot'));
+  assert.ok(rendered.includes('Permission denied: 原始尾串 (os error 13)'));
+ }
+ assert.equal(result.englishAgain,result.english);
+ assert.equal(result.diagnostic,'Error: '+diagnostic);
+ assert.equal(result.reported,'用户原文 rollback also failed');
+ for(const [index,fixture] of moreCases.entries()){
+  const rendered=result.more[index];
+  assert.ok(rendered.en.includes(fixture.en),rendered.en);
+  assert.ok(rendered.zh.includes(fixture.zh),rendered.zh);
+  assert.ok(!rendered.en.includes('作息正本操作失败')&&!rendered.en.includes('作息正本无效'),rendered.en);
+  for(const original of fixture.opaque)for(const localized of [rendered.en,rendered.zh])assert.ok(localized.includes(original),localized);
+  assert.equal(rendered.enAgain,rendered.en);
+  assert.equal(rendered.diagnostic,'Error: '+fixture.raw);
+ }
+ assert.equal(result.open,true);
+ assert.deepEqual(result.errors,[]);
+});

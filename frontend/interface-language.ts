@@ -83,6 +83,8 @@ const interfaceCopies = {
   "sleep.error.chooseRead": { zh: "请先选择 Vault，再读取作息。", en: "Select a Vault before reading sleep records." },
   "sleep.error.chooseSave": { zh: "请先选择 Vault，再保存作息。", en: "Select a Vault before saving sleep records." },
   "sleep.error.operation": { zh: "作息正本操作失败。", en: "The canonical sleep operation failed." },
+  "sleep.error.externalChange": { zh: "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。", en: "The canonical sleep document changed externally. Refresh Today or Habits before saving again; external content was not overwritten." },
+  "sleep.error.concurrentChange": { zh: "作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {path}。请检查后刷新 Today 或 Habits。", en: "The canonical sleep document changed concurrently at the save boundary. Interleaved content was not silently discarded; a recovery snapshot remains at {path}. Check it, then refresh Today or Habits." },
   "sleep.error.busy": { zh: "作息写入暂不可用", en: "Sleep writing is temporarily unavailable" },
   "sleep.error.boundRead": { zh: "所选 Vault 已改变；未读取作息。", en: "Selected Vault changed; no sleep records read." },
   "sleep.onset.precision": { zh: "入睡时间精度", en: "Sleep onset precision" },
@@ -1511,6 +1513,11 @@ const englishApplicationMessages: Readonly<Record<string, string>> = {
 // Only host-owned result diagnostics use this catalog. Source replies and user
 // text bypass it, even if their wording happens to match a diagnostic.
 const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
+  "Sleep records are unavailable in this runtime.": "当前运行环境无法使用作息记录。",
+  "Sleep records are unavailable in this round.": "本轮无法使用作息记录。",
+  "Sleep request session is unavailable": "作息请求对应的会话不可用。",
+  "Sleep request is no longer active; no data changed.": "作息请求已不再执行；未更改数据。",
+  "Selected Vault changed; no sleep data changed.": "所选 Vault 已更改；未更改作息数据。",
   "The native file access root must be a real directory. No model turn was sent.": "原生文件访问根路径必须为真实目录。未发送模型请求。",
   "Original Habit completion scope is unconfirmed. Read the current canonical history and source; clarify the endpoints before withdrawing.": "原 Habit 完成范围尚未确认。请读取当前正本历史及来源，撤回前明确要修改的端点。",
   "The selected Vault changed before native file access was granted. No model turn was sent.": "授予原生文件访问前所选 Vault 已更改。未发送模型请求。",
@@ -1632,6 +1639,8 @@ export function localizeCollaborationDiagnostic(message: string, language: Inter
   }
   const nativePath = /^Native personal-content access (refuses a redirected path|requires a directory): (.*)\. No model turn was sent\.$/s.exec(message);
   if (nativePath) return language === "en" ? message : `原生个人内容访问${nativePath[1] === "refuses a redirected path" ? "拒绝重定向路径" : "要求目录"}：${nativePath[2]}。未发送模型请求。`;
+  const sleepDiagnostic = localizeSleepDiagnostic(message,language);
+  if (sleepDiagnostic) return sleepDiagnostic;
   if (language === "en") return englishTaskDiagnostic(message) ?? englishHabitValidationDiagnostic(message) ?? localizeApplicationMessage(message, language);
   const exact = chineseCollaborationDiagnostics[message];
   if (exact) return exact;
@@ -2397,21 +2406,41 @@ const chineseApplicationErrors: Readonly<Record<string, string>> = {
     "当天任务原子条件替换目前仅支持 macOS。",
 };
 
-function chineseDayTaskStorageDiagnostic(message: string): string | null {
-  const complete = /^(.+); the complete new day-task document is present at (.+) and can be verified by refreshing$/.exec(message);
-  if (complete) return `${localizeApplicationError(complete[1], "zh")}；完整的新当天任务正本位于 ${complete[2]}，可通过刷新验证`;
-  const active = /^The new day-task document is active, but its temporary hard link remains at (.+): (.+)$/.exec(message);
-  if (active) return `新的当天任务正本已启用，但临时硬链接仍保留在 ${active[1]}：${active[2]}`;
-  const rolledBack = /^(.+); activation was rolled back and the rejected day-task candidate remains at (.+)$/.exec(message);
-  if (rolledBack) return `${localizeApplicationError(rolledBack[1], "zh")}；启用已回滚，被拒绝的当天任务候选仍保留在 ${rolledBack[2]}`;
-  const rollbackFailed = /^(.+); rollback also failed \((.+)\); the actual displaced day-task document inode remains linked at (.+)$/.exec(message);
-  if (rollbackFailed) return `${localizeApplicationError(rollbackFailed[1], "zh")}；回滚也失败（${localizeApplicationError(rollbackFailed[2], "zh")}）；实际移出的当天任务正本 inode 仍链接在 ${rollbackFailed[3]}`;
-  const displaced = /^Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at (.+): (.+)$/.exec(message);
-  if (displaced) return `原子交换后无法验证移出的当天任务正本；其持久恢复链接仍保留在 ${displaced[1]}：${displaced[2]}`;
-  const activeRecovery = /^Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at (.+): (.+)$/.exec(message);
-  if (activeRecovery) return `原子交换后无法验证当天任务正本；实际移出的 inode 仍可在 ${activeRecovery[1]} 恢复：${activeRecovery[2]}`;
-  const displacedExternal = /^(.+); the displaced external day-task document remains at (.+) for recovery$/.exec(message);
-  if (displacedExternal) return `${localizeApplicationError(displacedExternal[1], "zh")}；移出的外部当天任务正本仍保留在 ${displacedExternal[2]} 以供恢复`;
+/** Fixed protected-store grammar for the two document families below. */
+function localizeProtectedStorageDiagnostic(message: string, language: InterfaceLanguage): string | null {
+  const names: Readonly<Record<string, string>> = { "day-task": "当天任务", "sleep-record": "作息" };
+  const nested = (value: string, kind: string): string => kind === "sleep-record"
+    ? localizeSleepDiagnostic(value, language) ?? value
+    : language === "zh" ? localizeApplicationError(value, language) : value;
+  // Preserve the entire sleep path/OS tail, including ambiguous colons in either value.
+  const detail = (path: string, error: string, kind: string): string =>
+    `${path}${kind === "sleep-record" ? ": " : "："}${error}`;
+  const complete = /^(.+); the complete (new day-task document|sleep-record document) is present at (.+) and can be verified by refreshing$/s.exec(message);
+  if (complete) {
+    const kind = complete[2] === "sleep-record document" ? "sleep-record" : "day-task";
+    return language === "zh" ? `${nested(complete[1],kind)}；完整的${kind === "day-task" ? "新" : ""}${names[kind]}正本位于 ${complete[3]}，可通过刷新验证`
+      : `${nested(complete[1],kind)}; the complete ${complete[2]} is present at ${complete[3]} and can be verified by refreshing`;
+  }
+  const active = /^The new (day-task|sleep-record) document is active, but its temporary hard link remains at (.+): (.+)$/s.exec(message);
+  if (active) return language === "zh" ? `新的${names[active[1]]}正本已启用，但临时硬链接仍保留在 ${detail(active[2],active[3],active[1])}` : message;
+  const rolledBack = /^(.+); activation was rolled back and the rejected (day-task|sleep-record) candidate remains at (.+)$/s.exec(message);
+  if (rolledBack) return language === "zh" ? `${nested(rolledBack[1],rolledBack[2])}；启用已回滚，被拒绝的${names[rolledBack[2]]}候选仍保留在 ${rolledBack[3]}`
+    : `${nested(rolledBack[1],rolledBack[2])}; activation was rolled back and the rejected ${rolledBack[2]} candidate remains at ${rolledBack[3]}`;
+  const rollbackFailed = /^(.+); rollback also failed \((.+)\); the actual displaced (day-task|sleep-record) document inode remains linked at (.+)$/s.exec(message);
+  if (rollbackFailed) return language === "zh" ? `${nested(rollbackFailed[1],rollbackFailed[3])}；回滚也失败（${nested(rollbackFailed[2],rollbackFailed[3])}）；实际移出的${names[rollbackFailed[3]]}正本 inode 仍链接在 ${rollbackFailed[4]}`
+    : `${nested(rollbackFailed[1],rollbackFailed[3])}; rollback also failed (${nested(rollbackFailed[2],rollbackFailed[3])}); the actual displaced ${rollbackFailed[3]} document inode remains linked at ${rollbackFailed[4]}`;
+  const displaced = /^Could not verify the displaced (day-task|sleep-record) document after atomic exchange; its durable recovery link remains at (.+): (.+)$/s.exec(message);
+  if (displaced) return language === "zh" ? `原子交换后无法验证移出的${names[displaced[1]]}正本；其持久恢复链接仍保留在 ${detail(displaced[2],displaced[3],displaced[1])}` : message;
+  const activeRecovery = /^Could not verify the (day-task|sleep-record) document after atomic exchange; the actual displaced inode remains recoverable at (.+): (.+)$/s.exec(message);
+  if (activeRecovery) {
+    if (language === "en") return message;
+    return activeRecovery[1] === "sleep-record"
+      ? `原子交换后无法验证作息正本；实际移出的 inode 仍可恢复，位置及诊断：${detail(activeRecovery[2],activeRecovery[3],activeRecovery[1])}`
+      : `原子交换后无法验证当天任务正本；实际移出的 inode 仍可在 ${activeRecovery[2]} 恢复：${activeRecovery[3]}`;
+  }
+  const displacedExternal = /^(.+); the displaced external (day-task|sleep-record) document remains at (.+) for recovery$/s.exec(message);
+  if (displacedExternal) return language === "zh" ? `${nested(displacedExternal[1],displacedExternal[2])}；移出的外部${names[displacedExternal[2]]}正本仍保留在 ${displacedExternal[3]} 以供恢复`
+    : `${nested(displacedExternal[1],displacedExternal[2])}; the displaced external ${displacedExternal[2]} document remains at ${displacedExternal[3]} for recovery`;
   return null;
 }
 
@@ -2469,6 +2498,8 @@ const sleepDiagnosticKeys: Readonly<Record<string, InterfaceCopyKey>> = {
   "请先选择 Vault，再读取作息。": "sleep.error.chooseRead",
   "请先选择 Vault，再保存作息。": "sleep.error.chooseSave",
   "作息正本操作失败。": "sleep.error.operation",
+  "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。": "sleep.error.externalChange",
+  "The canonical sleep document changed externally. Refresh Today or Habits before saving again; external content was not overwritten.": "sleep.error.externalChange",
   "作息写入暂不可用": "sleep.error.busy",
   "所选 Vault 已改变；未读取作息。": "sleep.error.boundRead",
   "The canonical sleep path cannot contain symbolic links; nothing was written.": "sleep.error.symlink",
@@ -2502,6 +2533,25 @@ const sleepDiagnosticKeys: Readonly<Record<string, InterfaceCopyKey>> = {
   "Saved readback is unconfirmed.": "sleep.unconfirmed"
 };
 
+function localizeSleepDiagnostic(message: string, language: InterfaceLanguage): string | null {
+  const diagnostic = message.startsWith("Error: ") ? message.slice("Error: ".length) : message;
+  const key = sleepDiagnosticKeys[diagnostic];
+  if (key) return interfaceCopy(key, language);
+  const readback = /^作息已保存，但无法确认读回：([\s\S]*)$/.exec(diagnostic);
+  if (readback) return interfaceCopy("sleep.readbackUnavailable",language,{
+    error:localizeSleepDiagnostic(readback[1],language) ?? readback[1],
+  });
+  const concurrent = /^作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ([\s\S]+)。请检查后刷新 Today 或 Habits。$/.exec(diagnostic);
+  if (concurrent) return interfaceCopy("sleep.error.concurrentChange",language,{path:concurrent[1]});
+  const invalid = /^作息正本无效：([\s\S]*)$/.exec(diagnostic);
+  if (invalid) return interfaceCopy("sleep.invalidDocument",language,{error:invalid[1]});
+  const storage = /^(?:作息正本操作失败：|The canonical sleep operation failed: )([\s\S]*)$/.exec(diagnostic);
+  if (storage) return interfaceCopy("sleep.storageDiagnostic",language,{
+    error:localizeProtectedStorageDiagnostic(storage[1],language) ?? storage[1],
+  });
+  return null;
+}
+
 export function localizeApplicationError(
   error: string,
   language: InterfaceLanguage,
@@ -2515,14 +2565,10 @@ export function localizeApplicationError(
     return language === "zh" ? error : `Document saved, but the display refresh failed: ${detail}; read the record again to verify.`;
   }
   const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
-  const sleepKey = sleepDiagnosticKeys[applicationDiagnostic];
-  if (sleepKey) return interfaceCopy(sleepKey, language);
-  const sleepReadback = /^作息已保存，但无法确认读回：([\s\S]*)$/.exec(applicationDiagnostic);
-  if (sleepReadback) return interfaceCopy("sleep.readbackUnavailable",language,{error:sleepReadback[1]});
-  const invalidSleep = /^作息正本无效：([\s\S]*)$/.exec(applicationDiagnostic);
-  if (invalidSleep) return interfaceCopy("sleep.invalidDocument", language, {error: invalidSleep[1]});
-  const sleepStorage = /^作息正本操作失败：([\s\S]*)$/.exec(applicationDiagnostic);
-  if (sleepStorage) return interfaceCopy("sleep.storageDiagnostic", language, {error: sleepStorage[1]});
+  const sleepDiagnostic = localizeSleepDiagnostic(applicationDiagnostic,language);
+  if (sleepDiagnostic) return sleepDiagnostic;
+  const protectedStorage = localizeProtectedStorageDiagnostic(applicationDiagnostic,language);
+  if (protectedStorage) return protectedStorage;
   if (language === "zh") {
     if (applicationDiagnostic === "Codex CLI was not found. Install the documented standalone Codex CLI, then refresh the connection. Local features remain available.") return "找不到 Codex CLI。请按文档自行安装独立 Codex CLI，再刷新连接。本地功能仍可使用。";
     const runtimeUnavailable = /^No compatible Codex CLI could start\. Install or update the documented standalone Codex CLI, then refresh\. Last check: ([\s\S]+)$/.exec(applicationDiagnostic);
@@ -2550,8 +2596,6 @@ export function localizeApplicationError(
     if (exact) return exact;
     const dailyRecordDiagnostic = chineseDailyRecordDiagnostic(error);
     if (dailyRecordDiagnostic) return dailyRecordDiagnostic;
-    const dayTaskStorageDiagnostic = chineseDayTaskStorageDiagnostic(error);
-    if (dayTaskStorageDiagnostic) return dayTaskStorageDiagnostic;
     const prefix = chineseErrorPrefixes.find(([source]) => error.startsWith(source));
     if (prefix) return `${prefix[1]}${error.slice(prefix[0].length)}`;
     const localWrite = /^Could not (prepare|write|activate) the local (appearance preference|interface language|Today workspace setting|background image): (.+)$/.exec(error);
