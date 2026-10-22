@@ -16,11 +16,8 @@ run_collaboration_composer_scenario() {
   /usr/bin/strings "$app_executable" | rg -F "Fixture is not configured" > /dev/null ||
     fail "candidate lacks diagnostic voice fixture capability; refusing microphone fallback"
   [[ "$seconds" =~ ^([1-9]|1[0-9]|20)$ ]] || fail "voice fixture wait must be 1-20 seconds"
-  mkdir -p "$vault/.obsidian" "$acceptance_data_directory/codex-profile" "$captures"
-  cp "$auth" "$acceptance_data_directory/codex-profile/auth.json"
-  chmod 600 "$acceptance_data_directory/codex-profile/auth.json"
-  printf '{"schemaVersion":1,"selectedVault":"%s"}\n' "$vault" > "$acceptance_data_directory/today-workspace.json"
-  printf '{"schemaVersion":1,"interfaceLanguage":"en"}\n' > "$acceptance_data_directory/interface-language.json"
+  mkdir -p "$vault/.obsidian" "$captures"
+  prepare_isolated_collaboration_profile "$acceptance_data_directory" "$auth" "$vault"
   launch_app_waiting_for_text "Today" 30
   run_driver set-size "969x723" 10
   run_driver press "Collaboration" 10

@@ -103,11 +103,8 @@ run_experience_124_scenario() {
   fixed_now_epoch_millis="1788891000000"
   fixed_utc_offset_minutes="-240"
   mkdir -p "$vault/.obsidian" "$(dirname "$record")" "$(dirname "$snapshot")" \
-    "$(dirname "$sleep_file")" "$acceptance_data_directory/codex-profile" "$captures"
-  cp "$auth" "$acceptance_data_directory/codex-profile/auth.json"
-  chmod 600 "$acceptance_data_directory/codex-profile/auth.json"
-  printf '{"schemaVersion":1,"selectedVault":"%s"}\n' "$vault" > "$acceptance_data_directory/today-workspace.json"
-  printf '{"schemaVersion":1,"interfaceLanguage":"en"}\n' > "$acceptance_data_directory/interface-language.json"
+    "$(dirname "$sleep_file")" "$captures"
+  prepare_isolated_collaboration_profile "$acceptance_data_directory" "$auth" "$vault"
   cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" "$snapshot"
   cat > "$record" <<'RECORD'
 ---

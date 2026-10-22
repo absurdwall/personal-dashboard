@@ -6758,6 +6758,7 @@ run_live_daily_cycle_scenario() {
 }
 
 source "$script_directory/scenarios/task-saved-readback.sh"
+source "$script_directory/scenarios/collaboration-profile.sh"
 source "$script_directory/scenarios/synthetic-dictation.sh"
 source "$script_directory/scenarios/collaboration-composer.sh"
 source "$script_directory/scenarios/launch-services-candidate.sh"

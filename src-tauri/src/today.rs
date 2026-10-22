@@ -208,6 +208,16 @@ struct StorageFileMetadata {
     extension: &'static str,
 }
 
+struct StorageDocumentLabels {
+    document: &'static str,
+    created_document: &'static str,
+    refresh_action: &'static str,
+    candidate: &'static str,
+    displaced_document: &'static str,
+    active_document: &'static str,
+    external_document: &'static str,
+}
+
 impl StorageDocumentKind {
     fn file_metadata(self) -> StorageFileMetadata {
         let (recovery_stem, extension) = match self {
@@ -219,6 +229,65 @@ impl StorageDocumentKind {
             Self::SleepRecords => ("sleep-records", "json"),
         };
         StorageFileMetadata { recovery_stem, extension }
+    }
+
+    fn labels(self) -> StorageDocumentLabels {
+        match self {
+            Self::DailyRecord => StorageDocumentLabels {
+                document: "Daily Record",
+                created_document: "new Daily Record",
+                refresh_action: "refreshing",
+                candidate: "Dashboard candidate",
+                displaced_document: "daily record",
+                active_document: "today's daily record",
+                external_document: "record",
+            },
+            Self::DayTasks => StorageDocumentLabels {
+                document: "day-task document",
+                created_document: "new day-task document",
+                refresh_action: "refreshing",
+                candidate: "day-task candidate",
+                displaced_document: "day-task document",
+                active_document: "the day-task document",
+                external_document: "day-task document",
+            },
+            Self::HabitCompletions => StorageDocumentLabels {
+                document: "local habit-completion document",
+                created_document: "new local habit-completion document",
+                refresh_action: "refreshing",
+                candidate: "local habit-completion candidate",
+                displaced_document: "local habit-completion document",
+                active_document: "the local habit-completion document",
+                external_document: "local habit-completion document",
+            },
+            Self::HabitCatalog => StorageDocumentLabels {
+                document: "local Habit definition document",
+                created_document: "local Habit definition document",
+                refresh_action: "refreshing Habits",
+                candidate: "local Habit definition candidate",
+                displaced_document: "local Habit definition document",
+                active_document: "the local Habit definition document",
+                external_document: "local Habit definition document",
+            },
+            Self::Tasks => StorageDocumentLabels {
+                document: "task document",
+                created_document: "task document",
+                refresh_action: "refreshing",
+                candidate: "task candidate",
+                displaced_document: "task document",
+                active_document: "the task document",
+                external_document: "task document",
+            },
+            Self::SleepRecords => StorageDocumentLabels {
+                document: "sleep-record document",
+                created_document: "sleep-record document",
+                refresh_action: "refreshing",
+                candidate: "sleep-record candidate",
+                displaced_document: "sleep-record document",
+                active_document: "the sleep-record document",
+                external_document: "sleep-record document",
+            },
+        }
     }
 
     fn text(self, daily_record: &str, day_tasks: &str, habit_completions: &str) -> String {
@@ -356,6 +425,7 @@ pub(crate) fn create_new_file(
     document: &[u8],
     kind: StorageDocumentKind,
 ) -> Result<(), String> {
+    let labels = kind.labels();
     let parent = path.parent().ok_or_else(|| {
         kind.text(
             "The Daily Record has no parent directory.",
@@ -406,25 +476,11 @@ pub(crate) fn create_new_file(
         });
     }
     sync_parent(path, kind).map_err(|error| {
-            match kind {
-                StorageDocumentKind::DailyRecord => format!("{error}; the complete new Daily Record is present at {} and can be verified by refreshing", path.display()),
-                StorageDocumentKind::DayTasks => format!("{error}; the complete new day-task document is present at {} and can be verified by refreshing", path.display()),
-                StorageDocumentKind::HabitCompletions => format!("{error}; the complete new local habit-completion document is present at {} and can be verified by refreshing", path.display()),
-                StorageDocumentKind::HabitCatalog => format!("{error}; the complete local Habit definition document is present at {} and can be verified by refreshing Habits", path.display()),
-                StorageDocumentKind::Tasks => format!("{error}; the complete task document is present at {} and can be verified by refreshing", path.display()),
-                StorageDocumentKind::SleepRecords => format!("{error}; the complete sleep-record document is present at {} and can be verified by refreshing", path.display()),
-            }
-        })?;
+        format!("{error}; the complete {} is present at {} and can be verified by {}", labels.created_document, path.display(), labels.refresh_action)
+    })?;
     fs::remove_file(&temporary).map_err(|error| {
-            match kind {
-                StorageDocumentKind::DailyRecord => format!("The new Daily Record is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-                StorageDocumentKind::DayTasks => format!("The new day-task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-                StorageDocumentKind::HabitCompletions => format!("The new local habit-completion document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-                StorageDocumentKind::HabitCatalog => format!("The new local Habit definition document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-                StorageDocumentKind::Tasks => format!("The new task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-                StorageDocumentKind::SleepRecords => format!("The new sleep-record document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-            }
-        })?;
+        format!("The new {} is active, but its temporary hard link remains at {}: {error}", labels.document, temporary.display())
+    })?;
     sync_parent(path, kind)
 }
 
@@ -438,6 +494,7 @@ pub(crate) fn save_file_if_unchanged<F>(
 where
     F: FnOnce(&Path) -> Result<(), String>,
 {
+    let labels = kind.labels();
     let current = fs::read(path).map_err(|error| {
         kind.error(
             "Could not re-read today's daily record: ",
@@ -500,42 +557,21 @@ where
         match atomic_exchange(&temporary, path, kind) {
             Ok(()) => {
                 let _ = sync_parent(path, kind);
-                Err(match kind {
-                    StorageDocumentKind::DailyRecord => format!("{preservation_error}; activation was rolled back and the rejected Dashboard candidate remains at {}", temporary.display()),
-                    StorageDocumentKind::DayTasks => format!("{preservation_error}; activation was rolled back and the rejected day-task candidate remains at {}", temporary.display()),
-                    StorageDocumentKind::HabitCompletions => format!("{preservation_error}; activation was rolled back and the rejected local habit-completion candidate remains at {}", temporary.display()),
-                    StorageDocumentKind::HabitCatalog => format!("{preservation_error}; activation was rolled back and the rejected local Habit definition candidate remains at {}", temporary.display()),
-                    StorageDocumentKind::Tasks => format!("{preservation_error}; activation was rolled back and the rejected task candidate remains at {}", temporary.display()),
-                    StorageDocumentKind::SleepRecords => format!("{preservation_error}; activation was rolled back and the rejected sleep-record candidate remains at {}", temporary.display()),
-                })
+                Err(format!("{preservation_error}; activation was rolled back and the rejected {} remains at {}", labels.candidate, temporary.display()))
             }
             Err(rollback_error) => Err(format!(
                 "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced {} inode remains linked at {}",
-                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document", StorageDocumentKind::HabitCatalog => "local Habit definition document", StorageDocumentKind::Tasks => "task document", StorageDocumentKind::SleepRecords => "sleep-record document" }, temporary.display()
+                labels.document, temporary.display()
             )),
         }
     })?;
     let displaced = fs::read(&temporary).map_err(|error| {
-        match kind {
-            StorageDocumentKind::DailyRecord => format!("Could not verify the displaced daily record after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-            StorageDocumentKind::DayTasks => format!("Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-            StorageDocumentKind::HabitCompletions => format!("Could not verify the displaced local habit-completion document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-            StorageDocumentKind::HabitCatalog => format!("Could not verify the displaced local Habit definition document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-            StorageDocumentKind::Tasks => format!("Could not verify the displaced task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-            StorageDocumentKind::SleepRecords => format!("Could not verify the displaced sleep-record document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-        }
+        format!("Could not verify the displaced {} after atomic exchange; its durable recovery link remains at {}: {error}", labels.displaced_document, recovery.display())
     })?;
     if displaced == expected {
         let active = fs::read(path).map_err(|error| {
-                match kind {
-                    StorageDocumentKind::DailyRecord => format!("Could not verify today's daily record after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                    StorageDocumentKind::DayTasks => format!("Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                    StorageDocumentKind::HabitCompletions => format!("Could not verify the local habit-completion document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                    StorageDocumentKind::HabitCatalog => format!("Could not verify the local Habit definition document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                    StorageDocumentKind::Tasks => format!("Could not verify the task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                    StorageDocumentKind::SleepRecords => format!("Could not verify the sleep-record document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                }
-            })?;
+            format!("Could not verify {} after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", labels.active_document, recovery.display())
+        })?;
         if active == updated {
             sync_parent(path, kind)?;
             sync_parent(&recovery, kind)?;
@@ -561,14 +597,7 @@ where
     atomic_exchange(&temporary, path, kind).map_err(|error| {
         format!(
             "{error}; the displaced external {} remains at {} for recovery",
-            match kind {
-                StorageDocumentKind::DailyRecord => "record",
-                StorageDocumentKind::DayTasks => "day-task document",
-                StorageDocumentKind::HabitCompletions => "local habit-completion document",
-                StorageDocumentKind::HabitCatalog => "local Habit definition document",
-                StorageDocumentKind::Tasks => "task document",
-                StorageDocumentKind::SleepRecords => "sleep-record document",
-            },
+            labels.external_document,
             temporary.display()
         )
     })?;
@@ -724,6 +753,7 @@ fn create_temporary_file(
 }
 
 fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -> String {
+    // These exhaustive branches carry distinct recovery instructions, not just document labels.
     match (recovery, kind) {
         (Some(path), StorageDocumentKind::DailyRecord) => format!("今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。", path.display()),
         (Some(path), StorageDocumentKind::DayTasks) => format!("当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新当天任务。", path.display()),
