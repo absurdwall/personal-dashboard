@@ -1,5 +1,6 @@
+import { HabitSleepOverview } from "./habit-sleep-overview.js";
 import { HabitTimeEntry } from "./habit-time-entry.js";
-import { formatSleepEndpoint, type SleepEndpointFact } from "./sleep-facts.js";
+import { formatSleepEndpoint, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
 import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
@@ -1861,6 +1862,7 @@ const habitSnapshotRequests = new LatestRequest();
 const habitDateRequests = new LatestRequest();
 const habitDetailRequests = new LatestRequest();
 const habitCompletionRequests = new LatestRequest();
+const habitSleepOverview = new HabitSleepOverview(() => currentInterfaceLanguage);
 let currentHabitSnapshot: HabitSnapshotView | null = null;
 type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
 type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>;
@@ -2036,6 +2038,7 @@ function resetVaultScopedWorkspaceState(): void {
   taskEditDrafts.clear();
   historicalHabitArrival.clear();
   habitTimeEntry?.clear();
+  habitSleepOverview.clear();
   habitDetailRequests.invalidate();
   taskRequests.invalidate();
   todayTaskRequests.invalidate();
@@ -9379,7 +9382,9 @@ function habitRow(habit: HabitView): HTMLElement {
   value.className = "habit-snapshot-value";
   const progress = document.createElement("strong");
   const todayState = document.createElement("small");
-  progress.textContent = habitProgressLabel(habit);
+  progress.textContent = habit.key === "wake" || habit.key === "sleep"
+    ? habitSleepOverview.value(habit.key, habit.today.date, habit.today.actualTimeLabel ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage) : undefined) : habitProgressLabel(habit);
+  progress.title = progress.textContent;
   setCopy(todayState, "habits.todayStatus", { status: t(habitStatusLabels[habit.today.status]) });
   value.append(progress, todayState);
 
@@ -9388,13 +9393,14 @@ function habitRow(habit: HabitView): HTMLElement {
   const recent = document.createElement("div");
   recent.className = "habit-recent";
   const recentLabel = document.createElement("span");
-  setCopy(recentLabel, "habits.recent");
+  setCopy(recentLabel, habit.key === "wake" || habit.key === "sleep" ? "sleep.overview.recent" : "habits.recent");
   const recentCells = document.createElement("div");
   recentCells.className = "habit-recent-cells";
   recentCells.replaceChildren(
     ...habit.recent.map((cell) => habitCellButton(habit, cell, true)),
   );
-  recent.append(recentLabel, recentCells);
+  recent.append(recentLabel, habit.key === "wake" || habit.key === "sleep"
+    ? habitSleepOverview.mini({key: habit.key, name: displayHabitName(habit), date: habit.today.date}) : recentCells);
 
   const expand = document.createElement("button");
   expand.type = "button";
@@ -9403,6 +9409,18 @@ function habitRow(habit: HabitView): HTMLElement {
   expand.setAttribute("aria-expanded", "false");
   setHabitHistoryDisclosureCopy(expand, habit, false);
 
+  if (habit.key === "wake" || habit.key === "sleep") {
+    delete expand.dataset.habitExpand;
+    expand.dataset.habitOpen = habit.key;
+    expand.setAttribute("aria-label", t("habits.openDetails", { habit: displayHabitName(habit) }));
+    const detail = document.createElement("div");
+    detail.className = "habit-cell-detail habit-sleep-day-evidence";
+    detail.dataset.habitDetail = habit.key;
+    detail.hidden = true;
+    detail.setAttribute("role", "status");
+    article.append(identity, value, completion, recent, expand, detail);
+    return article;
+  }
   const history = document.createElement("section");
   history.className = "habit-history";
   history.hidden = true;
@@ -9730,7 +9748,14 @@ function renderHabitDetailPanel(): void {
     }
   }
 
-  habitDetailContent.append(intro, actions, statsGrid, freshness, sourceCoverage, canonicalStatus, goals, lifecycleSection, recordsSection);
+  if (habit.key === "wake" || habit.key === "sleep") {
+    const evidence = document.createElement("details");
+    evidence.className = "habit-sleep-evidence";
+    const summary = document.createElement("summary");
+    setCopy(summary, "sleep.overview.completionEvidence");
+    evidence.append(summary, statsGrid, freshness, sourceCoverage, canonicalStatus, goals, lifecycleSection, recordsSection);
+    habitDetailContent.append(intro, actions, habitSleepOverview.detail({key: habit.key, name: displayHabitName(habit), date: habit.today.date}), evidence);
+  } else habitDetailContent.append(intro, actions, statsGrid, freshness, sourceCoverage, canonicalStatus, goals, lifecycleSection, recordsSection);
 }
 
 async function loadHabitDetailHistory(habitKey: string): Promise<void> {
@@ -9755,6 +9780,7 @@ async function loadHabitDetailHistory(habitKey: string): Promise<void> {
 
 function openHabitDetail(habitKey: string): void {
   selectedHabitDetailKey = habitKey;
+  if (habitKey === "wake" || habitKey === "sleep") habitSleepOverview.open(habitKey);
   currentHabitDetailHistory = null;
   habitDetailRecordLimit = 20;
   habitDetailLoadError = null;
@@ -10028,8 +10054,59 @@ function renderCanonicalHabitDetail(): void {
   habitsDestination.append(panel);
 }
 
+function renderSleepHabitSelection(): boolean {
+  const selected = selectedHabitCell;
+  if (!selected || (selected.habitKey !== "wake" && selected.habitKey !== "sleep")) return false;
+  const habit = currentHabitSnapshot?.habits.find(item => item.key === selected.habitKey);
+  const row = [...(habitsDestination?.querySelectorAll<HTMLElement>(".habit-snapshot-row") ?? [])]
+    .find(item => item.dataset.habitKey === selected.habitKey);
+  const detail = row?.querySelector<HTMLElement>(".habit-sleep-day-evidence");
+  if (!habit || !detail) return false;
+  habitsDestination?.querySelectorAll<HTMLElement>(".habit-sleep-day-evidence").forEach(item => item.hidden = item !== detail);
+  detail.hidden = false;
+  const heading = document.createElement("strong");
+  heading.textContent = `${selected.date} · ${displayHabitName(habit)}`;
+  detail.replaceChildren(heading, habitSleepOverview.dayEvidence(selected.habitKey, selected.date));
+  const canonical = currentHabitDateView?.date === selected.date
+    ? currentHabitDateView.habitCorrections.habits.find(item => item.key === selected.habitKey) : null;
+  const cell = canonical?.cell ?? habit.history.find(item => item.date === selected.date)
+    ?? habit.recent.find(item => item.date === selected.date) ?? (habit.today.date === selected.date ? habit.today : null);
+  if (cell) {
+    const state = document.createElement("span");
+    setCopy(state, "habits.statusCoverage", {status: t(habitStatusLabels[cell.status]), coverage: cell.coverage});
+    const sources = document.createElement("ul");
+    for (const line of cell.details) {
+      const item = document.createElement("li");
+      item.textContent = localizeHabitDetail(line, currentInterfaceLanguage);
+      sources.append(item);
+    }
+    for (const change of canonical?.localChanges ?? []) {
+      const item = document.createElement("li");
+      setCopy(item, change.state === "completed" ? "history.localCompletedAt" : "history.localWithdrawnAt", {changedAt: change.changedAt});
+      sources.append(item);
+    }
+    detail.append(state, sources);
+  } else {
+    const coverage = document.createElement("span");
+    setCopy(coverage, "habits.canonicalCoverage");detail.append(coverage);
+  }
+  if (selected.date <= habit.today.date) {
+    const entry = document.createElement("button");
+    entry.type = "button";entry.className = "secondary-button";
+    entry.dataset.habitTimeOpen = selected.habitKey;entry.dataset.habitTimeDate = selected.date;
+    setCopy(entry, "sleep.viewOrAddTime", {date: selected.date});
+    entry.setAttribute("aria-label", t("sleep.overview.viewOrRecord", {habit: displayHabitName(habit), date: selected.date}));
+    detail.append(entry);
+  }
+  if (habitNoteStatus?.error) {
+    const error = document.createElement("p");setCopyError(error, "habits.loadDateFailed", habitNoteStatus.error);detail.append(error);
+  }
+  return true;
+}
+
 function renderSelectedHabitCell(): void {
   habitsDestination?.querySelector(".habit-canonical-detail")?.remove();
+  if (renderSleepHabitSelection()) return;
   const context = selectedHabitContext();
   if (!context) {
     renderCanonicalHabitDetail();
@@ -10775,6 +10852,16 @@ async function refreshHabits(): Promise<void> {
   try {
     const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot");
     if (!habitSnapshotRequests.isCurrent(request)) return;
+    if (view.habits.some(habit => habit.key === "wake" || habit.key === "sleep")) {
+      try {
+        const sleep = await window.__TAURI__.core.invoke<SleepView>("sleep_records");
+        if (!habitSnapshotRequests.isCurrent(request)) return;
+        habitSleepOverview.accept(sleep);
+      } catch (error) {
+        if (!habitSnapshotRequests.isCurrent(request)) return;
+        habitSleepOverview.unavailable(String(error));
+      }
+    } else habitSleepOverview.clear();
     renderHabitSnapshot(view);
   } catch (error) {
     if (!habitSnapshotRequests.isCurrent(request)) return;
