@@ -347,7 +347,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4 today-time-axis-a-cards today-time-axis today-unlocated-panel-layout; do
+  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4 today-time-axis-a-cards today-time-axis today-unlocated-panel-layout habit-sleep; do
     run_bounded_scenario "$scenario"
   done
 
@@ -6757,6 +6757,7 @@ run_live_daily_cycle_scenario() {
   echo "Boundary: the packaged app wrote the canonical Markdown through Tauri IPC without an app-owned life ledger"
 }
 
+source "$script_directory/scenarios/habit-sleep.sh"
 source "$script_directory/scenarios/task-saved-readback.sh"
 source "$script_directory/scenarios/collaboration-profile.sh"
 source "$script_directory/scenarios/synthetic-dictation.sh"
@@ -6764,6 +6765,7 @@ source "$script_directory/scenarios/collaboration-composer.sh"
 source "$script_directory/scenarios/launch-services-candidate.sh"
 
 case "$acceptance_scenario" in
+  habit-sleep) run_habit_sleep_scenario ;;
   task-saved-readback) run_task_saved_readback_scenario ;;
   collaboration-composer) run_collaboration_composer_scenario ;;
   shell) run_shell_scenario ;;
