@@ -200,6 +200,7 @@ pub(crate) enum StorageDocumentKind {
     HabitCompletions,
     HabitCatalog,
     Tasks,
+    SleepRecords,
 }
 
 struct StorageFileMetadata {
@@ -300,6 +301,21 @@ impl StorageDocumentKind {
                     external_document: "task document",
                 },
             },
+            Self::SleepRecords => StorageDocumentDescriptor {
+                file: StorageFileMetadata {
+                    recovery_stem: "sleep-records",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "sleep-record document",
+                    created_document: "sleep-record document",
+                    refresh_action: "refreshing",
+                    candidate: "sleep-record candidate",
+                    displaced_document: "sleep-record document",
+                    active_document: "the sleep-record document",
+                    external_document: "sleep-record document",
+                },
+            },
         }
     }
 
@@ -316,6 +332,7 @@ impl StorageDocumentKind {
             Self::HabitCompletions => return habit_completions.into(),
             Self::HabitCatalog => "本地 Habit 定义正本操作失败",
             Self::Tasks => "任务正本操作失败",
+            Self::SleepRecords => "作息正本操作失败",
         };
         format!("{failure_label}{fallback_punctuation}")
     }
@@ -775,11 +792,13 @@ fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -
         (Some(path), StorageDocumentKind::HabitCompletions) => format!("本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
         (Some(path), StorageDocumentKind::HabitCatalog) => format!("本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 {}；请刷新 Habits 后重试。", path.display()),
         (Some(path), StorageDocumentKind::Tasks) => format!("任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请刷新 Tasks 后重试。", path.display()),
+        (Some(path), StorageDocumentKind::SleepRecords) => format!("作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Today 或 Habits。", path.display()),
         (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::HabitCompletions) => "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::HabitCatalog) => "本地 Habit 定义已在其他位置发生变化。请刷新 Habits 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::Tasks) => "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。".into(),
+        (None, StorageDocumentKind::SleepRecords) => "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。".into(),
     }
 }
 
@@ -2144,6 +2163,46 @@ where
         }
     }
 
+    pub fn sleep_records(&self) -> Result<crate::sleep::SleepView, String> {
+        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再读取作息。")?;
+        let result = crate::sleep::SleepWorkflow::new(&vault).read();
+        self.confirm_sleep_vault(&vault)?;
+        result
+    }
+
+    /// Capture and validate the selection before I/O so a concurrent selection
+    /// cannot supply another Vault's records to an originating model turn.
+    pub fn sleep_records_for_vault(&self, expected_vault_key: &str) -> Result<crate::sleep::SleepView, String> {
+        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再读取作息。")?;
+        if crate::collaboration::vault_key(&vault) != expected_vault_key {
+            return Err("Selected Vault changed; no sleep records read.".into());
+        }
+        let result = crate::sleep::SleepWorkflow::new(&vault).read();
+        self.confirm_sleep_vault(&vault)?;
+        result
+    }
+
+    pub fn save_habit_sleep_time(&self, input: crate::sleep::HabitSleepMutationInput) -> Result<crate::sleep::SleepView, String> {
+        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
+        let result = crate::sleep::SleepWorkflow::new(&vault).save_habit_time(input);
+        self.confirm_sleep_vault(&vault)?;
+        result
+    }
+
+    pub fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
+        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
+        let result = crate::sleep::SleepWorkflow::new(&vault).save(input);
+        self.confirm_sleep_vault(&vault)?;
+        result
+    }
+
+    fn confirm_sleep_vault(&self, captured: &Path) -> Result<(), String> {
+        if self.persistence.load_selected_vault()?.as_deref() != Some(captured) {
+            return Err("所选 Vault 在操作期间改变；结果属于原 Vault，请重新读取核对。".into());
+        }
+        Ok(())
+    }
+
     fn day_tasks_for(
         &self,
         vault: &Path,
@@ -3415,6 +3474,10 @@ where
             &local_completions,
             &self.clock.current_lived_date(),
         )?;
+        match crate::sleep::SleepWorkflow::new(&vault).read() {
+            Ok(sleep) => crate::sleep::project_habits(&mut view, &sleep),
+            Err(error) => view.sleep_error = Some(error),
+        }
         Ok(view)
     }
 

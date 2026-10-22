@@ -27,6 +27,7 @@ mod notification_platform;
 #[allow(dead_code)] // Retained only for historical regression and cutover parsing boundaries.
 mod platform;
 pub mod profile;
+pub mod sleep;
 pub mod task_adapter;
 pub mod tasks;
 pub mod today;
@@ -783,6 +784,21 @@ fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayVi
 }
 
 #[tauri::command]
+fn sleep_records(application: State<'_, DesktopTodayApplication>) -> Result<sleep::SleepView, String> {
+    application.sleep_records()
+}
+
+#[tauri::command]
+fn save_habit_sleep_time(application: State<'_, DesktopTodayApplication>, input: sleep::HabitSleepMutationInput) -> Result<sleep::SleepView, String> {
+    application.save_habit_sleep_time(input)
+}
+
+#[tauri::command]
+fn save_sleep_record(application: State<'_, DesktopTodayApplication>, input: sleep::SleepMutationInput) -> Result<sleep::SleepView, String> {
+    application.save_sleep_record(input)
+}
+
+#[tauri::command]
 fn today_clock(application: State<'_, DesktopTodayApplication>) -> TodayClockView {
     application.local_clock()
 }
@@ -1279,6 +1295,9 @@ pub fn run() {
             set_interface_language,
             today_view,
             today_clock,
+            sleep_records,
+            save_sleep_record,
+        save_habit_sleep_time,
             daily_view,
             read_daily_view,
             calendar_month,
@@ -1374,6 +1393,9 @@ pub fn run() {
         set_interface_language,
         today_view,
         today_clock,
+        sleep_records,
+        save_sleep_record,
+        save_habit_sleep_time,
         daily_view,
         read_daily_view,
         calendar_month,
