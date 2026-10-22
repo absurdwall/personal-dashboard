@@ -791,20 +791,22 @@ fn today_keeps_independent_sources_visible_when_either_daily_record_or_sleep_is_
             broken.daily_record_availability,
             personal_dashboard_lib::today::DailyRecordAvailability::Error
         );
+        assert_eq!(
+            serde_json::to_value(&broken).unwrap()["dailyRecordErrorKind"],
+            "damagedRecord"
+        );
         assert_eq!(broken.time_axis.confirmed_facts.len(), 1);
         assert_eq!(broken.time_axis.confirmed_facts[0].start_minute, Some(450));
         assert_eq!(fs::read(&daily).unwrap(), bytes);
     }
     fs::remove_file(&daily).unwrap();
     fs::create_dir(&daily).unwrap();
+    let unreadable = app.read_date("2026-10-22").unwrap();
     assert_eq!(
-        app.read_date("2026-10-22")
-            .unwrap()
-            .time_axis
-            .confirmed_facts
-            .len(),
-        1
+        serde_json::to_value(&unreadable).unwrap()["dailyRecordErrorKind"],
+        "readError"
     );
+    assert_eq!(unreadable.time_axis.confirmed_facts.len(), 1);
     fs::remove_dir(&daily).unwrap();
     fs::write(&daily, &original).unwrap();
     fs::write(
