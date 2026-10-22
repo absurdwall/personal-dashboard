@@ -1,3 +1,4 @@
+import {shiftDateOnly} from './date-only.js';
 import {interfaceCopy, setInterfaceCopy, setInterfaceAttribute, setInterfaceError, type InterfaceCopyKey, type InterfaceLanguage} from './interface-language.js';
 import {formatSleepEndpoint, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
 
@@ -12,7 +13,6 @@ function element<K extends keyof HTMLElementTagNameMap>(tag:K,className='',text=
 function svg(tag:string,attributes:Record<string,string|number>):SVGElement{
   const node=document.createElementNS(svgNamespace,tag);for(const [key,value]of Object.entries(attributes))node.setAttribute(key,String(value));return node;
 }
-function shifted(date:string,amount:number):string{return new Date(Date.parse(date+'T12:00:00Z')+amount*86400000).toISOString().slice(0,10);}
 function clock(minutes:number):string{
   const value=(Math.round(minutes)%1440+1440)%1440;
   return `${String(Math.floor(value/60)).padStart(2,'0')}:${String(value%60).padStart(2,'0')}`;
@@ -153,7 +153,7 @@ export class HabitSleepOverview {
     for(const metric of ['wake','sleep','duration'] as const){const button=this.copyElement('button','secondary-button',metric==='wake'?'sleep.overview.wake':metric==='sleep'?'sleep.overview.onset':'sleep.overview.duration');button.type='button';button.dataset.sleepMetric=metric;button.setAttribute('role','tab');button.setAttribute('aria-selected',String(this.metric===metric));button.addEventListener('click',()=>{this.metric=metric;replace(`[data-sleep-metric="${metric}"]`)});tabs.append(button);}
     const ranges=element('div','habit-sleep-period-tabs');this.copyAttribute(ranges,'aria-label','sleep.overview.period');
     for(const period of [7,30] as const){const button=this.copyElement('button','secondary-button','sleep.overview.days',{count:period});button.type='button';button.dataset.sleepPeriod=String(period);button.setAttribute('aria-pressed',String(this.period===period));button.addEventListener('click',()=>{this.period=period;replace(`[data-sleep-period="${period}"]`)});ranges.append(button);}
-    const samples=Array.from({length:this.period},(_,i)=>this.sample(this.metric,shifted(context.date,i-this.period+1)));
+    const samples=Array.from({length:this.period},(_,i)=>this.sample(this.metric,shiftDateOnly(context.date,i-this.period+1)));
     root.append(tabs,ranges,this.statistics(samples,context.date),this.detailChart(context,samples),this.copyElement('p','habit-sleep-caption',this.metric==='duration'?'sleep.overview.durationNote':'sleep.overview.pointNote'));
     if(this.error)root.append(this.errorElement());
     const history=element('details','habit-sleep-history');history.append(this.copyElement('summary','','sleep.overview.earlier'));
@@ -180,7 +180,7 @@ export class HabitSleepOverview {
   }
   mini(context:HabitContext):HTMLElement{
     const root=element('div','habit-sleep-mini');root.setAttribute('role','group');this.copyAttribute(root,'aria-label','sleep.overview.recentLabel',{habit:context.name});root.dataset.sleepChart='mini';
-    const dates=Array.from({length:7},(_,i)=>shifted(context.date,i-6));
+    const dates=Array.from({length:7},(_,i)=>shiftDateOnly(context.date,i-6));
     const samples=dates.map(date=>{const matches=this.facts(context.key,date),fact=matches.length===1?matches[0]:null,endpoint=fact?.endpoint;return {date,fact,value:endpoint?.kind==='point'?minute(endpoint.time):null,approximate:endpoint?.kind==='point'&&Boolean(endpoint.approximate)};});
     const {drawing,frame,ticks,hasPoints}=createSleepPlot(context.key,samples,'mini');
     const scale=element('div','habit-sleep-scale');scale.setAttribute('aria-hidden','true');

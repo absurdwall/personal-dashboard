@@ -1616,3 +1616,137 @@ fn original_wording_retains_lived_context_without_claiming_an_actual_calendar_da
         .contains(&json!("date")));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn mutation_context_keeps_the_strict_flat_wire_contract_for_both_sleep_entries() {
+    use personal_dashboard_lib::sleep::HabitSleepMutationInput;
+    let record = json!({"recordId":null,"wakeDate":"2026-10-22","sleepOnset":null,"getUp":{"kind":"unknown"},"changeId":"flat-record","targetBinding":"captured-binding","expectedRevision":null});
+    let habit = json!({"habitKey":"wake","livedDate":"2026-10-22","endpoint":{"kind":"unknown"},"recordId":null,"changeId":"flat-habit","targetBinding":"captured-binding","expectedRevision":null});
+    for (value, is_habit) in [(record, false), (habit, true)] {
+        let decode = |value: serde_json::Value| -> Result<serde_json::Value, String> {
+            if is_habit {
+                serde_json::from_value::<HabitSleepMutationInput>(value)
+                    .and_then(serde_json::to_value)
+                    .map_err(|e| e.to_string())
+            } else {
+                serde_json::from_value::<SleepMutationInput>(value)
+                    .and_then(serde_json::to_value)
+                    .map_err(|e| e.to_string())
+            }
+        };
+        assert_eq!(decode(value.clone()).unwrap(), value);
+        for extra in ["mutation", "unexpected"] {
+            let mut invalid = value.clone();
+            invalid[extra] =
+                json!({"changeId":"nested","targetBinding":"other","expectedRevision":null});
+            assert!(decode(invalid).unwrap_err().contains("unknown field"));
+        }
+        let mut missing = value.clone();
+        missing.as_object_mut().unwrap().remove("targetBinding");
+        assert!(decode(missing).unwrap_err().contains("targetBinding"));
+        let duplicate =
+            serde_json::to_string(&value)
+                .unwrap()
+                .replacen('{', "{\"changeId\":\"duplicate\",", 1);
+        let diagnostic = if is_habit {
+            serde_json::from_str::<HabitSleepMutationInput>(&duplicate)
+                .unwrap_err()
+                .to_string()
+        } else {
+            serde_json::from_str::<SleepMutationInput>(&duplicate)
+                .unwrap_err()
+                .to_string()
+        };
+        assert!(diagnostic.contains("duplicate field"));
+    }
+}
+
+struct CorrectSleepDuringSnapshotRead {
+    root: PathBuf,
+    corrected: std::cell::Cell<bool>,
+}
+impl personal_dashboard_lib::habits::HabitSnapshotStore for CorrectSleepDuringSnapshotRead {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        if !self.corrected.replace(true) {
+            let app = application(&self.root);
+            let before = app.sleep_records().unwrap();
+            app.save_sleep_record(
+                serde_json::from_value(json!({
+                    "recordId":before.records[0].id,"wakeDate":"2026-10-22",
+                    "changeId":"remove-during-snapshot","targetBinding":before.target_binding,
+                    "expectedRevision":before.revision,"getUp":{"kind":"unrecorded"}
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        }
+        personal_dashboard_lib::habits::HabitSnapshotStore::load(
+            &personal_dashboard_lib::habits::FileHabitSnapshotStore,
+            path,
+        )
+    }
+}
+
+#[test]
+fn habit_snapshot_captures_one_canonical_revision_for_cells_charts_and_statistics_during_correction(
+) {
+    let root = vault("coherent-habit-correction");
+    let path = root.join(personal_dashboard_lib::habits::SNAPSHOT_RELATIVE_PATH);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut source: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    source["generatedAt"] = json!("2026-10-22T08:00:00-04:00");
+    source["range"] = json!({"from":"2026-08-03","to":"2026-10-22"});
+    fs::write(path, serde_json::to_vec(&source).unwrap()).unwrap();
+    let before = save(
+        &application(&root),
+        json!({"wakeDate":"2026-10-22","changeId":"before-snapshot",
+        "sleepOnset":point("2026-10-21","23:30",-240),"getUp":point("2026-10-22","07:30",-240)}),
+    );
+    let app = TodayApplication::with_stores(
+        Selected(root.clone()),
+        NoSelection,
+        FixedClock,
+        personal_dashboard_lib::today::FileTodayRecordStore,
+        CorrectSleepDuringSnapshotRead {
+            root: root.clone(),
+            corrected: std::cell::Cell::new(false),
+        },
+    );
+    let captured = app.habits().unwrap();
+    let wake = captured.habit("wake").unwrap();
+    assert_eq!(
+        wake.today.sleep_fact.as_ref().unwrap().record_id,
+        before.records[0].id
+    );
+    let canonical = captured.sleep_view.as_ref().unwrap();
+    assert_eq!(canonical.revision, before.revision);
+    assert_eq!(canonical.facts, before.facts);
+    let overview = serde_json::to_value(canonical).unwrap()["overview"].clone();
+    assert_eq!(overview["date"], "2026-10-22");
+    assert_eq!(overview["durations"][0]["minutes"], 480);
+    for period in [7, 30] {
+        let stats = overview["statistics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["metric"] == "wake" && s["period"] == period)
+            .unwrap();
+        assert_eq!(stats["count"], 1);
+        assert_eq!(stats["mean"], 450);
+    }
+    let corrected = app.habits().unwrap();
+    assert!(corrected.habit("wake").unwrap().today.sleep_fact.is_none());
+    assert_ne!(
+        corrected.sleep_view.as_ref().unwrap().revision,
+        canonical.revision
+    );
+    assert!(!corrected
+        .sleep_view
+        .as_ref()
+        .unwrap()
+        .facts
+        .iter()
+        .any(|f| f.habit_key.as_str() == "wake"));
+    fs::remove_dir_all(root).unwrap();
+}

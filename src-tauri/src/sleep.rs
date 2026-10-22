@@ -170,20 +170,23 @@ pub struct SleepRecord {
     pub get_up_lived_date: Option<String>,
     pub estimated_duration_minutes: Option<i64>,
 }
+/// Guard and idempotency identity carried together through a sleep mutation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SleepMutationContext {
+    pub change_id: String,
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(from = "SleepMutationInputWire", into = "SleepMutationInputWire")]
 pub struct SleepMutationInput {
     pub record_id: Option<String>,
     pub wake_date: String,
     pub sleep_onset: Option<SleepEndpoint>,
     pub get_up: Option<SleepEndpoint>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sleep_onset_lived_date: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub get_up_lived_date: Option<String>,
-    pub change_id: String,
-    pub target_binding: String,
-    pub expected_revision: Option<String>,
+    pub mutation: SleepMutationContext,
 }
 /// The only stable Habit identities that own canonical sleep endpoints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -227,16 +230,105 @@ impl From<SleepHabitKey> for String {
 
 /// The lightweight entry's fixed Habit/date context; no night index is exposed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(from = "HabitSleepMutationInputWire", into = "HabitSleepMutationInputWire")]
 pub struct HabitSleepMutationInput {
     pub habit_key: SleepHabitKey,
     pub lived_date: String,
     pub endpoint: SleepEndpoint,
     pub record_id: Option<String>,
-    pub change_id: String,
-    pub target_binding: String,
-    pub expected_revision: Option<String>,
+    pub mutation: SleepMutationContext,
 }
+// These boundary DTOs intentionally spell out the flat public fields. Using
+// explicit adapters keeps unknown/duplicate-field rejection with no serde
+// flatten/deny_unknown_fields interaction; domain workflows share one context.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SleepMutationInputWire {
+    record_id: Option<String>,
+    wake_date: String,
+    sleep_onset: Option<SleepEndpoint>,
+    get_up: Option<SleepEndpoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sleep_onset_lived_date: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    get_up_lived_date: Option<String>,
+    change_id: String,
+    target_binding: String,
+    expected_revision: Option<String>,
+}
+impl From<SleepMutationInputWire> for SleepMutationInput {
+    fn from(wire: SleepMutationInputWire) -> Self {
+        Self {
+            record_id: wire.record_id,
+            wake_date: wire.wake_date,
+            sleep_onset: wire.sleep_onset,
+            get_up: wire.get_up,
+            sleep_onset_lived_date: wire.sleep_onset_lived_date,
+            get_up_lived_date: wire.get_up_lived_date,
+            mutation: SleepMutationContext {
+                change_id: wire.change_id,
+                target_binding: wire.target_binding,
+                expected_revision: wire.expected_revision,
+            },
+        }
+    }
+}
+impl From<SleepMutationInput> for SleepMutationInputWire {
+    fn from(input: SleepMutationInput) -> Self {
+        Self {
+            record_id: input.record_id,
+            wake_date: input.wake_date,
+            sleep_onset: input.sleep_onset,
+            get_up: input.get_up,
+            sleep_onset_lived_date: input.sleep_onset_lived_date,
+            get_up_lived_date: input.get_up_lived_date,
+            change_id: input.mutation.change_id,
+            target_binding: input.mutation.target_binding,
+            expected_revision: input.mutation.expected_revision,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HabitSleepMutationInputWire {
+    habit_key: SleepHabitKey,
+    lived_date: String,
+    endpoint: SleepEndpoint,
+    record_id: Option<String>,
+    change_id: String,
+    target_binding: String,
+    expected_revision: Option<String>,
+}
+impl From<HabitSleepMutationInputWire> for HabitSleepMutationInput {
+    fn from(wire: HabitSleepMutationInputWire) -> Self {
+        Self {
+            habit_key: wire.habit_key,
+            lived_date: wire.lived_date,
+            endpoint: wire.endpoint,
+            record_id: wire.record_id,
+            mutation: SleepMutationContext {
+                change_id: wire.change_id,
+                target_binding: wire.target_binding,
+                expected_revision: wire.expected_revision,
+            },
+        }
+    }
+}
+impl From<HabitSleepMutationInput> for HabitSleepMutationInputWire {
+    fn from(input: HabitSleepMutationInput) -> Self {
+        Self {
+            habit_key: input.habit_key,
+            lived_date: input.lived_date,
+            endpoint: input.endpoint,
+            record_id: input.record_id,
+            change_id: input.mutation.change_id,
+            target_binding: input.mutation.target_binding,
+            expected_revision: input.mutation.expected_revision,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SleepView {
@@ -380,7 +472,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         ))
     }
     pub fn save_habit_time(&self, input: HabitSleepMutationInput) -> Result<SleepView, String> {
-        if input.target_binding != binding(&self.path()?) {
+        if input.mutation.target_binding != binding(&self.path()?) {
             return Err("所选 Vault 已改变；未写入。".into());
         }
         validate_date(&input.lived_date)?;
@@ -397,7 +489,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         input.endpoint.validate_context(context.clone())?;
         let (_, document, _) = self.load()?;
         let onset = input.habit_key == SleepHabitKey::Sleep;
-        if let Some(receipt) = document.operations.iter().find(|r| r.id == input.change_id) {
+        if let Some(receipt) = document.operations.iter().find(|r| r.id == input.mutation.change_id) {
             let previous = &receipt.input;
             let endpoint = if onset {
                 &previous.sleep_onset
@@ -411,13 +503,13 @@ impl<S: SleepStore> SleepWorkflow<S> {
             };
             if endpoint.as_ref() != Some(&input.endpoint)
                 || previous_context != &context
-                || previous.target_binding != input.target_binding
-                || previous.expected_revision != input.expected_revision
+                || previous.mutation.target_binding != input.mutation.target_binding
+                || previous.mutation.expected_revision != input.mutation.expected_revision
                 || input.record_id.as_ref().is_some_and(|id| {
                     previous
                         .record_id
                         .as_ref()
-                        .unwrap_or(&record_id_for_change(&previous.change_id))
+                        .unwrap_or(&record_id_for_change(&previous.mutation.change_id))
                         != id
                 })
             {
@@ -513,33 +605,31 @@ impl<S: SleepStore> SleepWorkflow<S> {
             get_up: (!onset).then_some(input.endpoint),
             sleep_onset_lived_date: if onset { context.clone() } else { None },
             get_up_lived_date: if onset { None } else { context },
-            change_id: input.change_id,
-            target_binding: input.target_binding,
-            expected_revision: input.expected_revision,
+            mutation: input.mutation,
         })
     }
     pub fn save(&self, input: SleepMutationInput) -> Result<SleepView, String> {
         let _guard = WRITE_LOCK.lock().map_err(|_| "作息写入暂不可用")?;
         // Reject stale callers before loading another Vault's document or diagnostics.
-        if input.target_binding != binding(&self.path()?) {
+        if input.mutation.target_binding != binding(&self.path()?) {
             return Err("所选 Vault 已改变；未写入。".into());
         }
         let (path, mut document, original) = self.load()?;
         let revision = original
             .as_ref()
             .map(|b| crate::today::document_revision(b));
-        if input.target_binding != binding(&path) {
+        if input.mutation.target_binding != binding(&path) {
             return Err("所选 Vault 已改变；未写入。".into());
         }
-        if input.change_id.trim().is_empty() || input.change_id.len() > 160 {
+        if input.mutation.change_id.trim().is_empty() || input.mutation.change_id.len() > 160 {
             return Err("需要有效 changeId；未写入。".into());
         }
-        if let Some(receipt) = document.operations.iter().find(|r| r.id == input.change_id) {
+        if let Some(receipt) = document.operations.iter().find(|r| r.id == input.mutation.change_id) {
             if receipt.input == input {
                 let id = input
                     .record_id
                     .clone()
-                    .unwrap_or_else(|| record_id_for_change(&input.change_id));
+                    .unwrap_or_else(|| record_id_for_change(&input.mutation.change_id));
                 let confirmed = document
                     .records
                     .iter()
@@ -569,7 +659,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
             }
             return Err("changeId 已用于不同作息修改；未写入。".into());
         }
-        if revision != input.expected_revision {
+        if revision != input.mutation.expected_revision {
             return Err("作息已更新，请重新读取后修改；未写入。".into());
         }
         validate_date(&input.wake_date)?;
@@ -602,7 +692,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         let mut record = existing
             .map(|i| document.records[i].clone())
             .unwrap_or_else(|| SleepRecord {
-                id: record_id_for_change(&input.change_id),
+                id: record_id_for_change(&input.mutation.change_id),
                 wake_date: input.wake_date.clone(),
                 sleep_onset: SleepEndpoint::Unrecorded,
                 get_up: SleepEndpoint::Unrecorded,
@@ -645,7 +735,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
             .records
             .sort_by(|a, b| a.wake_date.cmp(&b.wake_date));
         document.operations.push(Receipt {
-            id: input.change_id.clone(),
+            id: input.mutation.change_id.clone(),
             input,
         });
         let bytes = serde_json::to_vec_pretty(&document).map_err(|e| e.to_string())?;

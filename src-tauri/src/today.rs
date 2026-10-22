@@ -3650,7 +3650,12 @@ where
             &self.clock.current_lived_date(),
         )?;
         match &sleep.result {
-            Ok(sleep) => crate::sleep::project_habits(&mut view, sleep),
+            Ok(sleep) => {
+                crate::sleep::project_habits(&mut view, sleep);
+                view.sleep_view = Some(
+                    sleep.clone().project_overview(&self.clock.current_lived_date()),
+                );
+            }
             Err(error) => view.sleep_error = Some(error.clone()),
         }
         Ok(view)
