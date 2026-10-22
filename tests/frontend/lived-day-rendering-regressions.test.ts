@@ -8,6 +8,7 @@ import { after, test } from 'node:test';
 import { createContext, runInContext } from 'node:vm';
 import * as axis from '../../frontend/today-time-axis.ts';
 import { shiftDateOnly } from '../../frontend/date-only.ts';
+import { formatClockMinutes } from '../../frontend/clock-time.ts';
 import { LatestRequest } from '../../frontend/latest-request.ts';
 
 // Run the shipped handlers, with only DOM/IPC boundaries substituted. Compile
@@ -69,7 +70,7 @@ function renderTimeline(entries: { startMinute: number; endMinute: number | null
   const openedFacts: Element[] = [];
   todayTimedEvents.closest = (selector: string) => selector === '.today-axis-plot' ? plot : null;
   const context = createContext({
-    ...axis, shiftDateOnly, HTMLAnchorElement: AnchorElement,
+    ...axis, shiftDateOnly, formatClockMinutes, HTMLAnchorElement: AnchorElement,
     document: { createElement: (tag: string) => tag === 'a' ? new AnchorElement(tag) : new Element(tag) },
     getComputedStyle: () => ({ height: '432px' }),
     currentTodayView: { date: '2026-10-01' }, currentInterfaceLanguage: 'en',

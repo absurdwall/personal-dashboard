@@ -798,7 +798,11 @@ fn resolve_habit_sleep_point(
     time: String,
     approximate: bool,
 ) -> Result<sleep::SleepPoint, String> {
-    application.resolve_habit_sleep_point(&lived_date, &time, approximate)
+    application.resolve_habit_sleep_point(&sleep::HabitSleepPointRequest {
+        lived_date,
+        time,
+        approximate,
+    })
 }
 
 #[tauri::command]
@@ -809,7 +813,12 @@ fn resolve_habit_sleep_range(
     end_time: String,
     reported_text: String,
 ) -> Result<sleep::SleepEndpoint, String> {
-    application.resolve_habit_sleep_range(&lived_date, &start_time, &end_time, &reported_text)
+    application.resolve_habit_sleep_range(&sleep::HabitSleepRangeRequest {
+        lived_date,
+        start_time,
+        end_time,
+        reported_text,
+    })
 }
 
 #[tauri::command]

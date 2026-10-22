@@ -1,3 +1,6 @@
+import {shiftDateOnly} from './date-only.js';
+import {formatClockMinutes} from './clock-time.js';
+
 /** One pointer owner for blank selection, Task movement and plan gestures. */
 export type AxisGestureTarget = Readonly<{
   key: string;
@@ -99,9 +102,7 @@ export function attachTodayAxisGestures<Context>(options: Readonly<{
 
 /** Natural calendar endpoints for one lived-day axis minute. */
 export function taskAxisDateTime(date:string, minute:number): Readonly<{date:string;time:string}> {
-  const day=new Date(`${date}T12:00:00Z`);day.setUTCDate(day.getUTCDate()+Math.floor(minute/1440));
-  const clock=((minute%1440)+1440)%1440;
-  return {date:day.toISOString().slice(0,10),time:`${String(Math.floor(clock/60)).padStart(2,'0')}:${String(clock%60).padStart(2,'0')}`};
+  return {date:shiftDateOnly(date,Math.floor(minute/1440),'throw'),time:formatClockMinutes(minute)};
 }
 export function taskAxisMinute(date:string, endpoint:Readonly<{date:string;time:string}>):number {
   const days=(Date.parse(`${endpoint.date}T12:00:00Z`)-Date.parse(`${date}T12:00:00Z`))/86400000;

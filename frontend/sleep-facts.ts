@@ -4,6 +4,8 @@ export type SleepHabitKey='wake'|'sleep';
 export function isSleepHabitKey(value:unknown):value is SleepHabitKey{return value==='wake'||value==='sleep';}
 
 export type SleepPoint = Readonly<{date:string;time:string;utcOffsetMinutes:number;approximate?:boolean}>;
+export type HabitSleepPointRequest=Readonly<{livedDate:string;time:string;approximate:boolean}>;
+export type HabitSleepRangeRequest=Readonly<{livedDate:string;startTime:string;endTime:string;reportedText:string}>;
 export type SleepEndpoint =
   | (SleepPoint & Readonly<{kind:'point'}>)
   | Readonly<{kind:'range';start:SleepPoint;end:SleepPoint;reportedText:string}>
@@ -20,6 +22,14 @@ export type SleepView = Readonly<{targetBinding:string;revision:string|null;reco
 /** Keep every canonical match; multiple records remain an explicit conflict. */
 export function sleepFactsForLivedDate(facts:readonly SleepEndpointFact[]|undefined,key:SleepHabitKey,date:string|undefined):readonly SleepEndpointFact[]{
   return facts?.filter(fact=>fact.habitKey===key&&fact.livedDate===date)??[];
+}
+
+/** Both elapsed readouts share rounding; their established catalog styles remain. */
+export function sleepElapsedCopy(minutes:number,approximate:boolean,context:'sample'|'statistic'):InterfaceCopyValue {
+  const rounded=Math.round(minutes),variables={hours:Math.floor(rounded/60),minutes:rounded%60};
+  if(approximate&&context==='statistic')return {copy:'sleep.overview.aboutElapsedValue',variables};
+  const value:InterfaceCopyValue={copy:'sleep.overview.elapsedValue',variables};
+  return approximate?{copy:'sleep.aboutTime',variables:{time:value}}:value;
 }
 
 /** Endpoint grammar retains semantic catalog values until the active language is known. */
