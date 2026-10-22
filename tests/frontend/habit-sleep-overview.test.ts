@@ -8,7 +8,7 @@ const canonicalBoundary=String.raw`
   const point=(date,time,approximate=false)=>({kind:'point',date,time,utcOffsetMinutes:-240,approximate});
   const fact=(recordId,habitKey,livedDate,endpoint)=>({recordId,habitKey,livedDate,endpoint,dayRelation:endpoint.kind==='point'&&endpoint.date!==livedDate?'next-day':'same-day'});
   let sleepState={targetBinding:'sleep-target',revision:'sleep-r1',records:[
-    {id:'night-a',wakeDate:'2026-08-09',sleepOnset:point('2026-08-08','23:50'),getUp:point('2026-08-09','07:20'),estimatedDurationMinutes:450},
+    {id:'night-a',wakeDate:'2026-06-30',sleepOnset:point('2026-08-08','23:50'),getUp:point('2026-08-09','07:20'),estimatedDurationMinutes:450},
     {id:'night-b',wakeDate:'2026-08-10',sleepOnset:point('2026-08-10','00:10',true),getUp:point('2026-08-10','08:10'),estimatedDurationMinutes:480}
   ],facts:[
     fact('night-a','sleep','2026-08-08',point('2026-08-08','23:50')),
@@ -69,14 +69,14 @@ test('both Habit entries share a bounded overview with truthful circular clock a
     const selected=()=>document.querySelector('[data-sleep-overview]');
     const onset={metric:selected()?.dataset.sleepMetric,days:selected()?.querySelectorAll('[data-sleep-chart="detail"] button[data-habit-date]').length??0,count:selected()?.querySelector('[data-sleep-stat="count"] strong')?.textContent,mean:selected()?.querySelector('[data-sleep-stat="mean"] strong')?.textContent};
     document.querySelector('[data-sleep-metric="duration"]')?.click();
-    const elapsed={count:selected()?.querySelector('[data-sleep-stat="count"] strong')?.textContent,mean:selected()?.querySelector('[data-sleep-stat="mean"] strong')?.textContent};
+    const elapsed={count:selected()?.querySelector('[data-sleep-stat="count"] strong')?.textContent,mean:selected()?.querySelector('[data-sleep-stat="mean"] strong')?.textContent,wakeDay:selected()?.querySelector('[data-sleep-chart="detail"] [data-habit-date="2026-08-09"]')?.getAttribute('aria-label')};
     document.querySelector('#habit-detail-back').click();document.querySelector('[data-habit-open="sleep"]').click();
     await until(()=>document.querySelector('#habit-detail-heading').textContent.includes('Go to bed'));
     return JSON.stringify({wakeDefault,onset,elapsed,sleepDefault:document.querySelector('[data-sleep-overview]')?.dataset.sleepMetric??null,errors:window.probeErrors});
   `,true,723,{},canonicalBoundary);
   assert.equal(result.wakeDefault,'wake');assert.equal(result.sleepDefault,'sleep');
   assert.equal(result.onset.metric,'sleep');assert.equal(result.onset.days,30);assert.equal(result.onset.count,'2 / 30');assert.match(result.onset.mean,/about 00:00/i);
-  assert.equal(result.elapsed.count,'2 / 30');assert.match(result.elapsed.mean,/about 7 h 45 min/i);assert.deepEqual(result.errors,[]);
+  assert.equal(result.elapsed.count,'2 / 30');assert.match(result.elapsed.mean,/about 7 h 45 min/i);assert.match(result.elapsed.wakeDay,/7 h 30 min/);assert.deepEqual(result.errors,[]);
 });
 
 test('missing and older dates retain inline evidence then explicitly focus the exact Today editor and refresh after save', {skip:process.platform!=='darwin'},()=>{
