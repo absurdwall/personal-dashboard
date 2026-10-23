@@ -2429,6 +2429,13 @@ where
             approximate: false,
             existing_point: existing_range.as_ref().map(|source| source.start.clone()),
         })?;
+        if let Some(existing) = existing_range {
+            // The fixed lived day still places the start. Known end dates are
+            // provenance; clock order alone cannot add a day to a correction.
+            return existing.corrected(
+                &start.date, start_time, &existing.end.date, end_time, reported_text,
+            ).map_err(|error| format!("请在 Collaboration 中澄清范围的实际日期；未写入：{error}"));
+        }
         let first = CalendarDate::parse(&start.date).expect("validated actual date");
         let end_date = if end_time < start_time {
             first.plus_days(1)
@@ -2436,16 +2443,6 @@ where
             first
         }
         .to_string();
-        if let Some(existing) = existing_range {
-            // Wording-only edits retain known repeated-hour dates even when the
-            // end clock precedes the start clock across a UTC-offset transition.
-            let end_date = if *start_time == existing.start.time && *end_time == existing.end.time {
-                &existing.end.date
-            } else {
-                &end_date
-            };
-            return existing.corrected(&start.date, start_time, end_date, end_time, reported_text);
-        }
         let end = self.resolve_sleep_calendar_point(&end_date, end_time, false)?;
         Ok(crate::sleep::SleepEndpoint::Range {
             start,
@@ -7452,7 +7449,7 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
         return;
     };
     let window_start = day.unix_days() * 1440 + 240;
-    let point_minute = |point: &crate::sleep::SleepPoint| -> Option<i64> {
+    let local_calendar_minutes = |point: &crate::sleep::SleepPoint| -> Option<i64> {
         let day = CalendarDate::parse(&point.date)?;
         let (hour, minute) = point.time.split_once(':')?;
         Some(day.unix_days() * 1440 + hour.parse::<i64>().ok()? * 60 + minute.parse::<i64>().ok()?)
@@ -7471,7 +7468,7 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
                     })
                 }
                 SleepEndpoint::Range { start, end, .. } => {
-                    matches!((point_minute(start), point_minute(end)), (Some(start), Some(end))
+                    matches!((local_calendar_minutes(start), local_calendar_minutes(end)), (Some(start), Some(end))
                         if start < window_start + 1440 && end >= window_start)
                 }
                 _ => false,
@@ -7493,7 +7490,7 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
         };
         entry.sleep_fact = Some(fact.clone());
         if let SleepEndpoint::Point { point } = &fact.endpoint {
-            let projected = point_minute(point).map(|minute| minute - day.unix_days() * 1440);
+            let projected = local_calendar_minutes(point).map(|minute| minute - day.unix_days() * 1440);
             if let Some(minute) = projected.filter(|minute| (240..1680).contains(minute)) {
                 entry.start_minute = Some(minute as u16);
                 entry.source_date = point.date.clone();

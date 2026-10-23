@@ -130,6 +130,7 @@ const interfaceCopies = {
   "sleep.error.endpointConflict": { zh: "同一 Habit 日期存在多条作息端点；请明确记录身份。", en: "Multiple sleep endpoints belong to this Habit date; specify the record identity." },
   "sleep.error.selectionLate": { zh: "所选 Vault 在操作期间改变；结果属于原 Vault，请重新读取核对。", en: "The selected Vault changed during the operation; the result belongs to the original Vault. Read again to verify." },
   "sleep.error.contextMismatch": { zh: "端点与所选 lived day 不一致或跨越边界；未写入。", en: "The endpoint differs from the selected lived day or crosses its boundary; nothing was written." },
+  "sleep.rangeCorrectionUnavailable": {zh:"请在 Collaboration 中澄清范围的实际日期；未写入：{error}",en:"Clarify the range's actual dates in Collaboration. Nothing was written: {error}"},
   "sleep.readbackUnavailable": {zh:"作息已保存，但无法确认读回：{error}",en:"Sleep was saved, but its readback could not be confirmed: {error}"},
   "sleep.invalidDocument": {zh:"作息正本无效：{error}",en:"The sleep document is invalid: {error}"},
   "sleep.storageDiagnostic": {zh:"作息正本操作失败：{error}",en:"The canonical sleep operation failed: {error}"},
@@ -2606,6 +2607,10 @@ function localizeSleepDiagnostic(message: string, language: InterfaceLanguage): 
   const diagnostic = message.startsWith("Error: ") ? message.slice("Error: ".length) : message;
   const key = sleepDiagnosticKeys[diagnostic];
   if (key) return interfaceCopy(key, language);
+  const correction = /^请在 Collaboration 中澄清范围的实际日期；未写入：([\s\S]*)$/.exec(diagnostic);
+  if (correction) return interfaceCopy("sleep.rangeCorrectionUnavailable",language,{
+    error:localizeSleepDiagnostic(correction[1],language) ?? correction[1],
+  });
   const readback = /^作息已保存，但无法确认读回：([\s\S]*)$/.exec(diagnostic);
   if (readback) return interfaceCopy("sleep.readbackUnavailable",language,{
     error:localizeReadbackDiagnostic(readback[1], language) ?? localizeSleepDiagnostic(readback[1],language) ?? readback[1],
