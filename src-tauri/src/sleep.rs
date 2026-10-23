@@ -127,18 +127,12 @@ pub enum SleepEndpoint {
 }
 impl SleepEndpoint {
     fn lived_date(&self) -> Option<String> {
-        match self {
-            SleepEndpoint::Point { point } => Some(point.lived_date()),
-            SleepEndpoint::Range { start, end, .. } => {
-                let first = start.lived_date();
-                (first == end.lived_date()).then_some(first)
-            }
-            _ => None,
-        }
+        let (first, last) = self.possible_lived_dates()?;
+        (first == last).then_some(first)
     }
 
-    // These bounds are only a clarification signal. A crossing range remains
-    // unlocated; its possible lived days never assign it to a night or display day.
+    // Equal bounds locate an endpoint on one lived day. A crossing range stays
+    // unlocated; its broader bounds only signal clarification, never a night identity.
     fn possible_lived_dates(&self) -> Option<(String, String)> {
         match self {
             Self::Point { point } => {
