@@ -9474,14 +9474,6 @@ function habitRow(habit: HabitView): HTMLElement {
   identity.append(identityHeading, metadata, sources);
 
   const completion = habitCompletionControl(habit);
-  if (isSleepHabitKey(habit.key)) {
-    habitSleepOverview.composeRow(article, {
-      key: habit.key, name: displayHabitName(habit), date: habit.today.date,
-      statusCopy: habitStatusLabels[habit.today.status], actualTimeLabel: habit.today.actualTimeLabel,
-      details: habit.today.details,
-    }, { identity, completion });
-    return article;
-  }
   const value = document.createElement("div");
   value.className = "habit-snapshot-value";
   const progress = document.createElement("strong");
@@ -9580,9 +9572,17 @@ function habitRow(habit: HabitView): HTMLElement {
   detail.className = "habit-cell-detail";
   detail.dataset.habitDetail = habit.key;
   detail.setAttribute("role", "status");
-  setCopy(detail, "habits.chooseHistory");
+  if (!isSleepHabitKey(habit.key)) setCopy(detail, "habits.chooseHistory");
   history.append(historyHeading, months, grid, goalContext, detail);
-  article.append(identity, value, completion, recent, expand, history);
+  if (isSleepHabitKey(habit.key)) {
+    habitSleepOverview.composeRow(article, {
+      key: habit.key, name: displayHabitName(habit), date: habit.today.date,
+      statusCopy: habitStatusLabels[habit.today.status], actualTimeLabel: habit.today.actualTimeLabel,
+      details: habit.today.details,
+    }, { identity, completion, expand, history, detail });
+  } else {
+    article.append(identity, value, completion, recent, expand, history);
+  }
   return article;
 }
 
@@ -16267,6 +16267,22 @@ habitsDestination?.addEventListener("change", (event) => {
 });
 
 habitsDestination?.addEventListener("click", (event) => {
+  const closeDate = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-date-close]");
+  if (closeDate) {
+    const row = closeDate.closest<HTMLElement>(".habit-snapshot-row");
+    if (!selectedHabitCell || selectedHabitCell.habitKey !== row?.dataset.habitKey) return;
+    const date = selectedHabitCell.date;
+    habitDateRequests.invalidate();
+    selectedHabitCell = null;
+    currentHabitDateView = null;
+    habitNoteStatus = null;
+    const detail = row?.querySelector<HTMLElement>(".habit-sleep-day-evidence");
+    if (detail) detail.hidden = true;
+    const dateButton = [...(row?.querySelectorAll<HTMLButtonElement>("button[data-habit-date]") ?? [])]
+      .find(button => button.dataset.habitDate === date && button.getClientRects().length > 0);
+    (dateButton ?? row?.querySelector<HTMLButtonElement>(".habit-name-trigger"))?.focus();
+    return;
+  }
   const timeEntry = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-time-open][data-habit-time-date]");
   if (timeEntry) {
     if (vaultSelectionInProgress) return;
@@ -16401,6 +16417,10 @@ habitsDestination?.addEventListener("click", (event) => {
       selectedHabitCell = null;
       currentHabitDateView = null;
       habitNoteStatus = null;
+    }
+    if (history.hidden) {
+      const detail = row?.querySelector<HTMLElement>(".habit-sleep-day-evidence");
+      if (detail) detail.hidden = true;
     }
     return;
   }

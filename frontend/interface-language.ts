@@ -1426,6 +1426,7 @@ const interfaceCopies = {
   "habits.recent": { zh: "近 7 天", en: "Past 7 days" },
   "habits.expand": { zh: "展开", en: "Expand" },
   "habits.collapse": { zh: "收起", en: "Collapse" },
+  "habits.collapseDateFor": { zh: "收起 {habit} 在 {date} 的记录", en: "Collapse {habit} evidence for {date}" },
   "habits.history": { zh: "近 12 周记录", en: "Past 12 weeks" },
   "habits.openHistoricalCorrection": {
     zh: "查看并补记 {date} 的本地习惯完成",
