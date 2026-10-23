@@ -1,0 +1,206 @@
+{
+  "sleepError": "同一 Habit 日期存在多条作息端点；请明确记录身份。",
+  "sleepView": {
+    "facts": [
+      {
+        "clockPlotMinutes": 440,
+        "dayRelation": "same-day",
+        "endpoint": {
+          "approximate": false,
+          "date": "2026-08-09",
+          "kind": "point",
+          "time": "07:20",
+          "utcOffsetMinutes": -240
+        },
+        "habitKey": "wake",
+        "livedDate": "2026-08-09",
+        "recordId": "conflicting-wake-a"
+      },
+      {
+        "clockPlotMinutes": 520,
+        "dayRelation": "same-day",
+        "endpoint": {
+          "approximate": false,
+          "date": "2026-08-09",
+          "kind": "point",
+          "time": "08:40",
+          "utcOffsetMinutes": -240
+        },
+        "habitKey": "wake",
+        "livedDate": "2026-08-09",
+        "recordId": "conflicting-wake-b"
+      },
+      {
+        "clockPlotMinutes": -30,
+        "dayRelation": "same-day",
+        "endpoint": {
+          "approximate": false,
+          "date": "2026-08-09",
+          "kind": "point",
+          "time": "23:30",
+          "utcOffsetMinutes": -240
+        },
+        "habitKey": "sleep",
+        "livedDate": "2026-08-09",
+        "recordId": "valid-night"
+      },
+      {
+        "clockPlotMinutes": 450,
+        "dayRelation": "same-day",
+        "endpoint": {
+          "approximate": false,
+          "date": "2026-08-10",
+          "kind": "point",
+          "time": "07:30",
+          "utcOffsetMinutes": -240
+        },
+        "habitKey": "wake",
+        "livedDate": "2026-08-10",
+        "recordId": "valid-night"
+      }
+    ],
+    "overview": {
+      "date": "2026-08-10",
+      "durations": [
+        {
+          "approximate": false,
+          "date": "2026-08-10",
+          "getUp": {
+            "approximate": false,
+            "date": "2026-08-10",
+            "time": "07:30",
+            "utcOffsetMinutes": -240
+          },
+          "minutes": 480,
+          "onset": {
+            "approximate": false,
+            "date": "2026-08-09",
+            "time": "23:30",
+            "utcOffsetMinutes": -240
+          }
+        }
+      ],
+      "statistics": [
+        {
+          "approximate": false,
+          "count": 1,
+          "earliest": null,
+          "earliestApproximate": false,
+          "latest": null,
+          "latestApproximate": false,
+          "mean": 450,
+          "metric": "wake",
+          "period": 7
+        },
+        {
+          "approximate": false,
+          "count": 1,
+          "earliest": null,
+          "earliestApproximate": false,
+          "latest": null,
+          "latestApproximate": false,
+          "mean": 450,
+          "metric": "wake",
+          "period": 30
+        },
+        {
+          "approximate": false,
+          "count": 1,
+          "earliest": null,
+          "earliestApproximate": false,
+          "latest": null,
+          "latestApproximate": false,
+          "mean": 1410,
+          "metric": "sleep",
+          "period": 7
+        },
+        {
+          "approximate": false,
+          "count": 1,
+          "earliest": null,
+          "earliestApproximate": false,
+          "latest": null,
+          "latestApproximate": false,
+          "mean": 1410,
+          "metric": "sleep",
+          "period": 30
+        },
+        {
+          "approximate": false,
+          "count": 1,
+          "earliest": null,
+          "earliestApproximate": false,
+          "latest": null,
+          "latestApproximate": false,
+          "mean": 480,
+          "metric": "duration",
+          "period": 7
+        },
+        {
+          "approximate": false,
+          "count": 1,
+          "earliest": null,
+          "earliestApproximate": false,
+          "latest": null,
+          "latestApproximate": false,
+          "mean": 480,
+          "metric": "duration",
+          "period": 30
+        }
+      ]
+    },
+    "records": [
+      {
+        "estimatedDurationMinutes": null,
+        "getUp": {
+          "approximate": false,
+          "date": "2026-08-09",
+          "kind": "point",
+          "time": "07:20",
+          "utcOffsetMinutes": -240
+        },
+        "id": "conflicting-wake-a",
+        "sleepOnset": {
+          "kind": "unrecorded"
+        },
+        "wakeDate": "2026-08-08"
+      },
+      {
+        "estimatedDurationMinutes": null,
+        "getUp": {
+          "approximate": false,
+          "date": "2026-08-09",
+          "kind": "point",
+          "time": "08:40",
+          "utcOffsetMinutes": -240
+        },
+        "id": "conflicting-wake-b",
+        "sleepOnset": {
+          "kind": "unrecorded"
+        },
+        "wakeDate": "2026-08-09"
+      },
+      {
+        "estimatedDurationMinutes": 480,
+        "getUp": {
+          "approximate": false,
+          "date": "2026-08-10",
+          "kind": "point",
+          "time": "07:30",
+          "utcOffsetMinutes": -240
+        },
+        "id": "valid-night",
+        "sleepOnset": {
+          "approximate": false,
+          "date": "2026-08-09",
+          "kind": "point",
+          "time": "23:30",
+          "utcOffsetMinutes": -240
+        },
+        "wakeDate": "2026-08-10"
+      }
+    ],
+    "revision": "e05be5561897bdef",
+    "targetBinding": "sleep-target-0dfd185207665c68"
+  }
+}

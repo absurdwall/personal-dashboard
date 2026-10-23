@@ -37,6 +37,7 @@ import {
 } from "./today-time-axis.js";
 import {
   PendingWriteBarrier,
+  SelectedVaultRequestSnapshot,
   selectVaultAndRefresh,
   type VaultSelectionResult,
 } from "./vault-selection.js";
@@ -9472,31 +9473,33 @@ function habitRow(habit: HabitView): HTMLElement {
   identityHeading.append(emoji, name, edit);
   identity.append(identityHeading, metadata, sources);
 
+  const completion = habitCompletionControl(habit);
+  if (isSleepHabitKey(habit.key)) {
+    habitSleepOverview.composeRow(article, {
+      key: habit.key, name: displayHabitName(habit), date: habit.today.date,
+      statusCopy: habitStatusLabels[habit.today.status], actualTimeLabel: habit.today.actualTimeLabel,
+      details: habit.today.details,
+    }, { identity, completion });
+    return article;
+  }
   const value = document.createElement("div");
   value.className = "habit-snapshot-value";
   const progress = document.createElement("strong");
   const todayState = document.createElement("small");
-  if (isSleepHabitKey(habit.key)) habitSleepOverview.setValue(progress,habit.key,habit.today.date,habit.today.actualTimeLabel?habitActualTimeCopy(habit.today.actualTimeLabel,habit.today.details):undefined);
-  else progress.textContent=habitProgressLabel(habit);
-  if (isSleepHabitKey(habit.key)) {
-    progress.classList.toggle("habit-sleep-described-value", !/^\d{2}:\d{2}$/.test(progress.textContent));
-  }
+  progress.textContent = habitProgressLabel(habit);
   setCopy(todayState, "habits.todayStatus", { status: t(habitStatusLabels[habit.today.status]) });
   value.append(progress, todayState);
-
-  const completion = habitCompletionControl(habit);
 
   const recent = document.createElement("div");
   recent.className = "habit-recent";
   const recentLabel = document.createElement("span");
-  setCopy(recentLabel, isSleepHabitKey(habit.key) ? "sleep.overview.recent" : "habits.recent");
+  setCopy(recentLabel, "habits.recent");
   const recentCells = document.createElement("div");
   recentCells.className = "habit-recent-cells";
   recentCells.replaceChildren(
     ...habit.recent.map((cell) => habitCellButton(habit, cell, true)),
   );
-  recent.append(recentLabel, isSleepHabitKey(habit.key)
-    ? habitSleepOverview.mini({key: habit.key, name: displayHabitName(habit), date: habit.today.date}) : recentCells);
+  recent.append(recentLabel, recentCells);
 
   const expand = document.createElement("button");
   expand.type = "button";
@@ -9505,18 +9508,6 @@ function habitRow(habit: HabitView): HTMLElement {
   expand.setAttribute("aria-expanded", "false");
   setHabitHistoryDisclosureCopy(expand, habit, false);
 
-  if (isSleepHabitKey(habit.key)) {
-    delete expand.dataset.habitExpand;
-    expand.dataset.habitOpen = habit.key;
-    setInterfaceAttribute(expand, "aria-label", "habits.openDetails", currentInterfaceLanguage, { habit: displayHabitName(habit) });
-    const detail = document.createElement("div");
-    detail.className = "habit-cell-detail habit-sleep-day-evidence";
-    detail.dataset.habitDetail = habit.key;
-    detail.hidden = true;
-    detail.setAttribute("role", "status");
-    article.append(identity, value, completion, recent, expand, detail);
-    return article;
-  }
   const history = document.createElement("section");
   history.className = "habit-history";
   history.hidden = true;
@@ -9876,11 +9867,10 @@ function revealHabitSleepDetail(): void {
 async function loadHabitDetailHistory(habitKey: string, revealSleepDetail = false): Promise<void> {
   if (vaultSelectionInProgress) return;
   const vaultPath = selectedVaultPath ?? "";
-  const selectionRevision = collaborationVaultSelectionRevision;
+  const vaultRequest = new SelectedVaultRequestSnapshot(vaultPath || null, collaborationVaultSelectionRevision);
   const request = habitDetailRequests.begin();
   const isCurrent = () => habitDetailRequests.isCurrent(request) && selectedHabitDetailKey === habitKey &&
-    !vaultSelectionInProgress && selectedVaultPath === (vaultPath || null) &&
-    selectionRevision === collaborationVaultSelectionRevision;
+    !vaultSelectionInProgress && vaultRequest.isCurrent(selectedVaultPath, collaborationVaultSelectionRevision);
   habitDetailLoading = true;
   habitDetailLoadError = null;
   renderHabitDetailPanel();
@@ -10254,10 +10244,10 @@ async function loadSelectedHabitDate(habitKey: string, date: string): Promise<vo
   const request = habitDateRequests.begin();
   if (vaultSelectionInProgress) return;
   const vaultPath = selectedVaultPath;
-  const selectionRevision = collaborationVaultSelectionRevision;
+  const vaultRequest = new SelectedVaultRequestSnapshot(vaultPath, collaborationVaultSelectionRevision);
   const isCurrent = () => habitDateRequests.isCurrent(request) && !vaultSelectionInProgress &&
     selectedHabitCell?.habitKey === habitKey && selectedHabitCell.date === date &&
-    selectedVaultPath === vaultPath && collaborationVaultSelectionRevision === selectionRevision;
+    vaultRequest.isCurrent(selectedVaultPath, collaborationVaultSelectionRevision);
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date });
     if (!isCurrent()) return;
@@ -10807,8 +10797,9 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   const snapshotChanged = currentHabitSnapshot !== view;
   currentHabitSnapshot = view;
   // Cells, row values and both charts share the snapshot's captured canonical read.
-  if (view.sleepError) habitSleepOverview.unavailable(view.sleepError);
-  else if (view.sleepView) habitSleepOverview.accept(view.sleepView);
+  // A valid canonical view may also carry a date-specific conflict warning.
+  if (view.sleepView) habitSleepOverview.accept(view.sleepView);
+  else if (view.sleepError) habitSleepOverview.unavailable(view.sleepError);
   else habitSleepOverview.clear();
   if (selectedHabitDetailKey && currentHabitDetailHistory?.habit.key === selectedHabitDetailKey) {
     const latestHabit = view.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
@@ -10934,10 +10925,10 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
 async function refreshHabits(forSelection = false): Promise<void> {
   if (vaultSelectionInProgress && !forSelection) return;
   const vaultPath = selectedVaultPath ?? "";
-  const selectionRevision = collaborationVaultSelectionRevision;
+  const vaultRequest = new SelectedVaultRequestSnapshot(vaultPath || null, collaborationVaultSelectionRevision);
   const request = habitSnapshotRequests.begin();
   const isCurrent = () => habitSnapshotRequests.isCurrent(request) &&
-    selectedVaultPath === (vaultPath || null) && selectionRevision === collaborationVaultSelectionRevision &&
+    vaultRequest.isCurrent(selectedVaultPath, collaborationVaultSelectionRevision) &&
     (!vaultSelectionInProgress || forSelection);
   if (habitsStatus) {
     setCopy(habitsStatus, "habits.loadingLocal");

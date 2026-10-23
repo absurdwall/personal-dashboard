@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {probe} from './helpers/complete-page.ts';
 
@@ -613,13 +614,59 @@ test('catalog refresh updates row, selected source evidence and chart endpoint g
     const row=document.querySelector('.habit-snapshot-row[data-habit-key="sleep"] .habit-snapshot-value strong');
     const day=document.querySelector('[data-sleep-chart="mini"] [data-habit-key="sleep"][data-habit-date="2026-08-09"]');day.click();
     await until(()=>document.querySelector('.habit-sleep-day-evidence:not([hidden])')?.textContent.includes('Retained source evidence'));
-    const panel=document.querySelector('.habit-sleep-day-evidence:not([hidden])'),actual=panel.querySelector('.habit-sleep-day-values p'),source=panel.querySelector('li');
-    const english={row:row.textContent,actual:actual.textContent,source:source.textContent,title:day.title};
+    const panel=document.querySelector('.habit-sleep-day-evidence:not([hidden])'),actual=panel.querySelector('.habit-sleep-day-values p'),source=panel.querySelector('li'),todayState=document.querySelector('.habit-snapshot-row[data-habit-key="sleep"] .habit-snapshot-value small');
+    const english={row:row.textContent,actual:actual.textContent,source:source.textContent,todayState:todayState.textContent,title:day.title};
     require('./interface-language.js').applyInterfaceLanguage('zh');
-    return JSON.stringify({english,chinese:{row:row.textContent,actual:actual.textContent,source:source.textContent,title:day.title},same:row===document.querySelector('.habit-snapshot-row[data-habit-key="sleep"] .habit-snapshot-value strong')&&actual===panel.querySelector('.habit-sleep-day-values p')&&source===panel.querySelector('li'),errors:window.probeErrors});
+    return JSON.stringify({english,chinese:{row:row.textContent,actual:actual.textContent,source:source.textContent,todayState:todayState.textContent,title:day.title},same:row===document.querySelector('.habit-snapshot-row[data-habit-key="sleep"] .habit-snapshot-value strong')&&actual===panel.querySelector('.habit-sleep-day-values p')&&source===panel.querySelector('li'),errors:window.probeErrors});
   `,true,723,{},canonicalBoundary);
   assert.equal(result.english.row,'Unrecorded');assert.equal(result.chinese.row,'尚未填写');
   assert.match(result.english.actual,/next day about 00:10/);assert.match(result.chinese.actual,/次日.*约 00:10/);
+  assert.equal(result.english.todayState,'Today: Threshold evidence only');assert.equal(result.chinese.todayState,'今天：仅阈值证据');
   assert.match(result.english.source,/text record.*Retained source evidence/);assert.match(result.chinese.source,/文字记录.*Retained source evidence/);
   assert.match(result.chinese.title,/次日.*约 00:10/);assert.equal(result.same,true);assert.deepEqual(result.errors,[]);
+});
+
+// Captured from public TodayApplication::habits by the Rust regression
+// a_conflicting_habit_date_retains_the_captured_view_and_other_dates_statistics.
+// From the repository root, regenerate with PD_SLEEP_CONFLICT_FIXTURE=<output path>
+// cargo test --manifest-path src-tauri/Cargo.toml --test sleep_workflow
+// a_conflicting_habit_date_retains, then copy that synthetic fragment.
+test('a captured date conflict keeps other dates and all metric periods available without selecting a competing night',{skip:process.platform!=='darwin'},()=>{
+  const captured=JSON.parse(readFileSync(new URL('./fixtures/habit-sleep-conflict-view.json',import.meta.url),'utf8'));
+  const result=probe(969,navigate+`
+    const miniPoints=['wake','sleep'].map(key=>document.querySelector('.habit-snapshot-row[data-habit-key="'+key+'"] [data-sleep-chart="mini"]').querySelectorAll('circle').length);
+    const conflict=document.querySelector('[data-sleep-chart="mini"] [data-habit-key="wake"][data-habit-date="2026-08-09"]');
+    const conflictLabel=conflict.getAttribute('aria-label'),conflictMark=conflict.nextElementSibling.textContent;
+    conflict.click();
+    await until(()=>document.querySelector('.habit-sleep-day-evidence:not([hidden])'));
+    const conflictEvidence=document.querySelector('.habit-sleep-day-evidence:not([hidden])').textContent;
+    document.querySelector('[data-habit-open="wake"]').click();
+    await until(()=>document.querySelector('[data-sleep-overview]'));
+    const stats=[];
+    for(const metric of ['wake','sleep','duration']){
+      document.querySelector('button[data-sleep-metric="'+metric+'"]').click();
+      for(const period of [7,30]){
+        document.querySelector('[data-sleep-period="'+period+'"]').click();
+        const overview=document.querySelector('[data-sleep-overview]');
+        stats.push({metric,period,count:overview.querySelector('[data-sleep-stat="count"] strong').textContent,mean:overview.querySelector('[data-sleep-stat="mean"] strong').textContent,points:overview.querySelectorAll('[data-sleep-chart="detail"] circle').length});
+      }
+    }
+    return JSON.stringify({miniPoints,conflictLabel,conflictMark,conflictEvidence,stats,globalErrors:document.querySelectorAll('.habit-sleep-read-error').length,writes:calls.filter(c=>/save_|set_habit|dated_note/.test(c.command)).length,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    const captured=${JSON.stringify(captured)};
+    sleepState=structuredClone(captured.sleepView);
+    const capturedInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      if(command==='habit_snapshot'){calls.push({command,args});return {...habitSnapshotFixture(),...structuredClone(captured)};}
+      return capturedInvoke(command,args);
+    };
+  `);
+  assert.deepEqual(result.miniPoints,[1,1],JSON.stringify(result));
+  assert.match(result.conflictLabel,/Multiple sleep records conflict/);assert.equal(result.conflictMark,'!');
+  assert.match(result.conflictEvidence,/07:20/);assert.match(result.conflictEvidence,/08:40/);
+  for(const stat of result.stats){
+    assert.equal(stat.count,`1 / ${stat.period}`,JSON.stringify(stat));assert.equal(stat.points,1,JSON.stringify(stat));
+    assert.match(stat.mean,stat.metric==='wake'?/07:30/:stat.metric==='sleep'?/23:30/:/8 h/);
+  }
+  assert.equal(result.globalErrors,0);assert.equal(result.writes,0);assert.deepEqual(result.errors,[]);
 });

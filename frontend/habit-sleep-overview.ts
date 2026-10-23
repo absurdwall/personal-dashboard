@@ -2,15 +2,18 @@ import {createHabitTimeEntryButton} from './habit-time-entry.js';
 import {type HabitLocalCompletionState} from './habit-completion.js';
 import {shiftDateOnly} from './date-only.js';
 import {formatClockMinutes} from './clock-time.js';
-import {setInterfaceCopy, setInterfaceAttribute, setInterfaceError, setHabitDetailCopy, type HabitDetail, type InterfaceCopyKey, type InterfaceLanguage,type InterfaceCopyVariables,type InterfaceCopyValue} from './interface-language.js';
+import {habitActualTimeCopy, setInterfaceCopy, setInterfaceAttribute, setInterfaceError, setHabitDetailCopy, type HabitDetail, type InterfaceCopyKey, type InterfaceLanguage,type InterfaceCopyVariables,type InterfaceCopyValue} from './interface-language.js';
 import {sleepFactsForLivedDate,sleepEndpointCopy,sleepElapsedCopy,setSleepCopy,setSleepEndpointCopy, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
 
 type HabitKey=SleepHabitKey;
 type Metric=HabitKey|'duration';
 type Sample=Readonly<{date:string;value:number|null;approximate:boolean;label:InterfaceCopyValue}>;
 type HabitContext=Readonly<{key:HabitKey;name:string;date:string}>;
-type SleepHabitSelection=Readonly<{
-  key:HabitKey;date:string;name:string;todayDate:string;
+type SleepHabitRowContext=HabitContext&Readonly<{
+  statusCopy:InterfaceCopyKey;actualTimeLabel:string|null;details:readonly HabitDetail[];
+}>;
+type SleepHabitSelection=HabitContext&Readonly<{
+  todayDate:string;
   cell:Readonly<{statusCopy:InterfaceCopyKey;coverage:string;details:readonly HabitDetail[]}>|null;
   localChanges:readonly Readonly<{state:HabitLocalCompletionState;changedAt:string}>[];
   error?:string;
@@ -175,6 +178,24 @@ export class HabitSleepOverview {
     const open=this.copyElement('button','secondary-button','sleep.overview.historyOpen');open.type='submit';form.append(label,open);
     form.addEventListener('submit',event=>{event.preventDefault();if(!form.reportValidity())return;const button=element('button');button.type='button';button.dataset.habitDetailDate=date.value;button.dataset.habitDetailDateKey=metrics[this.metric].dateHabit;root.append(button);this.selected={metric:this.metric,date:date.value};button.click();button.remove();});history.append(form);root.append(history);return root;
   }
+  composeRow(article:HTMLElement,context:SleepHabitRowContext,parts:Readonly<{identity:HTMLElement;completion:HTMLElement}>):void{
+    const value=document.createElement('div');value.className='habit-snapshot-value';
+    const progress=document.createElement('strong'),todayState=document.createElement('small');
+    this.setValue(progress,context.key,context.date,context.actualTimeLabel?habitActualTimeCopy(context.actualTimeLabel,context.details):undefined);
+    progress.classList.toggle('habit-sleep-described-value',!/^\d{2}:\d{2}$/.test(progress.textContent));
+    setInterfaceCopy(todayState,'habits.todayStatus',this.language(),{status:{copy:context.statusCopy}});
+    value.append(progress,todayState);
+    const recent=document.createElement('div');recent.className='habit-recent';
+    const recentLabel=document.createElement('span');setInterfaceCopy(recentLabel,'sleep.overview.recent',this.language());
+    recent.append(recentLabel,this.mini(context));
+    const expand=document.createElement('button');expand.type='button';expand.className='habit-expand';
+    expand.dataset.habitOpen=context.key;expand.setAttribute('aria-expanded','false');
+    setInterfaceCopy(expand,'habits.expand',this.language(),{habit:context.name});
+    setInterfaceAttribute(expand,'aria-label','habits.openDetails',this.language(),{habit:context.name});
+    const detail=document.createElement('div');detail.className='habit-cell-detail habit-sleep-day-evidence';
+    detail.dataset.habitDetail=context.key;detail.hidden=true;detail.setAttribute('role','status');
+    article.append(parts.identity,value,parts.completion,recent,expand,detail);
+  }
   renderSelection(destination:HTMLElement|null,context:SleepHabitSelection):boolean{
     const row=[...(destination?.querySelectorAll<HTMLElement>('.habit-snapshot-row')??[])]
       .find(item=>item.dataset.habitKey===context.key);
@@ -183,7 +204,7 @@ export class HabitSleepOverview {
     destination?.querySelectorAll<HTMLElement>('.habit-sleep-day-evidence').forEach(item=>item.hidden=item!==detail);
     detail.hidden=false;
     const heading=document.createElement('strong');
-    heading.textContent=`${context.date} · ${context.name}`;
+    setInterfaceCopy(heading,'sleep.overview.dayHeading',this.language(),{date:context.date,habit:context.name});
     detail.replaceChildren(heading,this.dayEvidence(context.key,context.date));
     const cell=context.cell;
     if(cell){
