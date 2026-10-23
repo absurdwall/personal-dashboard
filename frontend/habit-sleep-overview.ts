@@ -178,7 +178,7 @@ export class HabitSleepOverview {
     const open=this.copyElement('button','secondary-button','sleep.overview.historyOpen');open.type='submit';form.append(label,open);
     form.addEventListener('submit',event=>{event.preventDefault();if(!form.reportValidity())return;const button=element('button');button.type='button';button.dataset.habitDetailDate=date.value;button.dataset.habitDetailDateKey=metrics[this.metric].dateHabit;root.append(button);this.selected={metric:this.metric,date:date.value};button.click();button.remove();});history.append(form);root.append(history);return root;
   }
-  composeRow(article:HTMLElement,context:SleepHabitRowContext,parts:Readonly<{identity:HTMLElement;completion:HTMLElement}>):void{
+  composeRow(article:HTMLElement,context:SleepHabitRowContext,parts:Readonly<{identity:HTMLElement;completion:HTMLElement;expand:HTMLElement;history:HTMLElement;detail:HTMLElement}>):void{
     const value=document.createElement('div');value.className='habit-snapshot-value';
     const progress=document.createElement('strong'),todayState=document.createElement('small');
     this.setValue(progress,context.key,context.date,context.actualTimeLabel?habitActualTimeCopy(context.actualTimeLabel,context.details):undefined);
@@ -188,13 +188,8 @@ export class HabitSleepOverview {
     const recent=document.createElement('div');recent.className='habit-recent';
     const recentLabel=document.createElement('span');setInterfaceCopy(recentLabel,'sleep.overview.recent',this.language());
     recent.append(recentLabel,this.mini(context));
-    const expand=document.createElement('button');expand.type='button';expand.className='habit-expand';
-    expand.dataset.habitOpen=context.key;expand.setAttribute('aria-expanded','false');
-    setInterfaceCopy(expand,'habits.expand',this.language(),{habit:context.name});
-    setInterfaceAttribute(expand,'aria-label','habits.openDetails',this.language(),{habit:context.name});
-    const detail=document.createElement('div');detail.className='habit-cell-detail habit-sleep-day-evidence';
-    detail.dataset.habitDetail=context.key;detail.hidden=true;detail.setAttribute('role','status');
-    article.append(parts.identity,value,parts.completion,recent,expand,detail);
+    parts.detail.classList.add('habit-sleep-day-evidence');parts.detail.hidden=true;
+    article.append(parts.identity,value,parts.completion,recent,parts.expand,parts.history,parts.detail);
   }
   renderSelection(destination:HTMLElement|null,context:SleepHabitSelection):boolean{
     const row=[...(destination?.querySelectorAll<HTMLElement>('.habit-snapshot-row')??[])]
@@ -232,6 +227,8 @@ export class HabitSleepOverview {
     if(context.error){
       const error=document.createElement('p');setInterfaceError(error,'habits.loadDateFailed',context.error,this.language());detail.append(error);
     }
+    const close=this.copyElement('button','secondary-button','habits.collapse');close.type='button';close.dataset.habitDateClose=context.key;
+    this.copyAttribute(close,'aria-label','habits.collapseDateFor',{date:context.date,habit:context.name});detail.append(close);
     return true;
   }
   dayEvidence(key:HabitKey,date:string):HTMLElement{

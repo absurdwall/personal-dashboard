@@ -65,6 +65,119 @@ const navigate=String.raw`
   await until(()=>document.querySelector('.habit-snapshot-row[data-habit-key="wake"]'));
 `;
 
+test('row disclosure keeps wake and sleep twelve-week history inline like ordinary Habits',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    const states=[];
+    const overviewOpen=()=>Boolean(document.querySelector('[data-sleep-overview]')?.getClientRects().length);
+    for(const key of ['wake','sleep','reading']){
+      const row=document.querySelector('.habit-snapshot-row[data-habit-key="'+key+'"]');
+      const trigger=row.querySelector('.habit-expand');trigger.click();
+      await until(()=>row.querySelectorAll('button[data-habit-date]').length===91||overviewOpen());
+      const historyDates=[...row.querySelectorAll('button[data-habit-date]')].filter(button=>!button.closest('.habit-recent'));
+      const state={key,inline:!overviewOpen(),expanded:trigger.getAttribute('aria-expanded'),dates:historyDates.length,first:historyDates[0]?.dataset.habitDate,last:historyDates.at(-1)?.dataset.habitDate};
+      if(overviewOpen())document.querySelector('#habit-detail-back').click();
+      else trigger.click();
+      state.collapsed=trigger.getAttribute('aria-expanded')==='false'&&row.querySelector('.habit-history')?.hidden&&!row.querySelector('.habit-recent').hidden;
+      if(key!=='reading'){
+        row.querySelector('.habit-name-trigger').click();await until(()=>overviewOpen());
+        state.nameMetric=document.querySelector('[data-sleep-overview]').dataset.sleepMetric;
+        document.querySelector('#habit-detail-back').click();
+      }
+      states.push(state);
+    }
+    return JSON.stringify({states,writes:calls.filter(c=>/save_|set_habit|dated_note/.test(c.command)).length,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary);
+  assert.deepEqual(result.states,['wake','sleep','reading'].map(key=>({key,inline:true,expanded:'true',dates:84,first:'2026-05-19',last:'2026-08-10',collapsed:true,...(key==='reading'?{}:{nameMetric:key})})));
+  assert.equal(result.writes,0);assert.deepEqual(result.errors,[]);
+});
+
+test('mini chart and history selected-day evidence has an accessible collapse and reopens the same or another date',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    const states=[];
+    for(const key of ['wake','sleep'])for(const source of ['mini','history']){
+      const row=document.querySelector('.habit-snapshot-row[data-habit-key="'+key+'"]');
+      if(source==='history')row.querySelector('.habit-expand').click();
+      const select=date=>row.querySelector((source==='mini'?'[data-sleep-chart="mini"]':'.habit-history')+' [data-habit-date="'+date+'"]').click();
+      const panel=()=>row.querySelector('.habit-cell-detail:not([hidden])');
+      select('2026-08-09');await until(()=>panel()?.textContent.includes('Retained source evidence'));
+      const close=[...panel().querySelectorAll('button')].find(button=>/close|collapse/i.test(button.textContent+' '+button.getAttribute('aria-label')));
+      const state={key,source,close:!!close,keyboard:!!close&&!close.disabled&&close.tabIndex>=0,touch:!!close&&rect(close).width>0&&rect(close).height>0};
+      if(close){
+        close.focus();state.focused=document.activeElement===close;close.click();state.closed=!panel();
+        select('2026-08-09');await until(()=>panel()?.textContent.includes('2026-08-09'));state.sameDate=panel().textContent.includes('Retained source evidence');
+        [...panel().querySelectorAll('button')].find(button=>/close|collapse/i.test(button.textContent+' '+button.getAttribute('aria-label'))).click();
+        select('2026-08-10');await until(()=>panel()?.textContent.includes('2026-08-10'));state.anotherDate=panel().textContent.includes('Retained source evidence');
+        state.entryDate=panel().querySelector('[data-habit-time-open="'+key+'"]').dataset.habitTimeDate;
+        if(source==='history'){
+          row.querySelector('.habit-expand').click();state.historyCollapsed=row.querySelector('.habit-history').hidden&&!panel();
+        }
+      }
+      states.push(state);
+    }
+    return JSON.stringify({states,writes:calls.filter(c=>/save_|set_habit|dated_note/.test(c.command)).length,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary);
+  assert.deepEqual(result.states,['wake','sleep'].flatMap(key=>['mini','history'].map(source=>({key,source,close:true,keyboard:true,touch:true,focused:true,closed:true,sameDate:true,anotherDate:true,entryDate:'2026-08-10',...(source==='history'?{historyCollapsed:true}:{})}))));
+  assert.equal(result.writes,0);assert.deepEqual(result.errors,[]);
+});
+
+test('closing a selected sleep date invalidates a pending read and stays closed after language and snapshot refresh',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    const states=[];
+    for(const key of ['wake','sleep'])for(const closeWith of ['date','history']){
+      let row=document.querySelector('.habit-snapshot-row[data-habit-key="'+key+'"]');
+      if(closeWith==='history')row.querySelector('.habit-expand').click();
+      row.querySelector((closeWith==='history'?'.habit-history':'[data-sleep-chart="mini"]')+' [data-habit-date="2026-08-09"]').click();
+      await until(()=>window.releaseDate);
+      row=document.querySelector('.habit-snapshot-row[data-habit-key="'+key+'"]');
+      const panel=row.querySelector('.habit-sleep-day-evidence');
+      require('./interface-language.js').applyInterfaceLanguage('zh');
+      const close=panel.querySelector('[data-habit-date-close]');
+      const zh=close.getAttribute('aria-label');
+      if(closeWith==='date')close.click();else row.querySelector('.habit-expand').click();
+      const closed=panel.hidden;window.releaseDate();await until(()=>window.dateSettled);
+      const lateClosed=panel.hidden;require('./interface-language.js').applyInterfaceLanguage('en');
+      const reads=calls.filter(c=>c.command==='habit_snapshot').length;
+      document.querySelector('#refresh-habits').click();
+      await until(()=>calls.filter(c=>c.command==='habit_snapshot').length>reads&&document.querySelector('.habit-snapshot-row[data-habit-key="'+key+'"]')!==row);
+      row=document.querySelector('.habit-snapshot-row[data-habit-key="'+key+'"]');
+      states.push({key,closeWith,zh,closed,lateClosed,refreshedClosed:row.querySelector('.habit-sleep-day-evidence').hidden,overview:!!document.querySelector('[data-sleep-overview]')?.getClientRects().length});
+      window.releaseDate=null;window.dateSettled=false;
+    }
+    return JSON.stringify({states,writes:calls.filter(c=>/save_|set_habit|dated_note/.test(c.command)).length,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+`
+    const delayedDateInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      const result=await delayedDateInvoke(command,args);
+      if(command==='read_daily_view'){
+        await new Promise(resolve=>window.releaseDate=resolve);window.dateSettled=true;
+      }
+      return result;
+    };
+  `);
+  for(const state of result.states){assert.match(state.zh,/收起.*2026-08-09/);assert.deepEqual({...state,zh:''},{key:state.key,closeWith:state.closeWith,zh:'',closed:true,lateClosed:true,refreshedClosed:true,overview:false});}
+  assert.equal(result.states.length,4);assert.equal(result.writes,0);assert.deepEqual(result.errors,[]);
+});
+
+test('ordinary Habit history keeps its existing evidence and row collapse behavior',{skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,navigate+`
+    const row=document.querySelector('.habit-snapshot-row[data-habit-key="reading"]');
+    const disclosure=row.querySelector('.habit-expand'),history=row.querySelector('.habit-history');
+    disclosure.click();history.querySelector('[data-habit-date="2026-08-09"]').click();
+    await until(()=>history.querySelector('.habit-cell-detail').textContent.includes('2026-08-09'));
+    const evidence=history.querySelector('.habit-cell-detail').textContent;
+    disclosure.click();const collapsed=history.hidden;
+    disclosure.click();history.querySelector('[data-habit-date="2026-08-09"]').click();
+    const same=history.querySelector('.habit-cell-detail').textContent.includes('2026-08-09');
+    history.querySelector('[data-habit-date="2026-08-10"]').click();
+    const another=history.querySelector('.habit-cell-detail').textContent.includes('2026-08-10');
+    disclosure.click();
+    return JSON.stringify({evidence,collapsed,same,another,finalCollapsed:history.hidden,recent:!row.querySelector('.habit-recent').hidden,dates:history.querySelectorAll('button[data-habit-date]').length,newSleepClose:!!row.querySelector('[data-habit-date-close]'),writes:calls.filter(c=>/save_|set_habit|dated_note/.test(c.command)).length,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary);
+  assert.match(result.evidence,/Retained source evidence/);assert.equal(result.dates,84);
+  for(const key of ['collapsed','same','another','finalCollapsed','recent'])assert.equal(result[key],true,key);
+  assert.equal(result.newSleepClose,false);assert.equal(result.writes,0);assert.deepEqual(result.errors,[]);
+});
+
 test('explicit language and range transitions reveal resized sleep plots while background reads preserve history position',{skip:process.platform!=='darwin'},()=>{
   const result=probe(1280,navigate+`
     document.querySelector('[data-habit-open="sleep"]').click();await until(()=>document.querySelector('[data-sleep-overview]'));
@@ -533,13 +646,13 @@ test('cancelling a picker resumes the selected Sleep date evidence in the origin
   assert.equal(result.before,0);assert.match(result.date,/2026-08-09/);assert.deepEqual(result.errors,[]);
 });
 
-test('the rendered Sleep detail disclosure keeps its catalog accessible name across language changes',{skip:process.platform!=='darwin'},()=>{
+test('the rendered Sleep history disclosure keeps its catalog accessible name across language changes',{skip:process.platform!=='darwin'},()=>{
   const result=probe(969,navigate+`
     const row=document.querySelector('.habit-snapshot-row[data-habit-key="sleep"]'),button=row.querySelector('.habit-expand');
     const before=button.getAttribute('aria-label');require('./interface-language.js').applyInterfaceLanguage('zh');const zh=button.getAttribute('aria-label');require('./interface-language.js').applyInterfaceLanguage('en');
     return JSON.stringify({before,zh,after:button.getAttribute('aria-label'),same:row.querySelector('.habit-expand')===button,errors:window.probeErrors});
   `,true,723,{},canonicalBoundary);
-  assert.equal(result.before,result.after);assert.match(result.zh,/详情/);assert.doesNotMatch(result.zh,/历史/);assert.equal(result.same,true);assert.deepEqual(result.errors,[]);
+  assert.equal(result.before,result.after);assert.match(result.zh,/历史/);assert.doesNotMatch(result.zh,/详情/);assert.equal(result.same,true);assert.deepEqual(result.errors,[]);
 });
 
 for(const [date,next,prior] of [['2024-02-28','2024-02-29','2024-02-27'],['2024-03-01','2024-03-02','2024-02-29']])test(`axis and sleep overview share calendar-only dates across ${date}`,{skip:process.platform!=='darwin'},()=>{
