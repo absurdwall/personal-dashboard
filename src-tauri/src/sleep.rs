@@ -735,6 +735,15 @@ impl<S: SleepStore> SleepWorkflow<S> {
         if input.mutation.target_binding != binding(&self.path()?) {
             return Err("所选 Vault 已改变；未写入。".into());
         }
+        // Bound newly supplied wording in both save APIs, without making legacy
+        // records unreadable or rejecting an untouched opposite endpoint.
+        for endpoint in input.sleep_onset.iter().chain(input.get_up.iter()) {
+            if let SleepEndpoint::Range { reported_text, .. } = endpoint {
+                if reported_text.encode_utf16().count() > 2000 {
+                    return Err("时间范围需要可靠且有序的上下界与原文。".into());
+                }
+            }
+        }
         let (path, mut document, original) = self.load()?;
         let revision = original
             .as_ref()
@@ -1048,9 +1057,10 @@ pub fn tool_spec(description: &str) -> serde_json::Value {
         .as_array_mut()
         .unwrap()
         .push(json!("kind"));
+    let wording = json!({"type":"string","minLength":1,"maxLength":2000,"description":"Nonblank original wording; at most 2,000 UTF-16 code units, enforced by the backend (emoji may use two units)."});
     let endpoint = json!({"oneOf":[point_endpoint,
-        {"type":"object","properties":{"kind":{"const":"range"},"start":point,"end":point,"reportedText":{"type":"string"}},"required":["kind","start","end","reportedText"],"additionalProperties":false},
-        {"type":"object","properties":{"kind":{"const":"text"},"date":{"type":["string","null"],"description":"Actual calendar YYYY-MM-DD only when explicitly known; omit or null when wording does not establish it. Never copy livedDate or wakeDate into this field."},"text":{"type":"string"}},"required":["kind","text"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"range"},"start":point,"end":point,"reportedText":wording},"required":["kind","start","end","reportedText"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"text"},"date":{"type":["string","null"],"description":"Actual calendar YYYY-MM-DD only when explicitly known; omit or null when wording does not establish it. Never copy livedDate or wakeDate into this field."},"text":wording},"required":["kind","text"],"additionalProperties":false},
         {"type":"object","properties":{"kind":{"enum":["unknown","unrecorded"]}},"required":["kind"],"additionalProperties":false}]});
     json!({"name":"dashboard_sleep_records","description":description,
     "inputSchema":{"oneOf":[

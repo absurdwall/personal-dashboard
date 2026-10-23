@@ -2883,3 +2883,171 @@ fn cross_zone_range_with_reversed_local_coordinates_stays_visible_on_both_endpoi
     fs::remove_dir_all(root).unwrap();
     assert_eq!(observed, [("2026-02-28", 1), ("2026-03-01", 1)], "one canonical unlocated range must remain visible on both endpoint lived days");
 }
+
+#[test]
+fn range_wording_is_bounded_at_both_save_entries_without_truncation() {
+    let mixed = format!(" {}{} ", "睡".repeat(998), "🌙".repeat(500));
+    for (label, wording, accepted) in [
+        ("ascii-limit", "a".repeat(2000), true),
+        ("ascii-over", "a".repeat(2001), false),
+        ("cjk-limit", "睡".repeat(2000), true),
+        ("cjk-over", "睡".repeat(2001), false),
+        ("emoji-limit", "🌙".repeat(1000), true),
+        ("emoji-over", "🌙".repeat(1001), false),
+        ("mixed-limit", mixed.clone(), true),
+        ("mixed-over", format!("{mixed}a"), false),
+        ("blank", " \t　 ".into(), false),
+    ] {
+        for (action, habit, field) in [
+            ("save", "sleep", "sleepOnset"),
+            ("save", "wake", "getUp"),
+            ("saveHabitTime", "sleep", "sleepOnset"),
+            ("saveHabitTime", "wake", "getUp"),
+        ] {
+            let root = vault(&format!("range-{label}-{action}-{habit}"));
+            let app = application(&root);
+            let baseline = save(
+                &app,
+                json!({"wakeDate":"2026-10-22", "getUp":{"kind":"unknown"}, "changeId":"baseline"}),
+            );
+            let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+            let before = fs::read(&path).unwrap();
+            let endpoint = json!({"kind":"range", "start":{"date":"2026-10-21","time":"21:00","utcOffsetMinutes":-240,"approximate":false}, "end":{"date":"2026-10-21","time":"22:00","utcOffsetMinutes":-240,"approximate":false}, "reportedText":wording});
+            let mut input = json!({"recordId":baseline.records[0].id,"changeId":"range-wording","targetBinding":baseline.target_binding,"expectedRevision":baseline.revision});
+            let result = if action == "save" {
+                input["wakeDate"] = json!("2026-10-22");
+                input[field] = endpoint.clone();
+                app.save_sleep_record(serde_json::from_value(input).unwrap())
+            } else {
+                input["habitKey"] = json!(habit);
+                input["livedDate"] = json!("2026-10-21");
+                input["endpoint"] = endpoint.clone();
+                app.save_habit_sleep_time(serde_json::from_value(input).unwrap())
+            };
+            let case = format!("{label}/{action}/{habit}");
+            if accepted {
+                let saved = result.unwrap_or_else(|error| panic!("{case}: {error}"));
+                let reopened = application(&root).sleep_records().unwrap();
+                assert_eq!(saved, reopened, "{case}: reopen");
+                assert_eq!(reopened.records.len(), 1, "{case}");
+                assert_eq!(reopened.records[0].id, baseline.records[0].id, "{case}");
+                assert_eq!(
+                    serde_json::to_value(&reopened.records[0]).unwrap()[field],
+                    endpoint,
+                    "{case}: exact wording and endpoints"
+                );
+                assert_eq!(
+                    reopened.records[0].estimated_duration_minutes, None,
+                    "{case}"
+                );
+                if habit == "sleep" {
+                    assert_eq!(
+                        reopened.records[0].get_up, baseline.records[0].get_up,
+                        "{case}"
+                    );
+                } else {
+                    assert_eq!(
+                        reopened.records[0].sleep_onset, baseline.records[0].sleep_onset,
+                        "{case}"
+                    );
+                }
+            } else {
+                assert_eq!(
+                    result.expect_err(&case),
+                    "时间范围需要可靠且有序的上下界与原文。",
+                    "{case}"
+                );
+                assert_eq!(
+                    application(&root).sleep_records().unwrap(),
+                    baseline,
+                    "{case}"
+                );
+                assert_eq!(fs::read(&path).unwrap(), before, "{case}: rejected write");
+            }
+            assert_eq!(
+                fs::read_dir(root.join("life/Journal/Daily"))
+                    .unwrap()
+                    .count(),
+                0
+            );
+            assert!(!root
+                .join("life/.personal-dashboard/habit-completions/v1/completions.json")
+                .exists());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+}
+
+#[test]
+fn oversized_legacy_range_stays_readable_and_can_be_corrected() {
+    let root = vault("legacy-range-wording");
+    let app = application(&root);
+    let seed = save(
+        &app,
+        json!({"wakeDate":"2026-10-22","changeId":"seed","sleepOnset":{"kind":"range","start":{"date":"2026-10-21","time":"21:00","utcOffsetMinutes":-240},"end":{"date":"2026-10-21","time":"22:00","utcOffsetMinutes":-240},"reportedText":"original"}}),
+    );
+    let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+    // A valid document produced before range wording was bounded.
+    let mut legacy: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let long_wording = "🌙".repeat(1001);
+    legacy["records"][0]["sleepOnset"]["reportedText"] = json!(long_wording);
+    fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+    let before = fs::read(&path).unwrap();
+    let read = application(&root).sleep_records().unwrap();
+    assert_eq!(read.records[0].id, seed.records[0].id);
+    assert_eq!(
+        serde_json::to_value(&read.records[0]).unwrap()["sleepOnset"]["reportedText"],
+        long_wording
+    );
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        before,
+        "read must not migrate wording"
+    );
+    let supplemented = save(
+        &app,
+        json!({"recordId":read.records[0].id,"wakeDate":"2026-10-22","changeId":"other-endpoint","getUp":{"kind":"unknown"}}),
+    );
+    assert_eq!(
+        supplemented.records[0].sleep_onset,
+        read.records[0].sleep_onset
+    );
+    assert_eq!(application(&root).sleep_records().unwrap(), supplemented);
+    let before_rejection = fs::read(&path).unwrap();
+    let rejected = app.save_habit_sleep_time(serde_json::from_value(json!({"habitKey":"sleep","livedDate":"2026-10-21","recordId":read.records[0].id,"endpoint":legacy["records"][0]["sleepOnset"],"changeId":"new-long-input","targetBinding":supplemented.target_binding,"expectedRevision":supplemented.revision})).unwrap());
+    assert_eq!(
+        rejected.unwrap_err(),
+        "时间范围需要可靠且有序的上下界与原文。"
+    );
+    assert_eq!(fs::read(&path).unwrap(), before_rejection);
+    legacy["records"][0]["sleepOnset"]["reportedText"] = json!("corrected");
+    let corrected = app.save_habit_sleep_time(serde_json::from_value(json!({"habitKey":"sleep","livedDate":"2026-10-21","recordId":read.records[0].id,"endpoint":legacy["records"][0]["sleepOnset"],"changeId":"short-correction","targetBinding":supplemented.target_binding,"expectedRevision":supplemented.revision})).unwrap()).unwrap();
+    assert_eq!(corrected.records[0].id, read.records[0].id);
+    assert_eq!(
+        serde_json::to_value(&corrected.records[0]).unwrap()["sleepOnset"]["reportedText"],
+        "corrected"
+    );
+    assert_eq!(application(&root).sleep_records().unwrap(), corrected);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn sleep_tool_advertises_wording_bounds_for_both_save_actions() {
+    let schema = personal_dashboard_lib::sleep::tool_spec("Synthetic tool");
+    let save = &schema["inputSchema"]["oneOf"][1]["properties"]["input"]["properties"];
+    let habit = &schema["inputSchema"]["oneOf"][2]["properties"]["input"]["properties"];
+    for endpoint in [&save["sleepOnset"], &save["getUp"], &habit["endpoint"]] {
+        for (kind, field) in [("range", "reportedText"), ("text", "text")] {
+            let variant = endpoint["oneOf"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|value| value["properties"]["kind"]["const"] == kind)
+                .unwrap();
+            let wording = &variant["properties"][field];
+            assert_eq!(wording["minLength"], 1, "{kind}/{field}");
+            assert_eq!(wording["maxLength"], 2000, "{kind}/{field}");
+            assert!(wording["description"].as_str().unwrap().contains("UTF-16"));
+        }
+    }
+}
