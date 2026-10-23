@@ -9,6 +9,7 @@ const interfaceCopies = {
   "sleep.overview.recent": {zh:"近七天 · 实际时间",en:"Last 7 days · actual times"},
   "sleep.overview.recentLabel": {zh:"近七天实际时间 · {habit}",en:"Last 7 days actual times · {habit}"},
   "sleep.overview.viewOrRecord": {zh:"查看／补记时间 · {habit} · {date}",en:"View or record time · {habit} · {date}"},
+  "sleep.overview.dayHeading": {zh:"{date} · {habit}",en:"{date} · {habit}"},
   "sleep.overview.actualDate": {zh:"实际日期：{date} {time}",en:"Actual date: {date} {time}"},
   "sleep.overview.pair": {zh:"同一晚：{onsetDate} {onsetTime} 入睡 → {wakeDate} {wakeTime} 离床",en:"Same record: onset {onsetDate} {onsetTime} → get-up {wakeDate} {wakeTime}"},
   "sleep.overview.wake": {zh:"起床",en:"Wake time"},

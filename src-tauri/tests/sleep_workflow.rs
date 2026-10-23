@@ -2372,3 +2372,56 @@ fn corrected_overnight_identity_clarification_is_symmetric_and_keeps_unrelated_o
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[test]
+fn a_conflicting_habit_date_retains_the_captured_view_and_other_dates_statistics() {
+    struct FixtureClock;
+    impl TodayClock for FixtureClock {
+        fn current_date(&self) -> String { "2026-08-10".into() }
+        fn current_time_label(&self) -> String { "09:00".into() }
+        fn current_timestamp_label(&self) -> String { "2026-08-10T09:00:00-04:00".into() }
+    }
+    let root=vault("conflict-local-overview");
+    let path=root.join(personal_dashboard_lib::habits::SNAPSHOT_RELATIVE_PATH);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut source:serde_json::Value=serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    source["generatedAt"]=json!("2026-08-10T09:00:00-04:00");
+    source["range"]=json!({"from":"2026-05-25","to":"2026-08-10"});
+    for habit in source["habits"].as_array_mut().unwrap() {
+        habit["days"]=json!([]);habit["goalHistory"]=json!([]);
+    }
+    fs::write(path,serde_json::to_vec(&source).unwrap()).unwrap();
+    let app=TodayApplication::new(Selected(root.clone()),NoSelection,FixtureClock);
+    // Retained/external canonical documents may contain conflicting endpoint dates;
+    // current mutation guards correctly refuse to create new conflicts.
+    let sleep_path=root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+    fs::create_dir_all(sleep_path.parent().unwrap()).unwrap();
+    fs::write(sleep_path,serde_json::to_vec(&json!({"schemaVersion":1,"operations":[],"records":[
+        {"id":"conflicting-wake-a","wakeDate":"2026-08-08","sleepOnset":{"kind":"unrecorded"},"getUp":point("2026-08-09","07:20",-240),"estimatedDurationMinutes":null},
+        {"id":"conflicting-wake-b","wakeDate":"2026-08-09","sleepOnset":{"kind":"unrecorded"},"getUp":point("2026-08-09","08:40",-240),"estimatedDurationMinutes":null},
+        {"id":"valid-night","wakeDate":"2026-08-10","sleepOnset":point("2026-08-09","23:30",-240),"getUp":point("2026-08-10","07:30",-240),"estimatedDurationMinutes":480}
+    ]})).unwrap()).unwrap();
+    let snapshot=app.habits().unwrap();
+    assert!(!snapshot.habits.is_empty(), "snapshot {:?}: {}",snapshot.state,snapshot.message);
+    assert!(snapshot.sleep_error.as_deref().unwrap().contains("多条作息端点"));
+    let sleep=snapshot.sleep_view.as_ref().unwrap();
+    assert_eq!(sleep.facts.iter().filter(|fact|fact.habit_key.as_str()=="wake"&&fact.lived_date.as_deref()==Some("2026-08-09")).count(),2);
+    let wake=snapshot.habit("wake").unwrap();
+    assert!(wake.history.iter().find(|cell|cell.date=="2026-08-09").unwrap().sleep_fact.is_none());
+    assert!(wake.today.sleep_fact.is_some());
+    let overview=serde_json::to_value(sleep).unwrap()["overview"].clone();
+    assert_eq!(overview["durations"].as_array().unwrap().len(),1);
+    assert_eq!(overview["durations"][0]["date"],"2026-08-10");
+    for (metric,mean) in [("wake",450),("sleep",1410),("duration",480)] {
+        for period in [7,30] {
+            let stats=overview["statistics"].as_array().unwrap().iter().find(|stats|stats["metric"]==metric&&stats["period"]==period).unwrap();
+            assert_eq!(stats["count"],1,"{metric}/{period}: conflict excludes only its own date");
+            assert_eq!(stats["mean"],mean,"{metric}/{period}");
+        }
+    }
+    // Optional synthetic capture used by the compiled-page regression fixture.
+    if let Ok(path)=std::env::var("PD_SLEEP_CONFLICT_FIXTURE") {
+        fs::write(path,serde_json::to_vec_pretty(&json!({"sleepError":snapshot.sleep_error,"sleepView":snapshot.sleep_view})).unwrap()).unwrap();
+    }
+    fs::remove_dir_all(root).unwrap();
+}
