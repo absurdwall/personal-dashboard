@@ -477,6 +477,8 @@ pub struct SleepEndpointFact {
 struct Receipt {
     id: String,
     input: SleepMutationInput,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    habit_request: Option<HabitSleepMutationInput>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -613,32 +615,12 @@ impl<S: SleepStore> SleepWorkflow<S> {
         let (_, document, _) = self.load()?;
         let onset = input.habit_key == SleepHabitKey::Sleep;
         if let Some(receipt) = document.operations.iter().find(|r| r.id == input.mutation.change_id) {
-            let previous = &receipt.input;
-            let endpoint = if onset {
-                &previous.sleep_onset
-            } else {
-                &previous.get_up
-            };
-            let previous_context = if onset {
-                &previous.sleep_onset_lived_date
-            } else {
-                &previous.get_up_lived_date
-            };
-            if endpoint.as_ref() != Some(&input.endpoint)
-                || previous_context != &context
-                || previous.mutation.target_binding != input.mutation.target_binding
-                || previous.mutation.expected_revision != input.mutation.expected_revision
-                || input.record_id.as_ref().is_some_and(|id| {
-                    previous
-                        .record_id
-                        .as_ref()
-                        .unwrap_or(&record_id_for_change(&previous.mutation.change_id))
-                        != id
-                })
-            {
+            // Projection context can be absent and the night index can have been
+            // corrected. Neither proves the original selected Habit request.
+            if receipt.habit_request.as_ref() != Some(&input) {
                 return Err("changeId 已用于不同作息修改；未写入。".into());
             }
-            return self.save(previous.clone());
+            return self.save_with_habit_request(receipt.input.clone(), Some(input));
         }
         let matching: Vec<_> = document
             .records
@@ -726,7 +708,8 @@ impl<S: SleepStore> SleepWorkflow<S> {
                 return Err("目标夜晚已有不同日期的端点；请明确记录身份，未写入。".into());
             }
         }
-        self.save(SleepMutationInput {
+        let habit_request = Some(input.clone());
+        self.save_with_habit_request(SleepMutationInput {
             record_id: record.map(|r| r.id.clone()),
             night_index: record.map(|r| r.night_index.clone()).unwrap_or(night_date),
             sleep_onset: onset.then(|| input.endpoint.clone()),
@@ -734,9 +717,16 @@ impl<S: SleepStore> SleepWorkflow<S> {
             sleep_onset_lived_date: if onset { context.clone() } else { None },
             get_up_lived_date: if onset { None } else { context },
             mutation: input.mutation,
-        })
+        }, habit_request)
     }
     pub fn save(&self, input: SleepMutationInput) -> Result<SleepView, String> {
+        self.save_with_habit_request(input, None)
+    }
+    fn save_with_habit_request(
+        &self,
+        input: SleepMutationInput,
+        habit_request: Option<HabitSleepMutationInput>,
+    ) -> Result<SleepView, String> {
         let _guard = WRITE_LOCK.lock().map_err(|_| "作息写入暂不可用")?;
         // Reject stale callers before loading another Vault's document or diagnostics.
         if input.mutation.target_binding != binding(&self.path()?) {
@@ -753,7 +743,9 @@ impl<S: SleepStore> SleepWorkflow<S> {
             return Err("需要有效 changeId；未写入。".into());
         }
         if let Some(receipt) = document.operations.iter().find(|r| r.id == input.mutation.change_id) {
-            if receipt.input == input {
+            if receipt.input == input && habit_request.as_ref().is_none_or(|request| {
+                receipt.habit_request.as_ref() == Some(request)
+            }) {
                 let id = input
                     .record_id
                     .clone()
@@ -865,6 +857,7 @@ impl<S: SleepStore> SleepWorkflow<S> {
         document.operations.push(Receipt {
             id: input.mutation.change_id.clone(),
             input,
+            habit_request,
         });
         let bytes = serde_json::to_vec_pretty(&document).map_err(|e| e.to_string())?;
         match original {
