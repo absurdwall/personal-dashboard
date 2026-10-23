@@ -2559,3 +2559,49 @@ fn legacy_sleep_receipts_remain_readable_and_directly_replayable_without_guessin
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[test]
+fn cross_zone_range_with_reversed_local_coordinates_stays_visible_on_both_endpoint_lived_days() {
+    let root = vault("cross-zone-reversed-range");
+    let app = application(&root);
+    // 2026-03-01 09:30Z through 13:00Z is chronological despite reversed local clocks.
+    let endpoint = json!({"kind":"range","start":{"date":"2026-03-01","time":"23:30","utcOffsetMinutes":840,"approximate":true},"end":{"date":"2026-03-01","time":"01:00","utcOffsetMinutes":-720,"approximate":false},"reportedText":"Explicit cross-zone range"});
+    let saved = save(&app, json!({"wakeDate":"2026-03-03","changeId":"cross-zone-range","sleepOnset":endpoint}));
+    let id = saved.records[0].id.clone();
+    assert_eq!(saved.records[0].night_index, "2026-03-03");
+    assert_eq!(saved.records[0].estimated_duration_minutes, None);
+    assert_eq!(saved.facts.len(), 1);
+    assert!(saved.facts[0].lived_date.is_none(), "a crossing range has no guessed single lived day");
+    assert_eq!(serde_json::to_value(&saved.facts[0].endpoint).unwrap(), endpoint);
+    assert_eq!(application(&root).sleep_records().unwrap(), saved);
+    let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+    let bytes = fs::read(&path).unwrap();
+    let mut observed = Vec::new();
+    for date in ["2026-02-28", "2026-03-01"] {
+        let view = app.read_date(date).unwrap();
+        let facts = view.time_axis.unlocated_confirmed_facts.iter()
+            .filter(|entry| entry.sleep_fact.is_some()).collect::<Vec<_>>();
+        observed.push((date, facts.len()));
+        for entry in facts {
+            let fact = entry.sleep_fact.as_ref().unwrap();
+            assert_eq!(fact.record_id, id);
+            assert!(fact.lived_date.is_none());
+            assert_eq!(serde_json::to_value(&fact.endpoint).unwrap(), endpoint);
+            assert_eq!(entry.source_date, "2026-03-01");
+            assert_eq!(entry.text, "Explicit cross-zone range");
+            assert!(entry.start_minute.is_none() && entry.end_minute.is_none());
+        }
+        assert!(view.time_axis.confirmed_facts.iter().all(|entry| entry.sleep_fact.is_none()));
+    }
+    for date in ["2026-02-27", "2026-03-02", "2026-03-03"] {
+        let view = app.read_date(date).unwrap();
+        assert!(view.time_axis.confirmed_facts.iter().chain(&view.time_axis.unlocated_confirmed_facts)
+            .all(|entry| entry.sleep_fact.is_none()), "unrelated day or night index is not placement evidence: {date}");
+    }
+    assert_eq!(fs::read(&path).unwrap(), bytes, "Today reads never rewrite canonical provenance");
+    assert_eq!(application(&root).sleep_records().unwrap(), saved);
+    assert!(fs::read_dir(root.join("life/Journal/Daily")).unwrap().next().is_none());
+    assert!(!root.join("life/.personal-dashboard/habit-completions/v1/completions.json").exists());
+    fs::remove_dir_all(root).unwrap();
+    assert_eq!(observed, [("2026-02-28", 1), ("2026-03-01", 1)], "one canonical unlocated range must remain visible on both endpoint lived days");
+}

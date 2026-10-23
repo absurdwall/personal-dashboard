@@ -132,7 +132,7 @@ impl SleepEndpoint {
     }
 
     // Equal bounds locate an endpoint on one lived day. A crossing range stays
-    // unlocated; its broader bounds only signal clarification, never a night identity.
+    // unlocated; broader bounds are possible-overlap evidence, never a night identity.
     fn possible_lived_dates(&self) -> Option<(String, String)> {
         match self {
             Self::Point { point } => {
@@ -152,7 +152,7 @@ impl SleepEndpoint {
         }
     }
 
-    fn may_include_lived_date(&self, date: &str) -> bool {
+    pub(crate) fn may_include_lived_date(&self, date: &str) -> bool {
         self.possible_lived_dates()
             .is_some_and(|(first, last)| first.as_str() <= date && date <= last.as_str())
     }
