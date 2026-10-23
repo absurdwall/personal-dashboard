@@ -7467,10 +7467,7 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
                         start < window_start + 1440 && start + 1440 > window_start
                     })
                 }
-                SleepEndpoint::Range { start, end, .. } => {
-                    matches!((local_calendar_minutes(start), local_calendar_minutes(end)), (Some(start), Some(end))
-                        if start < window_start + 1440 && end >= window_start)
-                }
+                SleepEndpoint::Range { .. } => fact.endpoint.may_include_lived_date(date),
                 _ => false,
             },
         };
