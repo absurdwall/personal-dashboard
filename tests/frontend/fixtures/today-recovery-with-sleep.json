@@ -1,0 +1,344 @@
+{
+  "readError": {
+    "state": "error",
+    "date": "2026-10-22",
+    "isToday": true,
+    "currentTime": "09:00",
+    "canRecord": false,
+    "defaultPhase": "daytime",
+    "dailyRecordAvailability": "error",
+    "dailyRecordErrorKind": "readError",
+    "vaultName": "DailyRecordRecovery",
+    "vaultPath": "/Synthetic/DailyRecordRecovery",
+    "vaultAvailability": "available",
+    "message": "Could not read today's daily record: Is a directory (os error 21)",
+    "revision": null,
+    "targetBinding": null,
+    "baseline": {
+      "availability": "missing",
+      "message": "这份 Daily Record 未独立保存早间基准；当前安排仍可在 Daytime 查看。",
+      "timeline": [],
+      "evidence": []
+    },
+    "timeline": [],
+    "evidence": [],
+    "daytime": {
+      "updates": [],
+      "shortRecords": []
+    },
+    "evening": {
+      "account": [],
+      "comparison": [],
+      "summary": [],
+      "questions": [],
+      "additions": [],
+      "corrections": [],
+      "other": [],
+      "recordSupplements": [],
+      "hasLaterRecordRevision": false
+    },
+    "tasks": {
+      "state": "empty",
+      "errorKind": null,
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "schemaVersion": 4,
+      "revision": null,
+      "targetBinding": "task-target-d23d832cd0af0dd2",
+      "vaultName": "DailyRecordRecovery",
+      "vaultPath": "/Synthetic/DailyRecordRecovery",
+      "currentDate": "2026-10-22",
+      "lists": [
+        {
+          "id": "inbox",
+          "name": "Inbox",
+          "isSystem": true,
+          "archived": false,
+          "folderId": null
+        }
+      ],
+      "folders": [],
+      "tags": [],
+      "tasks": []
+    },
+    "dayTasks": {
+      "state": "empty",
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "targetBinding": "day-task-target-03cf2511ec447faf",
+      "tasks": []
+    },
+    "habitCorrections": {
+      "state": "missing",
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "date": "2026-10-22",
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-79d6b1e26635fbab",
+      "namesConfigurationState": "missing",
+      "habits": []
+    },
+    "habitTimeHabits": [],
+    "timeAxis": {
+      "currentArrangement": [],
+      "confirmedFacts": [
+        {
+          "sleepFact": {
+            "recordId": "sleep-57e9a269a4f2b849",
+            "habitKey": "wake",
+            "livedDate": "2026-10-22",
+            "dayRelation": "same-day",
+            "clockPlotMinutes": 450,
+            "endpoint": {
+              "kind": "point",
+              "date": "2026-10-22",
+              "time": "07:30",
+              "utcOffsetMinutes": -240,
+              "approximate": false
+            }
+          },
+          "planPrecision": null,
+          "planId": null,
+          "timeEditable": false,
+          "period": null,
+          "text": "",
+          "sourceDate": "2026-10-22",
+          "startMinute": 450,
+          "endMinute": null,
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false
+        }
+      ],
+      "unlocatedCurrentArrangement": [],
+      "unlocatedConfirmedFacts": []
+    }
+  },
+  "damagedRecord": {
+    "state": "error",
+    "date": "2026-10-22",
+    "isToday": true,
+    "currentTime": "09:00",
+    "canRecord": true,
+    "defaultPhase": "daytime",
+    "dailyRecordAvailability": "error",
+    "dailyRecordErrorKind": "damagedRecord",
+    "vaultName": "DailyRecordRecovery",
+    "vaultPath": "/Synthetic/DailyRecordRecovery",
+    "vaultAvailability": "available",
+    "message": "今天的 Daily Record 缺少有效 frontmatter。请修复 type 和 date，然后刷新 Today。",
+    "revision": null,
+    "targetBinding": "target-36a779432ea02a77",
+    "baseline": {
+      "availability": "missing",
+      "message": "这份 Daily Record 未独立保存早间基准；当前安排仍可在 Daytime 查看。",
+      "timeline": [],
+      "evidence": []
+    },
+    "timeline": [],
+    "evidence": [],
+    "daytime": {
+      "updates": [],
+      "shortRecords": []
+    },
+    "evening": {
+      "account": [],
+      "comparison": [],
+      "summary": [],
+      "questions": [],
+      "additions": [],
+      "corrections": [],
+      "other": [],
+      "recordSupplements": [],
+      "hasLaterRecordRevision": false
+    },
+    "tasks": {
+      "state": "empty",
+      "errorKind": null,
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "schemaVersion": 4,
+      "revision": null,
+      "targetBinding": "task-target-d23d832cd0af0dd2",
+      "vaultName": "DailyRecordRecovery",
+      "vaultPath": "/Synthetic/DailyRecordRecovery",
+      "currentDate": "2026-10-22",
+      "lists": [
+        {
+          "id": "inbox",
+          "name": "Inbox",
+          "isSystem": true,
+          "archived": false,
+          "folderId": null
+        }
+      ],
+      "folders": [],
+      "tags": [],
+      "tasks": []
+    },
+    "dayTasks": {
+      "state": "empty",
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "targetBinding": "day-task-target-03cf2511ec447faf",
+      "tasks": []
+    },
+    "habitCorrections": {
+      "state": "missing",
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "date": "2026-10-22",
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-79d6b1e26635fbab",
+      "namesConfigurationState": "missing",
+      "habits": []
+    },
+    "habitTimeHabits": [],
+    "timeAxis": {
+      "currentArrangement": [],
+      "confirmedFacts": [
+        {
+          "sleepFact": {
+            "recordId": "sleep-57e9a269a4f2b849",
+            "habitKey": "wake",
+            "livedDate": "2026-10-22",
+            "dayRelation": "same-day",
+            "clockPlotMinutes": 450,
+            "endpoint": {
+              "kind": "point",
+              "date": "2026-10-22",
+              "time": "07:30",
+              "utcOffsetMinutes": -240,
+              "approximate": false
+            }
+          },
+          "planPrecision": null,
+          "planId": null,
+          "timeEditable": false,
+          "period": null,
+          "text": "",
+          "sourceDate": "2026-10-22",
+          "startMinute": 450,
+          "endMinute": null,
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false
+        }
+      ],
+      "unlocatedCurrentArrangement": [],
+      "unlocatedConfirmedFacts": []
+    }
+  },
+  "invalidUtf8": {
+    "state": "error",
+    "date": "2026-10-22",
+    "isToday": true,
+    "currentTime": "09:00",
+    "canRecord": false,
+    "defaultPhase": "daytime",
+    "dailyRecordAvailability": "error",
+    "dailyRecordErrorKind": "damagedRecord",
+    "vaultName": "DailyRecordRecovery",
+    "vaultPath": "/Synthetic/DailyRecordRecovery",
+    "vaultAvailability": "available",
+    "message": "今天的 Daily Record 不是有效的 UTF-8 文本。",
+    "revision": null,
+    "targetBinding": null,
+    "baseline": {
+      "availability": "missing",
+      "message": "这份 Daily Record 未独立保存早间基准；当前安排仍可在 Daytime 查看。",
+      "timeline": [],
+      "evidence": []
+    },
+    "timeline": [],
+    "evidence": [],
+    "daytime": {
+      "updates": [],
+      "shortRecords": []
+    },
+    "evening": {
+      "account": [],
+      "comparison": [],
+      "summary": [],
+      "questions": [],
+      "additions": [],
+      "corrections": [],
+      "other": [],
+      "recordSupplements": [],
+      "hasLaterRecordRevision": false
+    },
+    "tasks": {
+      "state": "empty",
+      "errorKind": null,
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "schemaVersion": 4,
+      "revision": null,
+      "targetBinding": "task-target-d23d832cd0af0dd2",
+      "vaultName": "DailyRecordRecovery",
+      "vaultPath": "/Synthetic/DailyRecordRecovery",
+      "currentDate": "2026-10-22",
+      "lists": [
+        {
+          "id": "inbox",
+          "name": "Inbox",
+          "isSystem": true,
+          "archived": false,
+          "folderId": null
+        }
+      ],
+      "folders": [],
+      "tags": [],
+      "tasks": []
+    },
+    "dayTasks": {
+      "state": "empty",
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "targetBinding": "day-task-target-03cf2511ec447faf",
+      "tasks": []
+    },
+    "habitCorrections": {
+      "state": "missing",
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "date": "2026-10-22",
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-79d6b1e26635fbab",
+      "namesConfigurationState": "missing",
+      "habits": []
+    },
+    "habitTimeHabits": [],
+    "timeAxis": {
+      "currentArrangement": [],
+      "confirmedFacts": [
+        {
+          "sleepFact": {
+            "recordId": "sleep-57e9a269a4f2b849",
+            "habitKey": "wake",
+            "livedDate": "2026-10-22",
+            "dayRelation": "same-day",
+            "clockPlotMinutes": 450,
+            "endpoint": {
+              "kind": "point",
+              "date": "2026-10-22",
+              "time": "07:30",
+              "utcOffsetMinutes": -240,
+              "approximate": false
+            }
+          },
+          "planPrecision": null,
+          "planId": null,
+          "timeEditable": false,
+          "period": null,
+          "text": "",
+          "sourceDate": "2026-10-22",
+          "startMinute": 450,
+          "endMinute": null,
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false
+        }
+      ],
+      "unlocatedCurrentArrangement": [],
+      "unlocatedConfirmedFacts": []
+    }
+  }
+}

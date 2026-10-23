@@ -7441,7 +7441,7 @@ function renderToday(view: TodayView, keepTaskEditorsOpen = false): void {
     todayReady.hidden = !readable;
   }
   if (todayHandoff) {
-    todayHandoff.hidden = readable;
+    todayHandoff.hidden = readable && view.state !== "error";
   }
   renderTodayTimeline(view);
   if (todayBlockCount) {

@@ -1130,6 +1130,19 @@ fn today_keeps_independent_sources_visible_when_either_daily_record_or_sleep_is_
         );
         assert_eq!(broken.time_axis.confirmed_facts.len(), 1);
         assert_eq!(broken.time_axis.confirmed_facts[0].start_minute, Some(450));
+        assert_eq!(serde_json::to_value(&broken).unwrap()["state"], "error");
+        assert_eq!(broken.can_record, bytes == b"invalid daily record");
+        assert_eq!(broken.target_binding.is_some(), broken.can_record);
+        assert!(app
+            .add_dated_note(
+                serde_json::from_value(json!({
+                    "date":"2026-10-22", "targetBinding":ready.target_binding,
+                    "expectedRevision":ready.revision, "entryId":"blocked-note",
+                    "category":"ordinary", "content":"must not overwrite failed source"
+                }))
+                .unwrap()
+            )
+            .is_err());
         assert_eq!(fs::read(&daily).unwrap(), bytes);
     }
     fs::remove_file(&daily).unwrap();
@@ -1140,6 +1153,19 @@ fn today_keeps_independent_sources_visible_when_either_daily_record_or_sleep_is_
         "readError"
     );
     assert_eq!(unreadable.time_axis.confirmed_facts.len(), 1);
+    assert_eq!(serde_json::to_value(&unreadable).unwrap()["state"], "error");
+    assert!(!unreadable.can_record && unreadable.target_binding.is_none());
+    assert!(app
+        .add_dated_note(
+            serde_json::from_value(json!({
+                "date":"2026-10-22", "targetBinding":ready.target_binding,
+                "expectedRevision":ready.revision, "entryId":"blocked-read-error-note",
+                "category":"ordinary", "content":"must not overwrite unreadable source"
+            }))
+            .unwrap()
+        )
+        .is_err());
+    assert!(daily.is_dir() && fs::read_dir(&daily).unwrap().next().is_none());
     fs::remove_dir(&daily).unwrap();
     fs::write(&daily, &original).unwrap();
     fs::write(
