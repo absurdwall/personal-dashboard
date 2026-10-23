@@ -640,19 +640,22 @@ impl<S: SleepStore> SleepWorkflow<S> {
             return Err("同一 Habit 日期存在多条作息端点；请明确记录身份。".into());
         }
         // The selected sleep Habit explicitly means that lived day's night; the
-        // selected wake Habit means that morning. This is contextual entry, never
-        // an interpretation of free text or a modulo-clock pairing heuristic.
+        // selected wake Habit means that morning. Before 04:00 its resolved point
+        // is on the next calendar date, still in the selected lived day. This is
+        // contextual entry, never a free-text or modulo-clock pairing heuristic.
         let night_date = if onset {
             crate::today::CalendarDate::parse(&input.lived_date)
                 .unwrap()
                 .plus_days(1)
                 .to_string()
+        } else if let SleepEndpoint::Point { point } = &input.endpoint {
+            point.date.clone()
         } else {
             input.lived_date.clone()
         };
-        let opposite_context = crate::today::CalendarDate::parse(&input.lived_date)
+        let opposite_context = crate::today::CalendarDate::parse(&night_date)
             .unwrap()
-            .plus_days(if onset { 1 } else { -1 })
+            .plus_days(if onset { 0 } else { -1 })
             .to_string();
         if input.record_id.is_none() && matching.is_empty() {
             if let Some((incoming_earliest, incoming_latest)) = input.endpoint.bounds()? {
