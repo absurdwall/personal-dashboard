@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- THROWAWAY UI PROTOTYPE. Keeps the accepted Habits overview as the design baseline.
+     Sleep/wake trends live in Habits; Today carries only a compact summary row. -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>习惯与作息体验原型 · Personal Dashboard</title>
+  <link rel="stylesheet" href="/__app/styles.css">
+  <link rel="stylesheet" href="prototype.css">
+  <link rel="stylesheet" href="sleep-wake.css">
+</head>
+<body class="experience-prototype sleep-experience">
+  <main class="app-shell" data-workspace-destination="today">
+    <header class="product-toolbar">
+      <div class="product-toolbar-brand">
+        <div class="feature-mark">P</div>
+        <div><p class="product-toolbar-name">Personal Dashboard</p><p class="product-toolbar-area">每日生活</p></div>
+      </div>
+      <span class="product-toolbar-space"></span>
+      <button class="text-button sw-inspect" id="inspect-state">示例状态</button>
+      <span class="demo-badge">体验原型 · 示例数据 · 不保存</span>
+    </header>
+    <aside class="workspace-sidebar">
+      <div class="workspace-rail-context"><p class="section-label">WED · OCT 21</p><strong>周三，10 月 21 日</strong><small>示例日期 · 仅用于原型</small></div>
+      <nav class="workspace-navigation" aria-label="主导航">
+        <button class="destination-button" data-page="today"><span class="destination-icon">☀</span><span>今天</span></button>
+        <button class="destination-button" data-page="tasks"><span class="destination-icon">□</span><span>任务</span></button>
+        <button class="destination-button" data-page="calendar"><span class="destination-icon">▦</span><span>日历</span></button>
+        <button class="destination-button" data-page="habits"><span class="destination-icon">◉</span><span>习惯</span></button>
+        <button class="destination-button" data-page="collaboration"><span class="destination-icon">↗</span><span>协作</span></button>
+      </nav>
+      <div class="sidebar-status"><p>改动只在当前页面内存中。</p><small>刷新会还原示例。</small></div>
+    </aside>
+    <section class="prototype-workspace"><div id="page"></div></section>
+  </main>
+
+  <dialog id="edit-dialog" aria-labelledby="edit-title"></dialog>
+  <dialog id="state-dialog" aria-labelledby="state-title"></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="sleep-wake.js"></script>
+</body>
+</html>

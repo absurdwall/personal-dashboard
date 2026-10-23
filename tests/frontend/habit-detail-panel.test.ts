@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { stripTypeScriptTypes } from "node:module";
+import { registerHooks, stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
+const hook=registerHooks({resolve(specifier,context,nextResolve){return nextResolve(specifier==="./interface-language.js"?"./interface-language.ts":specifier,context);}});
+const {isSleepHabitKey}=await import("../../frontend/sleep-facts.ts");hook.deregister();
 
 const source = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 
@@ -107,6 +109,7 @@ test("selecting a Habit renders compact detail and pages rather than expanding e
     snapshotRange: "2026-07-01 — 2026-10-14",
   };
   const context = vm.createContext({
+    isSleepHabitKey,
     document: { createElement: (tag: string) => new FakeElement(tag) },
     habitDetailPanel: panel,
     habitsCurrentTodayView: currentView,

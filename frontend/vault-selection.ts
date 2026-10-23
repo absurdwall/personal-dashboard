@@ -1,3 +1,18 @@
+/** Captured full Vault identity for an asynchronous read; view/pending rules stay local. */
+export class SelectedVaultRequestSnapshot {
+  private readonly vaultPath: string | null;
+  private readonly selectionRevision: number;
+
+  constructor(vaultPath: string | null, selectionRevision: number) {
+    this.vaultPath = vaultPath;
+    this.selectionRevision = selectionRevision;
+  }
+
+  isCurrent(vaultPath: string | null, selectionRevision: number): boolean {
+    return vaultPath === this.vaultPath && selectionRevision === this.selectionRevision;
+  }
+}
+
 export type VaultSelectionDestination =
   | "today"
   | "tasks"

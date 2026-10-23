@@ -345,6 +345,7 @@ impl CollaborationMemoryService for FixtureMemoryService {
 #[derive(Clone)]
 struct DynamicRuntime {
     registered_tools: Arc<Mutex<Vec<Value>>>,
+    emitted_calls: Arc<Mutex<Vec<RuntimeDynamicToolCall>>>,
     results: Arc<Mutex<Vec<RuntimeDynamicToolResult>>>,
     requests: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
     automatic_gate: Option<Arc<AutomaticTurnGate>>,
@@ -445,6 +446,87 @@ impl AppServerTransport for DynamicRuntime {
             let result=handler(RuntimeDynamicToolCall{thread_id:request.thread_id.clone(),turn_id:format!("turn-{}",request.execution_id),call_id:"target-qualified-memory".into(),tool:"dashboard_memory_update".into(),arguments:json!({"operation":"proposeLongTermUpdate","basis":"explicitUserInstruction","executionMode":"execute","authorizationQuote":quote,"change":change,"replaces":null})});
             self.results.lock().unwrap().push(result);
             return Ok(RuntimeTurnResult{text:"Verify the existing long-term document; other domains retain their state.".into(),runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
+        }
+        if request.user_text == "read synthetic sleep" {
+            let result = handler(RuntimeDynamicToolCall {
+                thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
+                call_id: "sleep-read-race".into(), tool: "dashboard_sleep_records".into(), arguments: json!({"action":"read"}),
+            });
+            self.results.lock().unwrap().push(result);
+            return Ok(RuntimeTurnResult { text: "Read attempted".into(), runtime_turn_id: Some(format!("turn-{}",request.execution_id)), stopped:false, external_actions:vec![] });
+        }
+        if request.user_text == "record synthetic sleep" || request.user_text == "clarify synthetic sleep" {
+            let ambiguous = request.user_text == "clarify synthetic sleep";
+            let tools = self.registered_tools.lock().unwrap();
+            let tool = tools.iter().find(|t| t["name"] == "dashboard_sleep_records").unwrap();
+            assert!(tool["description"].as_str().unwrap().contains("chronology is compatibility, not identity"));
+            let schema = &tool["inputSchema"]["oneOf"];
+            assert!(schema.as_array().unwrap().iter().any(|v| v["properties"]["action"]["const"] == "saveHabitTime"));
+            drop(tools);
+            let call = |id:&str, arguments:Value| handler(RuntimeDynamicToolCall {
+                thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
+                call_id: id.into(), tool: "dashboard_sleep_records".into(), arguments,
+            });
+            let read = call("sleep-read", json!({"action":"read"}));
+            assert!(read.success,"{}",read.text);
+            let view:Value=serde_json::from_str(&read.text).unwrap();
+            let mut first_input=json!({"habitKey":"sleep","livedDate":"2026-09-26","changeId":"synthetic-sleep-first","targetBinding":view["targetBinding"],"expectedRevision":view["revision"],
+                "endpoint":{"kind":"point","date":"2026-09-26","time":"23:50","utcOffsetMinutes":-240}});
+            if ambiguous {
+                first_input["habitKey"]=json!("wake"); first_input["livedDate"]=json!("2026-09-27");
+                first_input["endpoint"]=json!({"kind":"point","date":"2026-09-27","time":"07:30","utcOffsetMinutes":-240});
+            }
+            let first=call("sleep-first",json!({"action":"saveHabitTime","input":first_input}));
+            assert!(first.success,"{}",first.text);
+            let first_view:Value=serde_json::from_str(&first.text).unwrap();
+            let mut input=json!({"habitKey":"wake","livedDate":"2026-09-27","changeId":"synthetic-sleep-supplement","targetBinding":first_view["targetBinding"],"expectedRevision":first_view["revision"],
+                "endpoint":{"kind":"point","date":"2026-09-27","time":"07:20","utcOffsetMinutes":-240}});
+            if ambiguous {
+                input["habitKey"]=json!("sleep");
+                input["endpoint"]=json!({"kind":"point","date":"2026-09-27","time":"04:10","utcOffsetMinutes":-240});
+            }
+            let save=call("sleep-save",json!({"action":"saveHabitTime","input":input}));
+            self.results.lock().unwrap().push(save.clone());
+            if ambiguous {
+                assert!(!save.success); assert!(save.text.contains("请先澄清是否属于同一晚"));
+                let unchanged=call("sleep-check",json!({"action":"read"}));
+                assert_eq!(unchanged.text,first.text);
+                input["recordId"]=first_view["records"][0]["id"].clone();
+                let resolved=call("sleep-resolved",json!({"action":"saveHabitTime","input":input}));
+                assert!(resolved.success,"{}",resolved.text);
+                self.results.lock().unwrap().push(resolved.clone());
+                return Ok(RuntimeTurnResult{text:resolved.text,runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
+            }
+            assert!(save.success,"{}",save.text);
+            let duplicate=call("sleep-save",json!({"action":"saveHabitTime","input":input}));
+            assert!(duplicate.success); assert_eq!(duplicate.text,save.text);
+            return Ok(RuntimeTurnResult{text:save.text,runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
+        }
+        if let Some(operation) = request.user_text.strip_prefix("task-contract:") {
+            let tools = self.registered_tools.lock().unwrap();
+            let description = tools.iter().find(|tool| tool["name"] == "dashboard_task_operation")
+                .unwrap()["description"].as_str().unwrap();
+            let marker = format!("Minimal valid {operation} payload: ");
+            let line = description.lines().find_map(|line| line.strip_prefix(&marker))
+                .ok_or_else(|| format!("Runtime description does not expose {operation} payload"))?;
+            let mut arguments: Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
+            drop(tools);
+            if operation != "createTask" {
+                let results = self.results.lock().unwrap();
+                let receipt: Value = serde_json::from_str(&results.last().unwrap().text).unwrap();
+                arguments["taskId"] = receipt["taskId"].clone();
+                if operation == "updateTask" { arguments["listId"] = receipt["resultSnapshot"]["listId"].clone(); }
+            }
+            let call = RuntimeDynamicToolCall { thread_id: request.thread_id.clone(),
+                turn_id: format!("turn-{}", request.execution_id), call_id: format!("first-{operation}"),
+                tool: "dashboard_task_operation".into(), arguments };
+            self.emitted_calls.lock().unwrap().push(call.clone());
+            let result = handler(call.clone());
+            // A transport redelivery must return the same receipt without a second effect.
+            assert_eq!(handler(call), result);
+            self.results.lock().unwrap().push(result.clone());
+            return Ok(RuntimeTurnResult { text: result.text, runtime_turn_id: Some(format!("turn-{}", request.execution_id)),
+                stopped: false, external_actions: vec![] });
         }
         if request.user_text == "hold-worker" {
             if let Some(gate) = &self.automatic_gate {
@@ -1100,7 +1182,7 @@ fn initial_plan_description_example(registered_tools: &[Value]) -> Result<Value,
         .ok_or("Dashboard tool description is missing")?;
     let (_, example) = description.split_once("Minimal valid InitialPlan payload:")
         .ok_or("code-mode description does not provide the InitialPlan contract")?;
-    serde_json::from_str(example.trim()).map_err(|error| error.to_string())
+    serde_json::from_str(example.trim().lines().next().ok_or("InitialPlan example is empty")?).map_err(|error| error.to_string())
 }
 
 fn daily_plan_replan_example(registered_tools: &[Value]) -> Result<Value, String> {
@@ -1244,8 +1326,8 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.5.2");
-    assert_eq!(binding["toolSetVersion"], "1.4.1");
+    assert_eq!(binding["skillVersion"], "1.7.2");
+    assert_eq!(binding["toolSetVersion"], "1.6.2");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));
@@ -1447,6 +1529,7 @@ fn new_application(
         }),
         Box::new(DynamicRuntime {
             registered_tools: Arc::clone(&registered_tools),
+            emitted_calls: Arc::new(Mutex::new(Vec::new())),
             results: Arc::clone(&results),
             requests: Arc::new(Mutex::new(Vec::new())),
             automatic_gate: None,
@@ -1541,6 +1624,7 @@ fn new_automatic_application(
         )),
         Box::new(DynamicRuntime {
             registered_tools: Arc::clone(&registered_tools),
+            emitted_calls: Arc::new(Mutex::new(Vec::new())),
             results: Arc::clone(&results),
             requests: Arc::clone(&requests),
             automatic_gate,
@@ -1772,7 +1856,7 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
     wait_for_finish(&application, &session.id, "vault-a");
 
     let registered = registered_tools.lock().unwrap();
-    assert_eq!(registered.len(), 3);
+    assert_eq!(registered.len(), 4);
     assert_eq!(registered[0]["name"], "dashboard_task_operation");
     assert!(
         registered[0]["inputSchema"]["oneOf"]
@@ -2141,7 +2225,7 @@ fn daily_plan_uses_the_shared_review_tool_and_persists_only_after_approval() {
     wait_for_finish(&application, &session.id, "vault-a");
 
     let registered = registered_tools.lock().unwrap();
-    assert_eq!(registered.len(), 3, "plan actions retain the shared operation tool beside bounded history and derived refresh");
+    assert_eq!(registered.len(), 4, "plan actions retain the shared operation tool beside bounded history and derived refresh");
     assert_eq!(registered[0]["name"], "dashboard_task_operation");
     assert!(registered[0]["inputSchema"]["oneOf"]
         .as_array()
@@ -4692,7 +4776,7 @@ fn automatic_session_human_continuation_saves_tasks_records_habits_and_memory_th
     );
     assert!(results.lock().unwrap().iter().all(|result| result.success));
     let tools = registered.lock().unwrap();
-    assert_eq!(tools.len(), 4);
+    assert_eq!(tools.len(), 5);
     let variants = tools[0]["inputSchema"]["oneOf"].as_array().unwrap();
     for name in [
         "completeTask",
@@ -5965,6 +6049,7 @@ fn new_dual_application(
     let runtime = DualRuntime {
         base: DynamicRuntime {
             registered_tools: Arc::new(Mutex::new(Vec::new())),
+            emitted_calls: Arc::new(Mutex::new(Vec::new())),
             results: Arc::clone(&results),
             requests: Arc::new(Mutex::new(Vec::new())),
             automatic_gate: None,
@@ -6654,7 +6739,7 @@ impl AppServerTransport for JourneyRuntime {
 }
 
 fn new_journey_application(directory:&IsolatedDirectory,vault:&MutableVault,clock:ManualClock,source:Arc<Mutex<DualSource>>,fail:Arc<AtomicBool>)->CollaborationApplication {
-    let base=DynamicRuntime{registered_tools:Arc::new(Mutex::new(vec![])),results:Arc::new(Mutex::new(vec![])),requests:Arc::new(Mutex::new(vec![])),automatic_gate:None,external_writes_allowed:false,starts:Arc::new(Mutex::new(vec![]))};
+    let base=DynamicRuntime{emitted_calls:Arc::new(Mutex::new(vec![])),registered_tools:Arc::new(Mutex::new(vec![])),results:Arc::new(Mutex::new(vec![])),requests:Arc::new(Mutex::new(vec![])),automatic_gate:None,external_writes_allowed:false,starts:Arc::new(Mutex::new(vec![]))};
     CollaborationApplication::with_adapters(Arc::new(FailNextSaveStore{inner:FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json")),fail_next_save:fail}),Box::new(JourneyRuntime{dual:DualRuntime{base,source}}),Arc::new(MutableContext::new("vault-a")),Arc::new(clock.clone()),directory.path().join("runtime"),"Model fixture only: no native language-interpretation acceptance claim".into())
         .with_task_service(Arc::new(TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(),clock.clone(),FileTaskStore))))
         .with_daily_data_service(Arc::new(TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(vault.clone(),NoVaultPicker,clock))))
@@ -6914,7 +6999,7 @@ fn failed_native_startup_has_one_same_config_recovery_before_current_turn_and_ne
         seed.submit_message("vault-a",&session.id,&session.target_date,"create task").unwrap();wait_for_finish(&seed,&session.id,"vault-a");
         let prior_review=seed.session("vault-a",&session.id).unwrap().task_operations[0].clone();assert_eq!(prior_review.status,"awaitingApproval");seed.shutdown().unwrap();
         let starts=Arc::new(Mutex::new(vec![]));let requests=Arc::new(Mutex::new(vec![]));let configs=Arc::new(Mutex::new(vec![]));let probes=Arc::new(Mutex::new(vec![]));let writes=Arc::new(Mutex::new(vec![]));
-        let runtime=StartupRecoveryRuntime{base:DynamicRuntime{registered_tools:Arc::new(Mutex::new(vec![])),results:Arc::new(Mutex::new(vec![])),requests:requests.clone(),automatic_gate:None,external_writes_allowed:false,starts:starts.clone()},configs:configs.clone(),probes:probes.clone(),writes:writes.clone(),recover_after,habit_writes:true,unavailable:true};
+        let runtime=StartupRecoveryRuntime{base:DynamicRuntime{emitted_calls:Arc::new(Mutex::new(vec![])),registered_tools:Arc::new(Mutex::new(vec![])),results:Arc::new(Mutex::new(vec![])),requests:requests.clone(),automatic_gate:None,external_writes_allowed:false,starts:starts.clone()},configs:configs.clone(),probes:probes.clone(),writes:writes.clone(),recover_after,habit_writes:true,unavailable:true};
         let app=CollaborationApplication::with_adapters(Arc::new(FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"))),Box::new(runtime),Arc::new(MutableContext::new("vault-a")),Arc::new(FixedClock),directory.path().join("runtime"),"Current instructions; fixture proves host orchestration, not native model interpretation".into()).with_task_service(Arc::new(TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(),FixedClock,FileTaskStore))));
         assert_eq!(app.session("vault-a",&session.id).unwrap().id,session.id);
         app.submit_message("vault-a",&session.id,&session.target_date,"请创建本地任务买菜").unwrap();wait_for_finish(&app,&session.id,"vault-a");
@@ -7974,7 +8059,7 @@ fn personal_retro_reads_three_real_histories_for_complete_lived_days_without_bus
     assert_eq!(explicit.usage_bindings.len(),2);
     for binding in &explicit.usage_bindings {
         assert_eq!(binding.skill_name,"personal-dashboard-collaboration");
-        assert_eq!(binding.skill_version,"1.5.2");
+        assert_eq!(binding.skill_version,"1.7.2");
         assert_eq!(binding.registered_tools.iter().filter(|tool|*tool=="dashboard_read_history").count(),1);
     }
     if let Ok(destination)=std::env::var("PDCR_RETRO_EVIDENCE_DIR") {
@@ -8110,4 +8195,337 @@ fn evening_entry_save_failure_has_no_saved_session_and_retry_creates_one() {
     let again = app.prepare_evening_review("2026-09-20", "retry").unwrap();
     assert_eq!(again.session.id, saved.session.id);
     assert_eq!(app.list_sessions("2026-09-20").unwrap().len(), 1);
+}
+
+#[test]
+fn collaboration_sleep_tool_and_today_editor_share_the_same_selected_vault_record() {
+    let directory=IsolatedDirectory::new(); let path=directory.vault("sleep-vault");
+    let vault=MutableVault::new(&path);
+    let mut hasher=DefaultHasher::new(); path.canonicalize().unwrap().hash(&mut hasher);
+    let key=format!("vault-{:016x}",hasher.finish());
+    let (application,tools,results)=new_application(&directory,&vault,MutableContext::new(&key),Arc::new(AtomicBool::new(false)));
+    let session=application.create_session("2026-09-27").unwrap();
+    application.submit_message(&key,&session.id,"2026-09-27","record synthetic sleep").unwrap();
+    wait_for_finish(&application,&session.id,&key);
+    assert!(tools.lock().unwrap().iter().any(|t|t["name"]=="dashboard_sleep_records"));
+    let result=results.lock().unwrap()[0].clone(); assert!(result.success);
+    let today=TodayApplication::new(vault.clone(),NoVaultPicker,FixedClock);
+    let canonical=today.sleep_records().unwrap();
+    assert_eq!(canonical.records.len(),1); assert_eq!(canonical.records[0].estimated_duration_minutes,Some(450));
+    let readback:Value=serde_json::from_str(&result.text).unwrap();
+    assert_eq!(readback,serde_json::to_value(&canonical).unwrap());
+    let changed=today.save_sleep_record(serde_json::from_value(json!({
+        "recordId":canonical.records[0].id,"wakeDate":"2026-09-27","changeId":"manual-supplement",
+        "targetBinding":canonical.target_binding,"expectedRevision":canonical.revision,
+        "getUp":{"kind":"point","date":"2026-09-27","time":"08:20","utcOffsetMinutes":-240,"approximate":true}
+    })).unwrap()).unwrap();
+    assert_eq!(changed.records[0].id,canonical.records[0].id);
+    assert_eq!(changed.records[0].estimated_duration_minutes,Some(510));
+    let reopened=TodayApplication::new(vault,NoVaultPicker,FixedClock);
+    assert_eq!(reopened.sleep_records().unwrap(),changed);
+    assert!(fs::read_dir(path.join("life/Journal/Daily")).unwrap().next().is_none());
+        }
+
+#[test]
+fn collaboration_sleep_clarification_preserves_canonical_state_until_explicit_identity_is_supplied() {
+    let directory=IsolatedDirectory::new(); let path=directory.vault("sleep-clarification");
+    let vault=MutableVault::new(&path);
+    let mut hasher=DefaultHasher::new(); path.canonicalize().unwrap().hash(&mut hasher);
+    let key=format!("vault-{:016x}",hasher.finish());
+    let (application,_,results)=new_application(&directory,&vault,MutableContext::new(&key),Arc::new(AtomicBool::new(false)));
+    let session=application.create_session("2026-09-27").unwrap();
+    application.submit_message(&key,&session.id,"2026-09-27","clarify synthetic sleep").unwrap();
+    wait_for_finish(&application,&session.id,&key);
+    let results=results.lock().unwrap();
+    assert_eq!(results.len(),2);
+    assert!(!results[0].success); assert!(results[1].success);
+    let today=TodayApplication::new(vault,NoVaultPicker,FixedClock);
+    let canonical=today.sleep_records().unwrap();
+    assert_eq!(canonical.records.len(),1);
+    assert_eq!(canonical.records[0].estimated_duration_minutes,Some(200));
+    assert_eq!(serde_json::from_str::<Value>(&results[1].text).unwrap(),serde_json::to_value(canonical).unwrap());
+    assert!(fs::read_dir(path.join("life/Journal/Daily")).unwrap().next().is_none());
+    assert!(!path.join("life/.personal-dashboard/habit-completions/v1/completions.json").exists());
+}
+
+#[test]
+fn first_task_requests_from_the_registered_contract_save_and_read_back_without_repair() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("first-task-contract"));
+    let registered_tools = Arc::new(Mutex::new(Vec::new()));
+    let emitted_calls = Arc::new(Mutex::new(Vec::new()));
+    let results = Arc::new(Mutex::new(Vec::new()));
+    let application = CollaborationApplication::with_adapters(
+        Arc::new(FileCollaborationStore::new(directory.path().join("collaboration.json"))),
+        Box::new(DynamicRuntime { registered_tools: registered_tools.clone(), emitted_calls: emitted_calls.clone(),
+            results: results.clone(), requests: Arc::new(Mutex::new(Vec::new())), automatic_gate: None,
+            external_writes_allowed: false, starts: Arc::new(Mutex::new(Vec::new())) }),
+        Arc::new(MutableContext::new("vault-a")), Arc::new(FixedClock), directory.path().join("runtime"),
+        "Use only synthetic Dashboard sources".into())
+        .with_task_service(Arc::new(TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(), FixedClock, FileTaskStore))));
+    let session = application.create_session("2026-09-27").unwrap();
+    let tasks = TaskApplication::new(vault.clone(), FixedClock, FileTaskStore);
+    for operation in ["createTask", "updateTask", "deleteTask"] {
+        application.submit_message("vault-a", &session.id, "2026-09-27", &format!("task-contract:{operation}")).unwrap();
+        wait_for_finish(&application, &session.id, "vault-a");
+        let saved = application.session("vault-a", &session.id).unwrap();
+        assert_eq!(saved.run_state, "completed", "{}", saved.messages.last().unwrap().text);
+        let deliveries = results.lock().unwrap();
+        let result = deliveries.last().expect("one first request is emitted");
+        assert!(result.success, "{}", result.text);
+        let receipt: Value = serde_json::from_str(&result.text).unwrap();
+        assert_eq!(receipt["status"], "applied");
+        let canonical = tasks.read().unwrap();
+        assert_eq!(canonical.tasks.len(), 1, "redelivery must not create a duplicate Task");
+        let task = &canonical.tasks[0];
+        assert_eq!(receipt["taskId"], task.id);
+        assert_eq!(receipt["resultSnapshot"]["name"], task.name);
+        assert_eq!(receipt["resultSnapshot"]["content"], json!(task.content));
+        assert_eq!(receipt["resultSnapshot"]["date"], json!(task.date));
+        assert_eq!(receipt["resultSnapshot"]["time"], json!(task.time));
+        if operation == "createTask" {
+            assert_eq!(task.name, "Synthetic task"); assert_eq!(task.list_id, "inbox");
+            assert_eq!(task.date.as_deref(), Some("2026-09-28")); assert_eq!(task.time.as_deref(), Some("09:00"));
+        } else if operation == "updateTask" {
+            assert_eq!(task.name, "Synthetic task updated"); assert!(task.content.is_none());
+            assert_eq!(task.time.as_deref(), Some("10:30"));
+        } else { assert!(task.deleted_at.is_some()); }
+    }
+    let calls = emitted_calls.lock().unwrap();
+    assert_eq!(calls.len(), 3, "each operation emits one request, without repaired retry");
+    let tools = registered_tools.lock().unwrap();
+    let variants = tools[0]["inputSchema"]["oneOf"].as_array().unwrap();
+    for call in calls.iter() {
+        let operation = call.arguments["operation"].as_str().unwrap();
+        let schema = variants.iter().find(|v| v["properties"]["operation"]["const"] == operation).unwrap();
+        for field in schema["required"].as_array().unwrap() { assert!(call.arguments.get(field.as_str().unwrap()).is_some()); }
+        assert!(schema["properties"]["taskId"]["description"].is_string() || operation == "createTask");
+        if operation != "deleteTask" {
+            assert!(schema["properties"]["listId"]["description"].is_string());
+            assert!(schema["properties"]["date"]["description"].as_str().unwrap().contains("YYYY-MM-DD"));
+            assert!(schema["properties"]["time"]["description"].as_str().unwrap().contains("HH:MM"));
+            let end = &schema["properties"]["executionEnd"]["properties"];
+            assert!(end["date"]["description"].as_str().is_some_and(|text| text.contains("YYYY-MM-DD")));
+            assert!(end["time"]["description"].as_str().is_some_and(|text| text.contains("HH:MM")));
+            assert_eq!(end["date"]["pattern"], r"^\d{4}-\d{2}-\d{2}$");
+            assert_eq!(end["time"]["pattern"], r"^([01]\d|2[0-3]):[0-5]\d$");
+            if operation == "updateTask" {
+                assert!(schema["properties"]["operation"]["description"].as_str().unwrap().contains("executionEnd={date:YYYY-MM-DD,time:HH:MM}"));
+            }
+        } else { assert!(call.arguments.get("listId").is_none()); }
+    }
+    let restored = TaskApplication::new(vault, FixedClock, FileTaskStore).read().unwrap();
+    assert_eq!(restored.tasks.len(), 1); assert!(restored.tasks[0].deleted_at.is_some());
+    if let Ok(output) = std::env::var("PD_TASK_CONTRACT_EVIDENCE_DIR") {
+        fs::create_dir_all(&output).unwrap();
+        fs::write(Path::new(&output).join("registered-tools.json"), serde_json::to_vec_pretty(&*tools).unwrap()).unwrap();
+        fs::write(Path::new(&output).join("first-requests.json"), serde_json::to_vec_pretty(&calls.iter().map(|call| json!({"tool":call.tool,"callId":call.call_id,"arguments":call.arguments})).collect::<Vec<_>>()).unwrap()).unwrap();
+        fs::write(Path::new(&output).join("results.json"), serde_json::to_vec_pretty(&*results.lock().unwrap()).unwrap()).unwrap();
+    }
+}
+
+#[test]
+#[ignore = "requires explicit PERSONAL_DASHBOARD_LIVE_CODEX_AUTH and makes real Luna Medium calls"]
+fn live_first_task_contract_creates_updates_deletes_in_one_synthetic_vault() {
+    let auth = std::env::var_os("PERSONAL_DASHBOARD_LIVE_CODEX_AUTH")
+        .expect("provide an explicit existing Codex auth.json path for the opt-in probe");
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("live-task-contract");
+    let data = directory.path().join("synthetic-profile");
+    fs::create_dir_all(data.join("codex-profile")).unwrap();
+    fs::copy(auth, data.join("codex-profile/auth.json")).unwrap();
+    let workspace = data.join("today-workspace.json");
+    fs::write(&workspace, serde_json::to_vec(&json!({"schemaVersion":1,"selectedVault":path})).unwrap()).unwrap();
+    let mut hasher = DefaultHasher::new(); path.canonicalize().unwrap().hash(&mut hasher);
+    let key = format!("vault-{:016x}", hasher.finish());
+    let app = CollaborationApplication::new_local(data, workspace);
+    app.select_model(Some("gpt-6-luna")).unwrap();
+    app.select_reasoning_effort(Some("medium")).unwrap();
+    let chat = app.create_default_session().unwrap();
+    let date = chat.target_date.clone();
+    let reader = TaskApplication::new(MutableVault::new(&path), FixedClock, FileTaskStore);
+    let prompts = [
+        "Create one local Inbox Task named Synthetic first-call task, content Synthetic note, date 2026-10-22 and time 09:00. Save it now through the Dashboard Task operation. Keep all unrelated sources unchanged.",
+        "Update that same Synthetic first-call task: rename it Synthetic first-call updated, clear its content, move its date to 2026-10-23 and time to 10:30. Keep its existing Inbox list and state. Save now.",
+        "Delete that same Synthetic first-call updated Task now through the Dashboard Task operation. Keep its saved identity in deletion history. Keep all unrelated sources unchanged.",
+    ];
+    let mut snapshots = Vec::new();
+    let mut stable_id = None;
+    for (index, prompt) in prompts.iter().enumerate() {
+        app.submit_message(&key, &chat.id, &date, prompt).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(180);
+        let session = loop {
+            let session = app.session(&key, &chat.id).unwrap();
+            if matches!(session.run_state.as_str(), "completed" | "error" | "interrupted") { break session; }
+            if std::time::Instant::now() > deadline { app.shutdown().unwrap(); panic!("live Task operation {index} timed out"); }
+            thread::sleep(Duration::from_millis(250));
+        };
+        assert_eq!(session.run_state, "completed", "{}", session.progress);
+        assert_eq!(session.task_operations.len(), index + 1, "one saved operation per request");
+        assert!(session.task_operations.iter().all(|operation| operation.status == "applied"));
+        let canonical = reader.read().unwrap();
+        assert_eq!(canonical.tasks.len(), 1);
+        let task = &canonical.tasks[0];
+        if let Some(id) = &stable_id { assert_eq!(&task.id, id); } else { stable_id = Some(task.id.clone()); }
+        assert_eq!(task.list_id, "inbox");
+        if index == 0 {
+            assert_eq!(task.name, "Synthetic first-call task"); assert_eq!(task.content.as_deref(), Some("Synthetic note"));
+            assert_eq!(task.date.as_deref(), Some("2026-10-22")); assert_eq!(task.time.as_deref(), Some("09:00"));
+        } else {
+            assert_eq!(task.name, "Synthetic first-call updated"); assert!(task.content.is_none());
+            assert_eq!(task.date.as_deref(), Some("2026-10-23")); assert_eq!(task.time.as_deref(), Some("10:30"));
+        }
+        assert_eq!(task.deleted_at.is_some(), index == 2);
+        // Inspect every actual runtime dynamic Task attempt, including rejected calls
+        // that never became a saved operation. No hidden corrected retry qualifies.
+        let history = serde_json::to_value(&session.work_history).unwrap();
+        let task_calls: Vec<&Value> = history.as_array().unwrap().iter()
+            .flat_map(|turn| turn["items"].as_array().unwrap().iter())
+            .filter(|item| item["tool"] == "dashboard_task_operation").collect();
+        assert_eq!(task_calls.len(), index + 1, "first request must be valid without corrected retry: {history}");
+        snapshots.push(json!({"session":session,"canonical":canonical}));
+    }
+    app.shutdown().unwrap();
+    let reopened = TaskApplication::new(MutableVault::new(&path), FixedClock, FileTaskStore).read().unwrap();
+    assert_eq!(reopened.tasks.len(), 1); assert!(reopened.tasks[0].deleted_at.is_some());
+    if let Ok(output) = std::env::var("PD_TASK_CONTRACT_EVIDENCE_DIR") {
+        fs::create_dir_all(&output).unwrap();
+        fs::write(Path::new(&output).join("live-task-contract.json"), serde_json::to_vec_pretty(&snapshots).unwrap()).unwrap();
+    }
+    eprintln!("live Task create/update/delete: one first call each, one stable canonical Task; synthetic Vault only; model gpt-6-luna medium");
+}
+
+#[test]
+fn invalid_first_task_requests_leave_the_canonical_tasks_unchanged() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("invalid-first-task");
+    let vault = MutableVault::new(&path);
+    let (app, _, results) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let session = app.create_session("2026-09-27").unwrap();
+    let reader = TaskApplication::new(vault, FixedClock, FileTaskStore);
+    let submit = |arguments: Value| {
+        app.submit_message("vault-a", &session.id, "2026-09-27", &format!("single-date-fixture:{arguments}")).unwrap();
+        wait_for_finish(&app, &session.id, "vault-a");
+        results.lock().unwrap().last().unwrap().clone()
+    };
+    assert!(submit(json!({"operation":"createTask","executionMode":"execute","name":"Existing task","content":"Keep this",
+        "date":"2026-09-28","time":"09:00","listId":"inbox"})).success);
+    let original = reader.read().unwrap();
+    let id = original.tasks[0].id.clone();
+    let canonical_path = path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH);
+    let original_bytes = fs::read(&canonical_path).unwrap();
+    for arguments in [
+        json!({"operation":"createTask","executionMode":"execute","name":"Missing list identity key","content":null,"date":null,"time":null}),
+        json!({"operation":"createTask","executionMode":"execute","name":"Wrong list","content":null,"date":null,"time":null,"listId":"not-an-existing-list"}),
+        json!({"operation":"createTask","executionMode":"execute","name":"Timestamp date","content":null,"date":"2026-09-28T09:00:00-04:00","time":null,"listId":null}),
+        json!({"operation":"updateTask","executionMode":"execute","taskId":id,"name":"Malformed time","content":null,"date":"2026-09-28","time":"09:00:00","listId":"inbox"}),
+        json!({"operation":"updateTask","executionMode":"execute","taskId":id,"name":"Time without date","content":null,"date":null,"time":"09:00","listId":"inbox"}),
+        json!({"operation":"updateTask","executionMode":"execute","taskId":"missing-task","name":"No target","content":null,"date":null,"time":null,"listId":null}),
+        json!({"operation":"deleteTask","executionMode":"execute","taskId":id,"listId":"inbox"}),
+        json!({"operation":"deleteTask","executionMode":"execute","taskId":"missing-task"}),
+    ] {
+        let failed = submit(arguments.clone());
+        assert!(!failed.success, "invalid first request succeeded: {arguments}");
+        assert!(!failed.text.is_empty());
+        let readback = reader.read().unwrap();
+        assert_eq!(readback.tasks, original.tasks, "failed request changed canonical readback: {arguments}");
+        assert_eq!(fs::read(&canonical_path).unwrap(), original_bytes, "failed request partially wrote source: {arguments}");
+    }
+    let saved = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(saved.messages.iter().filter(|message| message.role == "user").count(), 9, "failed attempts remain in the saved conversation");
+    assert!(saved.task_operations.iter().any(|operation| operation.status == "failed"));
+    assert!(saved.task_operations.iter().any(|operation| operation.status == "applied"));
+}
+
+struct RejectTaskWrites;
+impl personal_dashboard_lib::tasks::TaskStore for RejectTaskWrites {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        personal_dashboard_lib::tasks::TaskStore::load(&FileTaskStore, path)
+    }
+    fn save_if_unchanged(&self, _path: &Path, _expected: &[u8], _updated: &[u8]) -> Result<(), String> {
+        Err("synthetic Task store rejected save".into())
+    }
+    fn create_new(&self, _path: &Path, _document: &[u8]) -> Result<(), String> {
+        Err("synthetic Task store rejected create".into())
+    }
+}
+
+#[test]
+fn failed_first_task_save_returns_failure_without_a_canonical_task() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("failed-first-task-save"));
+    let (app, _, results) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let app = app.with_task_service(Arc::new(TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(), FixedClock, RejectTaskWrites))));
+    let session = app.create_session("2026-09-27").unwrap();
+    let operation = json!({"operation":"createTask","executionMode":"execute","name":"Cannot save","content":null,"date":null,"time":null,"listId":null});
+    app.submit_message("vault-a", &session.id, "2026-09-27", &format!("single-date-fixture:{operation}")).unwrap();
+    wait_for_finish(&app, &session.id, "vault-a");
+    assert!(!results.lock().unwrap()[0].success);
+    assert!(results.lock().unwrap()[0].text.contains("synthetic Task store rejected create"));
+    assert!(TaskApplication::new(vault, FixedClock, FileTaskStore).read().unwrap().tasks.is_empty());
+    let saved = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(saved.task_operations.len(), 1);
+    assert_eq!(saved.task_operations[0].status, "failed");
+    assert!(saved.task_operations[0].result_snapshot.is_none());
+}
+
+// Simulate a user selection completing after the turn's context check, at the
+// actual daily-data adapter boundary. The production adapter and file read run.
+struct SwitchVaultBeforeSleepRead {
+    inner: TodayApplicationCollaborationDailyDataAdapter<MutableVault, NoVaultPicker, FixedClock>,
+    selection: MutableVault,
+    replacement: PathBuf,
+}
+impl personal_dashboard_lib::collaboration::CollaborationDailyDataService for SwitchVaultBeforeSleepRead {
+    fn sleep_records_available(&self) -> bool { true }
+    fn read_sleep_records(&self, expected_vault_key: &str) -> Result<personal_dashboard_lib::sleep::SleepView, String> {
+        self.selection.select(&self.replacement);
+        self.inner.read_sleep_records(expected_vault_key)
+    }
+    fn read_date(&self, date: &str) -> Result<personal_dashboard_lib::today::TodayView, String> { self.inner.read_date(date) }
+    fn save(&self, input: DailyPlanWriteInput) -> Result<personal_dashboard_lib::today::TodayView, String> { self.inner.save(input) }
+    fn operation_applied(&self, date: &str, binding: &str, id: &str, fingerprint: &str) -> Result<bool, String> { self.inner.operation_applied(date,binding,id,fingerprint) }
+}
+
+#[test]
+fn collaboration_sleep_read_rejects_selection_changed_at_the_adapter_boundary() {
+    let directory = IsolatedDirectory::new();
+    let original = directory.vault("sleep-original");
+    let replacement = directory.vault("sleep-replacement");
+    let other = personal_dashboard_lib::sleep::SleepWorkflow::new(&replacement);
+    let empty = other.read().unwrap();
+    other.save(serde_json::from_value(json!({"wakeDate":"2026-09-27","changeId":"other-private-history","targetBinding":empty.target_binding,"expectedRevision":empty.revision,"getUp":{"kind":"text","date":"2026-09-27","text":"OTHER VAULT PRIVATE SLEEP"}})).unwrap()).unwrap();
+    let mut hasher = DefaultHasher::new(); original.canonicalize().unwrap().hash(&mut hasher);
+    let key = format!("vault-{:016x}",hasher.finish());
+    let selection = MutableVault::new(&original);
+    let (application, _, results) = new_application(&directory,&selection,MutableContext::new(&key),Arc::new(AtomicBool::new(false)));
+    let application = application.with_daily_data_service(Arc::new(SwitchVaultBeforeSleepRead {
+        inner: TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(selection.clone(),NoVaultPicker,FixedClock)),
+        selection, replacement,
+    }));
+    let session=application.create_session("2026-09-27").unwrap();
+    application.submit_message(&key,&session.id,"2026-09-27","read synthetic sleep").unwrap();
+    wait_for_finish(&application,&session.id,&key);
+    let result=results.lock().unwrap()[0].clone();
+    assert!(!result.success,"a turn must not read the newly selected Vault: {}",result.text);
+    assert!(!result.text.contains("OTHER VAULT PRIVATE SLEEP"));
+}
+
+#[test]
+fn stale_sleep_save_at_today_command_entry_does_not_expose_selected_vault_parse_diagnostics() {
+    let directory=IsolatedDirectory::new();
+    let original=directory.vault("sleep-stale-command-original");
+    let replacement=directory.vault("sleep-stale-command-selected");
+    let selection=MutableVault::new(&original);
+    let today=TodayApplication::new(selection.clone(),NoVaultPicker,FixedClock);
+    let before=today.sleep_records().unwrap();
+    let relative="life/.personal-dashboard/sleep/v1/sessions.json";
+    let private=serde_json::to_vec(&json!({"schemaVersion":1,"records":[{"id":"selected-private-night","wakeDate":"2026-09-27","sleepOnset":{"kind":"SELECTED_B_PRIVATE_PARSE_MARKER"},"getUp":{"kind":"unrecorded"},"estimatedDurationMinutes":null}],"operations":[]})).unwrap();
+    fs::create_dir_all(replacement.join(relative).parent().unwrap()).unwrap();fs::write(replacement.join(relative),&private).unwrap();
+    selection.select(&replacement);
+    let error=today.save_sleep_record(serde_json::from_value(json!({"wakeDate":"2026-09-27","changeId":"stale-command-save","targetBinding":before.target_binding,"expectedRevision":before.revision,"getUp":{"kind":"unknown"}})).unwrap()).unwrap_err();
+    assert_eq!(fs::read(replacement.join(relative)).unwrap(),private);
+    assert!(!original.join(relative).exists());
+    assert!(!error.contains("SELECTED_B_PRIVATE_PARSE_MARKER"),"another Vault's corrupt content escaped through the command result: {error}");
+    assert_eq!(error,"所选 Vault 已改变；未写入。");
 }

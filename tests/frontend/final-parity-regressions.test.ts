@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import {probe} from "./helpers/complete-page.ts";
 
 const html = readFileSync(new URL("../../frontend/index.html", import.meta.url), "utf8");
 const main = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
@@ -82,12 +83,39 @@ test("Vault reselection invalidates and refreshes the active Calendar or Habits 
   const vaultBody = functionBody(main, "selectTodayVault");
   assert.match(vaultBody, /selectVaultAndRefresh\(/);
   assert.match(vaultBody, /prepareForVaultSwitch:[\s\S]*resetVaultScopedWorkspaceState\(\)/);
-  assert.match(vaultBody, /openCalendar,/);
-  assert.match(vaultBody, /refreshHabits,/);
+  // Callback wiring is exercised by the actual shipped-page picker below;
+  // shorthand source tokens cannot distinguish a refresh from an inert wrapper.
   assert.match(resetBody, /setCopy\(calendarSummaryHeading, "calendar\.loadingSelectedDate"\)/);
   assert.match(interfaceLanguage, /"calendar\.loadingSelectedDate": \{ zh: "正在读取选中日期…", en: "Loading the selected date…" \}/);
   assert.match(resetBody, /renderWorkspaceRailContext\(currentWorkspaceDestination\)/);
 });
+
+for (const destination of ["calendar", "habits"]) {
+  test(`Vault selection refreshes the active ${destination} after accepting the new source`, {skip: process.platform !== "darwin"}, () => {
+    const result = probe(969, `
+      document.querySelector('#workspace-settings').click();document.querySelector('[data-settings-section="data"]').click();document.querySelector('#settings-select-vault').click();
+      await until(()=>window.releaseSelection);
+      document.querySelector('[data-workspace-destination="${destination}"]').click();
+      const command=${JSON.stringify(destination === "habits" ? "habit_snapshot" : "calendar_month")};
+      const before=calls.filter(c=>c.command===command).length;
+      view.vaultPath='/Synthetic/B/Shared';view.vaultName='Vault B';
+      window.releaseSelection({changed:true,view:structuredClone(view)});
+      await until(()=>calls.filter(c=>c.command===command).length>before&&!document.querySelector('#settings-select-vault').disabled);
+      return JSON.stringify({destination:document.querySelector('.app-shell').dataset.workspaceDestination,before,reads:calls.filter(c=>c.command===command),errors:window.probeErrors});
+    `, true, 723, {}, `
+      view.vaultPath='/Synthetic/A/Shared';view.vaultName='Vault A';
+      const originalInvoke=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>{
+        if(command==='select_today_vault'){calls.push({command,args});return new Promise(resolve=>window.releaseSelection=resolve);}
+        if(command==='habit_snapshot'){calls.push({command,args});return {state:'empty',message:'Synthetic empty Habits',habits:[],namesConfigurationState:'ready',summary:{knownCompletions:0,targetCompletions:0,coverageNote:'Synthetic coverage'}};}
+        return originalInvoke(command,args);
+      };
+    `);
+    assert.equal(result.destination,destination);
+    assert.ok(result.reads.length>result.before, "active projection must read again after the selection result");
+    if(destination === "habits") assert.equal(result.reads.at(-1).args.vaultPath,"/Synthetic/B/Shared");
+    assert.deepEqual(result.errors,[]);
+  });
+}
 
 test("Habits uses the shared page header without a duplicate snapshot eyebrow", () => {
   assert.match(html, /id="workspace-context-status"/);

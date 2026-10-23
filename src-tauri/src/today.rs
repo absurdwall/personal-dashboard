@@ -200,36 +200,209 @@ pub(crate) enum StorageDocumentKind {
     HabitCompletions,
     HabitCatalog,
     Tasks,
+    SleepRecords,
+}
+
+struct StorageFileMetadata {
+    recovery_stem: &'static str,
+    extension: &'static str,
+}
+
+struct StorageDocumentLabels {
+    document: &'static str,
+    created_document: &'static str,
+    refresh_action: &'static str,
+    candidate: &'static str,
+    displaced_document: &'static str,
+    active_document: &'static str,
+    external_document: &'static str,
+}
+
+/// Per-operation legacy copy alternatives; the document descriptor chooses one.
+struct StorageDiagnosticContext<'a> {
+    daily_record: &'a str,
+    day_tasks: &'a str,
+    habit_completions: &'a str,
+}
+
+enum StorageOperationMessage {
+    DailyRecordArgument,
+    DayTasksArgument,
+    HabitCompletionsArgument,
+    Fixed(&'static str),
+}
+
+struct StorageConflictMessages {
+    recovery_prefix: &'static str,
+    recovery_suffix: &'static str,
+    external_change: &'static str,
+}
+
+struct StorageDocumentDescriptor {
+    operation_message: StorageOperationMessage,
+    conflict_messages: StorageConflictMessages,
+    file: StorageFileMetadata,
+    labels: StorageDocumentLabels,
 }
 
 impl StorageDocumentKind {
-    fn text(self, daily_record: &str, day_tasks: &str, habit_completions: &str) -> String {
+    fn descriptor(self) -> StorageDocumentDescriptor {
         match self {
-            Self::DailyRecord => daily_record,
-            Self::DayTasks => day_tasks,
-            Self::HabitCompletions => habit_completions,
-            Self::HabitCatalog => "本地 Habit 定义正本操作失败。",
-            Self::Tasks => "任务正本操作失败。",
+            Self::DailyRecord => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::DailyRecordArgument,
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请在 Obsidian 中检查后刷新 Today。",
+                    external_change: "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。",
+                },
+                file: StorageFileMetadata {
+                    recovery_stem: "daily-record",
+                    extension: "md",
+                },
+                labels: StorageDocumentLabels {
+                    document: "Daily Record",
+                    created_document: "new Daily Record",
+                    refresh_action: "refreshing",
+                    candidate: "Dashboard candidate",
+                    displaced_document: "daily record",
+                    active_document: "today's daily record",
+                    external_document: "record",
+                },
+            },
+            Self::DayTasks => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::DayTasksArgument,
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请检查后刷新当天任务。",
+                    external_change: "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。",
+                },
+                file: StorageFileMetadata {
+                    recovery_stem: "day-tasks",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "day-task document",
+                    created_document: "new day-task document",
+                    refresh_action: "refreshing",
+                    candidate: "day-task candidate",
+                    displaced_document: "day-task document",
+                    active_document: "the day-task document",
+                    external_document: "day-task document",
+                },
+            },
+            Self::HabitCompletions => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::HabitCompletionsArgument,
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请检查后刷新 Habits。",
+                    external_change: "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。",
+                },
+                file: StorageFileMetadata {
+                    recovery_stem: "habit-completions",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "local habit-completion document",
+                    created_document: "new local habit-completion document",
+                    refresh_action: "refreshing",
+                    candidate: "local habit-completion candidate",
+                    displaced_document: "local habit-completion document",
+                    active_document: "the local habit-completion document",
+                    external_document: "local habit-completion document",
+                },
+            },
+            Self::HabitCatalog => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::Fixed("本地 Habit 定义正本操作失败"),
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 ",
+                    recovery_suffix: "；请刷新 Habits 后重试。",
+                    external_change: "本地 Habit 定义已在其他位置发生变化。请刷新 Habits 后再保存；外部内容未被覆盖。",
+                },
+                file: StorageFileMetadata {
+                    recovery_stem: "habit-definitions",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "local Habit definition document",
+                    created_document: "local Habit definition document",
+                    refresh_action: "refreshing Habits",
+                    candidate: "local Habit definition candidate",
+                    displaced_document: "local Habit definition document",
+                    active_document: "the local Habit definition document",
+                    external_document: "local Habit definition document",
+                },
+            },
+            Self::Tasks => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::Fixed("任务正本操作失败"),
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请刷新 Tasks 后重试。",
+                    external_change: "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。",
+                },
+                file: StorageFileMetadata {
+                    recovery_stem: "tasks",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "task document",
+                    created_document: "task document",
+                    refresh_action: "refreshing",
+                    candidate: "task candidate",
+                    displaced_document: "task document",
+                    active_document: "the task document",
+                    external_document: "task document",
+                },
+            },
+            Self::SleepRecords => StorageDocumentDescriptor {
+                operation_message: StorageOperationMessage::Fixed("作息正本操作失败"),
+                conflict_messages: StorageConflictMessages {
+                    recovery_prefix: "作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                    recovery_suffix: "。请检查后刷新 Today 或 Habits。",
+                    external_change: "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。",
+                },
+                file: StorageFileMetadata {
+                    recovery_stem: "sleep-records",
+                    extension: "json",
+                },
+                labels: StorageDocumentLabels {
+                    document: "sleep-record document",
+                    created_document: "sleep-record document",
+                    refresh_action: "refreshing",
+                    candidate: "sleep-record candidate",
+                    displaced_document: "sleep-record document",
+                    active_document: "the sleep-record document",
+                    external_document: "sleep-record document",
+                },
+            },
         }
-        .into()
+    }
+
+    fn operation_message(
+        self,
+        context: StorageDiagnosticContext<'_>,
+        fallback_punctuation: &str,
+    ) -> String {
+        let failure_label = match self.descriptor().operation_message {
+            StorageOperationMessage::DailyRecordArgument => return context.daily_record.into(),
+            StorageOperationMessage::DayTasksArgument => return context.day_tasks.into(),
+            StorageOperationMessage::HabitCompletionsArgument => return context.habit_completions.into(),
+            StorageOperationMessage::Fixed(label) => label,
+        };
+        format!("{failure_label}{fallback_punctuation}")
+    }
+
+    fn text(self, context: StorageDiagnosticContext<'_>) -> String {
+        self.operation_message(context, "。")
     }
 
     fn error(
         self,
-        daily_record: &str,
-        day_tasks: &str,
-        habit_completions: &str,
+        context: StorageDiagnosticContext<'_>,
         error: impl std::fmt::Display,
     ) -> String {
         format!(
             "{}{}",
-            match self {
-                Self::DailyRecord => daily_record,
-                Self::DayTasks => day_tasks,
-                Self::HabitCompletions => habit_completions,
-                Self::HabitCatalog => "本地 Habit 定义正本操作失败：",
-                Self::Tasks => "任务正本操作失败：",
-            },
+            self.operation_message(context, "："),
             error
         )
     }
@@ -336,18 +509,23 @@ pub(crate) fn create_new_file(
     document: &[u8],
     kind: StorageDocumentKind,
 ) -> Result<(), String> {
+    let labels = kind.descriptor().labels;
     let parent = path.parent().ok_or_else(|| {
         kind.text(
-            "The Daily Record has no parent directory.",
-            "The day-task document has no parent directory.",
-            "The local habit-completion document has no parent directory.",
+            StorageDiagnosticContext {
+                daily_record: "The Daily Record has no parent directory.",
+                day_tasks: "The day-task document has no parent directory.",
+                habit_completions: "The local habit-completion document has no parent directory.",
+            },
         )
     })?;
     fs::create_dir_all(parent).map_err(|error| {
         kind.error(
-            "Could not create the Daily Record directory: ",
-            "Could not create the day-task document directory: ",
-            "Could not create the local habit-completion document directory: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not create the Daily Record directory: ",
+                day_tasks: "Could not create the day-task document directory: ",
+                habit_completions: "Could not create the local habit-completion document directory: ",
+            },
             error,
         )
     })?;
@@ -357,9 +535,11 @@ pub(crate) fn create_new_file(
         .and_then(|_| output.sync_all())
         .map_err(|error| {
             kind.error(
-                "Could not prepare the new Daily Record: ",
-                "Could not prepare the new day-task document: ",
-                "Could not prepare the new local habit-completion document: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not prepare the new Daily Record: ",
+                    day_tasks: "Could not prepare the new day-task document: ",
+                    habit_completions: "Could not prepare the new local habit-completion document: ",
+                },
                 error,
             )
         });
@@ -372,37 +552,29 @@ pub(crate) fn create_new_file(
         let _ = fs::remove_file(&temporary);
         return Err(if error.kind() == std::io::ErrorKind::AlreadyExists {
             kind.text(
-                "该日期的 Daily Record 已被另一个写入创建。请刷新后重试；现有内容未被覆盖。",
-                "这一天的任务正本已被另一个写入创建。请刷新后重试；现有任务未被覆盖。",
-                "本地习惯完成正本已被另一个写入创建。请刷新 Habits 后重试；现有内容未被覆盖。",
+                StorageDiagnosticContext {
+                    daily_record: "该日期的 Daily Record 已被另一个写入创建。请刷新后重试；现有内容未被覆盖。",
+                    day_tasks: "这一天的任务正本已被另一个写入创建。请刷新后重试；现有任务未被覆盖。",
+                    habit_completions: "本地习惯完成正本已被另一个写入创建。请刷新 Habits 后重试；现有内容未被覆盖。",
+                },
             )
         } else {
             kind.error(
-                "Could not exclusively activate the new Daily Record: ",
-                "Could not exclusively activate the new day-task document: ",
-                "Could not exclusively activate the new local habit-completion document: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not exclusively activate the new Daily Record: ",
+                    day_tasks: "Could not exclusively activate the new day-task document: ",
+                    habit_completions: "Could not exclusively activate the new local habit-completion document: ",
+                },
                 error,
             )
         });
     }
     sync_parent(path, kind).map_err(|error| {
-            match kind {
-                StorageDocumentKind::DailyRecord => format!("{error}; the complete new Daily Record is present at {} and can be verified by refreshing", path.display()),
-                StorageDocumentKind::DayTasks => format!("{error}; the complete new day-task document is present at {} and can be verified by refreshing", path.display()),
-                StorageDocumentKind::HabitCompletions => format!("{error}; the complete new local habit-completion document is present at {} and can be verified by refreshing", path.display()),
-                StorageDocumentKind::HabitCatalog => format!("{error}; the complete local Habit definition document is present at {} and can be verified by refreshing Habits", path.display()),
-                StorageDocumentKind::Tasks => format!("{error}; the complete task document is present at {} and can be verified by refreshing", path.display()),
-            }
-        })?;
+        format!("{error}; the complete {} is present at {} and can be verified by {}", labels.created_document, path.display(), labels.refresh_action)
+    })?;
     fs::remove_file(&temporary).map_err(|error| {
-            match kind {
-                StorageDocumentKind::DailyRecord => format!("The new Daily Record is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-                StorageDocumentKind::DayTasks => format!("The new day-task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-                StorageDocumentKind::HabitCompletions => format!("The new local habit-completion document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-                StorageDocumentKind::HabitCatalog => format!("The new local Habit definition document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-                StorageDocumentKind::Tasks => format!("The new task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
-            }
-        })?;
+        format!("The new {} is active, but its temporary hard link remains at {}: {error}", labels.document, temporary.display())
+    })?;
     sync_parent(path, kind)
 }
 
@@ -416,11 +588,14 @@ pub(crate) fn save_file_if_unchanged<F>(
 where
     F: FnOnce(&Path) -> Result<(), String>,
 {
+    let labels = kind.descriptor().labels;
     let current = fs::read(path).map_err(|error| {
         kind.error(
-            "Could not re-read today's daily record: ",
-            "Could not re-read the day-task document: ",
-            "Could not re-read the local habit-completion document: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not re-read today's daily record: ",
+                day_tasks: "Could not re-read the day-task document: ",
+                habit_completions: "Could not re-read the local habit-completion document: ",
+            },
             error,
         )
     })?;
@@ -435,9 +610,11 @@ where
             fs::metadata(path)
                 .map_err(|error| {
                     kind.error(
-                        "Could not inspect today's daily record permissions: ",
-                        "Could not inspect the day-task document permissions: ",
-                        "Could not inspect the local habit-completion document permissions: ",
+                        StorageDiagnosticContext {
+                            daily_record: "Could not inspect today's daily record permissions: ",
+                            day_tasks: "Could not inspect the day-task document permissions: ",
+                            habit_completions: "Could not inspect the local habit-completion document permissions: ",
+                        },
                         error,
                     )
                 })?
@@ -445,9 +622,11 @@ where
         )
         .map_err(|error| {
             kind.error(
-                "Could not preserve today's daily record permissions: ",
-                "Could not preserve the day-task document permissions: ",
-                "Could not preserve the local habit-completion document permissions: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not preserve today's daily record permissions: ",
+                    day_tasks: "Could not preserve the day-task document permissions: ",
+                    habit_completions: "Could not preserve the local habit-completion document permissions: ",
+                },
                 error,
             )
         })?;
@@ -456,9 +635,11 @@ where
             .and_then(|_| output.sync_all())
             .map_err(|error| {
                 kind.error(
-                    "Could not write today's daily record update: ",
-                    "Could not write the day-task document update: ",
-                    "Could not write the local habit-completion document update: ",
+                    StorageDiagnosticContext {
+                        daily_record: "Could not write today's daily record update: ",
+                        day_tasks: "Could not write the day-task document update: ",
+                        habit_completions: "Could not write the local habit-completion document update: ",
+                    },
                     error,
                 )
             })?;
@@ -478,47 +659,31 @@ where
         match atomic_exchange(&temporary, path, kind) {
             Ok(()) => {
                 let _ = sync_parent(path, kind);
-                Err(match kind {
-                    StorageDocumentKind::DailyRecord => format!("{preservation_error}; activation was rolled back and the rejected Dashboard candidate remains at {}", temporary.display()),
-                    StorageDocumentKind::DayTasks => format!("{preservation_error}; activation was rolled back and the rejected day-task candidate remains at {}", temporary.display()),
-                    StorageDocumentKind::HabitCompletions => format!("{preservation_error}; activation was rolled back and the rejected local habit-completion candidate remains at {}", temporary.display()),
-                    StorageDocumentKind::HabitCatalog => format!("{preservation_error}; activation was rolled back and the rejected local Habit definition candidate remains at {}", temporary.display()),
-                    StorageDocumentKind::Tasks => format!("{preservation_error}; activation was rolled back and the rejected task candidate remains at {}", temporary.display()),
-                })
+                Err(format!("{preservation_error}; activation was rolled back and the rejected {} remains at {}", labels.candidate, temporary.display()))
             }
             Err(rollback_error) => Err(format!(
                 "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced {} inode remains linked at {}",
-                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document", StorageDocumentKind::HabitCatalog => "local Habit definition document", StorageDocumentKind::Tasks => "task document" }, temporary.display()
+                labels.document, temporary.display()
             )),
         }
     })?;
     let displaced = fs::read(&temporary).map_err(|error| {
-        match kind {
-            StorageDocumentKind::DailyRecord => format!("Could not verify the displaced daily record after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-            StorageDocumentKind::DayTasks => format!("Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-            StorageDocumentKind::HabitCompletions => format!("Could not verify the displaced local habit-completion document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-            StorageDocumentKind::HabitCatalog => format!("Could not verify the displaced local Habit definition document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-            StorageDocumentKind::Tasks => format!("Could not verify the displaced task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
-        }
+        format!("Could not verify the displaced {} after atomic exchange; its durable recovery link remains at {}: {error}", labels.displaced_document, recovery.display())
     })?;
     if displaced == expected {
         let active = fs::read(path).map_err(|error| {
-                match kind {
-                    StorageDocumentKind::DailyRecord => format!("Could not verify today's daily record after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                    StorageDocumentKind::DayTasks => format!("Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                    StorageDocumentKind::HabitCompletions => format!("Could not verify the local habit-completion document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                    StorageDocumentKind::HabitCatalog => format!("Could not verify the local Habit definition document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                    StorageDocumentKind::Tasks => format!("Could not verify the task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
-                }
-            })?;
+            format!("Could not verify {} after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", labels.active_document, recovery.display())
+        })?;
         if active == updated {
             sync_parent(path, kind)?;
             sync_parent(&recovery, kind)?;
             fs::remove_file(&temporary).map_err(|error| {
                 kind.error(
-                    "Could not remove the completed daily record snapshot: ",
-                    "Could not remove the completed day-task snapshot: ",
-                    "Could not remove the completed local habit-completion snapshot: ",
+                    StorageDiagnosticContext {
+                        daily_record: "Could not remove the completed daily record snapshot: ",
+                        day_tasks: "Could not remove the completed day-task snapshot: ",
+                        habit_completions: "Could not remove the completed local habit-completion snapshot: ",
+                    },
                     error,
                 )
             })?;
@@ -536,38 +701,38 @@ where
     atomic_exchange(&temporary, path, kind).map_err(|error| {
         format!(
             "{error}; the displaced external {} remains at {} for recovery",
-            match kind {
-                StorageDocumentKind::DailyRecord => "record",
-                StorageDocumentKind::DayTasks => "day-task document",
-                StorageDocumentKind::HabitCompletions => "local habit-completion document",
-                StorageDocumentKind::HabitCatalog => "local Habit definition document",
-                StorageDocumentKind::Tasks => "task document",
-            },
+            labels.external_document,
             temporary.display()
         )
     })?;
     let active_after_rollback = fs::read(path).map_err(|error| {
         kind.error(
-            "Could not verify today's daily record after conflict rollback: ",
-            "Could not verify the day-task document after conflict rollback: ",
-            "Could not verify the local habit-completion document after conflict rollback: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not verify today's daily record after conflict rollback: ",
+                day_tasks: "Could not verify the day-task document after conflict rollback: ",
+                habit_completions: "Could not verify the local habit-completion document after conflict rollback: ",
+            },
             error,
         )
     })?;
     let exchanged_candidate = fs::read(&temporary).map_err(|error| {
         kind.error(
-            "Could not verify the rejected daily record candidate: ",
-            "Could not verify the rejected day-task candidate: ",
-            "Could not verify the rejected local habit-completion candidate: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not verify the rejected daily record candidate: ",
+                day_tasks: "Could not verify the rejected day-task candidate: ",
+                habit_completions: "Could not verify the rejected local habit-completion candidate: ",
+            },
             error,
         )
     })?;
     if active_after_rollback == displaced && exchanged_candidate == updated {
         fs::remove_file(&temporary).map_err(|error| {
             kind.error(
-                "Could not remove the rejected daily record candidate: ",
-                "Could not remove the rejected day-task candidate: ",
-                "Could not remove the rejected local habit-completion candidate: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not remove the rejected daily record candidate: ",
+                    day_tasks: "Could not remove the rejected day-task candidate: ",
+                    habit_completions: "Could not remove the rejected local habit-completion candidate: ",
+                },
                 error,
             )
         })?;
@@ -586,9 +751,11 @@ fn prepare_recovery_directory(path: &Path, kind: StorageDocumentKind) -> Result<
     let recovery_directory = recovery_directory_for(path, kind)?;
     fs::create_dir_all(&recovery_directory).map_err(|error| {
         kind.error(
-            "Could not create the Daily Record recovery directory; no write was attempted: ",
-            "Could not create the day-task recovery directory; no write was attempted: ",
-            "Could not create the local habit-completion recovery directory; no write was attempted: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not create the Daily Record recovery directory; no write was attempted: ",
+                day_tasks: "Could not create the day-task recovery directory; no write was attempted: ",
+                habit_completions: "Could not create the local habit-completion recovery directory; no write was attempted: ",
+            },
             error,
         )
     })
@@ -604,9 +771,11 @@ fn preserve_displaced_inode(
         .duration_since(UNIX_EPOCH)
         .map_err(|error| {
             kind.error(
-                "Could not create a recovery snapshot nonce: ",
-                "Could not create a day-task recovery snapshot nonce: ",
-                "Could not create a local habit-completion recovery snapshot nonce: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not create a recovery snapshot nonce: ",
+                    day_tasks: "Could not create a day-task recovery snapshot nonce: ",
+                    habit_completions: "Could not create a local habit-completion recovery snapshot nonce: ",
+                },
                 error,
             )
         })?
@@ -614,13 +783,7 @@ fn preserve_displaced_inode(
     let record_name = path
         .file_stem()
         .and_then(|name| name.to_str())
-        .unwrap_or(match kind {
-            StorageDocumentKind::DailyRecord => "daily-record",
-            StorageDocumentKind::DayTasks => "day-tasks",
-            StorageDocumentKind::HabitCompletions => "habit-completions",
-            StorageDocumentKind::HabitCatalog => "habit-definitions",
-            StorageDocumentKind::Tasks => "tasks",
-        });
+        .unwrap_or(kind.descriptor().file.recovery_stem);
     for attempt in 0..32u8 {
         let recovery = recovery_directory.join(format!(
             "{record_name}-{nonce}-{}-{attempt}.snapshot",
@@ -633,14 +796,23 @@ fn preserve_displaced_inode(
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
-                return Err(kind.error("Could not preserve the Daily Record inode actually displaced during activation: ", "Could not preserve the day-task document inode actually displaced during activation: ", "Could not preserve the local habit-completion document inode actually displaced during activation: ", error))
+                return Err(kind.error(
+                    StorageDiagnosticContext {
+                        daily_record: "Could not preserve the Daily Record inode actually displaced during activation: ",
+                        day_tasks: "Could not preserve the day-task document inode actually displaced during activation: ",
+                        habit_completions: "Could not preserve the local habit-completion document inode actually displaced during activation: ",
+                    },
+                    error,
+                ))
             }
         }
     }
     Err(kind.text(
-        "Could not reserve a unique recovery path for the Daily Record inode actually displaced during activation.",
-        "Could not reserve a unique recovery path for the day-task document inode actually displaced during activation.",
-        "Could not reserve a unique recovery path for the local habit-completion document inode actually displaced during activation.",
+        StorageDiagnosticContext {
+            daily_record: "Could not reserve a unique recovery path for the Daily Record inode actually displaced during activation.",
+            day_tasks: "Could not reserve a unique recovery path for the day-task document inode actually displaced during activation.",
+            habit_completions: "Could not reserve a unique recovery path for the local habit-completion document inode actually displaced during activation.",
+        },
     ))
 }
 
@@ -650,9 +822,11 @@ fn recovery_directory_for(path: &Path, kind: StorageDocumentKind) -> Result<Path
         .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "life"))
         .ok_or_else(|| {
         kind.text(
-            "Today's Daily Record has no location for a same-volume recovery snapshot.",
-            "The day-task document has no location for a same-volume recovery snapshot.",
-            "The local habit-completion document has no location for a same-volume recovery snapshot.",
+            StorageDiagnosticContext {
+                daily_record: "Today's Daily Record has no location for a same-volume recovery snapshot.",
+                day_tasks: "The day-task document has no location for a same-volume recovery snapshot.",
+                habit_completions: "The local habit-completion document has no location for a same-volume recovery snapshot.",
+            },
         )
     })?;
     Ok(life.join(".personal-dashboard/recovery/today"))
@@ -666,9 +840,11 @@ fn create_temporary_file(
         .duration_since(UNIX_EPOCH)
         .map_err(|error| {
             kind.error(
-                "Could not create a daily record update nonce: ",
-                "Could not create a day-task update nonce: ",
-                "Could not create a local habit-completion update nonce: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not create a daily record update nonce: ",
+                    day_tasks: "Could not create a day-task update nonce: ",
+                    habit_completions: "Could not create a local habit-completion update nonce: ",
+                },
                 error,
             )
         })?
@@ -676,13 +852,7 @@ fn create_temporary_file(
     for attempt in 0..32u8 {
         let temporary = path.with_extension(format!(
             "{}.personal-dashboard-tmp-{}-{nonce}-{attempt}",
-            match kind {
-                StorageDocumentKind::DailyRecord => "md",
-                StorageDocumentKind::DayTasks => "json",
-                StorageDocumentKind::HabitCompletions => "json",
-                StorageDocumentKind::HabitCatalog => "json",
-                StorageDocumentKind::Tasks => "json",
-            },
+            kind.descriptor().file.extension,
             std::process::id()
         ));
         match OpenOptions::new()
@@ -694,33 +864,33 @@ fn create_temporary_file(
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
                 return Err(kind.error(
-                    "Could not prepare today's daily record update: ",
-                    "Could not prepare the day-task document update: ",
-                    "Could not prepare the local habit-completion document update: ",
+                    StorageDiagnosticContext {
+                        daily_record: "Could not prepare today's daily record update: ",
+                        day_tasks: "Could not prepare the day-task document update: ",
+                        habit_completions: "Could not prepare the local habit-completion document update: ",
+                    },
                     error,
                 ))
             }
         }
     }
     Err(kind.text(
-        "Could not reserve a unique temporary daily record path.",
-        "Could not reserve a unique temporary day-task document path.",
-        "Could not reserve a unique temporary local habit-completion document path.",
+        StorageDiagnosticContext {
+            daily_record: "Could not reserve a unique temporary daily record path.",
+            day_tasks: "Could not reserve a unique temporary day-task document path.",
+            habit_completions: "Could not reserve a unique temporary local habit-completion document path.",
+        },
     ))
 }
 
 fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -> String {
-    match (recovery, kind) {
-        (Some(path), StorageDocumentKind::DailyRecord) => format!("今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。", path.display()),
-        (Some(path), StorageDocumentKind::DayTasks) => format!("当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新当天任务。", path.display()),
-        (Some(path), StorageDocumentKind::HabitCompletions) => format!("本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
-        (Some(path), StorageDocumentKind::HabitCatalog) => format!("本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 {}；请刷新 Habits 后重试。", path.display()),
-        (Some(path), StorageDocumentKind::Tasks) => format!("任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请刷新 Tasks 后重试。", path.display()),
-        (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::HabitCompletions) => "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::HabitCatalog) => "本地 Habit 定义已在其他位置发生变化。请刷新 Habits 后再保存；外部内容未被覆盖。".into(),
-        (None, StorageDocumentKind::Tasks) => "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。".into(),
+    let messages = kind.descriptor().conflict_messages;
+    match recovery {
+        Some(path) => format!(
+            "{}{}{}",
+            messages.recovery_prefix, path.display(), messages.recovery_suffix
+        ),
+        None => messages.external_change.into(),
     }
 }
 
@@ -732,9 +902,11 @@ fn preserve_conflict_snapshot(
     let recovery_directory = recovery_directory_for(path, kind)?;
     fs::create_dir_all(&recovery_directory).map_err(|error| {
         kind.error(
-            "Could not create the Daily Record recovery directory: ",
-            "Could not create the day-task recovery directory: ",
-            "Could not create the local habit-completion recovery directory: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not create the Daily Record recovery directory: ",
+                day_tasks: "Could not create the day-task recovery directory: ",
+                habit_completions: "Could not create the local habit-completion recovery directory: ",
+            },
             error,
         )
     })?;
@@ -742,9 +914,11 @@ fn preserve_conflict_snapshot(
         .duration_since(UNIX_EPOCH)
         .map_err(|error| {
             kind.error(
-                "Could not create a conflict snapshot nonce: ",
-                "Could not create a day-task conflict snapshot nonce: ",
-                "Could not create a local habit-completion conflict snapshot nonce: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not create a conflict snapshot nonce: ",
+                    day_tasks: "Could not create a day-task conflict snapshot nonce: ",
+                    habit_completions: "Could not create a local habit-completion conflict snapshot nonce: ",
+                },
                 error,
             )
         })?
@@ -753,13 +927,7 @@ fn preserve_conflict_snapshot(
         let record_name = path
             .file_stem()
             .and_then(|name| name.to_str())
-            .unwrap_or(match kind {
-                StorageDocumentKind::DailyRecord => "daily-record",
-                StorageDocumentKind::DayTasks => "day-tasks",
-                StorageDocumentKind::HabitCompletions => "habit-completions",
-            StorageDocumentKind::HabitCatalog => "habit-definitions",
-                StorageDocumentKind::Tasks => "tasks",
-            });
+            .unwrap_or(kind.descriptor().file.recovery_stem);
         let recovery = recovery_directory.join(format!(
             "{record_name}-conflict-{nonce}-{}-{attempt}.snapshot",
             std::process::id()
@@ -768,9 +936,11 @@ fn preserve_conflict_snapshot(
             Ok(()) => {
                 fs::remove_file(temporary).map_err(|error| {
                     kind.error(
-                        "Could not finalize the conflict recovery snapshot: ",
-                        "Could not finalize the day-task conflict recovery snapshot: ",
-                        "Could not finalize the local habit-completion conflict recovery snapshot: ",
+                        StorageDiagnosticContext {
+                            daily_record: "Could not finalize the conflict recovery snapshot: ",
+                            day_tasks: "Could not finalize the day-task conflict recovery snapshot: ",
+                            habit_completions: "Could not finalize the local habit-completion conflict recovery snapshot: ",
+                        },
                         error,
                     )
                 })?;
@@ -779,36 +949,44 @@ fn preserve_conflict_snapshot(
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
                 return Err(kind.error(
-                    "Could not preserve the concurrent daily record snapshot: ",
-                    "Could not preserve the concurrent day-task snapshot: ",
-                    "Could not preserve the concurrent local habit-completion snapshot: ",
+                    StorageDiagnosticContext {
+                        daily_record: "Could not preserve the concurrent daily record snapshot: ",
+                        day_tasks: "Could not preserve the concurrent day-task snapshot: ",
+                        habit_completions: "Could not preserve the concurrent local habit-completion snapshot: ",
+                    },
                     error,
                 ))
             }
         }
     }
     Err(kind.text(
-        "Could not reserve a unique daily record conflict snapshot path.",
-        "Could not reserve a unique day-task conflict snapshot path.",
-        "Could not reserve a unique local habit-completion conflict snapshot path.",
+        StorageDiagnosticContext {
+            daily_record: "Could not reserve a unique daily record conflict snapshot path.",
+            day_tasks: "Could not reserve a unique day-task conflict snapshot path.",
+            habit_completions: "Could not reserve a unique local habit-completion conflict snapshot path.",
+        },
     ))
 }
 
 fn sync_parent(path: &Path, kind: StorageDocumentKind) -> Result<(), String> {
     let parent = path.parent().ok_or_else(|| {
         kind.text(
-            "Today's daily record has no parent directory.",
-            "The day-task document has no parent directory.",
-            "The local habit-completion document has no parent directory.",
+            StorageDiagnosticContext {
+                daily_record: "Today's daily record has no parent directory.",
+                day_tasks: "The day-task document has no parent directory.",
+                habit_completions: "The local habit-completion document has no parent directory.",
+            },
         )
     })?;
     fs::File::open(parent)
         .and_then(|directory| directory.sync_all())
         .map_err(|error| {
             kind.error(
-                "Could not sync today's daily record directory: ",
-                "Could not sync the day-task document directory: ",
-                "Could not sync the local habit-completion document directory: ",
+                StorageDiagnosticContext {
+                    daily_record: "Could not sync today's daily record directory: ",
+                    day_tasks: "Could not sync the day-task document directory: ",
+                    habit_completions: "Could not sync the local habit-completion document directory: ",
+                },
                 error,
             )
         })
@@ -830,16 +1008,20 @@ pub(crate) fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKi
 
     let left = CString::new(left.as_os_str().as_bytes()).map_err(|_| {
         kind.text(
-            "The temporary daily record path contains a NUL byte.",
-            "The temporary day-task document path contains a NUL byte.",
-            "The temporary local habit-completion document path contains a NUL byte.",
+            StorageDiagnosticContext {
+                daily_record: "The temporary daily record path contains a NUL byte.",
+                day_tasks: "The temporary day-task document path contains a NUL byte.",
+                habit_completions: "The temporary local habit-completion document path contains a NUL byte.",
+            },
         )
     })?;
     let right = CString::new(right.as_os_str().as_bytes()).map_err(|_| {
         kind.text(
-            "The daily record path contains a NUL byte.",
-            "The day-task document path contains a NUL byte.",
-            "The local habit-completion document path contains a NUL byte.",
+            StorageDiagnosticContext {
+                daily_record: "The daily record path contains a NUL byte.",
+                day_tasks: "The day-task document path contains a NUL byte.",
+                habit_completions: "The local habit-completion document path contains a NUL byte.",
+            },
         )
     })?;
     // SAFETY: both C strings are NUL-terminated and remain alive for the duration of the call.
@@ -848,9 +1030,11 @@ pub(crate) fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKi
         Ok(())
     } else {
         Err(kind.error(
-            "Could not atomically exchange today's daily record: ",
-            "Could not atomically exchange the day-task document: ",
-            "Could not atomically exchange the local habit-completion document: ",
+            StorageDiagnosticContext {
+                daily_record: "Could not atomically exchange today's daily record: ",
+                day_tasks: "Could not atomically exchange the day-task document: ",
+                habit_completions: "Could not atomically exchange the local habit-completion document: ",
+            },
             std::io::Error::last_os_error(),
         ))
     }
@@ -859,9 +1043,11 @@ pub(crate) fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKi
 #[cfg(not(target_os = "macos"))]
 pub(crate) fn atomic_exchange(_left: &Path, _right: &Path, kind: StorageDocumentKind) -> Result<(), String> {
     Err(kind.text(
-        "Atomic conditional Daily Record replacement is currently supported only on macOS.",
-        "Atomic conditional day-task replacement is currently supported only on macOS.",
-        "Atomic conditional local habit-completion replacement is currently supported only on macOS.",
+        StorageDiagnosticContext {
+            daily_record: "Atomic conditional Daily Record replacement is currently supported only on macOS.",
+            day_tasks: "Atomic conditional day-task replacement is currently supported only on macOS.",
+            habit_completions: "Atomic conditional local habit-completion replacement is currently supported only on macOS.",
+        },
     ))
 }
 
@@ -1284,6 +1470,27 @@ pub enum DailyRecordAvailability {
     Unreviewed,
     Reviewed,
     Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DailyRecordErrorKind {
+    ReadError,
+    DamagedRecord,
+}
+
+struct DailyRecordReadFailure {
+    kind: DailyRecordErrorKind,
+    message: String,
+}
+
+impl From<String> for DailyRecordReadFailure {
+    fn from(message: String) -> Self {
+        Self {
+            kind: DailyRecordErrorKind::DamagedRecord,
+            message,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1829,6 +2036,8 @@ pub struct TodayView {
     pub can_record: bool,
     pub default_phase: DailyPhase,
     pub daily_record_availability: DailyRecordAvailability,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daily_record_error_kind: Option<DailyRecordErrorKind>,
     pub vault_name: Option<String>,
     pub vault_path: Option<String>,
     pub vault_availability: VaultAvailability,
@@ -1843,12 +2052,24 @@ pub struct TodayView {
     pub tasks: TasksView,
     pub day_tasks: DayTaskListView,
     pub habit_corrections: HabitCorrectionView,
+    pub habit_time_habits: Vec<HabitTimeHabitView>,
     pub time_axis: TimeAxisView,
+}
+
+/// Canonical display/lifecycle context for the two existing time Habits.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitTimeHabitView {
+    pub key: String,
+    pub name: String,
+    pub localized_names: crate::habits::HabitLocalizedNames,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeAxisView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sleep_error: Option<String>,
     pub current_arrangement: Vec<TimeAxisEntryView>,
     pub confirmed_facts: Vec<TimeAxisEntryView>,
     pub unlocated_current_arrangement: Vec<TimeAxisEntryView>,
@@ -1890,6 +2111,8 @@ pub struct PlanTimeEditResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeAxisEntryView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sleep_fact: Option<crate::sleep::SleepEndpointFact>,
     pub plan_precision: Option<PlanTimePrecision>,
     /// Revision-bound source identity, absent for unsafe legacy sources and facts.
     pub plan_id: Option<String>,
@@ -1910,6 +2133,20 @@ pub struct TimeAxisEntryView {
 pub struct VaultSelectionResult {
     pub view: TodayView,
     pub changed: bool,
+}
+
+/// One source identity and read outcome shared by all sleep projections in a view.
+struct VaultSleepRead {
+    vault: PathBuf,
+    result: Result<crate::sleep::SleepView, String>,
+}
+impl VaultSleepRead {
+    fn read(vault: &Path) -> Self {
+        Self {
+            vault: vault.to_owned(),
+            result: crate::sleep::SleepWorkflow::new(vault).read(),
+        }
+    }
 }
 
 pub struct TodayApplication<
@@ -2089,6 +2326,178 @@ where
             Ok(view) => view,
             Err(error) => TasksView::error(error, None, None, Some(vault.to_path_buf())),
         }
+    }
+
+    pub fn sleep_records(&self) -> Result<crate::sleep::SleepView, String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or("请先选择 Vault，再读取作息。")?;
+        self.read_sleep_for_captured_vault(&vault)
+    }
+
+    pub fn sleep_records_for_path(
+        &self,
+        expected_path: &str,
+    ) -> Result<crate::sleep::SleepView, String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or("请先选择 Vault，再读取作息。")?;
+        if vault != Path::new(expected_path) {
+            return Err("所选 Vault 已改变；未读取作息。".into());
+        }
+        self.read_sleep_for_captured_vault(&vault)
+    }
+
+    /// Capture and validate the selection before I/O so a concurrent selection
+    /// cannot supply another Vault's records to an originating model turn.
+    pub fn sleep_records_for_vault(
+        &self,
+        expected_vault_key: &str,
+    ) -> Result<crate::sleep::SleepView, String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or("请先选择 Vault，再读取作息。")?;
+        if crate::collaboration::vault_key(&vault) != expected_vault_key {
+            return Err("Selected Vault changed; no sleep records read.".into());
+        }
+        self.read_sleep_for_captured_vault(&vault)
+    }
+
+    fn read_sleep_for_captured_vault(
+        &self,
+        vault: &Path,
+    ) -> Result<crate::sleep::SleepView, String> {
+        let result = crate::sleep::SleepWorkflow::new(vault).read();
+        self.finalize_sleep_view(vault, result)
+    }
+
+    fn finalize_sleep_view(
+        &self,
+        vault: &Path,
+        result: Result<crate::sleep::SleepView, String>,
+    ) -> Result<crate::sleep::SleepView, String> {
+        self.confirm_selected_vault(vault)?;
+        result.map(|view| view.project_overview(&self.clock.current_lived_date()))
+    }
+
+    /// Resolve a fixed Habit lived-day draft through the platform clock adapter.
+    /// This is read-only; the canonical save still validates endpoint/context.
+    pub fn resolve_habit_sleep_point(
+        &self,
+        request: &crate::sleep::HabitSleepPointRequest,
+    ) -> Result<crate::sleep::SleepPoint, String> {
+        let crate::sleep::HabitSleepPointRequest {
+            lived_date,
+            time,
+            approximate,
+            existing_point,
+        } = request;
+        let day = CalendarDate::parse(lived_date)
+            .ok_or("需要明确、有效的 YYYY-MM-DD 日期；日期含糊时请先澄清。")?;
+        let minutes = crate::sleep::clock_minutes(time)?;
+        let date = if minutes < 240 { day.plus_days(1) } else { day }.to_string();
+        if let Some(existing) = existing_point {
+            let corrected = existing.corrected(&date, time, *approximate)?;
+            if existing.lived_date() != *lived_date {
+                return Err("端点与所选 lived day 不一致或跨越边界；未写入。".into());
+            }
+            return Ok(corrected);
+        }
+        self.resolve_sleep_calendar_point(&date, time, *approximate)
+    }
+
+    /// A range advances chronologically from its first actual endpoint. Crossing
+    /// the display boundary affects location, never the reported chronology.
+    pub fn resolve_habit_sleep_range(
+        &self,
+        request: &crate::sleep::HabitSleepRangeRequest,
+    ) -> Result<crate::sleep::SleepEndpoint, String> {
+        let crate::sleep::HabitSleepRangeRequest {
+            lived_date,
+            start_time,
+            end_time,
+            reported_text,
+            existing_range,
+        } = request;
+        crate::sleep::clock_minutes(end_time)?;
+        let start = self.resolve_habit_sleep_point(&crate::sleep::HabitSleepPointRequest {
+            lived_date: lived_date.clone(),
+            time: start_time.clone(),
+            approximate: false,
+            existing_point: existing_range.as_ref().map(|source| source.start.clone()),
+        })?;
+        if let Some(existing) = existing_range {
+            // The fixed lived day still places the start. Known end dates are
+            // provenance; clock order alone cannot add a day to a correction.
+            return existing.corrected(
+                &start.date, start_time, &existing.end.date, end_time, reported_text,
+            ).map_err(|error| format!("请在 Collaboration 中澄清范围的实际日期；未写入：{error}"));
+        }
+        let first = CalendarDate::parse(&start.date).expect("validated actual date");
+        let end_date = if end_time < start_time {
+            first.plus_days(1)
+        } else {
+            first
+        }
+        .to_string();
+        let end = self.resolve_sleep_calendar_point(&end_date, end_time, false)?;
+        Ok(crate::sleep::SleepEndpoint::Range {
+            start,
+            end,
+            reported_text: reported_text.into(),
+        })
+    }
+
+    fn resolve_sleep_calendar_point(
+        &self,
+        date: &str,
+        time: &str,
+        approximate: bool,
+    ) -> Result<crate::sleep::SleepPoint, String> {
+        let minutes = crate::sleep::clock_minutes(time)?;
+        if wall_time_components(date, minutes).is_none() {
+            return Err("需要明确、有效的 YYYY-MM-DD 日期；日期含糊时请先澄清。".into());
+        }
+        let utc_offset_minutes = match self.clock.resolve_local_wall_time(date, minutes) {
+            LocalWallTimeResolution::Unique { utc_offset_minutes } => utc_offset_minutes,
+            LocalWallTimeResolution::Nonexistent => {
+                return Err("请检查实际日期与时间；夏令时切换中不存在的时间不能保存。".into())
+            }
+            LocalWallTimeResolution::Ambiguous => {
+                return Err(
+                    "本地时刻重复出现；请保留原话或在 Collaboration 中明确实际发生的那一次。"
+                        .into(),
+                )
+            }
+        };
+        Ok(crate::sleep::SleepPoint {
+            date: date.into(),
+            time: time.into(),
+            utc_offset_minutes,
+            approximate,
+        })
+    }
+
+    pub fn save_habit_sleep_time(&self, input: crate::sleep::HabitSleepMutationInput) -> Result<crate::sleep::SleepView, String> {
+        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
+        let result = crate::sleep::SleepWorkflow::new(&vault).save_habit_time(input);
+        self.finalize_sleep_view(&vault, result)
+    }
+
+    pub fn save_sleep_record(&self, input: crate::sleep::SleepMutationInput) -> Result<crate::sleep::SleepView, String> {
+        let vault = self.persistence.load_selected_vault()?.ok_or("请先选择 Vault，再保存作息。")?;
+        let result = crate::sleep::SleepWorkflow::new(&vault).save(input);
+        self.finalize_sleep_view(&vault, result)
+    }
+
+    fn confirm_selected_vault(&self, captured: &Path) -> Result<(), String> {
+        if self.persistence.load_selected_vault()?.as_deref() != Some(captured) {
+            return Err("所选 Vault 在操作期间改变；结果属于原 Vault，请重新读取核对。".into());
+        }
+        Ok(())
     }
 
     fn day_tasks_for(
@@ -3310,9 +3719,34 @@ where
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
         };
-        let mut view = self.sourced_habits_for(&vault)?;
+        self.habits_for_selected_vault(&vault.to_string_lossy())
+    }
+
+    pub fn habits_for_selected_vault(
+        &self,
+        expected_path: &str,
+    ) -> Result<HabitSnapshotView, String> {
+        let Some(vault) = self.persistence.load_selected_vault()? else {
+            return if expected_path.is_empty() {
+                Ok(HabitSnapshotView::unconfigured())
+            } else {
+                Err("所选 Vault 已改变；未读取作息。".into())
+            };
+        };
+        if vault != Path::new(expected_path) {
+            return Err("所选 Vault 已改变；未读取作息。".into());
+        }
+        let sleep = VaultSleepRead::read(&vault);
+        let result = self.habits_for_vault(&sleep);
+        self.confirm_selected_vault(&vault)?;
+        result
+    }
+
+    fn habits_for_vault(&self, sleep: &VaultSleepRead) -> Result<HabitSnapshotView, String> {
+        let vault = &sleep.vault;
+        let mut view = self.sourced_habits_for(vault)?;
         view.lived_date = Some(self.clock.current_lived_date());
-        let catalog_path = habit_catalog::canonical_path(&vault);
+        let catalog_path = habit_catalog::canonical_path(vault);
         view.catalog_target_binding = Some(habit_catalog::target_binding(&catalog_path));
         let catalog_bytes = match self.habit_catalog_store.load(&catalog_path) {
             Ok(bytes) => bytes,
@@ -3335,7 +3769,7 @@ where
             None => None,
         };
 
-        let completion_path = canonical_habit_completion_path(&vault);
+        let completion_path = canonical_habit_completion_path(vault);
         view.completion_target_binding = Some(habit_completion_target_binding(&completion_path));
         let mut local_completions = Vec::new();
         match self.habit_completion_store.load(&completion_path) {
@@ -3362,7 +3796,49 @@ where
             &local_completions,
             &self.clock.current_lived_date(),
         )?;
+        match &sleep.result {
+            Ok(sleep) => {
+                crate::sleep::project_habits(&mut view, sleep);
+                view.sleep_view = Some(
+                    sleep.clone().project_overview(&self.clock.current_lived_date()),
+                );
+            }
+            Err(error) => view.sleep_error = Some(error.clone()),
+        }
         Ok(view)
+    }
+
+    fn habit_time_context_for(&self, sleep: &VaultSleepRead, date: &str) -> Vec<HabitTimeHabitView> {
+        let Ok(snapshot) = self.habits_for_vault(sleep) else {
+            return Vec::new();
+        };
+        if snapshot.catalog_error.is_some() {
+            return Vec::new();
+        }
+        let today = self.clock.current_lived_date();
+        if date > today.as_str() {
+            return Vec::new();
+        }
+        let recorded = sleep.result.as_ref().map(|view| view.facts.as_slice()).unwrap_or_default();
+        snapshot.habits.into_iter().filter(|habit| {
+            let Ok(key) = crate::sleep::SleepHabitKey::parse(&habit.key) else {
+                return false;
+            };
+            let started = habit.definition.as_ref()
+                .and_then(|definition| definition.start_date.as_deref())
+                .is_none_or(|start| start <= date);
+            if date == today {
+                return habit.active && started;
+            }
+            // Canonical history outlives pausing, start-date edits and the snapshot window.
+            started || recorded.iter().any(|fact| {
+                fact.habit_key == key && fact.lived_date.as_deref() == Some(date)
+            })
+        }).map(|habit| HabitTimeHabitView {
+            key: habit.key,
+            name: habit.name,
+            localized_names: habit.localized_names,
+        }).collect()
     }
 
     fn sourced_habits_for(&self, vault: &Path) -> Result<HabitSnapshotView, String> {
@@ -3653,7 +4129,20 @@ where
 
     pub fn habit_detail_history(&self, habit_key: &str) -> Result<HabitDetailHistoryView, String> {
         validate_habit_key(habit_key)?;
-        let snapshot = self.habits()?;
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or("Habit 历史需要先选择 Vault。")?;
+        self.habit_detail_history_for_path(habit_key, &vault.to_string_lossy())
+    }
+
+    pub fn habit_detail_history_for_path(
+        &self,
+        habit_key: &str,
+        expected_path: &str,
+    ) -> Result<HabitDetailHistoryView, String> {
+        validate_habit_key(habit_key)?;
+        let snapshot = self.habits_for_selected_vault(expected_path)?;
         let habit = snapshot
             .habit(habit_key)
             .cloned()
@@ -3811,6 +4300,7 @@ where
                 current_time: is_today.then_some(clock.time),
                 can_record: false,
                 default_phase: DailyPhase::Daytime,
+                daily_record_error_kind: None,
                 daily_record_availability: DailyRecordAvailability::Missing,
                 vault_name: None,
                 vault_path: None,
@@ -3830,14 +4320,17 @@ where
                     HabitSnapshotState::Unconfigured,
                     "请选择 Vault，以读取历史习惯。",
                 ),
+                habit_time_habits: Vec::new(),
                 time_axis: TimeAxisView::default(),
             });
         };
-        if receive_planning_input {
+        let view = if receive_planning_input {
             self.open_vault(&vault, date.to_owned())
         } else {
             self.reload_vault(&vault, date.to_owned())
-        }
+        }?;
+        self.confirm_selected_vault(&vault)?;
+        Ok(view)
     }
 
     /// Create only a new, empty data directory. Existing folders are never converted.
@@ -4858,6 +5351,54 @@ where
         date: String,
         receive_planning_input: bool,
     ) -> Result<TodayView, String> {
+        let sleep = VaultSleepRead::read(vault);
+        let mut view = match self.render_daily_vault(&sleep, date.clone(), receive_planning_input) {
+            Ok(view) => view,
+            Err(failure) => {
+                // Keep selection transactional: a Daily Record read failure
+                // must not replace the previous Vault.
+                if self.persistence.load_selected_vault()?.as_deref() != Some(vault) {
+                    return Err(failure.message);
+                }
+                // A Daily Record read/encoding failure does not hide independent sources.
+                let clock = self.clock.current_local_time();
+                let is_today = date == clock.lived_date();
+                let mut view = vault_error_view(
+                    date.clone(),
+                    is_today,
+                    is_today.then_some(clock.time),
+                    vault
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .map(str::to_owned),
+                    Some(vault.to_string_lossy().into_owned()),
+                    VaultAvailability::Available,
+                    failure.message,
+                );
+                view.daily_record_error_kind = Some(failure.kind);
+                view.tasks = self.shared_tasks_for(vault);
+                view.day_tasks = self.day_tasks_for(vault, &date, false);
+                view.habit_corrections = self.habit_corrections_for(vault, &date);
+                view.habit_time_habits = self.habit_time_context_for(&sleep, &date);
+                view
+            }
+        };
+        if view.vault_availability == VaultAvailability::Available {
+            match &sleep.result {
+                Ok(sleep) => project_sleep_time_axis(&mut view.time_axis, sleep, &date),
+                Err(error) => view.time_axis.sleep_error = Some(error.clone()),
+            }
+        }
+        Ok(view)
+    }
+
+    fn render_daily_vault(
+        &self,
+        sleep: &VaultSleepRead,
+        date: String,
+        receive_planning_input: bool,
+    ) -> Result<TodayView, DailyRecordReadFailure> {
+        let vault = &sleep.vault;
         let clock = self.clock.current_local_time();
         let is_today = date == clock.lived_date();
         let current_time = is_today.then_some(clock.time.clone());
@@ -4895,9 +5436,15 @@ where
         let tasks = self.shared_tasks_for(vault);
         let day_tasks = self.day_tasks_for(vault, &date, receive_planning_input);
         let habit_corrections = self.habit_corrections_for(vault, &date);
+        let habit_time_habits = self.habit_time_context_for(sleep, &date);
         let path = canonical_record_path(vault, &date)?;
         let target_binding = record_target_binding(&path);
-        let bytes = match self.record_store.load(&path)? {
+        let bytes = match self.record_store.load(&path).map_err(|message| {
+            DailyRecordReadFailure {
+                kind: DailyRecordErrorKind::ReadError,
+                message,
+            }
+        })? {
             Some(document) => document,
             None => {
                 let message =
@@ -4909,6 +5456,7 @@ where
                     current_time: current_time.clone(),
                     can_record,
                     default_phase: DailyPhase::Daytime,
+                    daily_record_error_kind: None,
                     daily_record_availability: DailyRecordAvailability::Missing,
                     vault_name,
                     vault_path,
@@ -4924,6 +5472,7 @@ where
                     tasks,
                     day_tasks,
                     habit_corrections,
+                    habit_time_habits,
                     time_axis: TimeAxisView::default(),
                 });
             }
@@ -4977,6 +5526,7 @@ where
                     } else {
                         DailyPhase::Daytime
                     },
+                    daily_record_error_kind: None,
                     daily_record_availability: daily_record_availability(
                         TodayState::Ready,
                         &evening,
@@ -4995,6 +5545,7 @@ where
                     tasks,
                     day_tasks,
                     habit_corrections,
+                    habit_time_habits,
                     time_axis,
                 })
             }
@@ -5005,6 +5556,7 @@ where
                 current_time,
                 can_record,
                 default_phase: DailyPhase::Daytime,
+                daily_record_error_kind: Some(DailyRecordErrorKind::DamagedRecord),
                 daily_record_availability: DailyRecordAvailability::Error,
                 vault_name,
                 vault_path,
@@ -5020,6 +5572,7 @@ where
                 tasks,
                 day_tasks,
                 habit_corrections,
+                habit_time_habits,
                 time_axis: TimeAxisView::default(),
             }),
         }
@@ -5054,6 +5607,7 @@ fn vault_error_view(
         current_time,
         can_record: false,
         default_phase: DailyPhase::Daytime,
+        daily_record_error_kind: None,
         daily_record_availability: DailyRecordAvailability::Error,
         vault_name,
         vault_path: vault_path.clone(),
@@ -5074,6 +5628,7 @@ fn vault_error_view(
         ),
         day_tasks: DayTaskListView::error(message.clone(), None),
         habit_corrections,
+        habit_time_habits: Vec::new(),
         time_axis: TimeAxisView::default(),
     }
 }
@@ -6887,6 +7442,63 @@ fn plan_time_period(date: CalendarDate, start: u16, end: Option<u16>) -> String 
     }
 }
 
+/// Rebuilt from canonical endpoint identities on every read; never persisted into a Daily Record.
+fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepView, date: &str) {
+    use crate::sleep::SleepEndpoint;
+    let Some(day) = CalendarDate::parse(date) else {
+        return;
+    };
+    let window_start = day.unix_days() * 1440 + 240;
+    let local_calendar_minutes = |point: &crate::sleep::SleepPoint| -> Option<i64> {
+        let day = CalendarDate::parse(&point.date)?;
+        let (hour, minute) = point.time.split_once(':')?;
+        Some(day.unix_days() * 1440 + hour.parse::<i64>().ok()? * 60 + minute.parse::<i64>().ok()?)
+    };
+    for fact in &sleep.facts {
+        // Legacy uncertainty is possible overlap evidence, never a guessed lived
+        // owner. A civil date spans two 04:00 windows; retain that actual source date.
+        // The night index is not evidence.
+        let belongs = match fact.lived_date.as_deref() {
+            Some(lived_date) => lived_date == date,
+            None => match &fact.endpoint {
+                SleepEndpoint::Text { date: Some(actual_date), .. } => {
+                    CalendarDate::parse(actual_date).is_some_and(|actual| {
+                        let start = actual.unix_days() * 1440;
+                        start < window_start + 1440 && start + 1440 > window_start
+                    })
+                }
+                SleepEndpoint::Range { .. } => fact.endpoint.may_include_lived_date(date),
+                _ => false,
+            },
+        };
+        if !belongs {
+            continue;
+        }
+        let text = match &fact.endpoint {
+            SleepEndpoint::Text { text, .. } => text.as_str(),
+            SleepEndpoint::Range { reported_text, .. } => reported_text.as_str(),
+            _ => "",
+        };
+        let mut entry = unlocated_axis_entry(None, text, date);
+        entry.source_date = match &fact.endpoint {
+            SleepEndpoint::Text { date: Some(actual_date), .. } => actual_date.clone(),
+            SleepEndpoint::Range { start, .. } => start.date.clone(),
+            _ => entry.source_date,
+        };
+        entry.sleep_fact = Some(fact.clone());
+        if let SleepEndpoint::Point { point } = &fact.endpoint {
+            let projected = local_calendar_minutes(point).map(|minute| minute - day.unix_days() * 1440);
+            if let Some(minute) = projected.filter(|minute| (240..1680).contains(minute)) {
+                entry.start_minute = Some(minute as u16);
+                entry.source_date = point.date.clone();
+                axis.confirmed_facts.push(entry);
+                continue;
+            }
+        }
+        axis.unlocated_confirmed_facts.push(entry);
+    }
+}
+
 fn project_time_axis<C: TodayClock>(
     timeline: &[MorningBlockView],
     daytime: &DaytimeView,
@@ -6979,6 +7591,7 @@ fn project_axis_item<C: TodayClock>(
                 return;
             }
             located.push(TimeAxisEntryView {
+                sleep_fact: None,
                 plan_precision: None,
         plan_id: None,
                 time_editable: false,
@@ -7049,6 +7662,7 @@ fn project_axis_item<C: TodayClock>(
             let start = (start_absolute.max(window_start) - expected_day.unix_days() * 1440) as u16;
             let end = (end_absolute.min(window_end) - expected_day.unix_days() * 1440) as u16;
             located.push(TimeAxisEntryView {
+                sleep_fact: None,
                 plan_precision: None,
         plan_id: None,
                 time_editable: false,
@@ -7071,6 +7685,7 @@ fn unlocated_axis_entry(
     source_date: &str,
 ) -> TimeAxisEntryView {
     TimeAxisEntryView {
+        sleep_fact: None,
         plan_precision: None,
         plan_id: None,
         time_editable: false,
@@ -8250,36 +8865,69 @@ mod tests {
 
     #[test]
     fn atomic_exchange_detects_an_external_save_after_candidate_sync() {
-        let directory = TempDirectory::new();
-        let path = record_path(&directory);
-        let original = b"original daily record\n";
-        let external = b"external editor save\n";
-        let updated = b"dashboard candidate\n";
-        fs::write(&path, original).expect("original should be written");
+        for (kind, prefix, suffix) in [
+            (
+                StorageDocumentKind::DailyRecord,
+                "今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请在 Obsidian 中检查后刷新 Today。",
+            ),
+            (
+                StorageDocumentKind::DayTasks,
+                "当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请检查后刷新当天任务。",
+            ),
+            (
+                StorageDocumentKind::HabitCompletions,
+                "本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请检查后刷新 Habits。",
+            ),
+            (
+                StorageDocumentKind::HabitCatalog,
+                "本地 Habit 定义在保存边界发生了并发变化。恢复副本保存在 ",
+                "；请刷新 Habits 后重试。",
+            ),
+            (
+                StorageDocumentKind::Tasks,
+                "任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请刷新 Tasks 后重试。",
+            ),
+            (
+                StorageDocumentKind::SleepRecords,
+                "作息正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 ",
+                "。请检查后刷新 Today 或 Habits。",
+            ),
+        ] {
+            let directory = TempDirectory::new();
+            let path = record_path(&directory);
+            let original = b"original daily record\n";
+            let external = b"external editor save\n";
+            let updated = b"dashboard candidate\n";
+            fs::write(&path, original).expect("original should be written");
 
-        let error = save_file_if_unchanged(
-            &path,
-            original,
-            updated,
-            StorageDocumentKind::DailyRecord,
-            |_| fs::write(&path, external).map_err(|error| error.to_string()),
-        )
-        .expect_err("the save crossing candidate preparation must conflict");
+            let error = save_file_if_unchanged(&path, original, updated, kind, |_| {
+                fs::write(&path, external).map_err(|error| error.to_string())
+            })
+            .expect_err("the save crossing candidate preparation must conflict");
 
-        assert!(error.contains("并发变化"), "{error}");
-        assert_eq!(
-            fs::read(&path).expect("canonical record should remain readable"),
-            external
-        );
-        let recoveries = fs::read_dir(directory.0.join("life/.personal-dashboard/recovery/today"))
-            .expect("recovery directory should remain readable")
-            .collect::<Result<Vec<_>, _>>()
-            .expect("recovery entries should be readable");
-        assert_eq!(
-            recoveries.len(),
-            1,
-            "the original inode remains recoverable"
-        );
+            assert!(error.contains("并发变化"), "{error}");
+            assert_eq!(
+                fs::read(&path).expect("canonical record should remain readable"),
+                external
+            );
+            let recoveries = fs::read_dir(directory.0.join("life/.personal-dashboard/recovery/today"))
+                .expect("recovery directory should remain readable")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("recovery entries should be readable");
+            assert_eq!(
+                recoveries.len(),
+                1,
+                "the original inode remains recoverable"
+            );
+            assert_eq!(
+                error,
+                format!("{prefix}{}{suffix}", recoveries[0].path().display())
+            );
+        }
     }
 
     #[cfg(target_os = "macos")]

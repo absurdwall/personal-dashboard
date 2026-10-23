@@ -20,6 +20,22 @@ export interface CodexDictationRuntime {
   start(inputId: string, onEvent: (event: CodexDictationEvent) => void, signal: AbortSignal): Promise<CodexDictationCapture>;
 }
 export type DictationInvoke = <T>(command: string, args: Record<string, unknown>) => Promise<T>;
+export type DictationAudioSource = Readonly<{ stream: MediaStream; diagnostic?: boolean; start?(): void; release?(): void }>;
+export type DictationDiagnostic = Readonly<Record<string, boolean | string>>;
+
+function diagnosticFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  for (const code of ["dictation-connection-timeout", "dictation-input-mismatch", "capture-unavailable", "dictation-runtime-unavailable", "dictation-connection-failed", "dictation-login-required", "dictation-protocol-unavailable"]) {
+    if (message === code) return code;
+  }
+  if (error instanceof DOMException && ["AbortError", "InvalidAccessError", "InvalidStateError", "NotAllowedError", "OperationError", "SecurityError"].includes(error.name)) return error.name;
+  return "unclassified-start-failure";
+}
+
+export async function captureMicrophone(): Promise<DictationAudioSource> {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("capture-unavailable");
+  return {stream: await navigator.mediaDevices.getUserMedia({audio:true,video:false})};
+}
 
 function finiteTiming(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -47,10 +63,17 @@ export function parseCodexDictationEvent(inputId: string, value: unknown): Codex
 
 export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
   private readonly invoke: DictationInvoke;
-  constructor(invoke: DictationInvoke) { this.invoke = invoke; }
+  private readonly captureAudio: (signal: AbortSignal) => Promise<DictationAudioSource>;
+  private readonly observe?: (value: DictationDiagnostic) => void;
+  constructor(invoke: DictationInvoke, captureAudio: (signal: AbortSignal) => Promise<DictationAudioSource> = captureMicrophone, observe?: (value: DictationDiagnostic) => void) { this.invoke = invoke; this.captureAudio = captureAudio; this.observe = observe; }
+
+  private report(value: DictationDiagnostic): void {
+    try { this.observe?.(value); } catch { /* Diagnostics never change capture results. */ }
+  }
 
   async start(inputId: string, onEvent: (event: CodexDictationEvent) => void, signal: AbortSignal): Promise<CodexDictationCapture> {
-    if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection !== "function") throw new Error("capture-unavailable");
+    if (typeof RTCPeerConnection !== "function") throw new Error("capture-unavailable");
+    let audioSource: DictationAudioSource | undefined;
     let stream: MediaStream | undefined;
     let peer: RTCPeerConnection | undefined;
     let pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -78,9 +101,34 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     let drainFailed = false;
     let zeroAttached = false;
     let rejectConnecting: (() => void) | undefined;
+    let diagnosticStatsTimer: ReturnType<typeof setTimeout> | undefined;
+    const snapshotConnection = () => {
+      if (!audioSource?.diagnostic || !peer) return;
+      const currentPeer = peer;
+      const state = (value: unknown, allowed: string[]) => typeof value === "string" && allowed.includes(value) ? value : "unknown";
+      this.report({
+        connectionState:state(currentPeer.connectionState,["new","connecting","connected","disconnected","failed","closed"]),
+        iceConnectionState:state(currentPeer.iceConnectionState,["new","checking","connected","completed","failed","disconnected","closed"]),
+        iceGatheringState:state(currentPeer.iceGatheringState,["new","gathering","complete"]),
+      });
+      // Never await diagnostics or let statistics failure delay capture cleanup.
+      try {
+        void currentPeer.getStats().then(stats => {
+          const pairs: Array<{state?:string;requestsSent?:number;responsesReceived?:number}> = [];
+          stats.forEach(value => { if (value.type === "candidate-pair") pairs.push(value); });
+          this.report({statsAvailable:true,icePairPresent:pairs.length>0,
+            icePairChecking:pairs.some(pair=>pair.state==="in-progress"),
+            icePairSucceeded:pairs.some(pair=>pair.state==="succeeded"),
+            icePairFailed:pairs.some(pair=>pair.state==="failed"),
+            iceRequestsSent:pairs.some(pair=>Number(pair.requestsSent??0)>0),
+            iceResponsesReceived:pairs.some(pair=>Number(pair.responsesReceived??0)>0)});
+        }).catch(() => this.report({statsAvailable:false}));
+      } catch { this.report({statsAvailable:false}); }
+    };
     const releaseCapture = () => {
       captureStopped = true;
       stream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
+      audioSource?.release?.();
     };
     const releaseZeroAudio = () => {
       if (zeroSource) {
@@ -152,6 +200,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
       if (closeTimer) clearTimeout(closeTimer);
       if (terminalTimer) clearTimeout(terminalTimer);
       if (pollTimer) clearInterval(pollTimer);
+      if (diagnosticStatsTimer) clearTimeout(diagnosticStatsTimer);
       if (channel) {
         channel.onmessage = null;
         channel.onclose = null;
@@ -160,7 +209,10 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
       }
       if (peer) {
         peer.onconnectionstatechange = null;
+        peer.oniceconnectionstatechange = null;
+        peer.onicecandidate = null;
         peer.close();
+        this.report({peerClosed:true});
       }
       signal.removeEventListener("abort", abort);
       finishWait?.();
@@ -170,14 +222,18 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     signal.addEventListener("abort", abort, {once:true});
     const fail = (failure: string) => {
       if (disposed || failed) return;
+      snapshotConnection();
       failed = true;
+      this.report({failure:diagnosticFailure(failure)});
       releaseCapture();
       onEvent({inputId,kind:"failed",failure});
       void cleanup();
     };
     try {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      stream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+      audioSource = await this.captureAudio(signal);
+      stream = audioSource.stream;
+      this.report({microphone:false,productionRuntimeProbe:true});
       if (disposed || failed || signal.aborted || stopRequested) { releaseCapture(); throw new DOMException("Cancelled", "AbortError"); }
       onEvent({inputId,kind:"phase",phase:"connecting"});
       if (disposed || signal.aborted) { releaseCapture(); throw new DOMException("Cancelled", "AbortError"); }
@@ -224,11 +280,19 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
       channel.onerror = () => fail("dictation-connection-lost");
       channel.onclose = () => { if (!disposed && !closeRequested) fail("dictation-connection-lost"); };
       peer.onconnectionstatechange = () => {
+        this.report({connectionState:peer?.connectionState ?? "closed"});
         if (peer?.connectionState === "failed" || (peer?.connectionState === "disconnected" && !terminalReceived) || (peer?.connectionState === "closed" && !closeRequested)) fail("dictation-connection-lost");
       };
+      peer.oniceconnectionstatechange = () => this.report({iceConnectionState:peer?.iceConnectionState ?? "closed"});
+      peer.onicecandidate = event => this.report({
+        ...(event.candidate ? {iceCandidateSeen:true} : {iceGatheringComplete:true}),
+        localDescriptionHasCandidate:/^a=candidate:/m.test(peer?.localDescription?.sdp ?? ""),
+      });
       const offer = await peer.createOffer();
+      this.report({offer:true});
       if (disposed || failed || signal.aborted) throw new DOMException("Cancelled", "AbortError");
       await peer.setLocalDescription(offer);
+      this.report({localDescriptionHasCandidate:/^a=candidate:/m.test(peer.localDescription?.sdp ?? "")});
       if (disposed || failed || signal.aborted) throw new DOMException("Cancelled", "AbortError");
       nativeStartRequested = true;
       let answer: {inputId:string;sdp:string};
@@ -246,7 +310,12 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         throw new DOMException("Cancelled", "AbortError");
       }
       if (answer.inputId !== inputId) throw new Error("dictation-input-mismatch");
+      this.report({remoteAnswer:true,
+        remoteHasCandidate:/^a=candidate:/m.test(answer.sdp),
+        remoteIceLite:/^a=ice-lite\r?$/m.test(answer.sdp),
+        remoteTrickle:/^a=ice-options:.*\btrickle\b/m.test(answer.sdp)});
       await peer.setRemoteDescription({type:"answer",sdp:answer.sdp});
+      this.report({remoteDescriptionApplied:true});
       // The data channel is the actual connected gate; accepting SDP alone is
       // insufficient to announce recording readiness.
       await new Promise<void>((resolve, reject) => {
@@ -258,6 +327,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const settle = (error?: Error) => {
           if (timer) clearTimeout(timer);
+          if (diagnosticStatsTimer) clearTimeout(diagnosticStatsTimer);
           signal.removeEventListener("abort", onAbort);
           dataChannel.onopen = null;
           rejectConnecting = undefined;
@@ -266,10 +336,12 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         const onAbort = () => settle(new DOMException("Cancelled", "AbortError"));
         rejectConnecting = onAbort;
         timer = setTimeout(() => settle(new Error("dictation-connection-timeout")), 15_000);
+        if (audioSource?.diagnostic) diagnosticStatsTimer = setTimeout(snapshotConnection, 14_000);
         dataChannel.onopen = () => settle();
         signal.addEventListener("abort", onAbort, {once:true});
       });
       if (disposed || failed || signal.aborted) throw new DOMException("Cancelled", "AbortError");
+      this.report({dataChannelOpen:true,productionRuntimeConnected:true});
       let polling = false;
       pollTimer = setInterval(async () => {
         if (disposed || polling) return;
@@ -285,6 +357,8 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         } catch { fail("dictation-connection-lost"); }
         finally { polling = false; }
       },200);
+      audioSource.start?.();
+      this.report({productionFixtureStarted:true});
       return {
         stopCapture,
         finalize: async () => {
@@ -295,11 +369,14 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
           await drainFinished;
           const incomplete = !terminalReceived || failed || drainFailed || !zeroAttached || stopRequested || transcript.snapshot().unresolved || !finalAfterStop;
           await cleanup();
+          this.report({productionFinalizeReturned:true,productionIncomplete:incomplete});
           return {incomplete};
         },
         cancel: async () => {stopRequested=true;await cleanup();},
       };
     } catch (error) {
+      snapshotConnection();
+      this.report({failure:diagnosticFailure(error)});
       await cleanup();
       throw error;
     }

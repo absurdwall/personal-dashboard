@@ -511,6 +511,8 @@ button.habit-cell.is-today {
 }
 
 .habit-expand {
+  grid-column: 5;
+  grid-row: 1;
   padding: 4px 0;
   border: 0;
   background: transparent;
@@ -520,15 +522,63 @@ button.habit-cell.is-today {
 }
 
 .habit-history {
-  grid-column: 4;
-  grid-row: 1;
+  grid-column: 1 / -1;
+  grid-row: 2;
   min-width: 0;
-  padding-left: 12px;
-  border-left: 1px solid var(--parity-border);
+  margin-top: 6px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--parity-border);
+}
+
+.habit-history-heading {
+  width: min(100%, 16rem);
+  margin-left: auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.habit-history-heading > strong {
+  font-size: 11px;
+}
+
+.habit-history-legend {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.habit-history-legend > summary {
+  padding: 2px 0;
+  color: var(--parity-muted);
+  font-size: 9px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.habit-history-legend > summary::-webkit-details-marker {
+  display: none;
+}
+
+.habit-history-legend > small {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 3;
+  width: 16rem;
+  max-width: calc(100vw - 48px);
+  padding: 8px;
+  border: 1px solid var(--parity-border);
+  border-radius: 6px;
+  background: var(--parity-surface);
+  box-shadow: 0 3px 12px #0002;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .habit-history-grid {
   display: grid;
+  width: min(100%, 16rem);
+  max-width: 16rem;
+  margin-left: auto;
   grid-template-columns: 24px repeat(12, minmax(9px, 1fr));
   grid-template-rows: repeat(7, 9px);
   gap: 4px;
@@ -536,9 +586,11 @@ button.habit-cell.is-today {
 
 .habit-history-months {
   display: grid;
+  width: min(100%, 16rem);
+  max-width: 16rem;
   grid-template-columns: 24px repeat(12, minmax(9px, 1fr));
   gap: 4px;
-  margin: 11px 0 5px;
+  margin: 8px 0 5px auto;
   color: var(--parity-muted);
   font-size: 7px;
 }
@@ -563,6 +615,7 @@ button.habit-cell.is-today {
   color: var(--parity-muted);
   font-size: 8px;
   line-height: 1.5;
+  text-align: right;
 }
 
 .habit-cell-detail {
@@ -11721,19 +11774,22 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 
 @media (min-width: 761px) {
   #workspace-destination-collaboration .collaboration-composer-input {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, auto);
+    display: flex;
+    flex-wrap: wrap;
     align-items: stretch;
   }
   #workspace-destination-collaboration .collaboration-composer-input textarea {
-    grid-column: 1;
-    grid-row: 1;
+    flex: 1 1 220px;
+    min-width: 0;
   }
   #workspace-destination-collaboration .collaboration-composer-input .collaboration-voice-controls {
-    grid-column: 2;
-    grid-row: 1;
+    /* History can narrow the conversation inside a wide window. Wrap only the
+       local controls below the text rather than compressing the editor. */
+    flex: 0 0 9rem;
+    margin-left: auto;
     display: grid;
-    grid-template-columns: repeat(2, auto);
+    min-width: 0;
+    grid-template-columns: 2.25rem minmax(0, 1fr) auto;
     grid-template-rows: 1.25rem 2.25rem;
     align-content: end;
     align-items: end;
@@ -11755,8 +11811,9 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   }
   #workspace-destination-collaboration #collaboration-voice-start { grid-column: 1; grid-row: 2; }
   #workspace-destination-collaboration #collaboration-send-message { grid-column: 2; grid-row: 2; }
-  #workspace-destination-collaboration .collaboration-composer-input .collaboration-voice-controls {
-    grid-template-columns: repeat(3, auto);
+  #workspace-destination-collaboration #collaboration-send-message {
+    min-width: 0;
+    padding-inline: 0.35rem;
   }
   #workspace-destination-collaboration #collaboration-voice-cancel {
     grid-column: 3;
@@ -11812,3 +11869,79 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 /* Issue #66: retain readable entry and schedule targets in the docked Today rail. */
 .today-task-create-form .task-compact-row { flex-wrap: wrap; column-gap: 0.125rem; }
 .today-task-create-form .task-compact-row > input { flex: 1 0 120px; min-height: 32px; }
+
+/* Report one Habit endpoint inside the existing dated Habit recording region. */
+.habit-time-row { padding: 12px 0; border-bottom: 1px solid var(--parity-border); }
+.habit-time-row > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.habit-time-row > header > strong { min-width: 0; overflow-wrap: anywhere; }
+.habit-time-row > header > button { flex-shrink: 0; }
+.habit-time-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.habit-time-fields input[type="time"] { width: 112px; min-width: 0; }
+.habit-time-fields label { display: inline-flex; align-items: center; gap: 5px; }
+.habit-time-fields input[type="checkbox"] { width: auto; }
+.habit-time-preview { overflow-wrap: anywhere; }
+.habit-time-precision { margin-top: 8px; font-size: 0.84rem; }
+.habit-time-precision summary { cursor: pointer; }
+.habit-time-precision select, .habit-time-precision input { max-width: 100%; margin-top: 8px; }
+
+/* Sleep endpoints extend only the original Habit seven-day slot (#126). */
+.habit-sleep-mini{position:relative;display:grid;grid-template-columns:28px repeat(7,minmax(0,1fr));grid-template-rows:17px 44px 12px;min-width:0;gap:2px 0}
+.habit-sleep-mini button.habit-sleep-day{grid-row:1;min-width:0;min-height:17px;padding:0;border:0;border-radius:2px;background:transparent;box-shadow:none;color:var(--parity-accent-strong);font-size:10px;font-weight:600;line-height:17px;text-align:center}
+.habit-sleep-mini button.is-missing{color:var(--parity-muted);font-weight:400}
+.habit-sleep-day:hover,.habit-sleep-day:focus-visible{outline:1px solid var(--parity-accent);outline-offset:0;background:var(--parity-accent-soft)}
+.habit-sleep-scale{position:relative;grid-column:1;grid-row:2;color:var(--parity-muted);font-size:8px;font-variant-numeric:tabular-nums;line-height:1}
+.habit-sleep-tick{position:absolute;right:4px;transform:translateY(-50%);white-space:nowrap}
+.habit-sleep-plot{position:relative;grid-column:2/-1;grid-row:2;min-width:0}
+.habit-sleep-plot svg{display:block;width:100%;height:44px;overflow:visible}
+.habit-sleep-gap{grid-row:3;min-width:0;overflow:hidden;color:var(--parity-muted);font-size:7px;line-height:12px;text-align:center;text-overflow:ellipsis;white-space:nowrap}
+.habit-sleep-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--parity-muted);font-size:9px;text-align:center}
+.habit-sleep-tooltip{position:absolute;inset:auto 0 100%;z-index:20;padding:4px;border:1px solid var(--parity-border);border-radius:4px;background:var(--parity-surface);color:var(--parity-accent-strong);font-size:10px;line-height:1.4;pointer-events:none}
+.habit-sleep-tooltip[hidden]{display:none}
+.habit-sleep-metric-tabs,.habit-sleep-period-tabs{display:flex;gap:5px;flex-wrap:wrap}
+.habit-sleep-metric-tabs{margin-top:14px;padding-bottom:8px;border-bottom:1px solid var(--parity-border)}
+.habit-sleep-period-tabs{margin-top:12px}
+.habit-sleep-metric-tabs button,.habit-sleep-period-tabs button,.habit-sleep-history button{padding:5px 8px;font-size:10px}
+.habit-sleep-metric-tabs [aria-selected="true"],.habit-sleep-period-tabs [aria-pressed="true"]{border-color:var(--parity-accent);background:var(--parity-accent);color:var(--parity-accent-on,#fff)}
+.habit-sleep-statistics .habit-detail-stat{display:grid;gap:3px}
+.habit-sleep-statistics .habit-detail-stat strong{font:inherit;font-weight:600}
+.habit-sleep-statistics .habit-detail-stat span{font-family:inherit;color:var(--parity-muted);font-size:10px}
+.habit-sleep-mean-note{grid-column:1/-1;margin:0;font-size:10px;color:var(--parity-muted)}
+.habit-sleep-detail-chart{position:relative;min-width:0;width:100%;height:190px;margin-top:10px}
+.habit-sleep-detail-chart svg{display:block;width:100%;height:190px;overflow:visible}
+.habit-sleep-date-targets{position:absolute;inset:17px 0 28px 6.666667%;display:grid;grid-template-columns:repeat(var(--sleep-date-count),minmax(0,1fr))}
+.habit-sleep-date-targets button{min-width:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.habit-sleep-date-targets button:hover,.habit-sleep-date-targets button:focus-visible{outline:1px solid var(--parity-accent);outline-offset:-1px;background:color-mix(in srgb,var(--parity-accent) 10%,transparent)}
+.habit-sleep-detail-empty{position:absolute;inset:50px 10px auto 45px;color:var(--parity-muted);font-size:11px;text-align:center}
+.habit-sleep-detail-readout,.habit-sleep-caption,.habit-sleep-read-error{margin:6px 0;font-size:10px;line-height:1.5;color:var(--parity-muted)}
+.habit-sleep-detail-readout{min-height:1.5em}
+.habit-sleep-history,.habit-sleep-evidence{margin-top:14px;color:var(--parity-muted);font-size:10px}
+.habit-sleep-history summary,.habit-sleep-evidence summary{cursor:pointer}
+.habit-sleep-history form{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:9px}
+.habit-sleep-history label{display:grid;gap:4px}
+.habit-sleep-history input{max-width:150px;font-size:11px}
+.habit-sleep-day-evidence{grid-column:1/-1;margin:2px 0 5px}
+.habit-sleep-day-evidence[hidden]{display:none}
+.habit-sleep-day-evidence button{justify-self:start;padding:4px 7px;font-size:10px}
+.habit-sleep-day-values p{margin:2px 0;line-height:1.5}
+.habit-sleep-calendar-date,.habit-sleep-pair{font-size:9px;color:var(--parity-muted)}
+.habit-snapshot-row:is([data-habit-key="wake"],[data-habit-key="sleep"]) .habit-snapshot-value strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:normal;word-break:normal}
+.habit-snapshot-value strong.habit-sleep-described-value{font-family:inherit;font-size:9px;line-height:1.4}
+.habit-detail-panel[data-sleep-detail="true"] .habit-detail-status:empty{display:none}
+.habit-detail-panel[data-sleep-detail="true"] .habit-detail-heading .secondary-button,
+.habit-detail-panel[data-sleep-detail="true"] .habit-detail-actions>.secondary-button{min-height:0;padding:5px 8px;font-size:10px;line-height:1.4}
+.habit-detail-panel[data-sleep-detail="true"] .habit-detail-actions{gap:5px 9px;margin:5px 0 8px}
+
+/* Generated chat titles stay one line; their full text remains in DOM and title. */
+.collaboration-session-button strong,
+#collaboration-chat-heading {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.collaboration-chat-heading > div:first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}

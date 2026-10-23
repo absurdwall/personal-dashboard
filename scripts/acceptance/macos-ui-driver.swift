@@ -20,6 +20,44 @@ func activateCandidate(_ pid: pid_t) {
     }
 }
 
+// Explicit foreground probe for a task-owned candidate. Pointer/global-input
+// restrictions remain active; a normal installation never passes this guard.
+func activateOwnedCandidate(_ pid: pid_t, timeout: TimeInterval) throws {
+    guard let running = NSRunningApplication(processIdentifier: pid),
+          let bundle = running.bundleURL?.resolvingSymlinksInPath(),
+          bundle.lastPathComponent == "Personal Dashboard.app",
+          running.bundleIdentifier == "com.tortillaflat.personal-dashboard.acceptance" else {
+        throw DriverError.actionFailed("foreground probe requires the isolated acceptance identity", .failure)
+    }
+    let container = bundle.deletingLastPathComponent()
+    guard ["/tmp", "/private/tmp"].contains(container.deletingLastPathComponent().path),
+          container.lastPathComponent.hasPrefix("personal-dashboard-ipc."),
+          container.lastPathComponent.hasSuffix(".noindex") else {
+        throw DriverError.actionFailed("foreground probe requires the task-owned noindex candidate (observed: \(container.path))", .failure)
+    }
+    guard running.activate(options: [.activateAllWindows, .activateIgnoringOtherApps]) else {
+        throw DriverError.actionFailed("activate isolated candidate", .failure)
+    }
+    let application = AXUIElementCreateApplication(pid)
+    let deadline = Date().addingTimeInterval(timeout)
+    var state = "window unavailable"
+    repeat {
+        if let window = mainWindow(application) {
+            _ = AXUIElementPerformAction(window, "AXRaise" as CFString)
+            _ = AXUIElementSetAttributeValue(window, "AXMain" as CFString, kCFBooleanTrue)
+            let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+            let main = attribute(window, "AXMain").map(normalizedAttributeValue) == "true"
+            let focused = attribute(application, "AXFocusedWindow").map {
+                CFEqual($0, window)
+            } ?? false
+            state = "active=\(running.isActive), frontmost=\(frontmost), main=\(main), focusedWindow=\(focused)"
+            if running.isActive && frontmost && main && focused { return }
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+    throw DriverError.timeout("key/focused isolated candidate (\(state))")
+}
+
 enum DriverError: Error, CustomStringConvertible {
     case usage
     case invalidPid(String)
@@ -30,7 +68,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|assert-focused-control|focus|focus-contains|press-key|type-text|assert-field-value|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-role-text|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-window|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-exact|press-contains|select-contains|select-contains-allow-unchanged|activate-owned|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -231,9 +269,12 @@ func findVisiblePressable(
         "AXPopUpButton",
         "AXRadioButton",
     ])
-    return findTextPaths(application, text, contains: contains)
+    return findTextPaths(application, text, contains: true)
         .first { path in
             pressableRoles.contains(stringAttribute(path.element, "AXRole")) &&
+                (contains || ["AXTitle", "AXValue", "AXDescription"].contains {
+                    stringAttribute(path.element, $0) == text
+                }) &&
                 (path.ancestors + [path.element]).allSatisfy {
                     visibleAttribute($0, "AXHidden")
                 }
@@ -362,6 +403,53 @@ func waitForFocusedText(
     throw DriverError.timeout(
         "focused rendered control: \(text) (actual: \(lastFocusedText))"
     )
+}
+
+// Native time inputs focus an hour/minute child rather than the labeled area.
+// Resolve the exact editable control first; only AX identity/parentage can prove
+// that focus belongs to it. A shared ancestor or matching window text cannot.
+func waitForFocusedControl(
+    _ application: AXUIElement,
+    _ label: String,
+    timeout: TimeInterval
+) throws -> String {
+    let editableRoles = Set(["AXTextField", "AXTextArea", "AXDateTimeArea"])
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastState = "named editable control unavailable"
+    repeat {
+        let controls = findTextPaths(application, label).filter { path in
+            editableRoles.contains(stringAttribute(path.element, "AXRole")) &&
+                ["AXTitle", "AXDescription"].contains {
+                    stringAttribute(path.element, $0) == label
+                } &&
+                (path.ancestors + [path.element]).allSatisfy {
+                    visibleAttribute($0, "AXHidden")
+                }
+        }
+        guard controls.count <= 1 else {
+            throw DriverError.unexpectedText("ambiguous exact editable control: \(label)")
+        }
+        if let target = controls.first?.element, let focused = focusedElement(application) {
+            var cursor: AXUIElement? = focused
+            var visited = AXElementIdentitySet()
+            var roles: [String] = []
+            while let element = cursor, roles.count < 64, visited.insert(element) {
+                roles.append(stringAttribute(element, "AXRole"))
+                if CFEqual(element, target) {
+                    return "target=\(stringAttribute(target, "AXRole")), focused=\(stringAttribute(focused, "AXRole")), ancestorDistance=\(roles.count - 1)"
+                }
+                if ["AXWindow", "AXApplication"].contains(stringAttribute(element, "AXRole")) { break }
+                guard let parent = attribute(element, "AXParent"),
+                      CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+                cursor = unsafeDowncast(parent, to: AXUIElement.self)
+            }
+            lastState = "focused=\(nodeText(focused)); ancestry=\(roles.joined(separator: " → "))"
+        } else if !controls.isEmpty {
+            lastState = "named editable control found; focused element unavailable"
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("focus within exact editable control: \(label) (\(lastState))")
 }
 
 func focusPressable(
@@ -2878,9 +2966,11 @@ func assertState(
         throw DriverError.timeout("stateful rendered control: \(text)")
     }
     let expectedState = expected.lowercased()
-    let stateAttributes = expectedState == "current"
-        ? ["AXCurrent", "AXSelected", "AXPressed", "AXValue"]
-        : ["AXSelected", "AXPressed", "AXValue"]
+    let stateAttributes = ["enabled", "disabled"].contains(expectedState)
+        ? ["AXEnabled"]
+        : expectedState == "current"
+            ? ["AXCurrent", "AXSelected", "AXPressed", "AXValue"]
+            : ["AXSelected", "AXPressed", "AXValue"]
     let values = stateAttributes.compactMap {
         attribute(element, $0).map(normalizedAttributeValue)
     }
@@ -2890,6 +2980,10 @@ func assertState(
         matches = ["true", "1", "page", "current", "selected", "pressed"]
     case "pressed", "selected":
         matches = ["true", "1", "pressed", "selected"]
+    case "enabled":
+        matches = ["true", "1"]
+    case "disabled":
+        matches = ["false", "0"]
     default:
         throw DriverError.usage
     }
@@ -3875,40 +3969,151 @@ func dumpText(_ application: AXUIElement) {
     }
 }
 
-// Measure the shipped labelled panes, rather than inferring layout from source.
+// Check native hit-testing as well as geometry: a raised composer must remain
+// reachable even when the context panel extends behind it.
+func assertControlReceivesHitTest(_ control: AXUIElement, label: String, at point: CGPoint? = nil) throws {
+    guard let bounds = frame(control), bounds.width > 0, bounds.height > 0 else {
+        throw DriverError.timeout("visible control bounds: \(label)")
+    }
+    let position = point ?? CGPoint(x: bounds.midX, y: bounds.midY)
+    var hit: AXUIElement?
+    let status = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(position.x), Float(position.y), &hit)
+    guard status == .success else { throw DriverError.actionFailed("hit-test \(label)", status) }
+    var cursor = hit
+    var visited = AXElementIdentitySet()
+    var depth = 0
+    var hitDetails: [String] = []
+    while let element = cursor, depth < 64, visited.insert(element) {
+        hitDetails.append("role=\(stringAttribute(element, "AXRole")) frame=\(String(describing: frame(element))) text=\(String(nodeText(element).prefix(100)))")
+        if CFEqual(element, control) { return }
+        guard let parent = attribute(element, "AXParent"), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+        cursor = unsafeDowncast(parent, to: AXUIElement.self)
+        depth += 1
+    }
+    throw DriverError.unexpectedText("control is occluded at the tested position: \(label), bounds=\(bounds), hitPath=\(hitDetails.joined(separator: " -> "))")
+}
+
+// A multiline text bounding box includes line gaps/unused line width. Probe a
+// real character on every line, rather than mistaking its empty center for cover.
+func assertTextLinesReceiveHitTests(_ text: AXUIElement, label: String) throws {
+    let content = stringAttribute(text, "AXValue") as NSString
+    var testedLines: Set<Int> = []
+    for offset in 0..<content.length {
+        if content.substring(with: NSRange(location: offset, length: 1)).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+        var range = CFRange(location: offset, length: 1)
+        guard let parameter = AXValueCreate(.cfRange, &range) else { throw DriverError.timeout("text range: \(label)") }
+        var result: CFTypeRef?
+        let status = AXUIElementCopyParameterizedAttributeValue(text, "AXBoundsForRange" as CFString, parameter, &result)
+        guard status == .success, let value = result, CFGetTypeID(value) == AXValueGetTypeID() else {
+            throw DriverError.actionFailed("actual glyph bounds: \(label)", status)
+        }
+        var glyph = CGRect.zero
+        guard AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cgRect, &glyph), glyph.width > 0, glyph.height > 0 else {
+            throw DriverError.unexpectedText("empty actual glyph bounds at character \(offset): \(label)")
+        }
+        let line = Int((glyph.midY * 10).rounded())
+        if testedLines.insert(line).inserted {
+            try assertControlReceivesHitTest(text, label: "\(label), glyph \(offset) \(glyph)", at: CGPoint(x: glyph.midX, y: glyph.midY))
+        }
+    }
+    guard !testedLines.isEmpty else { throw DriverError.unexpectedText("no actual text lines: \(label)") }
+}
+
+// Measure current two-column/single layouts and the attached context overlay.
+// specification: mode | history label | chat title | context label | draft | send label
+// Short-window modes check context evidence and composer reachability separately.
 func assertCollaborationColumns(_ application: AXUIElement, specification: String) throws {
     let parts = specification.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-    guard parts.count == 4, ["three", "two", "single", "two-context"].contains(parts[0]),
+    guard parts.count == 6, ["two", "single", "two-context", "single-context", "single-scroll", "single-scroll-evidence", "single-scroll-context"].contains(parts[0]),
           let window = mainWindow(application), let windowFrame = frame(window) else { throw DriverError.usage }
+    let single = parts[0].hasPrefix("single")
+    let scrollLayout = parts[0].hasPrefix("single-scroll")
+    let evidencePhase = parts[0] == "single-scroll-evidence"
+    let contextOpen = parts[0].hasSuffix("-context") || evidencePhase
     let chat = try regionFrame(application, label: parts[2])
-    guard chat.width >= (parts[0] == "single" ? 200 : 360),
-          chat.minX >= windowFrame.minX, chat.maxX <= windowFrame.maxX else {
-        throw DriverError.unexpectedText("conversation has unusable rendered width: \(chat), window=\(windowFrame)")
+    guard chat.width >= (single ? 200 : 360), chat.minX >= windowFrame.minX, chat.maxX <= windowFrame.maxX,
+          (scrollLayout || (chat.minY >= windowFrame.minY && chat.maxY <= windowFrame.maxY)) else {
+        throw DriverError.unexpectedText("conversation has unusable rendered bounds: \(chat), window=\(windowFrame)")
     }
-    if parts[0] != "single" {
+    if !single {
         let history = try regionFrame(application, label: parts[1])
         guard abs(history.minY - chat.minY) <= 4, history.maxX <= chat.minX,
-              history.width >= 180, chat.width > history.width else {
-            throw DriverError.unexpectedText("Sessions must sit beside a wider conversation: \(history), chat=\(chat)")
+              history.width >= 180, chat.width > history.width,
+              history.minX >= windowFrame.minX, history.maxY <= windowFrame.maxY else {
+            throw DriverError.unexpectedText("Sessions must fit beside a wider conversation: \(history), chat=\(chat)")
         }
-        if parts[0] == "three" {
-            let context = try regionFrame(application, label: parts[3])
-            guard abs(context.minY - chat.minY) <= 4, context.minX >= chat.maxX,
-                  context.maxX <= windowFrame.maxX else {
-                throw DriverError.unexpectedText("context must sit beside conversation: \(context), chat=\(chat)")
-            }
-            print("Rendered collaboration three columns: Sessions=\(history), conversation=\(chat), context=\(context)")
-        } else if parts[0] == "two-context" {
-            let context = try regionFrame(application, label: parts[3])
-            guard context.minY >= chat.maxY, context.minX >= windowFrame.minX,
-                  context.maxX <= windowFrame.maxX else {
-                throw DriverError.unexpectedText("disclosed context must fit below conversation: \(context), chat=\(chat)")
-            }
-            print("Rendered two columns with context below: Sessions=\(history), conversation=\(chat), context=\(context)")
-        } else {
-            print("Rendered collaboration two columns: Sessions=\(history), conversation=\(chat)")
+    }
+    guard let input = findVisibleTextField(application, parts[4]), let inputFrame = frame(input),
+          let send = findVisiblePressable(application, parts[5], contains: false), let sendFrame = frame(send),
+          stringAttribute(input, "AXValue") == parts[4], inputFrame.width >= 120, inputFrame.height >= 24,
+          sendFrame.width >= 24, sendFrame.height >= 20,
+          chat.contains(inputFrame), chat.contains(sendFrame),
+          (evidencePhase || (windowFrame.contains(inputFrame) && windowFrame.contains(sendFrame))) else {
+        throw DriverError.unexpectedText("retained composer/input/Send must remain visible within the conversation")
+    }
+    if !evidencePhase {
+        try assertControlReceivesHitTest(input, label: "retained message draft")
+        try assertControlReceivesHitTest(send, label: parts[5])
+    }
+    if contextOpen {
+        let context = try regionFrame(application, label: parts[3])
+        let chatHeading = findTextPaths(application, parts[2]).compactMap { path -> CGRect? in
+            guard stringAttribute(path.element, "AXRole") == "AXHeading", let bounds = frame(path.element), chat.contains(bounds) else { return nil }
+            return bounds
+        }.first
+        let contextHeading = try renderedLeafFrame(application, label: parts[3])
+        guard let heading = chatHeading, context.minX >= chat.minX, context.maxX <= chat.maxX,
+              context.minY >= heading.maxY, context.maxY <= chat.maxY,
+              contextHeading.minY >= context.minY, contextHeading.maxY < inputFrame.minY,
+              contextHeading.width > 0, contextHeading.height > 0 else {
+            throw DriverError.unexpectedText("context must be an attached readable overlay below the heading and above the raised composer: context=\(context), chat=\(chat), input=\(inputFrame)")
         }
-    } else { print("Rendered collaboration single column: conversation=\(chat)") }
+        if !scrollLayout || evidencePhase {
+            guard windowFrame.contains(contextHeading) else { throw DriverError.unexpectedText("context heading must be visible during the evidence stage") }
+            try assertDisjointFrames((label: parts[3], frame: contextHeading), (label: "draft input", frame: inputFrame), unit: "context heading/composer control")
+            let contextRoot = findTextPaths(application, parts[3]).flatMap { $0.ancestors + [$0.element] }.first { element in
+                stringAttribute(element, "AXRole") == "AXGroup" && frame(element) == context && nodeText(element).localizedCaseInsensitiveContains(parts[3])
+            }
+            // Select a real context status paragraph, never a date label or
+            // card heading. A complete normal single line may be under 20px.
+            let normalBodyPrefixes = [
+                "Current content loaded · ", "Currently empty · ", "No record yet · ",
+                "已读取当前内容 · ", "当前为空 · ", "尚无记录 · "
+            ]
+            var readableBody: CGRect?
+            var bodyDiagnostics: [String] = []
+            if let root = contextRoot {
+                _ = walk(root) { element in
+                    let text = nodeText(element)
+                    guard stringAttribute(element, "AXRole") == "AXStaticText", !text.isEmpty,
+                          let bounds = frame(element) else { return false }
+                    let readable = bounds.intersection(context).intersection(windowFrame).intersection(
+                        CGRect(x: chat.minX, y: contextHeading.maxY, width: chat.width, height: inputFrame.minY - contextHeading.maxY)
+                    )
+                    let normalBody = normalBodyPrefixes.contains { text.hasPrefix($0) }
+                    bodyDiagnostics.append("text=\(String(text.prefix(180))) frame=\(bounds) intersection=\(readable) normalBody=\(normalBody)")
+                    guard normalBody, bounds.width > 0, bounds.height > 0,
+                          context.contains(bounds), windowFrame.contains(bounds),
+                          bounds.minY >= contextHeading.maxY, bounds.maxY <= inputFrame.minY else { return false }
+                    do {
+                        try assertTextLinesReceiveHitTests(element, label: "normal context body: \(text)")
+                    } catch {
+                        bodyDiagnostics.append("body hit-test failed: \(error)")
+                        return false
+                    }
+                    readableBody = bounds
+                    return true
+                }
+            }
+            guard let body = readableBody else {
+                throw DriverError.unexpectedText("attached context must expose a complete normal body line above the composer with an unobstructed center; candidates=\(bodyDiagnostics.joined(separator: "; ")) contextRoot=\(contextRoot != nil)")
+            }
+            print("Rendered attached context overlay: context=\(context), readable body=\(body), input=\(inputFrame), Send=\(sendFrame)")
+        }
+    } else if visibleText(application, parts[3]) != nil {
+        throw DriverError.unexpectedText("collapsed context must not expose its old pane: \(parts[3])")
+    }
+    print("Rendered Collaboration \(parts[0]); conversation=\(chat); \(evidencePhase ? "context evidence is readable; draft retained" : "retained draft and Send are not occluded")")
 }
 
 func renderedLeafFrame(_ application: AXUIElement, label: String) throws -> CGRect {
@@ -4199,6 +4404,10 @@ do {
         try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try waitForFocusedText(application, text, timeout: timeout)
         print("Focused rendered control contains: \(text)")
+    case "assert-focused-control":
+        try activateApplication(application, pid: pid, timeout: min(2, timeout))
+        let proof = try waitForFocusedControl(application, text, timeout: timeout)
+        print("Focus belongs to exact rendered control: \(text) (\(proof))")
     case "assert-centered":
         let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
         guard parts.count == 2, let tolerance = Double(parts[1]), tolerance >= 0 else {
@@ -4284,8 +4493,22 @@ do {
     case "press-key":
         try pressKey(pid, text)
         print("Sent keyboard activation: \(text)")
+    case "assert-field-value":
+        let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2 else { throw DriverError.usage }
+        let deadline = Date().addingTimeInterval(timeout)
+        var matched = false
+        repeat {
+            if let field = findVisibleTextField(application, parts[0]), stringAttribute(field, "AXValue") == parts[1] {
+                matched = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        } while Date() < deadline
+        guard matched else { throw DriverError.timeout("exact field value: \(parts[0])") }
+        print("Verified exact rendered field value: \(parts[0])")
     case "type-text":
-        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 2 else {
             throw DriverError.usage
         }
@@ -4407,6 +4630,9 @@ do {
     case "assert-select-absent-option":
         try assertSelectOption(application, text, expectation: .absent, pid: pid, timeout: timeout)
         print("Rendered select excludes option: \(text)")
+    case "dump-window":
+        guard let window = mainWindow(application) else { throw DriverError.timeout("owned candidate window") }
+        dumpText(window)
     case "dump-text":
         dumpText(application)
     case "assert-elements-disjoint":
@@ -4421,6 +4647,7 @@ do {
             secondLabel: parts[1]
         )
     case "assert-collaboration-columns":
+        try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try assertCollaborationColumns(application, specification: text)
     case "assert-regions-disjoint":
         let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
@@ -4435,11 +4662,11 @@ do {
         )
     case "dump-picker":
         try dumpPicker(application, pid: pid)
-    case "press":
+    case "press", "press-exact":
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false
         repeat {
-            if let element = findVisiblePressable(application, text, contains: true),
+            if let element = findVisiblePressable(application, text, contains: command != "press-exact"),
                (attribute(element, "AXEnabled") as? NSNumber)?.boolValue == true {
                 activateCandidate(pid)
                 Thread.sleep(forTimeInterval: 0.05)
@@ -4477,6 +4704,20 @@ do {
             throw DriverError.timeout("pressable control containing: \(text)")
         }
         print("Pressed rendered control containing: \(text)")
+    case "assert-role-text":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { throw DriverError.usage }
+        let deadline = Date().addingTimeInterval(timeout)
+        var matched = false
+        repeat {
+            matched = findRolesWithin(application, [parts[0]]).contains(where: {
+                visibleAttribute($0, "AXHidden") && nodeText($0).localizedCaseInsensitiveContains(parts[1])
+            })
+            if matched { break }
+            Thread.sleep(forTimeInterval: 0.05)
+        } while Date() < deadline
+        guard matched else { throw DriverError.timeout("\(parts[0]) containing \(parts[1])") }
+        print("Verified rendered role/text: \(parts[0])")
     case "select-contains":
         try selectOption(application, text, pid: pid, timeout: timeout)
         print("Selected rendered option containing: \(text)")
@@ -4489,6 +4730,9 @@ do {
             allowUnchanged: true
         )
         print("Selected rendered option containing (unchanged allowed): \(text)")
+    case "activate-owned":
+        try activateOwnedCandidate(pid, timeout: timeout)
+        print("Activated only the guarded isolated candidate")
     case "set-size":
         try resizeWindow(application, pid: pid, text)
         print("Resized rendered window to: \(text)")

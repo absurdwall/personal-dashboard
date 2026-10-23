@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 
 // Production macOS WebKit DOM/layout with only the public Tauri boundary substituted.
-export function probe(width:number, scenario:string, withUntimed=true, height=758, responses: Record<string, unknown> = {}) {
+export function probe(width:number, scenario:string, withUntimed=true, height=758, responses: Record<string, unknown> = {}, beforeMain = "") {
   const directory=mkdtempSync(join(tmpdir(),'pdex14-webkit-'));
   try {
     const root=new URL('../../..',import.meta.url).pathname;
@@ -23,8 +23,23 @@ export function probe(width:number, scenario:string, withUntimed=true, height=75
       const view=${JSON.stringify(view)},month=${readFileSync(new URL('../fixtures/compact-calendar-view.json',import.meta.url),'utf8')}.month,calls=[];
       window.__TAURI__={core:{invoke:async(command,args)=>{calls.push({command,args});
         if(command in responses)return structuredClone(responses[command]);
-        if(command==='today_clock')return {livedDate:view.date,time:'09:30'};
-        if(['today_view','read_daily_view'].includes(command))return structuredClone(view);
+        if(command==='resolve_habit_sleep_point'){
+          if(!args.time)throw Error('需要 HH:MM 单点时间及实际日期。');
+          const dates={'2026-08-05':'2026-08-06','2026-08-09':'2026-08-10','2026-08-10':'2026-08-11'};
+          const overnight=['01:50','02:00','02:15'].includes(args.time);
+          return {date:overnight?dates[args.livedDate]:args.livedDate,time:args.time,utcOffsetMinutes:-240,approximate:args.approximate};
+        }
+        if(command==='resolve_habit_sleep_range'){
+          const bounds={
+            '07:00/08:00':['2026-08-10','2026-08-10'],
+            '03:00/05:00':['2026-08-11','2026-08-11'],
+            '23:00/01:00':['2026-08-10','2026-08-11'],
+          }[args.startTime+'/'+args.endTime];
+          if(!bounds)throw Error('Incomplete synthetic range');
+          return {kind:'range',start:{date:bounds[0],time:args.startTime,utcOffsetMinutes:-240,approximate:false},end:{date:bounds[1],time:args.endTime,utcOffsetMinutes:-240,approximate:false},reportedText:args.reportedText};
+        }
+        if(command==='today_clock')return {date:view.date,livedDate:view.date,time:'09:30'};
+        if(['today_view','daily_view','read_daily_view'].includes(command))return structuredClone(view);
         if(command==='calendar_month')return structuredClone(month);
         if(command==='tasks_view')return structuredClone(view.tasks);
         if(command==='application_identity')return {productName:'Synthetic Dashboard'};
@@ -32,9 +47,10 @@ export function probe(width:number, scenario:string, withUntimed=true, height=75
         if(command==='appearance_preferences')return {accent:'green',fontSize:'normal'};
         throw Error('Unexpected public command '+command);
       }}};
+      ${beforeMain}
       require('./main.js');
       async function until(f){for(let n=0;n<200;n++){if(f())return;await new Promise(r=>setTimeout(r,2));}throw Error('DOM condition timed out '+f);}
-      await until(()=>document.querySelector('#runtime-status').dataset.state==='ready'&&document.documentElement.lang==='en');
+      await until(()=>document.querySelector('#runtime-status').dataset.state==='ready'&&document.documentElement.lang.startsWith(responses.interface_language_preferences?.interfaceLanguage??'en'));
       document.querySelector('[data-today-phase="daytime"]').click();
       const region=document.querySelector('#today-unlocated-time-region'),trigger=document.querySelector('#today-unlocated-time-shortcut');
       const rect=n=>{const r=n.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom};};

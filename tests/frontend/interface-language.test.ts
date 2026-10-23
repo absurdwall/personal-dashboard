@@ -10,10 +10,13 @@ import {
   localizeApplicationMessage,
   localizeCollaborationDiagnostic,
   localizeHabitActualTimeLabel,
+  habitActualTimeCopy,
+  setHabitDetailCopy,
   localizeHabitCoverageLabel,
   localizeHabitDetail,
   localizeHabitGoalLabel,
   setInterfaceError,
+  setInterfaceCopy,
   updateTodayAxisMarkerAccessibleName,
   type InterfaceLanguage,
 } from "../../frontend/interface-language.ts";
@@ -612,4 +615,70 @@ test('local-only Habit fixed metadata changes language without translating unkno
   assert.equal(localizeHabitCoverageLabel('Dashboard 本地完成；外部来源覆盖未知', 'zh'), 'Dashboard 本地完成；外部来源覆盖未知');
   assert.equal(localizeHabitCoverageLabel('My own 日常记录 · 3 个 complete 日期', 'en'), 'My own 日常记录 · 3 complete dates');
   assert.equal(localizeApplicationMessage('My own 本地完成按 lived day 记录；外部来源覆盖仍未知。', 'en'), 'My own 本地完成按 lived day 记录；外部来源覆盖仍未知。');
+});
+
+test("reported Habit-time workflow diagnostics localize without translating source paths or original words", () => {
+  for (const [diagnostic, expected] of [
+    ["请在 Collaboration 中澄清范围的实际日期；未写入：时间范围需要可靠且有序的上下界与原文。", "Clarify the range's actual dates in Collaboration. Nothing was written: A time range needs reliable ordered bounds and the reported wording."],
+    ["请在 Collaboration 中澄清范围的实际日期；未写入：原话 PRIVATE_PATH /奇怪: 文件", "Clarify the range's actual dates in Collaboration. Nothing was written: 原话 PRIVATE_PATH /奇怪: 文件"],
+    ["端点与所选 lived day 不一致或跨越边界；未写入。", "The endpoint differs from the selected lived day or crosses its boundary; nothing was written."],
+    ["所选 Vault 在操作期间改变；结果属于原 Vault，请重新读取核对。", "The selected Vault changed during the operation; the result belongs to the original Vault. Read again to verify."],
+    ["同一 Habit 日期存在多条作息端点；请明确记录身份。", "Multiple sleep endpoints belong to this Habit date; specify the record identity."],
+    ["需要稳定的 wake 或 sleep Habit 身份；未写入。", "A stable wake or sleep Habit identity is required; nothing was written."],
+    ["目标夜晚已有不同日期的端点；请明确记录身份，未写入。", "The night already has an endpoint on another date; specify the record identity. Nothing was written."],
+    ["同一 lived day 的另一条记录有可兼容的相反端点；请先澄清是否属于同一晚，再通过 Collaboration 明确记录身份；未写入。", "Another record has a compatible opposite endpoint on this lived day. Clarify whether they belong to the same night, then specify the record through Collaboration. Nothing was written."],
+    ["所选夜晚的另一条记录有可兼容的相反端点；请先澄清是否属于同一晚，再通过 Collaboration 明确记录身份；未写入。", "Another record has a compatible opposite endpoint for the selected night. Clarify whether they belong to the same night, then specify the record through Collaboration. Nothing was written."],
+    ["端点日期上下文需要对应的明确端点；未写入。", "Endpoint date context requires its explicit endpoint; nothing was written."],
+    ["作息正本无效：原话 PRIVATE_PATH /奇怪: 文件", "The sleep document is invalid: 原话 PRIVATE_PATH /奇怪: 文件"],
+  ]) {
+    assert.equal(localizeApplicationError(diagnostic, "en"), expected);
+    assert.equal(localizeApplicationError(diagnostic, "zh"), diagnostic);
+  }
+});
+
+
+test("nested sleep endpoint grammar changes language in place and keeps reported wording literal", () => {
+  const value: FakeElement = {dataset:{},textContent:""};
+  setInterfaceCopy(value,"sleep.actualValue","en",{value:{copy:"sleep.rangeValue",variables:{
+    start:{copy:"sleep.nextDayTime",variables:{time:{copy:"sleep.aboutTime",variables:{time:"02:00"}}}},
+    end:"03:00",text:"原话 about {start} / 次日"}}});
+  assert.equal(value.textContent,"Actual: next day about 02:00–03:00 · 原话 about {start} / 次日");
+  const identity=value;
+  applyInterfaceLanguage("zh",languageRoot([value]));
+  assert.equal(value,identity);
+  assert.equal(value.textContent,"实际：次日 约 02:00–03:00 · 原话 about {start} / 次日");
+  applyInterfaceLanguage("en",languageRoot([value]));
+  assert.equal(value.textContent,"Actual: next day about 02:00–03:00 · 原话 about {start} / 次日");
+});
+
+test("invalid or excessively nested persisted copy metadata does not execute or recurse without bound", () => {
+  const value: FakeElement={dataset:{i18n:"sleep.actualValue"},textContent:""};
+  for(const invalid of [{value:{copy:"unknown.catalog.key"}}, {value:["not a copy descriptor"]}]){
+    value.dataset.i18nVariables=JSON.stringify(invalid);applyInterfaceLanguage("en",languageRoot([value]));
+    assert.equal(value.textContent,"Actual: {value}");
+  }
+  let nested:unknown="02:00";for(let i=0;i<32;i++)nested={copy:"sleep.nextDayTime",variables:{time:nested}};
+  value.dataset.i18nVariables=JSON.stringify({value:nested});
+  applyInterfaceLanguage("zh",languageRoot([value]));assert.equal(value.textContent,"实际：{value}");
+});
+
+
+test("tagged source evidence retains its existing bilingual bytes and raw text during catalog refresh",()=>{
+  const cases=[
+    [{kind:"localRecord",sourceLabel:"Raw来源",text:"原文 {time}"},"Raw来源 · text record · 原文 {time}","Raw来源 · 文字记录 · 原文 {time}"],
+    [{kind:"localCompletion",state:"completed",changedAt:"2026-08-10T09:00"},"Personal Dashboard local completion · 2026-08-10T09:00","Personal Dashboard 本地完成 · 2026-08-10T09:00"],
+    [{kind:"localCompletion",state:"withdrawn",changedAt:"2026-08-10T09:00"},"Personal Dashboard local completion withdrawn · 2026-08-10T09:00","Personal Dashboard 本地完成已取消 · 2026-08-10T09:00"],
+    [{kind:"actualTime",dayRelation:"next-day",localTime:"02:00",utcOffsetMinutes:-240},"Exact time next day 02:00 · UTC offset -240 minutes","明确时刻 次日 02:00 · UTC offset -240 分钟"],
+    [{kind:"actualTime",dayRelation:"unresolved",localTime:"02:00",utcOffsetMinutes:null},"Exact time unresolved 02:00 · UTC offset unknown","明确时刻 待解释 02:00 · UTC offset 未知"],
+    [{kind:"observation",sourceLabel:"Raw来源",status:"partial",evidence:"threshold-check-in",observedAt:"2026-08-10",note:"原文 {status}"},"Raw来源 · partial · excluded from counts · threshold check-in evidence · Observed at 2026-08-10 · 原文 {status}","Raw来源 · partial · 不计次 · 阈值打卡证据 · observedAt 2026-08-10 · 原文 {status}"],
+  ] as const;
+  for(const [detail,english,chinese]of cases){
+    const node:FakeElement={dataset:{},textContent:""};setHabitDetailCopy(node,detail,"en");
+    assert.equal(node.textContent,english);applyInterfaceLanguage("zh",languageRoot([node]));assert.equal(node.textContent,chinese);
+    applyInterfaceLanguage("en",languageRoot([node]));assert.equal(node.textContent,english);
+  }
+  const value:FakeElement={dataset:{},textContent:""};
+  setInterfaceCopy(value,"sleep.actualValue","en",{value:habitActualTimeCopy("次日 02:00",[{kind:"actualTime",dayRelation:"next-day",localTime:"02:00",utcOffsetMinutes:-240}])});
+  assert.equal(value.textContent,"Actual: next day 02:00");applyInterfaceLanguage("zh",languageRoot([value]));assert.equal(value.textContent,"实际：次日 02:00");
+  assert.equal(habitActualTimeCopy("次日 原文",[]),"次日 原文");
 });

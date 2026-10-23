@@ -2757,3 +2757,107 @@ fn new_personal_space_read_only_parent_is_recoverable() {
     assert!(result.unwrap_err().contains("writable location"));
     assert!(!target.exists());
 }
+
+#[test]
+fn canonical_file_stores_preserve_kind_specific_conflicts_and_raw_os_error_details() {
+    use personal_dashboard_lib::habit_catalog::FileHabitCatalogStore;
+    use personal_dashboard_lib::sleep::{FileSleepStore, SleepStore};
+    use personal_dashboard_lib::tasks::{FileTaskStore, TaskStore};
+    use personal_dashboard_lib::today::{
+        DayTaskStore, FileDayTaskStore, FileHabitCompletionStore, HabitCompletionStore,
+    };
+    type Save = fn(&Path, &[u8], &[u8]) -> Result<(), String>;
+    let cases: [(&str, Save, &str, &str); 6] = [
+        ("daily", |p,e,u| FileTodayRecordStore.save_if_unchanged(p,e,u),
+         "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。",
+         "Could not re-read today's daily record: "),
+        ("day-tasks", |p,e,u| FileDayTaskStore.save_if_unchanged(p,e,u),
+         "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。",
+         "Could not re-read the day-task document: "),
+        ("completions", |p,e,u| FileHabitCompletionStore.save_if_unchanged(p,e,u),
+         "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。",
+         "Could not re-read the local habit-completion document: "),
+        ("catalog", |p,e,u| FileHabitCatalogStore.save_if_unchanged(p,e,u),
+         "本地 Habit 定义已在其他位置发生变化。请刷新 Habits 后再保存；外部内容未被覆盖。",
+         "本地 Habit 定义正本操作失败："),
+        ("tasks", |p,e,u| FileTaskStore.save_if_unchanged(p,e,u),
+         "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。",
+         "任务正本操作失败："),
+        ("sleep", |p,e,u| FileSleepStore.save_if_unchanged(p,e,u),
+         "作息正本已在外部发生变化。请刷新 Today 或 Habits 后再保存；外部内容未被覆盖。",
+         "作息正本操作失败："),
+    ];
+    let root = TempDirectory::new("all-canonical-store-diagnostics");
+    for (name, save, conflict, prefix) in cases {
+        let path = root.path().join(name);
+        fs::write(&path, b"external content").unwrap();
+        assert_eq!(
+            save(&path, b"earlier content", b"candidate").unwrap_err(),
+            conflict
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"external content");
+        let missing = path.with_extension("missing");
+        let os_error = fs::read(&missing).unwrap_err().to_string();
+        assert_eq!(
+            save(&missing, b"earlier content", b"candidate").unwrap_err(),
+            format!("{prefix}{os_error}")
+        );
+        assert!(!missing.exists());
+    }
+}
+
+#[test]
+fn canonical_file_creation_preserves_kind_specific_directory_errors_and_raw_os_details() {
+    use personal_dashboard_lib::habit_catalog::FileHabitCatalogStore;
+    use personal_dashboard_lib::sleep::{FileSleepStore, SleepStore};
+    use personal_dashboard_lib::tasks::{FileTaskStore, TaskStore};
+    use personal_dashboard_lib::today::{
+        DayTaskStore, FileDayTaskStore, FileHabitCompletionStore, HabitCompletionStore,
+    };
+    type Create = fn(&Path, &[u8]) -> Result<(), String>;
+    let cases: [(&str, Create, &str); 6] = [
+        (
+            "daily",
+            |p, d| FileTodayRecordStore.create_new(p, d),
+            "Could not create the Daily Record directory: ",
+        ),
+        (
+            "day-tasks",
+            |p, d| FileDayTaskStore.create_new(p, d),
+            "Could not create the day-task document directory: ",
+        ),
+        (
+            "completions",
+            |p, d| FileHabitCompletionStore.create_new(p, d),
+            "Could not create the local habit-completion document directory: ",
+        ),
+        (
+            "catalog",
+            |p, d| FileHabitCatalogStore.create_new(p, d),
+            "本地 Habit 定义正本操作失败：",
+        ),
+        (
+            "tasks",
+            |p, d| FileTaskStore.create_new(p, d),
+            "任务正本操作失败：",
+        ),
+        (
+            "sleep",
+            |p, d| FileSleepStore.create_new(p, d),
+            "作息正本操作失败：",
+        ),
+    ];
+    let root = TempDirectory::new("canonical-store-create-diagnostics");
+    for (name, create, prefix) in cases {
+        let blocker = root.path().join(name);
+        fs::write(&blocker, b"existing user file").unwrap();
+        let os_error = fs::create_dir_all(&blocker).unwrap_err().to_string();
+        let path = blocker.join("record");
+        assert_eq!(
+            create(&path, b"candidate").unwrap_err(),
+            format!("{prefix}{os_error}")
+        );
+        assert_eq!(fs::read(&blocker).unwrap(), b"existing user file");
+        assert!(!path.exists());
+    }
+}

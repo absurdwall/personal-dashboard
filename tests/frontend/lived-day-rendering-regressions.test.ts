@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { after, test } from 'node:test';
 import { createContext, runInContext } from 'node:vm';
 import * as axis from '../../frontend/today-time-axis.ts';
+import { shiftDateOnly } from '../../frontend/date-only.ts';
+import { formatClockMinutes } from '../../frontend/clock-time.ts';
 import { LatestRequest } from '../../frontend/latest-request.ts';
 
 // Run the shipped handlers, with only DOM/IPC boundaries substituted. Compile
@@ -68,7 +70,7 @@ function renderTimeline(entries: { startMinute: number; endMinute: number | null
   const openedFacts: Element[] = [];
   todayTimedEvents.closest = (selector: string) => selector === '.today-axis-plot' ? plot : null;
   const context = createContext({
-    ...axis, HTMLAnchorElement: AnchorElement,
+    ...axis, shiftDateOnly, formatClockMinutes, HTMLAnchorElement: AnchorElement,
     document: { createElement: (tag: string) => tag === 'a' ? new AnchorElement(tag) : new Element(tag) },
     getComputedStyle: () => ({ height: '432px' }),
     currentTodayView: { date: '2026-10-01' }, currentInterfaceLanguage: 'en',
@@ -227,7 +229,7 @@ function clockHarness(state: 'pending' | 'completed', open: boolean, draft = fal
     stashDatedNoteDraft() {}, stashEveningReviewDraft() {}, stashTodayTaskCreateDraft() {},
     todayTaskCreateDraftKey: (binding: string, date: string) => `${binding}:${date}`,
     todayDate: new Element(), setCopy() {}, updateTodayTimeAxisClock() {}, scrollTodayAxisToNow() {},
-    window: { __TAURI__: { core: { invoke: async () => ({ livedDate: '2026-10-02', time: '04:00' }) } } },
+    window: { __TAURI__: { core: { invoke: async () => ({ date: '2026-10-02', livedDate: '2026-10-02', time: '04:00' }) } } },
     reloads: 0, editor: form,
   });
   runInContext(handler('function taskDraftKey(', 'function readTaskDraft(') +
@@ -256,7 +258,7 @@ function noteRefreshHarness(state: 'pending' | 'completed', nextBinding = 'tasks
     } };
   const view = { date: task.date, targetBinding: 'record-a', isToday: false,
     tasks: { targetBinding: 'tasks-a', tasks: [task] } };
-  const next = { ...view, tasks: { ...view.tasks, targetBinding: nextBinding } };
+  const next = { ...view, tasks: { ...view.tasks, targetBinding: nextBinding, tasks: [{...task,name:nextBinding === 'tasks-a' ? 'latest canonical' : task.name}] } };
   const text = (value: string) => { const node = new Element(); node.textContent = value; return node; };
   const context = createContext({ currentTodayView: view, next, currentWorkspaceDestination: 'today',
     taskEditDrafts: new Map(), document: { querySelectorAll: () => [form], createElement: () => new Element(), createTextNode: text },
@@ -270,8 +272,7 @@ function noteRefreshHarness(state: 'pending' | 'completed', nextBinding = 'tasks
     renderTaskListSelect() {}, normalizeTaskDateTimeFields() {}, closeTodayAxisTaskPopup() {}, closeTodayAxisFactPopup() {}, t: (key: string) => key,
     setCopy: (node: Element, key: string) => { node.textContent = key; },
   });
-  const capture = main.includes('function captureTodayTaskEditors(')
-    ? handler('function captureTodayTaskEditors(', 'function renderToday(') : '';
+  const capture = handler('function openTodayTaskEditorIds(', 'function renderToday(');
   runInContext(handler('function taskDraftKey(', 'function readTaskDraft(') +
     handler('function readTaskDraft(', 'function isBlankTaskDraft(') +
     handler('function taskEditorForms(', 'function clearTaskEditorDialogs(') +
@@ -287,11 +288,11 @@ function noteRefreshHarness(state: 'pending' | 'completed', nextBinding = 'tasks
 }
 
 for (const state of ['pending', 'completed'] as const) {
-  test(`saving a note keeps the open ${state} Today Task editor and its actual field values`, () => {
+  test(`saving a note keeps the open ${state} Today Task editor and reloads its canonical field values`, () => {
     const { context, editor, name } = noteRefreshHarness(state);
     assert.equal(editor.hidden, false);
-    assert.equal(name.value, 'unsaved edit');
-    assert.equal(context.taskEditDrafts.get('tasks-a:task-1')?.name, 'unsaved edit');
+    assert.equal(name.value, 'latest canonical');
+    assert.equal(context.taskEditDrafts.size, 0);
   });
 }
 

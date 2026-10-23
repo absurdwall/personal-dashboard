@@ -11,6 +11,8 @@ mod clock;
 pub mod collaboration;
 pub mod collaboration_memory;
 pub mod cutover;
+#[cfg(any(test, feature = "diagnostic-voice-gate"))]
+mod diagnostic_voice_preflight;
 pub mod exercise;
 pub mod habit_catalog;
 pub mod habit_producer;
@@ -25,6 +27,7 @@ mod notification_platform;
 #[allow(dead_code)] // Retained only for historical regression and cutover parsing boundaries.
 mod platform;
 pub mod profile;
+pub mod sleep;
 pub mod task_adapter;
 pub mod tasks;
 pub mod today;
@@ -42,6 +45,18 @@ fn collaboration_voice_gate_fixture() -> Result<Vec<u8>, String> {
         return Err("Fixture exceeds gate limit".into());
     }
     Ok(bytes)
+}
+
+#[cfg(feature = "diagnostic-voice-gate")]
+#[tauri::command]
+fn collaboration_voice_gate_claim_microphone_preflight() -> Result<(), String> {
+    static PREFLIGHT: diagnostic_voice_preflight::DiagnosticVoicePreflight = diagnostic_voice_preflight::DiagnosticVoicePreflight::new();
+    if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_none()
+        || std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE").is_none()
+        || std::env::var("PERSONAL_DASHBOARD_VOICE_GATE_LOCAL_MIC_PREFLIGHT").as_deref() != Ok("1") {
+        return Err("capture-unavailable".into());
+    }
+    PREFLIGHT.claim()
 }
 
 #[cfg(all(target_os = "macos", feature = "diagnostic-voice-gate"))]
@@ -116,6 +131,9 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
         "getUserMedia",
         "peerConnection",
         "microphone",
+        "cloudMicrophone",
+        "localMicrophonePreflightRequested",
+        "localMicrophonePreflightStopped",
         "offer",
         "failure",
         "captureStopped",
@@ -125,6 +143,22 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
         "userFinalIdentity",
         "dataChannelTranscript",
         "connectionState",
+        "iceConnectionState",
+        "iceCandidateSeen",
+        "iceGatheringComplete",
+        "iceGatheringState",
+        "statsAvailable",
+        "icePairPresent",
+        "icePairChecking",
+        "icePairSucceeded",
+        "icePairFailed",
+        "iceRequestsSent",
+        "iceResponsesReceived",
+        "localDescriptionHasCandidate",
+        "remoteHasCandidate",
+        "remoteIceLite",
+        "remoteTrickle",
+        "remoteDescriptionApplied",
         "remoteAnswer",
         "sidebandUserFinal",
         "sidebandFinalIdentity",
@@ -306,12 +340,17 @@ struct ApplicationIdentity {
     source_commit: &'static str,
     feature_area: &'static str,
     boundary_message: &'static str,
+    diagnostic_voice_fixture: bool,
+    diagnostic_voice_local_microphone_preflight: bool,
 }
 
 #[tauri::command]
 fn application_identity() -> ApplicationIdentity {
     let release: serde_json::Value = serde_json::from_str(include_str!("../../release.json"))
         .expect("checked release declaration");
+    let diagnostic_voice_fixture = cfg!(feature = "diagnostic-voice-gate")
+        && std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_some()
+        && std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE").is_some();
     ApplicationIdentity {
         product_name: release["productName"].as_str().expect("release product name").into(),
         display_version: release["displayVersion"].as_str().expect("release display version").into(),
@@ -319,6 +358,9 @@ fn application_identity() -> ApplicationIdentity {
         source_commit: option_env!("PERSONAL_DASHBOARD_SOURCE_COMMIT").unwrap_or("development"),
         feature_area: "Daily records and habits",
         boundary_message: "Local-first personal management · Online AI optional",
+        diagnostic_voice_fixture,
+        diagnostic_voice_local_microphone_preflight: diagnostic_voice_fixture
+            && std::env::var("PERSONAL_DASHBOARD_VOICE_GATE_LOCAL_MIC_PREFLIGHT").is_ok_and(|value| value == "1"),
     }
 }
 
@@ -742,6 +784,64 @@ fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayVi
 }
 
 #[tauri::command]
+fn sleep_records(
+    application: State<'_, DesktopTodayApplication>,
+    vault_path: String,
+) -> Result<sleep::SleepView, String> {
+    application.sleep_records_for_path(&vault_path)
+}
+
+#[tauri::command]
+fn resolve_habit_sleep_point(
+    application: State<'_, DesktopTodayApplication>,
+    lived_date: String,
+    time: String,
+    approximate: bool,
+    existing_point: Option<sleep::SleepPoint>,
+) -> Result<sleep::SleepPoint, String> {
+    application.resolve_habit_sleep_point(&sleep::HabitSleepPointRequest {
+        lived_date,
+        time,
+        approximate,
+        existing_point,
+    })
+}
+
+#[tauri::command]
+fn resolve_habit_sleep_range(
+    application: State<'_, DesktopTodayApplication>,
+    lived_date: String,
+    start_time: String,
+    end_time: String,
+    reported_text: String,
+    existing_range: Option<sleep::SleepRangeProvenance>,
+) -> Result<sleep::SleepEndpoint, String> {
+    application.resolve_habit_sleep_range(&sleep::HabitSleepRangeRequest {
+        lived_date,
+        start_time,
+        end_time,
+        reported_text,
+        existing_range,
+    })
+}
+
+#[tauri::command]
+fn save_habit_sleep_time(
+    application: State<'_, DesktopTodayApplication>,
+    input: serde_json::Value,
+) -> Result<sleep::SleepView, String> {
+    // Decode inside the command so the domain's paired identity diagnostic is
+    // returned unchanged, rather than wrapped as a generic Tauri argument error.
+    let input = serde_json::from_value(input).map_err(|error| error.to_string())?;
+    application.save_habit_sleep_time(input)
+}
+
+#[tauri::command]
+fn save_sleep_record(application: State<'_, DesktopTodayApplication>, input: sleep::SleepMutationInput) -> Result<sleep::SleepView, String> {
+    application.save_sleep_record(input)
+}
+
+#[tauri::command]
 fn today_clock(application: State<'_, DesktopTodayApplication>) -> TodayClockView {
     application.local_clock()
 }
@@ -777,8 +877,9 @@ fn calendar_month(
 #[tauri::command]
 fn habit_snapshot(
     application: State<'_, DesktopTodayApplication>,
+    vault_path: String,
 ) -> Result<HabitSnapshotView, String> {
-    application.habits()
+    application.habits_for_selected_vault(&vault_path)
 }
 
 #[tauri::command]
@@ -793,8 +894,9 @@ fn save_habit_definition(
 fn habit_detail_history(
     application: State<'_, DesktopTodayApplication>,
     habit_key: String,
+    vault_path: String,
 ) -> Result<HabitDetailHistoryView, String> {
-    application.habit_detail_history(&habit_key)
+    application.habit_detail_history_for_path(&habit_key, &vault_path)
 }
 
 #[tauri::command]
@@ -1209,6 +1311,8 @@ pub fn run() {
             collaboration_voice_runtime_gate,
             #[cfg(feature = "diagnostic-voice-gate")]
             collaboration_voice_gate_request_microphone,
+            #[cfg(feature = "diagnostic-voice-gate")]
+            collaboration_voice_gate_claim_microphone_preflight,
             collaboration_dictation_start,
             collaboration_dictation_poll,
             collaboration_dictation_stop,
@@ -1236,6 +1340,11 @@ pub fn run() {
             set_interface_language,
             today_view,
             today_clock,
+            sleep_records,
+            save_sleep_record,
+        save_habit_sleep_time,
+        resolve_habit_sleep_point,
+        resolve_habit_sleep_range,
             daily_view,
             read_daily_view,
             calendar_month,
@@ -1302,6 +1411,8 @@ pub fn run() {
         collaboration_voice_runtime_gate,
         #[cfg(feature = "diagnostic-voice-gate")]
         collaboration_voice_gate_request_microphone,
+        #[cfg(feature = "diagnostic-voice-gate")]
+        collaboration_voice_gate_claim_microphone_preflight,
         collaboration_dictation_start,
         collaboration_dictation_poll,
         collaboration_dictation_stop,
@@ -1329,6 +1440,11 @@ pub fn run() {
         set_interface_language,
         today_view,
         today_clock,
+        sleep_records,
+        save_sleep_record,
+        save_habit_sleep_time,
+        resolve_habit_sleep_point,
+        resolve_habit_sleep_range,
         daily_view,
         read_daily_view,
         calendar_month,

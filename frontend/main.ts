@@ -1,3 +1,9 @@
+import {shiftDateOnly} from "./date-only.js";
+import {formatClockMinutes} from "./clock-time.js";
+import { HabitSleepOverview } from "./habit-sleep-overview.js";
+import { HabitTimeEntry } from "./habit-time-entry.js";
+import { SleepFactPresentation, isSleepHabitKey, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
+import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
@@ -31,6 +37,7 @@ import {
 } from "./today-time-axis.js";
 import {
   PendingWriteBarrier,
+  SelectedVaultRequestSnapshot,
   selectVaultAndRefresh,
   type VaultSelectionResult,
 } from "./vault-selection.js";
@@ -51,12 +58,14 @@ import {
   localizeCollaborationDiagnostic,
   localizeWorkHistoryDiagnostic,
   localizeHabitActualTimeLabel,
+  habitActualTimeCopy,
   localizeHabitCoverageLabel,
   localizeHabitDetail,
   localizeHabitGoalLabel,
   updateTodayAxisMarkerAccessibleName,
   setApplicationMessage,
   setInterfaceCopy,
+  setInterfaceAttribute,
   setInterfaceError,
   type HabitDetail,
   type InterfaceCopyKey,
@@ -81,6 +90,7 @@ import {
   type CollaborationVoiceTarget,
 } from "./collaboration-voice.js";
 import { BrowserCodexDictationRuntime } from "./collaboration-dictation-runtime.js";
+import { CollaborationDictationCapture } from "./collaboration-dictation-capture.js";
 import { CodexCollaborationVoiceInputController } from "./collaboration-dictation.js";
 import {
   calendarTasksForDate,
@@ -131,6 +141,8 @@ type ApplicationIdentity = Readonly<{
   displayVersion: string;
   build: string;
   sourceCommit: string;
+  diagnosticVoiceFixture?: boolean;
+  diagnosticVoiceLocalMicrophonePreflight?: boolean;
 }>;
 
 declare global {
@@ -204,6 +216,7 @@ type DaytimeView = Readonly<{
 }>;
 
 type TimeAxisEntryView = Readonly<{
+  sleepFact?: SleepEndpointFact;
   planId?: string | null;
   timeEditable?: boolean;
   planPrecision?: "broad" | "approximatePoint" | "exactPoint" | "exactRange" | "unlocated" | null;
@@ -227,6 +240,7 @@ type TimedTodayAxisEntry = TimeAxisEntryView & Readonly<{
 }>;
 
 type TimeAxisView = Readonly<{
+  sleepError?: string;
   currentArrangement: readonly TimeAxisEntryView[];
   confirmedFacts: readonly TimeAxisEntryView[];
   unlocatedCurrentArrangement: readonly TimeAxisEntryView[];
@@ -411,6 +425,7 @@ type TodayView = Readonly<{
   tasks: TasksView;
   dayTasks: DayTaskListView;
   habitCorrections: HabitCorrectionView;
+  habitTimeHabits?: readonly Readonly<{key:string;name:string;localizedNames:HabitLocalizedNames}>[];
   timeAxis: TimeAxisView;
 }>;
 
@@ -469,6 +484,7 @@ type HabitCellView = Readonly<{
   hasRecord: boolean;
   countsAsCompletion: boolean;
   actualTimeLabel: string | null;
+  sleepFact?: SleepEndpointFact | null;
   localCompletionState: HabitLocalCompletionState;
   hasExternalCompletion: boolean;
   completionSourceLabels: readonly string[];
@@ -558,6 +574,8 @@ type HabitSnapshotView = Readonly<{
   catalogTargetBinding: string | null;
   catalogError: string | null;
   completionError: string | null;
+  sleepError?: string | null;
+  sleepView?: SleepView | null;
   namesConfigurationState: HabitNamesConfigurationState;
   summary: Readonly<{
     knownCompletions: number;
@@ -996,6 +1014,7 @@ type HabitRefreshReport = Readonly<{
 }>;
 
 type CollaborationSessionView = Readonly<{
+  titleGenerationPending?: boolean;
   id: string;
   title: string;
   createdDate: string;
@@ -1138,6 +1157,9 @@ let dailyPlanReturnToCollaborationDate: string | null = null;
 let currentCollaborationConnection: CollaborationConnectionView | null = null;
 let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
+const collaborationTitlePolling = new CollaborationTitlePolling(() => {
+  if (!vaultSelectionInProgress) void refreshCollaborationWorkspace(true);
+});
 let collaborationStatusTimer: number | null = null;
 let collaborationTargetDatePendingSession: string | null = null;
 let collaborationEmptyDraft = "";
@@ -1166,9 +1188,16 @@ const collaborationVoicePreviews = new Map<string, string>();
 const collaborationSendingDrafts = new Set<string>();
 const pendingCollaborationRunChecks = new Set<string>();
 const collaborationSubmittedDrafts = new Map<string, string>();
+const collaborationDictationCapture = new CollaborationDictationCapture(
+  (command, args) => window.__TAURI__.core.invoke(command, args),
+);
 
 const collaborationVoiceController = new CodexCollaborationVoiceInputController(
-  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args)),
+  new BrowserCodexDictationRuntime(
+    (command, args) => window.__TAURI__.core.invoke(command,args),
+    signal => collaborationDictationCapture.capture(signal),
+    value => collaborationDictationCapture.report(value),
+  ),
   {
     onState: (state, target) => {
       activeCollaborationVoiceTarget = state === "idle" ? null : target;
@@ -1743,6 +1772,8 @@ let currentTodayPhase: TodayPhase = "morning";
 let todayPhaseSelectionRevision = 0;
 let todayAxisFollowState: TodayAxisFollowState = "following";
 let programmaticTodayAxisScrollUntil = 0;
+// The selected source identity survives presentation-only date navigation.
+let selectedVaultPath: string | null = null;
 let currentTodayView: TodayView | null = null;
 let currentTasksView: TasksView | null = null;
 let taskScope: TaskListScope = "all";
@@ -1842,10 +1873,20 @@ const habitSnapshotRequests = new LatestRequest();
 const habitDateRequests = new LatestRequest();
 const habitDetailRequests = new LatestRequest();
 const habitCompletionRequests = new LatestRequest();
+const sleepFactPresentation = new SleepFactPresentation(
+  () => currentInterfaceLanguage,
+  key => {
+    const habit = currentTodayView?.habitTimeHabits?.find(habit => habit.key === key);
+    return habit ? displayHabitName(habit) : undefined;
+  },
+);
+const habitSleepOverview = new HabitSleepOverview(() => currentInterfaceLanguage, () => revealHabitSleepDetail());
 let currentHabitSnapshot: HabitSnapshotView | null = null;
 type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
 type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>;
 let selectedHabitCell: HabitCellSelection | null = null;
+// Mini-date evidence and the user's history disclosure remain independent across row rebuilds.
+const expandedSleepHabitHistories = new Set<string>();
 let currentHabitDateView: TodayView | null = null;
 let habitDateOperationCount = 0;
 let habitCompletionOperationCount = 0;
@@ -1953,6 +1994,9 @@ if (todayLayoutForResize) new ResizeObserver(() => updateTodayUnlocatedPresentat
 function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
   currentInterfaceLanguage = preferences.interfaceLanguage;
   applyInterfaceLanguage(currentInterfaceLanguage);
+  if (currentTodayView) sleepFactPresentation.refresh(document,
+    [...currentTodayView.timeAxis.confirmedFacts, ...currentTodayView.timeAxis.unlocatedConfirmedFacts]
+      .flatMap(entry => entry.sleepFact ? [entry.sleepFact] : []));
   document.querySelectorAll<HTMLAnchorElement>(".today-axis-marker-link").forEach((link) => {
     const time = link.querySelector<HTMLElement>(".today-axis-marker-time");
     if (time) link.dataset.axisItemTime = time.textContent ?? "";
@@ -1994,6 +2038,7 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
 
 async function chooseInterfaceLanguage(interfaceLanguage: InterfaceLanguage): Promise<void> {
   renderInterfaceLanguage({ interfaceLanguage });
+  revealHabitSleepDetail();
   await interfaceLanguageMutations.enqueue(
     () => window.__TAURI__.core.invoke<InterfaceLanguagePreferences>(
       "set_interface_language",
@@ -2014,14 +2059,10 @@ async function chooseInterfaceLanguage(interfaceLanguage: InterfaceLanguage): Pr
 
 function resetVaultScopedWorkspaceState(): void {
   stashCalendarTaskCreateDraft();
-  const calendarTaskEditDraftKeys = new Set<string>();
-  taskEditorForms("calendar").forEach((form) => {
-    stashTaskEditDraft(form);
-    const binding = currentCalendarSummaryView?.tasks.targetBinding;
-    const taskId = form.dataset.taskEditor;
-    if (binding && taskId) calendarTaskEditDraftKeys.add(taskDraftKey(binding, taskId));
-  });
+  taskEditDrafts.clear();
   historicalHabitArrival.clear();
+  habitTimeEntry?.clear();
+  habitSleepOverview.clear();
   habitDetailRequests.invalidate();
   taskRequests.invalidate();
   todayTaskRequests.invalidate();
@@ -2083,6 +2124,7 @@ function resetVaultScopedWorkspaceState(): void {
   showInactiveHabits = false;
   habitLifecycleOperationIds.clear();
   selectedHabitCell = null;
+  expandedSleepHabitHistories.clear();
   currentHabitDateView = null;
   activeHabitDefinitionBinding = null;
   activeHabitDefinitionDraftKey = null;
@@ -2107,9 +2149,6 @@ function resetVaultScopedWorkspaceState(): void {
     const calendarAttempts = attempts.filter((attempt) => attempt.origin === "calendar");
     if (calendarAttempts.length) taskEndedCreateAttempts.set(key, calendarAttempts);
     else taskEndedCreateAttempts.delete(key);
-  }
-  for (const key of taskEditDrafts.keys()) {
-    if (!calendarTaskEditDraftKeys.has(key)) taskEditDrafts.delete(key);
   }
   taskEndedCreateRegion?.replaceChildren();
   taskQuickForm?.reset();
@@ -2617,8 +2656,14 @@ function renderDailyPlanAutomation(view: DailyPlanAutomationView | null): void {
       const copy = stateCopy[run.state] ?? "collaboration.automaticPlanNeedsReview";
       setCopy(collaborationAutomaticPlanStatus, copy);
       collaborationAutomaticPlanStatus.dataset.state = run.state;
+      collaborationAutomaticPlanStatus.removeAttribute("data-i18n-title");
       if (run.message && run.state !== "completed") {
-        collaborationAutomaticPlanStatus.title = run.message;
+        const retryPrefix = "Daily Record could not be read; automation is waiting to retry: ";
+        if (run.message.startsWith(retryPrefix)) {
+          setInterfaceAttribute(collaborationAutomaticPlanStatus, "title", "collaboration.automaticPlanReadRetryDetail", currentInterfaceLanguage, { error: run.message.slice(retryPrefix.length) });
+        } else {
+          collaborationAutomaticPlanStatus.title = run.message;
+        }
       } else {
         collaborationAutomaticPlanStatus.removeAttribute("title");
       }
@@ -2761,6 +2806,11 @@ function renderCollaborationContextPane(
   }
 }
 
+function setCollaborationSessionTitle(target:HTMLElement,title:string|null|undefined,fallback:InterfaceCopyKey):void {
+  if(title){setRawText(target,title);target.removeAttribute('data-i18n-title');target.title=title;}
+  else {setCopy(target,fallback);setInterfaceAttribute(target,'title',fallback,currentInterfaceLanguage);}
+}
+
 function renderCollaborationSessionList(sessions: readonly CollaborationSessionView[]): void {
   if (!collaborationSessionList) return;
   collaborationSessionList.replaceChildren();
@@ -2778,7 +2828,7 @@ function renderCollaborationSessionList(sessions: readonly CollaborationSessionV
     button.dataset.sessionId = session.id;
     button.setAttribute("aria-pressed", String(session.id === currentCollaborationSession?.id));
     const title = document.createElement("strong");
-    title.textContent = session.title || t("collaboration.untitledSession");
+    setCollaborationSessionTitle(title,session.title,"collaboration.untitledSession");
     const dates = document.createElement("small");
     const activityDates = session.activityDates
       .map(collaborationDateLabel)
@@ -3244,10 +3294,12 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
     collaborationMessageDraft.value = draft;
     collaborationMessageDraft.focus();
     collaborationMessageDraft.setSelectionRange(draft.length, draft.length);
-    setCollaborationVoiceStatus(target, "collaboration.voiceReview");
+    if (collaborationIncompleteVoiceDrafts.has(key)) setCollaborationVoiceStatus(target, "collaboration.voiceIncomplete");
+    else collaborationVoiceStatuses.delete(key);
     renderCollaborationWorkspace();
   } else {
-    setCollaborationVoiceStatus(target, "collaboration.voiceSavedForDate");
+    if (collaborationIncompleteVoiceDrafts.has(key)) setCollaborationVoiceStatus(target, "collaboration.voiceIncomplete");
+    else collaborationVoiceStatuses.delete(key);
     renderCollaborationVoiceControls();
   }
   void saved.catch(() => {
@@ -3264,6 +3316,7 @@ async function startOrStopCollaborationVoice(): Promise<void> {
   if(collaborationVoiceController.state==="recording") { collaborationVoiceController.stop();return; }
   const target=currentCollaborationVoiceTarget();
   if(!target||vaultSelectionInProgress||collaborationVoiceController.state!=="idle")return;
+  collaborationDictationCapture.resetReport();
   if(collaborationMessageDraft)collaborationDrafts.set(collaborationDraftKey(target.sessionId,target.targetDate),collaborationMessageDraft.value);
   void collaborationVoiceController.start(target);
 }
@@ -3785,7 +3838,7 @@ async function refreshCanonicalDateProjections(targetDate: string, evidence?: Co
   const calendarRequest = window.__TAURI__.core.invoke<CalendarMonthView>("calendar_month", { year, month })
     .then((value) => ({ ok: true as const, value }))
     .catch((error: unknown) => ({ ok: false as const, error }));
-  const habitRequest = window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot")
+  const habitRequest = window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot", { vaultPath: selectedVaultPath ?? "" })
     .then((value) => ({ ok: true as const, value }))
     .catch((error: unknown) => ({ ok: false as const, error }));
   const [today, calendar, habits] = await Promise.all([todayRequest, calendarRequest, habitRequest]);
@@ -4663,10 +4716,7 @@ function renderCollaborationWorkspace(): void {
 
   const session = currentCollaborationSession;
   if (collaborationChatHeading) {
-    setRawText(
-      collaborationChatHeading,
-      session?.title || (session ? t("collaboration.untitledSession") : t("collaboration.noSession")),
-    );
+    setCollaborationSessionTitle(collaborationChatHeading,session?.title,session?"collaboration.untitledSession":"collaboration.noSession");
   }
   if (collaborationChatDate) {
     setRawText(
@@ -5005,6 +5055,8 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
     currentCollaborationWorkspace = { ...workspace, context };
     renderCollaborationWorkspace();
     if (session) watchCollaborationSession(session);
+    // Naming belongs to the originating saved session, even when another chat is selected.
+    collaborationTitlePolling.setPending(workspace.sessions.some(session => session.titleGenerationPending));
   } catch (error) {
     if (request !== collaborationWorkspaceRequest) return;
     if (quiet) return;
@@ -5335,6 +5387,19 @@ async function openCollaborationForEveningReview(targetDate: string): Promise<bo
   window.requestAnimationFrame(() => collaborationMessageDraft?.focus());
   return opened.preservedDraft;
 }
+
+const habitTimeRoot = document.querySelector<HTMLElement>("#habit-time-records");
+const habitTimeEntry = habitTimeRoot ? new HabitTimeEntry(habitTimeRoot, {
+  language: () => currentInterfaceLanguage,
+  invoke: (command, args) => window.__TAURI__.core.invoke(command, args),
+  track: operation => { void pendingWrites.track(operation); },
+  saved: () => {
+    const date = currentTodayView?.date;
+    void refreshHabits();
+    if (date) void refreshToday(date, true);
+  },
+  openCollaboration: () => showWorkspaceDestination("collaboration", true),
+}) : null;
 
 const eveningReviewEntryButton = document.querySelector<HTMLButtonElement>("#today-start-review");
 const eveningReviewEntryStatus = document.querySelector<HTMLElement>("#today-review-entry-status");
@@ -5857,14 +5922,8 @@ function minutePosition(minute: number): number {
   const [start, end] = axisBounds();
   return (minute - start) / (end - start);
 }
-function nextAxisDate(date: string): string {
-  const value = new Date(`${date}T12:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + 1);
-  return value.toISOString().slice(0, 10);
-}
 function formatAxisMinute(minute: number): string {
-  minute %= 1440;
-  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+  return formatClockMinutes(minute, "signed");
 }
 
 type TodayAxisLaneId = "arrangement" | "facts" | "tasks" | "arrangement-unlocated" | "facts-unlocated";
@@ -5879,7 +5938,36 @@ function canEditTodayPlanTime(entry: TimeAxisEntryView): boolean {
     !entry.continuesFromPreviousDay && !entry.continuesIntoNextDay;
 }
 
+function appendAxisEntryCopy(target: HTMLElement, entry: TimeAxisEntryView): void {
+  if (entry.sleepFact) sleepFactPresentation.appendCopy(target, entry.sleepFact);
+  else target.textContent = entry.text;
+}
+
+function appendAxisSourceIdentity(target: HTMLElement, entry: TimeAxisEntryView): void {
+  if (entry.sleepFact) sleepFactPresentation.appendProvenance(target, entry.sleepFact);
+  else {
+    const label = document.createElement("span");
+    setCopy(label, "today.sourceDate", { date: entry.sourceDate });
+    target.append(label);
+  }
+}
+
+function appendSleepFactCorrection(target: HTMLElement, entry: TimeAxisEntryView): void {
+  const fact = entry.sleepFact;
+  if (!fact) return;
+  const canCorrect = Boolean(fact.livedDate === currentTodayView?.date && habitTimeEntry &&
+    currentTodayView.habitTimeHabits?.some(habit => habit.key === fact.habitKey));
+  const button = sleepFactPresentation.correctionButton(fact, canCorrect);
+  button.addEventListener("click", () => {
+    closeTodayAxisFactPopup(false);
+    if (canCorrect) habitTimeEntry?.focus(fact.habitKey);
+    else showWorkspaceDestination("collaboration", true);
+  });
+  target.append(button);
+}
+
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
+  if (entry.sleepFact) return sleepFactPresentation.value(entry.sleepFact);
   if(entry.task) {
     const task=currentTodayView?.tasks.tasks.find(task=>task.id===entry.task!.id);
     if(task?.date&&task.time) {
@@ -5897,11 +5985,11 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
   if (entry.planPrecision === "broad") return entry.period || t("today.planApproximatePoint");
   if (entry.planPrecision === "approximatePoint") {
     const label = t("today.planApproximateReference", { time: start });
-    return entry.startMinute >= 1440 ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
+    return entry.startMinute >= 1440 ? `${label} · ${shiftDateOnly(currentTodayView?.date ?? entry.sourceDate, 1)}` : label;
   }
   const label = entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
   return entry.startMinute >= 1440 || (entry.endMinute ?? 0) > 1440
-    ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
+    ? `${label} · ${shiftDateOnly(currentTodayView?.date ?? entry.sourceDate, 1)}` : label;
 }
 
 // Retain copy metadata only for derived labels; period and source text stay verbatim.
@@ -5910,6 +5998,10 @@ function appendAxisEntryTimeLabel(
   entry: TimeAxisEntryView,
   lane: TodayAxisLaneId,
 ): void {
+  if (entry.sleepFact) {
+    sleepFactPresentation.appendTime(target, entry.sleepFact);
+    return;
+  }
   let key: InterfaceCopyKey;
   let variables: Record<string, string> = {};
   if (!entry.task && entry.startMinute === null) {
@@ -5930,7 +6022,7 @@ function appendAxisEntryTimeLabel(
   setCopy(label, key, variables);
   target.append(label);
   if (entry.planPrecision === "approximatePoint" && entry.startMinute! >= 1440) {
-    target.append(` · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}`);
+    target.append(` · ${shiftDateOnly(currentTodayView?.date ?? entry.sourceDate, 1)}`);
   }
 }
 
@@ -5938,6 +6030,7 @@ function axisEntryMetadataCopyKeys(
   entry: TimeAxisEntryView,
   lane: TodayAxisLaneId,
 ): readonly InterfaceCopyKey[] {
+  if (entry.sleepFact) return ["sleep.fact.source"];
   if (entry.task) {
     return [
       "today.sourceTask",
@@ -5970,23 +6063,25 @@ function axisEntryDetails(
 ): HTMLDetailsElement {
   const details = document.createElement("details");
   details.className = "today-axis-entry-detail";
+  if (entry.sleepFact) {
+    details.dataset.sleepRecordId = entry.sleepFact.recordId;
+    details.dataset.sleepHabitKey = entry.sleepFact.habitKey;
+  }
   details.id = `today-axis-${lane}-entry-${index}`;
   const summary = document.createElement("summary");
   const time = document.createElement(entry.startMinute === null ? "span" : "time");
   if (entry.startMinute === null) time.className = "today-axis-entry-time-label";
   appendAxisEntryTimeLabel(time, entry, lane);
   if (entry.startMinute !== null) {
-    time.setAttribute("datetime", `${entry.startMinute >= 1440 ? nextAxisDate(currentTodayView?.date ?? entry.sourceDate) : (currentTodayView?.date ?? entry.sourceDate)}T${formatAxisMinute(entry.startMinute)}`);
+    time.setAttribute("datetime", `${entry.startMinute >= 1440 ? shiftDateOnly(currentTodayView?.date ?? entry.sourceDate, 1) : (currentTodayView?.date ?? entry.sourceDate)}T${formatAxisMinute(entry.startMinute)}`);
   }
   const excerpt = document.createElement("span");
-  excerpt.textContent = entry.text;
+  appendAxisEntryCopy(excerpt, entry);
   summary.append(time, excerpt);
   {
     const continuation = document.createElement("span");
     continuation.className = "today-axis-entry-summary-metadata";
-    const sourceDate = document.createElement("span");
-    setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
-    continuation.append(sourceDate);
+    appendAxisSourceIdentity(continuation, entry);
     if (entry.continuesFromPreviousDay) {
       const label = document.createElement("span");
       setCopy(label, "today.continuesFromPrevious");
@@ -6004,7 +6099,7 @@ function axisEntryDetails(
   appendAxisEntryMetadata(sourceStatus, entry, lane);
   summary.append(sourceStatus);
   const copy = document.createElement("p");
-  copy.textContent = entry.text;
+  appendAxisEntryCopy(copy, entry);
   details.append(summary, copy);
   const metadata = document.createElement("div");
   metadata.className = "today-axis-entry-metadata";
@@ -6014,9 +6109,7 @@ function axisEntryDetails(
     metadata.append(period);
   }
   appendAxisEntryMetadata(metadata, entry, lane);
-  const sourceDate = document.createElement("span");
-  setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
-  metadata.append(sourceDate);
+  appendAxisSourceIdentity(metadata, entry);
   if (entry.continuesFromPreviousDay) {
     const continuation = document.createElement("span");
     setCopy(continuation, "today.continuesFromPrevious");
@@ -6028,6 +6121,7 @@ function axisEntryDetails(
     metadata.append(continuation);
   }
   details.append(metadata);
+  appendSleepFactCorrection(details, entry);
   // Broad or unlocated plans are readable summaries; only precise timeline
   // markers expose the plan-time editor.
   if (lane !== "arrangement" || !hasExactPlanTime(entry)) return details;
@@ -6425,7 +6519,7 @@ function todayAxisGesturePreviewLabel(change: AxisGestureCommit<TodayView>): str
     ? t("today.planApproximateReference", { time: start })
     : change.endMinute === null ? start : `${start}–${formatAxisMinute(change.endMinute)}`;
   return change.startMinute >= 1440 || (change.endMinute ?? 0) >= 1440
-    ? `${label} · ${nextAxisDate(change.context.date)}` : label;
+    ? `${label} · ${shiftDateOnly(change.context.date, 1)}` : label;
 }
 
 function resolveTodayAxisGestureTarget(element: Element, loaded: TodayView): AxisGestureTarget | null | false {
@@ -6548,6 +6642,10 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-completed", entry.task?.state === "completed");
       marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
       if (entry.task) marker.dataset.taskId = entry.task.id;
+      if (entry.sleepFact) {
+        marker.dataset.sleepRecordId = entry.sleepFact.recordId;
+        marker.dataset.sleepHabitKey = entry.sleepFact.habitKey;
+      }
       const editablePlan = original.lane === "arrangement" && canEditTodayPlanTime(original);
       if (editablePlan) marker.dataset.planId = original.planId!;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
@@ -6577,7 +6675,7 @@ function renderTodayTimeAxisEntries(
       if (readOnlyArrangement) link.classList.add("is-read-only");
       link.draggable = false;
       link.dataset.axisItemTime = axisEntryTimeLabel(original, original.lane);
-      link.dataset.axisItemText = entry.text;
+      link.dataset.axisItemText = entry.sleepFact ? sleepFactPresentation.name(entry.sleepFact) : entry.text;
       link.dataset.axisMetadataCopyKeys = JSON.stringify(
         axisEntryMetadataCopyKeys(entry, entry.lane),
       );
@@ -6587,7 +6685,8 @@ function renderTodayTimeAxisEntries(
       appendAxisEntryTimeLabel(timeLabel, original, original.lane);
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
-      title.textContent = entry.task
+      if (entry.sleepFact) {title.dataset.sleepFactTitle = "";sleepFactPresentation.appendName(title,entry.sleepFact);}
+      else title.textContent = entry.task
         ? entry.text
         : original.lane === "arrangement"
           ? stripLeadingAxisTimeLabel(
@@ -6729,7 +6828,7 @@ function positionTodayAxisTaskPopup(): void {
 }
 
 function absoluteAxisDateTimeLabel(date: string, minute: number): string {
-  const actualDate = minute >= 1440 ? nextAxisDate(date) : date;
+  const actualDate = minute >= 1440 ? shiftDateOnly(date, 1) : date;
   return `${actualDate} ${formatAxisMinute(minute)}`;
 }
 
@@ -6764,6 +6863,8 @@ function closeTodayAxisFactPopup(restoreFocus = true): void {
   if (!todayAxisFactPopup?.open) return;
   const opener = todayAxisFactPopupOpener;
   todayAxisFactPopup.close();
+  delete todayAxisFactPopup.dataset.sleepRecordId;
+  delete todayAxisFactPopup.dataset.sleepHabitKey;
   todayAxisFactPopupContent?.replaceChildren();
   todayAxisFactPopupOpener = null;
   if (restoreFocus && opener?.isConnected) opener.focus({ preventScroll: true });
@@ -6775,6 +6876,10 @@ function openTodayAxisFactPopup(entry: TimeAxisEntryView, marker: HTMLElement): 
   setCopy(todayAxisFactPopupHeading, "today.axisFactPopupHeading");
   todayAxisFactPopupOpener = marker.querySelector<HTMLElement>(".today-axis-marker-link") ?? marker;
   todayAxisFactPopupContent.replaceChildren();
+  if (entry.sleepFact) {
+    todayAxisFactPopup.dataset.sleepRecordId = entry.sleepFact.recordId;
+    todayAxisFactPopup.dataset.sleepHabitKey = entry.sleepFact.habitKey;
+  }
 
   const time = document.createElement("time");
   time.className = "today-axis-fact-popup-time";
@@ -6791,13 +6896,11 @@ function openTodayAxisFactPopup(entry: TimeAxisEntryView, marker: HTMLElement): 
 
   const copy = document.createElement("p");
   copy.className = "today-axis-fact-popup-copy";
-  copy.textContent = entry.text;
+  appendAxisEntryCopy(copy, entry);
   const metadata = document.createElement("div");
   metadata.className = "today-axis-entry-metadata";
   appendAxisEntryMetadata(metadata, entry, "facts");
-  const sourceDate = document.createElement("span");
-  setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
-  metadata.append(sourceDate);
+  appendAxisSourceIdentity(metadata, entry);
   if (entry.continuesFromPreviousDay) {
     const continuation = document.createElement("span");
     setCopy(continuation, "today.continuesFromPrevious");
@@ -6809,7 +6912,9 @@ function openTodayAxisFactPopup(entry: TimeAxisEntryView, marker: HTMLElement): 
     metadata.append(continuation);
   }
   todayAxisFactPopupContent.append(time, copy, metadata);
+  appendSleepFactCorrection(todayAxisFactPopupContent, entry);
   if (!todayAxisFactPopup.open) todayAxisFactPopup.show();
+  positionTodayAxisFactPopup();
   window.requestAnimationFrame(() => {
     positionTodayAxisFactPopup();
     todayAxisFactPopupClose?.focus({ preventScroll: true });
@@ -6895,7 +7000,7 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
     todayCurrentTime.textContent = currentMinute >= 1440
       ? `${t("today.planNextDay")} ${currentTime}`
       : currentTime;
-    todayCurrentTime.dateTime = `${currentMinute >= 1440 ? nextAxisDate(view.date) : view.date}T${currentTime}`;
+    todayCurrentTime.dateTime = `${currentMinute >= 1440 ? shiftDateOnly(view.date, 1) : view.date}T${currentTime}`;
     todayCurrentTime.hidden = false;
   } else if (todayCurrentTime) {
     todayCurrentTime.hidden = true;
@@ -7267,39 +7372,23 @@ function renderDatedNoteComposer(view: TodayView): void {
   }
 }
 
-function captureTodayTaskEditors(view: TodayView): Set<string> {
+function openTodayTaskEditorIds(view: TodayView): Set<string> {
   const open = new Set<string>();
   const previous = currentTodayView;
-  const binding = previous?.tasks.targetBinding;
-  if (!previous || !binding || previous.date !== view.date || binding !== view.tasks.targetBinding) {
-    return open;
-  }
+  if (!previous || previous.date !== view.date || previous.tasks.targetBinding !== view.tasks.targetBinding) return open;
   for (const form of taskEditorForms("today")) {
     const id = form.dataset.taskEditor;
-    const task = previous.tasks.tasks.find((candidate) => candidate.id === id);
-    if (form.hidden || !id || !task || !view.tasks.tasks.some((candidate) => candidate.id === id)) continue;
-    open.add(id);
-    const draft = readTaskDraft(form);
-    const key = taskDraftKey(binding, id);
-    if (
-      draft.name !== task.name || draft.content !== (task.content ?? "") ||
-      draft.date !== (task.date ?? "") || draft.time !== (task.time ?? "") ||
-      draft.endDate !== (task.executionEnd?.date ?? "") || draft.endTime !== (task.executionEnd?.time ?? "") ||
-      draft.listId !== task.listId || draft.completionDate !== (task.completion?.completedOn ?? "") ||
-      draft.completionTime !== (task.completion?.completedTime ?? "")
-    ) {
-      taskEditDrafts.set(key, draft);
-    } else {
-      taskEditDrafts.delete(key);
-    }
+    if (!form.hidden && id && view.tasks.tasks.some(task => task.id === id)) open.add(id);
   }
   return open;
 }
 
-function renderToday(view: TodayView, preserveTaskEditors = false): void {
+function renderToday(view: TodayView, keepTaskEditorsOpen = false): void {
+  selectedVaultPath = view.vaultPath;
   closeTodayAxisTaskPopup(false, false);
   closeTodayAxisFactPopup(false);
-  const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
+  const openTaskEditors = keepTaskEditorsOpen ? openTodayTaskEditorIds(view) : new Set<string>();
+  taskEditDrafts.clear();
   stashEveningReviewDraft();
   todayPresentationFresh = true;
   const previousView = currentTodayView;
@@ -7340,6 +7429,14 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
   if (todayStatus) {
     setAppMessage(todayStatus, view.message);
     todayStatus.dataset.state = view.state;
+    if (view.timeAxis.sleepError) {
+      const dailyStatus = document.createElement("span");
+      setAppMessage(dailyStatus, view.message);
+      const error = document.createElement("span");
+      setCopyError(error, "sleep.loadFailed", view.timeAxis.sleepError);
+      delete todayStatus.dataset.applicationMessage;
+      todayStatus.replaceChildren(dailyStatus, document.createTextNode(" · "), error);
+    }
   }
   if (selectTodayVaultButton) {
     selectTodayVaultButton.hidden = view.vaultAvailability === "available";
@@ -7347,12 +7444,13 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
   }
 
   const ready = view.state === "ready";
-  const readable = ready || view.state === "missing";
+  const readable = ready || view.state === "missing" || view.timeAxis.confirmedFacts.some(entry => entry.sleepFact) ||
+    view.timeAxis.unlocatedConfirmedFacts.some(entry => entry.sleepFact);
   if (todayReady) {
     todayReady.hidden = !readable;
   }
   if (todayHandoff) {
-    todayHandoff.hidden = readable;
+    todayHandoff.hidden = readable && view.state !== "error";
   }
   renderTodayTimeline(view);
   if (todayBlockCount) {
@@ -7525,19 +7623,18 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
     }
   }
   showTodayPhase(currentTodayPhase);
-  const arrival = !view.isToday ? historicalHabitArrival.forDate(view.date) : null;
+  const arrival = historicalHabitArrival.forDate(view.date);
   if (arrival) {
     showTodayPhase("daytime");
-    window.requestAnimationFrame(() => {
-      if (
-        currentWorkspaceDestination !== "today" ||
-        !historicalHabitCorrections ||
-        historicalHabitCorrections.hidden ||
-        !historicalHabitArrival.consume(arrival, currentTodayView?.date ?? null)
-      ) return;
-      historicalHabitCorrections.scrollIntoView({ block: "start" });
-      historicalHabitCorrections.focus({ preventScroll: true });
-    });
+    if (arrival.habitKey && currentWorkspaceDestination === "today" && historicalHabitArrival.consume(arrival, currentTodayView?.date ?? null)) {
+      habitTimeEntry?.focus(arrival.habitKey);
+    } else if (!arrival.habitKey) {
+      window.requestAnimationFrame(() => {
+        if (currentWorkspaceDestination !== "today" || !historicalHabitCorrections || historicalHabitCorrections.hidden || !historicalHabitArrival.consume(arrival, currentTodayView?.date ?? null)) return;
+        historicalHabitCorrections.scrollIntoView({ block: "start" });
+        historicalHabitCorrections.focus({ preventScroll: true });
+      });
+    }
   }
   if (startsTodaySession) {
     todayAxisFollowState = "following";
@@ -7778,9 +7875,15 @@ function renderTodayTasks(
 
 function renderHistoricalHabitCorrections(view: TodayView): void {
   if (!historicalHabitCorrections) return;
-  historicalHabitCorrections.hidden = view.isToday;
-  if (view.isToday) return;
   const corrections = view.habitCorrections;
+  const timeHabits = view.habitTimeHabits ?? [];
+  historicalHabitCorrections.hidden = view.isToday && timeHabits.length === 0;
+  habitTimeEntry?.present({ date: corrections.date, vaultPath: view.vaultPath ?? "", canRecord: corrections.canRecord && view.vaultAvailability === "available", habits: timeHabits.map(habit => ({ key: habit.key, name: displayHabitName(habit) })) });
+  if (historicalHabitCorrections.hidden) return;
+  const heading = document.querySelector<HTMLElement>("#historical-habit-heading");
+  const sectionLabel = historicalHabitCorrections.querySelector<HTMLElement>(".section-label");
+  if (heading) setCopy(heading, timeHabits.length > 0 ? "sleep.habitRecords" : "history.habitHeading");
+  if (sectionLabel) setCopy(sectionLabel, timeHabits.length > 0 ? "sleep.selectedContext" : "history.section");
   if (historicalHabitDate) historicalHabitDate.textContent = corrections.date;
   if (historicalHabitStatus) {
     if (historicalHabitCompletionStatus?.copyKey && historicalHabitCompletionStatus.error) {
@@ -7802,11 +7905,11 @@ function renderHistoricalHabitCorrections(view: TodayView): void {
   if (historicalHabitBoundary) {
     setCopy(
       historicalHabitBoundary,
-      corrections.canRecord ? "history.habitBoundary" : "history.futureBoundary",
+      corrections.canRecord ? (timeHabits.length > 0 ? "sleep.recordBoundary" : "history.habitBoundary") : "history.futureBoundary",
     );
   }
   if (!historicalHabitList) return;
-  const habits = corrections.habits.filter((habit) => habit.canRecordCompletion);
+  const habits = corrections.habits.filter((habit) => !view.isToday && habit.canRecordCompletion);
   historicalHabitList.replaceChildren(
     ...habits.map((habit) => {
       const presentation = historicalHabitCorrectionPresentation(habit);
@@ -7879,7 +7982,7 @@ function renderHistoricalHabitCorrections(view: TodayView): void {
       return row;
     }),
   );
-  if (habits.length === 0) {
+  if (habits.length === 0 && timeHabits.length === 0) {
     const empty = document.createElement("p");
     empty.className = "day-task-empty";
     setCopy(empty, "history.noCompletionHabits");
@@ -8317,6 +8420,8 @@ async function selectTodayVault(createSpace = false): Promise<void> {
     if (collaborationMessageDraft) collaborationMessageDraft.value = unboundComposer.draft;
   };
   vaultSelectionInProgress = true;
+  habitDateRequests.invalidate();
+  habitTimeEntry?.setSelectionPending(true);
   collaborationVaultSelectionRevision += 1;
   collaborationVaultSwitchDraftWrites = [...collaborationDraftWrites.values()];
   try {
@@ -8324,6 +8429,7 @@ async function selectTodayVault(createSpace = false): Promise<void> {
   } catch (error) {
     collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
+    resumeHabitReadsAfterVaultSelection();
     renderCollaborationWorkspace();
     renderPendingWriteFailure();
     if (collaborationRunStatus) {
@@ -8368,7 +8474,7 @@ async function selectTodayVault(createSpace = false): Promise<void> {
         renderWorkspaceContextStatus: () =>
           renderWorkspaceContextStatus(currentWorkspaceDestination),
         openCalendar,
-        refreshHabits,
+        refreshHabits: () => refreshHabits(true),
         refreshTasks,
       },
     );
@@ -8380,10 +8486,25 @@ async function selectTodayVault(createSpace = false): Promise<void> {
   } finally {
     collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
+    resumeHabitReadsAfterVaultSelection();
     restoreUnboundComposer();
     renderCollaborationWorkspace();
     updateTodayOperationState(-1);
   }
+}
+
+function resumeHabitReadsAfterVaultSelection(): void {
+  habitTimeEntry?.setSelectionPending(false);
+  if (habitsStatus?.dataset.state === "loading" && currentHabitSnapshot) {
+    renderHabitSnapshotStatus(currentHabitSnapshot);
+  }
+  if (selectedHabitDetailKey && (habitDetailLoading || currentHabitDetailHistory?.habit.key !== selectedHabitDetailKey)) {
+    void loadHabitDetailHistory(selectedHabitDetailKey);
+  }
+  if (selectedHabitCell && !currentHabitDateView) {
+    void loadSelectedHabitDate(selectedHabitCell.habitKey, selectedHabitCell.date);
+  }
+  if (currentWorkspaceDestination === "habits" && !currentHabitSnapshot) void refreshHabits();
 }
 
 function renderVaultSelectionError(error: unknown, createSpace = false): void {
@@ -8730,6 +8851,7 @@ function renderCalendarGrid(month: CalendarMonthView): void {
 }
 
 function renderCalendarSummary(view: TodayView): void {
+  taskEditDrafts.clear();
   currentCalendarSummaryView = view;
   renderWorkspaceRailContext("calendar");
   if (calendarSummaryHeading) {
@@ -8980,7 +9102,7 @@ function renderCalendarReadError(
 async function selectCalendarDate(date: string): Promise<void> {
   const selectionRequest = calendarSelectionRequests.begin();
   stashCalendarTaskCreateDraft();
-  taskEditorForms("calendar").forEach(stashTaskEditDraft);
+  taskEditDrafts.clear();
   calendarTaskRequests.invalidate();
   selectedCalendarDate = date;
   currentCalendarSummaryView = null;
@@ -9134,7 +9256,7 @@ async function chooseCalendarMonth(
 ): Promise<void> {
   calendarSelectionRequests.invalidate();
   stashCalendarTaskCreateDraft();
-  taskEditorForms("calendar").forEach(stashTaskEditDraft);
+  taskEditDrafts.clear();
   calendarTaskRequests.invalidate();
   selectedCalendarDate = date;
   currentCalendarSummaryView = null;
@@ -9319,6 +9441,28 @@ function setHabitHistoryDisclosureCopy(
   button.setAttribute("aria-label", t(labelKey, variables));
 }
 
+function setHabitHistoryExpanded(row: HTMLElement, expanded: boolean, habit?: HabitView): void {
+  const history = row.querySelector<HTMLElement>(".habit-history");
+  const recent = row.querySelector<HTMLElement>(".habit-recent");
+  const expand = row.querySelector<HTMLButtonElement>("button[data-habit-expand]");
+  if (!history) return;
+  history.hidden = !expanded;
+  if (recent) recent.hidden = expanded;
+  row.classList.toggle("is-expanded", expanded);
+  expand?.setAttribute("aria-expanded", String(expanded));
+  if (expand && habit) setHabitHistoryDisclosureCopy(expand, habit, expanded);
+  else if (expand) setCopy(expand, expanded ? "habits.collapse" : "habits.expand");
+  const key = row.dataset.habitKey;
+  if (isSleepHabitKey(key)) {
+    if (expanded) expandedSleepHabitHistories.add(key);
+    else expandedSleepHabitHistories.delete(key);
+    if (!expanded) {
+      const detail = row.querySelector<HTMLElement>(".habit-sleep-day-evidence");
+      if (detail) detail.hidden = true;
+    }
+  }
+}
+
 function habitRow(habit: HabitView): HTMLElement {
   const article = document.createElement("article");
   article.className = "habit-snapshot-row";
@@ -9360,6 +9504,7 @@ function habitRow(habit: HabitView): HTMLElement {
   identityHeading.append(emoji, name, edit);
   identity.append(identityHeading, metadata, sources);
 
+  const completion = habitCompletionControl(habit);
   const value = document.createElement("div");
   value.className = "habit-snapshot-value";
   const progress = document.createElement("strong");
@@ -9367,8 +9512,6 @@ function habitRow(habit: HabitView): HTMLElement {
   progress.textContent = habitProgressLabel(habit);
   setCopy(todayState, "habits.todayStatus", { status: t(habitStatusLabels[habit.today.status]) });
   value.append(progress, todayState);
-
-  const completion = habitCompletionControl(habit);
 
   const recent = document.createElement("div");
   recent.className = "habit-recent";
@@ -9396,10 +9539,15 @@ function habitRow(habit: HabitView): HTMLElement {
   const historyHeading = document.createElement("div");
   historyHeading.className = "habit-history-heading";
   const heading = document.createElement("strong");
+  const legend = document.createElement("details");
+  legend.className = "habit-history-legend";
+  const legendToggle = document.createElement("summary");
   const caption = document.createElement("small");
   setCopy(heading, "habits.history");
+  setCopy(legendToggle, "habits.historyLegend");
   setCopy(caption, "habits.historyCaption");
-  historyHeading.append(heading, caption);
+  legend.append(legendToggle, caption);
+  historyHeading.append(heading, legend);
   const grid = document.createElement("div");
   grid.className = "habit-history-grid";
   const weeks = Array.from({ length: 12 }, (_, week) =>
@@ -9460,9 +9608,18 @@ function habitRow(habit: HabitView): HTMLElement {
   detail.className = "habit-cell-detail";
   detail.dataset.habitDetail = habit.key;
   detail.setAttribute("role", "status");
-  setCopy(detail, "habits.chooseHistory");
+  if (!isSleepHabitKey(habit.key)) setCopy(detail, "habits.chooseHistory");
   history.append(historyHeading, months, grid, goalContext, detail);
-  article.append(identity, value, completion, recent, expand, history);
+  if (isSleepHabitKey(habit.key)) {
+    habitSleepOverview.composeRow(article, {
+      key: habit.key, name: displayHabitName(habit), date: habit.today.date,
+      statusCopy: habitStatusLabels[habit.today.status], actualTimeLabel: habit.today.actualTimeLabel,
+      details: habit.today.details,
+    }, { identity, completion, expand, history, detail });
+    setHabitHistoryExpanded(article, expandedSleepHabitHistories.has(habit.key), habit);
+  } else {
+    article.append(identity, value, completion, recent, expand, history);
+  }
   return article;
 }
 
@@ -9509,6 +9666,7 @@ function renderHabitDetailPanel(): void {
     : currentHabitSnapshot?.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
   habitsCurrentTodayView.hidden = true;
   habitDetailPanel.hidden = false;
+  habitDetailPanel.dataset.sleepDetail = String(isSleepHabitKey(selectedHabitDetailKey));
   if (habitDetailHeading) {
     const name = habit ? displayHabitName(habit) : selectedHabitDetailKey;
     const emoji = habit?.definition?.emoji;
@@ -9715,23 +9873,54 @@ function renderHabitDetailPanel(): void {
     }
   }
 
-  habitDetailContent.append(intro, actions, statsGrid, freshness, sourceCoverage, canonicalStatus, goals, lifecycleSection, recordsSection);
+  if (isSleepHabitKey(habit.key)) {
+    const evidence = document.createElement("details");
+    evidence.className = "habit-sleep-evidence";
+    const summary = document.createElement("summary");
+    setCopy(summary, "sleep.overview.completionEvidence");
+    evidence.append(summary, statsGrid, freshness, sourceCoverage, canonicalStatus, goals, lifecycleSection, recordsSection);
+    habitDetailContent.append(intro, actions, habitSleepOverview.detail({key: habit.key, name: displayHabitName(habit), date: habit.today.date}), evidence);
+  } else habitDetailContent.append(intro, actions, statsGrid, freshness, sourceCoverage, canonicalStatus, goals, lifecycleSection, recordsSection);
 }
 
-async function loadHabitDetailHistory(habitKey: string): Promise<void> {
+function revealHabitSleepDetail(): void {
+  const chart = habitDetailPanel?.querySelector<HTMLElement>('[data-sleep-chart="detail"]');
+  if (!chart || !workspaceInformation || !habitDetailPanel || habitDetailPanel.hidden || currentWorkspaceDestination !== "habits") return;
+  const viewport = workspaceInformation.getBoundingClientRect();
+  const plot = chart.getBoundingClientRect();
+  const panel = habitDetailPanel.getBoundingClientRect();
+  if (plot.bottom <= viewport.bottom && panel.top >= viewport.top) return;
+  const summary = habitsReady?.querySelector<HTMLElement>(".habits-week-summary");
+  // Keep the original side-by-side summary in view. At the existing stacked
+  // breakpoint, reveal the detail below that summary rather than its whole rail.
+  const target = summary && summary.getBoundingClientRect().right <= panel.left + 1
+    ? habitsReady : habitDetailPanel;
+  if (target) workspaceInformation.scrollTo({
+    top: workspaceInformation.scrollTop + target.getBoundingClientRect().top - viewport.top - 12,
+    behavior: "instant",
+  });
+}
+
+async function loadHabitDetailHistory(habitKey: string, revealSleepDetail = false): Promise<void> {
+  if (vaultSelectionInProgress) return;
+  const vaultPath = selectedVaultPath ?? "";
+  const vaultRequest = new SelectedVaultRequestSnapshot(vaultPath || null, collaborationVaultSelectionRevision);
   const request = habitDetailRequests.begin();
+  const isCurrent = () => habitDetailRequests.isCurrent(request) && selectedHabitDetailKey === habitKey &&
+    !vaultSelectionInProgress && vaultRequest.isCurrent(selectedVaultPath, collaborationVaultSelectionRevision);
   habitDetailLoading = true;
   habitDetailLoadError = null;
   renderHabitDetailPanel();
   try {
-    const loaded = await window.__TAURI__.core.invoke<HabitDetailHistoryView>("habit_detail_history", { habitKey });
-    if (!habitDetailRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    const loaded = await window.__TAURI__.core.invoke<HabitDetailHistoryView>("habit_detail_history", { habitKey, vaultPath });
+    if (!isCurrent()) return;
     currentHabitDetailHistory = loaded;
     habitDetailLoading = false;
     habitDetailLoadError = null;
     renderHabitDetailPanel();
+    if (revealSleepDetail) revealHabitSleepDetail();
   } catch (error) {
-    if (!habitDetailRequests.isCurrent(request) || selectedHabitDetailKey !== habitKey) return;
+    if (!isCurrent()) return;
     habitDetailLoading = false;
     habitDetailLoadError = String(error);
     renderHabitDetailPanel();
@@ -9740,11 +9929,12 @@ async function loadHabitDetailHistory(habitKey: string): Promise<void> {
 
 function openHabitDetail(habitKey: string): void {
   selectedHabitDetailKey = habitKey;
+  if (isSleepHabitKey(habitKey)) habitSleepOverview.open(habitKey);
   currentHabitDetailHistory = null;
   habitDetailRecordLimit = 20;
   habitDetailLoadError = null;
   habitDetailLifecycleNotice = null;
-  void loadHabitDetailHistory(habitKey);
+  void loadHabitDetailHistory(habitKey, isSleepHabitKey(habitKey));
 }
 
 function closeHabitDetail(): void {
@@ -10013,22 +10203,32 @@ function renderCanonicalHabitDetail(): void {
   habitsDestination.append(panel);
 }
 
+function renderSleepHabitSelection(): boolean {
+  const selected = selectedHabitCell;
+  if (!selected || !isSleepHabitKey(selected.habitKey)) return false;
+  const habit = currentHabitSnapshot?.habits.find(item => item.key === selected.habitKey);
+  if (!habit) return false;
+  const canonical = currentHabitDateView?.date === selected.date
+    ? currentHabitDateView.habitCorrections.habits.find(item => item.key === selected.habitKey) : null;
+  const cell = canonical?.cell ?? habit.history.find(item => item.date === selected.date)
+    ?? habit.recent.find(item => item.date === selected.date) ?? (habit.today.date === selected.date ? habit.today : null);
+  return habitSleepOverview.renderSelection(habitsDestination, {
+    key: selected.habitKey, date: selected.date, name: displayHabitName(habit), todayDate: habit.today.date,
+    cell: cell ? { statusCopy: habitStatusLabels[cell.status], coverage: cell.coverage, details: cell.details } : null,
+    localChanges: canonical?.localChanges ?? [], error: habitNoteStatus?.error,
+  });
+}
+
 function renderSelectedHabitCell(): void {
   habitsDestination?.querySelector(".habit-canonical-detail")?.remove();
+  if (renderSleepHabitSelection()) return;
   const context = selectedHabitContext();
   if (!context) {
     renderCanonicalHabitDetail();
     return;
   }
   const { habit, cell, row, detail } = context;
-  const history = row.querySelector<HTMLElement>(".habit-history");
-  const recent = row.querySelector<HTMLElement>(".habit-recent");
-  const expand = row.querySelector<HTMLButtonElement>("button[data-habit-expand]");
-  if (history) history.hidden = false;
-  if (recent) recent.hidden = true;
-  row.classList.add("is-expanded");
-  expand?.setAttribute("aria-expanded", "true");
-  if (expand) setHabitHistoryDisclosureCopy(expand, habit, true);
+  setHabitHistoryExpanded(row, true, habit);
 
   const heading = document.createElement("strong");
   const state = document.createElement("span");
@@ -10072,19 +10272,20 @@ async function loadSelectedHabitDate(habitKey: string, date: string): Promise<vo
   habitNoteStatus = null;
   renderSelectedHabitCell();
   const request = habitDateRequests.begin();
+  if (vaultSelectionInProgress) return;
+  const vaultPath = selectedVaultPath;
+  const vaultRequest = new SelectedVaultRequestSnapshot(vaultPath, collaborationVaultSelectionRevision);
+  const isCurrent = () => habitDateRequests.isCurrent(request) && !vaultSelectionInProgress &&
+    selectedHabitCell?.habitKey === habitKey && selectedHabitCell.date === date &&
+    vaultRequest.isCurrent(selectedVaultPath, collaborationVaultSelectionRevision);
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date });
-    if (
-      !habitDateRequests.isCurrent(request) ||
-      selectedHabitCell?.habitKey !== habitKey ||
-      selectedHabitCell.date !== date
-    ) {
-      return;
-    }
+    if (!isCurrent()) return;
+    if (view.vaultPath !== vaultPath) throw new Error("所选 Vault 已改变；未读取作息。");
     currentHabitDateView = view;
     renderSelectedHabitCell();
   } catch (error) {
-    if (!habitDateRequests.isCurrent(request)) return;
+    if (!isCurrent()) return;
     habitNoteStatus = {
       copyKey: "habits.loadDateFailed",
       error: String(error),
@@ -10593,31 +10794,13 @@ async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<boolean>
   }
 }
 
-function renderHabitSnapshot(view: HabitSnapshotView): void {
-  const snapshotChanged = currentHabitSnapshot !== view;
-  currentHabitSnapshot = view;
-  if (selectedHabitDetailKey && currentHabitDetailHistory?.habit.key === selectedHabitDetailKey) {
-    const latestHabit = view.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
-    if (latestHabit) {
-      currentHabitDetailHistory = {
-        ...currentHabitDetailHistory,
-        habit: latestHabit,
-        snapshotState: view.state,
-        snapshotGeneratedAt: view.generatedAt,
-        snapshotRange: view.rangeLabel,
-      };
-    }
-  }
-  if (newHabitButton) {
-    newHabitButton.disabled = !view.catalogTargetBinding || Boolean(view.catalogError);
-    newHabitButton.title = view.catalogError
-      ? applicationMessage(view.catalogError)
-      : t("habits.add");
-  }
-  const localEmpty = view.state === "missing" && view.habits.length === 0 &&
+function isLocallyEmptyHabitSnapshot(view: HabitSnapshotView): boolean {
+  return view.state === "missing" && view.habits.length === 0 &&
     Boolean(view.catalogTargetBinding) && !view.catalogError && !view.readError;
-  renderWorkspaceRailContext("habits");
-  renderWorkspaceContextStatus(currentWorkspaceDestination);
+}
+
+function renderHabitSnapshotStatus(view: HabitSnapshotView): void {
+  const localEmpty = isLocallyEmptyHabitSnapshot(view);
   if (habitsStatus) {
     if (habitCompletionStatus?.copyKey && habitCompletionStatus.error) {
       setCopyError(
@@ -10638,6 +10821,38 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
     }
     habitsStatus.dataset.state = habitCompletionStatus?.state ?? view.state;
   }
+}
+
+function renderHabitSnapshot(view: HabitSnapshotView): void {
+  const snapshotChanged = currentHabitSnapshot !== view;
+  currentHabitSnapshot = view;
+  // Cells, row values and both charts share the snapshot's captured canonical read.
+  // A valid canonical view may also carry a date-specific conflict warning.
+  if (view.sleepView) habitSleepOverview.accept(view.sleepView);
+  else if (view.sleepError) habitSleepOverview.unavailable(view.sleepError);
+  else habitSleepOverview.clear();
+  if (selectedHabitDetailKey && currentHabitDetailHistory?.habit.key === selectedHabitDetailKey) {
+    const latestHabit = view.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
+    if (latestHabit) {
+      currentHabitDetailHistory = {
+        ...currentHabitDetailHistory,
+        habit: latestHabit,
+        snapshotState: view.state,
+        snapshotGeneratedAt: view.generatedAt,
+        snapshotRange: view.rangeLabel,
+      };
+    }
+  }
+  if (newHabitButton) {
+    newHabitButton.disabled = !view.catalogTargetBinding || Boolean(view.catalogError);
+    newHabitButton.title = view.catalogError
+      ? applicationMessage(view.catalogError)
+      : t("habits.add");
+  }
+  const localEmpty = isLocallyEmptyHabitSnapshot(view);
+  renderWorkspaceRailContext("habits");
+  renderWorkspaceContextStatus(currentWorkspaceDestination);
+  renderHabitSnapshotStatus(view);
   if (habitsRange) {
     const rangeKey = view.displayRangeLabel && view.rangeLabel
       ? "habits.range"
@@ -10737,18 +10952,24 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   }
 }
 
-async function refreshHabits(): Promise<void> {
+async function refreshHabits(forSelection = false): Promise<void> {
+  if (vaultSelectionInProgress && !forSelection) return;
+  const vaultPath = selectedVaultPath ?? "";
+  const vaultRequest = new SelectedVaultRequestSnapshot(vaultPath || null, collaborationVaultSelectionRevision);
   const request = habitSnapshotRequests.begin();
+  const isCurrent = () => habitSnapshotRequests.isCurrent(request) &&
+    vaultRequest.isCurrent(selectedVaultPath, collaborationVaultSelectionRevision) &&
+    (!vaultSelectionInProgress || forSelection);
   if (habitsStatus) {
     setCopy(habitsStatus, "habits.loadingLocal");
     habitsStatus.dataset.state = "loading";
   }
   try {
-    const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot");
-    if (!habitSnapshotRequests.isCurrent(request)) return;
+    const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot", { vaultPath });
+    if (!isCurrent()) return;
     renderHabitSnapshot(view);
   } catch (error) {
-    if (!habitSnapshotRequests.isCurrent(request)) return;
+    if (!isCurrent()) return;
     renderHabitSnapshot({
       state: "error",
       message: String(error),
@@ -12357,6 +12578,18 @@ function taskEditor(
   const history = taskChangeHistory(task, view);
   if (history) editorForm.append(history);
   if (!usesModal && !compact) editorForm.append(close);
+  let closeEditorDialog = (): void => {
+    if (binding) taskEditDrafts.delete(taskDraftKey(binding, task.id));
+    editorForm.hidden = true;
+    if (surface === "today" && currentTodayView) {
+      const openEditors = openTodayTaskEditorIds(currentTodayView);
+      openEditors.delete(task.id);
+      renderTodayTasks(currentTodayView, openEditors);
+      document.querySelector<HTMLButtonElement>(
+        `[data-task-editor-row="${CSS.escape(task.id)}"][data-task-surface="today"] [data-task-editor-open]`,
+      )?.focus();
+    }
+  };
   const dialog = usesModal ? document.createElement("div") : null;
   if (dialog) {
     dialog.className = "task-editor-dialog";
@@ -12365,8 +12598,8 @@ function taskEditor(
     dialog.hidden = surface === "calendar"
       ? selectedCalendarTaskDetailId !== task.id
       : selectedTaskDetailId !== task.id;
-    dialog.setAttribute("role", "dialog");
-    dialog.setAttribute("aria-modal", "true");
+    // This is a docked detail panel; navigation and refresh remain available.
+    dialog.setAttribute("role", "group");
     dialog.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
     stateActions.querySelector(".task-completion-toggle")?.remove();
     detailsButton.remove();
@@ -12438,7 +12671,7 @@ function taskEditor(
     titlebar.className = "task-editor-titlebar";
     titlebar.append(nameLabel, menu);
     editorForm.prepend(titlebar, meta);
-    const closeEdit = (): void => {
+    closeEditorDialog = (): void => {
       if (binding) taskEditDrafts.delete(taskDraftKey(binding, task.id));
       const collapsedDisclosureId =
         surface === "tasks" && currentTasksView
@@ -12553,7 +12786,7 @@ function taskEditor(
     close.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      closeEdit();
+      closeEditorDialog();
     });
   }
   if (surface === "tasks") {
@@ -12583,26 +12816,12 @@ function taskEditor(
   }
   row.append(heading);
   if (!dialog) row.append(editorForm);
-  const closeEditorDialog = (): void => {
-    if (dialog) {
-      dialog.hidden = true;
-      if (surface === "calendar") selectedCalendarTaskDetailId = null;
-      else selectedTaskDetailId = null;
-      taskEditorDialogRootForSurface(surface)?.toggleAttribute("hidden", true);
-      row.classList.remove("is-selected");
-      title.focus();
-    } else {
-      editorForm.hidden = true;
-    }
-    row.querySelectorAll<HTMLButtonElement>("button[data-task-editor-open]").forEach((button) => {
-      button.setAttribute("aria-expanded", "false");
-    });
-  };
   [detailsButton, title].forEach((toggle) => {
     toggle.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      toggleTaskEditorDetails(toggle);
+      if (!usesModal && !editorForm.hidden) closeEditorDialog();
+      else toggleTaskEditorDetails(toggle);
     });
   });
   close.addEventListener("click", (event) => {
@@ -13528,6 +13747,8 @@ async function refreshTasks(): Promise<void> {
       return;
     }
     currentTaskLivedDate = clock.livedDate;
+    // A canonical reload ends the previous editor; its unsaved values are not records.
+    taskEditDrafts.clear();
     renderTasks(view);
   } catch (error) {
     if (
@@ -13536,6 +13757,7 @@ async function refreshTasks(): Promise<void> {
     ) {
       return;
     }
+    taskEditDrafts.clear();
     renderTasks({
       state: "error",
       message: String(error),
@@ -15058,9 +15280,11 @@ function showWorkspaceDestination(
     destination === "today" &&
     (destinationChanged || selectedTodayDate !== dailyDate);
   if (leavingToday || changingTodaySelection) {
+    taskEditDrafts.clear();
     todayUnlocatedOverride = null;
     todaySidebarReadingPosition = null;
     historicalHabitArrival.clear();
+    habitTimeEntry?.clear();
     todayPresentationRequests.invalidate();
     todayClockRequests.invalidate();
     todayTaskRequests.invalidate();
@@ -15072,13 +15296,13 @@ function showWorkspaceDestination(
   }
   if (leavingTasks) {
     stashTaskCreateDraft();
-    taskEditorForms("tasks").forEach(stashTaskEditDraft);
+    taskEditDrafts.clear();
     clearTaskEditorDialogs("tasks");
     taskRequests.invalidate();
   }
   if (leavingCalendar) {
     stashCalendarTaskCreateDraft();
-    taskEditorForms("calendar").forEach(stashTaskEditDraft);
+    taskEditDrafts.clear();
     selectedCalendarTaskDetailId = null;
     calendarTaskCreateDialog?.close();
     calendarTaskEditorDialogRoot?.toggleAttribute("hidden", true);
@@ -15184,6 +15408,7 @@ async function connectToApplication(): Promise<void> {
     const identity = await window.__TAURI__.core.invoke<ApplicationIdentity>(
       "application_identity",
     );
+    collaborationDictationCapture.configure(identity);
     try {
       const language = await window.__TAURI__.core.invoke<InterfaceLanguagePreferences>(
         "interface_language_preferences",
@@ -15282,17 +15507,10 @@ settingsCategoryButtons.forEach((button) => {
   });
 });
 
-function shiftDate(date: string, days: number): string {
-  const value = new Date(`${date}T00:00:00Z`);
-  if (Number.isNaN(value.getTime())) return date;
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
-}
-
 document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEventListener("click", () => {
   if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = true;
-  collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, -1);
+  collaborationActivityDate = shiftDateOnly(collaborationDateInput?.value || collaborationActivityDate, -1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
   void refreshCollaborationWorkspace();
 });
@@ -15300,7 +15518,7 @@ document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEv
 document.querySelector<HTMLButtonElement>("#collaboration-date-next")?.addEventListener("click", () => {
   if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = true;
-  collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, 1);
+  collaborationActivityDate = shiftDateOnly(collaborationDateInput?.value || collaborationActivityDate, 1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
   void refreshCollaborationWorkspace();
 });
@@ -15737,7 +15955,7 @@ function bindCompactSchedule(prefix: string, date: HTMLInputElement | null, time
   });
   ["today", "tomorrow", "undated"].forEach(preset => document.querySelector(`#${prefix}-${preset}`)?.addEventListener("click", () => {
     const base = baseDate();
-    date.value = preset === "undated" ? "" : base ? shiftDate(base, preset === "tomorrow" ? 1 : 0) : "";
+    date.value = preset === "undated" ? "" : base ? shiftDateOnly(base, preset === "tomorrow" ? 1 : 0) : "";
     normalizeTaskDateTimeFields(date, time); stash(); updateCompactScheduleLabel(prefix, date, time);
   }));
   document.querySelector(`#${prefix}-schedule-apply`)?.addEventListener("click", () => close(true));
@@ -16079,6 +16297,33 @@ habitsDestination?.addEventListener("change", (event) => {
 });
 
 habitsDestination?.addEventListener("click", (event) => {
+  const closeDate = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-date-close]");
+  if (closeDate) {
+    const row = closeDate.closest<HTMLElement>(".habit-snapshot-row");
+    if (!selectedHabitCell || selectedHabitCell.habitKey !== row?.dataset.habitKey) return;
+    const date = selectedHabitCell.date;
+    habitDateRequests.invalidate();
+    selectedHabitCell = null;
+    currentHabitDateView = null;
+    habitNoteStatus = null;
+    const detail = row?.querySelector<HTMLElement>(".habit-sleep-day-evidence");
+    if (detail) detail.hidden = true;
+    const dateButton = [...(row?.querySelectorAll<HTMLButtonElement>("button[data-habit-date]") ?? [])]
+      .find(button => button.dataset.habitDate === date && button.getClientRects().length > 0);
+    (dateButton ?? row?.querySelector<HTMLButtonElement>(".habit-name-trigger"))?.focus();
+    return;
+  }
+  const timeEntry = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-habit-time-open][data-habit-time-date]");
+  if (timeEntry) {
+    if (vaultSelectionInProgress) return;
+    const key = timeEntry.dataset.habitTimeOpen;
+    const date = timeEntry.dataset.habitTimeDate;
+    if (isSleepHabitKey(key) && date && selectedHabitCell?.habitKey === key && selectedHabitCell.date === date) {
+      showWorkspaceDestination("today", true, date);
+      historicalHabitArrival.select(date, key);
+    }
+    return;
+  }
   const detailBack = (event.target as HTMLElement).closest<HTMLButtonElement>("#habit-detail-back");
   if (detailBack) {
     closeHabitDetail();
@@ -16183,20 +16428,11 @@ habitsDestination?.addEventListener("click", (event) => {
   if (expand) {
     const row = expand.closest<HTMLElement>(".habit-snapshot-row");
     const history = row?.querySelector<HTMLElement>(".habit-history");
-    const recent = row?.querySelector<HTMLElement>(".habit-recent");
-    if (!history) return;
-    history.hidden = !history.hidden;
-    if (recent) recent.hidden = !history.hidden;
-    row?.classList.toggle("is-expanded", !history.hidden);
-    expand.setAttribute("aria-expanded", String(!history.hidden));
+    if (!row || !history) return;
     const habit = currentHabitSnapshot?.habits.find(
       (candidate) => candidate.key === expand.dataset.habitExpand,
     );
-    if (habit) {
-      setHabitHistoryDisclosureCopy(expand, habit, !history.hidden);
-    } else {
-      setCopy(expand, history.hidden ? "habits.expand" : "habits.collapse");
-    }
+    setHabitHistoryExpanded(row, Boolean(history.hidden), habit);
     if (history.hidden && selectedHabitCell?.habitKey === row?.dataset.habitKey) {
       habitDateRequests.invalidate();
       selectedHabitCell = null;

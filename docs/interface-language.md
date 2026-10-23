@@ -1,12 +1,18 @@
 # Fixed interface language
 
+These rules apply to the shipped Personal Dashboard UI, including diagnostic
+entry points and fixed errors. Clearly marked standalone reference-design
+prototypes are outside the App's delivery and bilingual requirements. Designs
+implemented in the shipped frontend must follow all catalog rules below.
+
 Fixed Personal Dashboard copy lives in `frontend/interface-language.ts`. Add
 both `zh` and `en` values to `interfaceCopies` in the same feature slice that
 introduces a new label, button, status, setting, or fixed error.
 
 - Static HTML uses `data-i18n`, `data-i18n-aria-label`,
   `data-i18n-title`, or `data-i18n-placeholder` with a catalog key.
-- Dynamic fixed copy uses `setInterfaceCopy`; fixed application messages use
+- Dynamic fixed copy uses `setInterfaceCopy`; dynamic fixed attributes use
+  `setInterfaceAttribute`. Fixed application messages use
   `setApplicationMessage` so an already-rendered status can switch language.
 - Fixed error wrappers use `setInterfaceError`, which retains the original
   diagnostic separately while localizing the user-visible detail.

@@ -1162,13 +1162,6 @@
                         <p id="today-axis-task-popup-status" class="day-task-status" role="status" aria-live="polite"></p>
                         <div id="today-axis-task-popup-content"></div>
                       </dialog>
-                      <dialog id="today-axis-fact-popup" class="today-axis-fact-popup" aria-labelledby="today-axis-fact-popup-heading">
-                        <header class="today-axis-fact-popup-heading">
-                          <h3 id="today-axis-fact-popup-heading" data-i18n="today.axisFactPopupHeading">事实详情</h3>
-                          <button id="today-axis-fact-popup-close" type="button" class="text-button" aria-label="关闭事实详情" data-i18n-aria-label="today.axisFactPopupClose" title="关闭事实详情" data-i18n-title="today.axisFactPopupClose">×</button>
-                        </header>
-                        <div id="today-axis-fact-popup-content" class="today-axis-fact-popup-content"></div>
-                      </dialog>
                     </section>
 
                     <section id="today-legacy-task-history" class="today-legacy-task-history" aria-labelledby="today-legacy-task-heading" hidden>
@@ -1244,6 +1237,7 @@
                         <span id="historical-habit-date" class="today-count"></span>
                       </div>
                       <p id="historical-habit-status" class="day-task-status" role="status" aria-live="polite"></p>
+                      <div id="habit-time-records"></div>
                       <div id="historical-habit-list" class="historical-habit-list"></div>
                       <p id="historical-habit-boundary" class="day-task-boundary" data-i18n="history.habitBoundary">
                         只更正所选日期的 Dashboard 本地完成；不会改写外部来源或已有复盘。
@@ -1270,6 +1264,13 @@
                     </section>
                   </aside>
                 </div>
+                <dialog id="today-axis-fact-popup" class="today-axis-fact-popup" aria-labelledby="today-axis-fact-popup-heading">
+                  <header class="today-axis-fact-popup-heading">
+                    <h3 id="today-axis-fact-popup-heading" data-i18n="today.axisFactPopupHeading">事实详情</h3>
+                    <button id="today-axis-fact-popup-close" type="button" class="text-button" aria-label="关闭事实详情" data-i18n-aria-label="today.axisFactPopupClose" title="关闭事实详情" data-i18n-title="today.axisFactPopupClose">×</button>
+                  </header>
+                  <div id="today-axis-fact-popup-content" class="today-axis-fact-popup-content"></div>
+                </dialog>
               </div>
 
               <section id="today-handoff" class="today-handoff" aria-labelledby="today-handoff-heading" hidden>

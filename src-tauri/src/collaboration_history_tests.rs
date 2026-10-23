@@ -320,12 +320,15 @@ impl AppServerTransport for InjectedTransport {
             sender.send(Ok(event.to_string())).unwrap();
         }
         // Keep observing tool RPC responses even when history persistence fails.
+        let (replies_ready, replies_observed) = mpsc::channel();
         let reader = std::thread::spawn(move || {
-            BufReader::new(stdout)
+            let replies = BufReader::new(stdout)
                 .lines()
                 .take(2)
                 .map(|line| serde_json::from_str::<Value>(&line.unwrap()).unwrap())
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            let _ = replies_ready.send(());
+            replies
         });
         let result = client.wait_for_turn_observed(
             &thread,
@@ -337,6 +340,10 @@ impl AppServerTransport for InjectedTransport {
             None,
             observer,
         );
+        // Let the echo peer flush both replies before Drop kills it. A missing
+        // reply expires this fixture-only wait; killing the peer then releases
+        // the reader, so the unchanged count assertion fails without hanging.
+        let _ = replies_observed.recv_timeout(Duration::from_secs(1));
         drop(client);
         let replies = reader.join().unwrap();
         assert_eq!(
@@ -422,6 +429,22 @@ fn await_end(application: &CollaborationApplication, session: &str) -> Collabora
             "actual application did not complete"
         );
         thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn await_fixture_queue_shutdown(application: &CollaborationApplication) {
+    // InjectedTransport has no title worker. A terminal reply can still be
+    // observed before the queue's final history load, which creates its parent
+    // directory. Shutdown signals cancellation; wait for the worker to leave
+    // before removing the fixture, without changing immediate result assertions.
+    application.shutdown().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !application.active_vault_workers.lock().unwrap().is_empty() {
+        assert!(
+            Instant::now() < deadline,
+            "queue did not quiesce before fixture teardown"
+        );
+        thread::yield_now();
     }
 }
 
@@ -517,6 +540,7 @@ fn actual_stdio_history_and_receipts_survive_application_reopen_without_hidden_c
             .work_history
             .is_empty()
     );
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -719,6 +743,7 @@ fn ordinary_native_patch_keeps_actual_diff_and_bound_readback_in_saved_work_hist
             .work_history,
         finished.work_history
     );
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -808,6 +833,7 @@ fn managed_background_change_uses_actual_source_revisions_and_independent_readba
     let contents = fs::read_to_string(self_path).unwrap();
     assert!(contents.contains("Unrelated paragraph and prior correction."));
     assert!(contents.contains("Prefers a quiet morning."));
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -844,6 +870,7 @@ fn later_full_history_snapshots_preserve_first_native_readback() {
         fs::read_to_string(&file).unwrap(),
         "Later independent correction\nKeep unrelated paragraph\n"
     );
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -929,6 +956,7 @@ fn memory_history_failure_reconciles_actual_file_without_second_write() {
     assert!(fs::read_to_string(root.join("vault/life/Self.md"))
         .unwrap()
         .contains("Unrelated history"));
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -1030,18 +1058,8 @@ fn managed_source_conflict_or_later_edit_keeps_observed_revision_and_original_ou
             fs::read_to_string(&path).unwrap(),
             "# Independent correction\nPreserve this content\n"
         );
-        // Completion is observable before the background worker's final history flush.
-        // Only teardown waits; all actual source/outcome assertions above stay immediate.
-        let cleanup_deadline = Instant::now() + Duration::from_secs(1);
-        loop {
-            match fs::remove_dir_all(&root) {
-                Ok(()) => break,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
-                Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty
-                    && Instant::now() < cleanup_deadline => thread::sleep(Duration::from_millis(20)),
-                Err(error) => panic!("isolated fixture teardown failed: {error}"),
-            }
-        }
+        await_fixture_queue_shutdown(&app);
+        fs::remove_dir_all(root).unwrap();
     }
 }
 
@@ -1083,7 +1101,7 @@ fn simple_refresh_queries_native_full_window_without_model_mappings_or_evidence_
     for reference in exported["references"].as_object().unwrap().values() {
         assert!(source.pointer(reference["pointer"].as_str().unwrap()).is_some());
     }
-    app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
+    await_fixture_queue_shutdown(&app);fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -1124,7 +1142,7 @@ fn partial_native_producer_query_retains_snapshot_then_independent_refresh_keeps
     assert!(export.status.success());
     let exported:Value=serde_json::from_slice(&export.stdout).unwrap();
     assert!(exported["executions"][0]["history"]["items"].as_array().unwrap().iter().any(|item|item["kind"]=="hostSourceRead" && item["status"]=="failed" && item["diagnosticOrigin"]=="application"));
-    app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
+    await_fixture_queue_shutdown(&app);fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -1142,7 +1160,7 @@ fn duplicate_refresh_delivery_reuses_source_query_attempts_and_publication_ident
     assert_eq!(saved.run_state,"completed");
     assert_eq!(saved.last_habit_refresh.as_ref().unwrap().publication,"published");
     assert_eq!(saved.work_history[0].items.iter().filter(|item|item.kind=="hostSourceRead").count(),2);
-    app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
+    await_fixture_queue_shutdown(&app);fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -1158,7 +1176,7 @@ fn saturated_native_evidence_cache_reports_unknown_coverage_and_retains_snapshot
     assert_eq!(report.publication,"notPublished");assert!(report.message.contains("capacity"));
     assert_eq!(fs::read(&path).unwrap(),before);
     assert!(saved.work_history[0].items.iter().any(|item|item.status=="failed" && item.diagnostic.as_ref().is_some_and(|diagnostic|diagnostic.contains("capacity"))));
-    app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
+    await_fixture_queue_shutdown(&app);fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -1245,6 +1263,7 @@ fn developer_reader_resolves_failed_attempt_and_actual_saved_change_from_applica
         fs::write(destination.join("history.json"), before).unwrap();
         fs::write(destination.join("export.json"), output).unwrap();
     }
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -1275,6 +1294,7 @@ fn execution_configuration_retains_original_requested_model_after_settings_chang
     assert_eq!(configuration["requestedReasoningEffort"], "low");
     assert_eq!(configuration["threadId"], "history-thread");
     assert_eq!(reopened.work_history, saved.work_history);
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -1341,6 +1361,7 @@ fn developer_reader_complete_chain_keeps_rejected_target_overwrite_unknown_repla
         fs::write(destination.join("complete-history.json"),before).unwrap();
         fs::write(destination.join("complete-export.json"),output.stdout).unwrap();
     }
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -1397,6 +1418,7 @@ fn source_refresh_observations_are_scoped_and_do_not_change_canonical_task_revis
         saved.work_history[0].sequence
     );
     assert_eq!(tasks.read().unwrap().revision, before.revision);
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -1465,10 +1487,12 @@ fn prospective_optional_history_budget_preserves_replies_failures_and_existing_a
     let mut legacy=state.clone();legacy.sessions[0].work_history[0].items[0].text="Legacy original".repeat(800_000);
     store.save(&legacy).unwrap();
     let legacy_history=legacy.sessions[0].work_history[0].clone();
+    await_fixture_queue_shutdown(&app);
     let app=application(&root,store.clone());let session=app.create_session("2026-10-09").unwrap();
     app.submit_message("history-vault",&session.id,"2026-10-09","Generate bounded evidence").unwrap();await_budget_end(&app,&session.id);
     let retained=store.load().unwrap();let prior=retained.sessions.iter().find(|session|session.id==legacy.sessions[0].id).unwrap();
     assert_eq!(prior.work_history[0],legacy_history,"legacy archive is never retroactively trimmed");
     assert_eq!(original.items.len(),prior.work_history[0].items.len());
+    await_fixture_queue_shutdown(&app);
     fs::remove_dir_all(root).unwrap();
 }

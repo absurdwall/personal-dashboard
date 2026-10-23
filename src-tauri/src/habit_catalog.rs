@@ -1002,6 +1002,7 @@ fn local_cell(date: &str, key: &str, completions: &[LocalHabitCompletion]) -> Ha
             Vec::new()
         },
         actual_time_label: None,
+        sleep_fact: None,
         details: completion
             .map(|completion| {
                 vec![HabitDetailView::LocalCompletion {

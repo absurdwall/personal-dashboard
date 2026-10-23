@@ -35,7 +35,7 @@ function composer(actualVoice=false, pendingStart=false, empty=false) {
     "handleCollaborationVoiceTranscript","cancelCollaborationVoiceCaptureForSelectionChange",
     "renderCollaborationWorkspace","stashCollaborationDraft","flushCollaborationDraft",
     "saveCollaborationDraft","selectCollaborationSession","refreshCollaborationWorkspace","saveCollaborationTargetDate",
-    "collaborationVoiceFailureStatus","startOrStopCollaborationVoice","selectTodayVault","sendCollaborationMessage","handleCollaborationDraftInput","resetVaultScopedWorkspaceState","renderPendingWriteFailure","openCollaborationForTask","createCollaborationSession","localOperationId","localCalendarDate",
+    "collaborationVoiceFailureStatus","startOrStopCollaborationVoice","selectTodayVault","resumeHabitReadsAfterVaultSelection","sendCollaborationMessage","handleCollaborationDraftInput","resetVaultScopedWorkspaceState","renderPendingWriteFailure","openCollaborationForTask","createCollaborationSession","localOperationId","localCalendarDate",
     ...(main.includes("function prepareCollaborationForVaultSwitch(")?["prepareCollaborationForVaultSwitch"]:[]),
     ...(main.includes("function drainCollaborationDraftsForVaultSwitch(")?["drainCollaborationDraftsForVaultSwitch"]:[])];
   const functions=names.map(sourceFunction).join("\n");
@@ -64,11 +64,18 @@ function composer(actualVoice=false, pendingStart=false, empty=false) {
     vaultSelectionInProgress:false,collaborationVaultSwitchDraftWrites:null,collaborationVaultSelectionRevision:0,
     selectVaultAndRefresh,vaultSelectionRequests:{begin:()=>1,isCurrent:()=>true},todayPresentationRequests:{begin:()=>1,isCurrent:()=>true},
     currentInterfaceLanguage:"en",currentWorkspaceDestination:"settings",updateTodayOperationState(){},
+    // This Collaboration seam has no selected Habit pane; execute the real
+    // post-picker resume hook with that explicit state rather than omitting it.
+    habitsStatus:null,currentHabitSnapshot:null,selectedHabitDetailKey:null,
+    currentHabitDetailHistory:null,habitDetailLoading:false,selectedHabitCell:null,currentHabitDateView:null,
     waitForPendingWrites:async()=>true,renderPendingWriteFailure(){},renderToday(){},renderWorkspaceContextStatus(){},
     openCalendar(){},refreshHabits(){},refreshTasks(){},renderVaultSelectionError(error:any){throw error;},
     stashCalendarTaskCreateDraft(){},taskEditorForms:()=>[],compactScheduleTransactions:new Map(),
     taskCreateAttempts:new Map(), taskEndedCreateAttempts:new Map(), taskEditDrafts:new Map(),
     normalizeTaskDateTimeFields(){},renderWorkspaceRailContext(){},settingsVaultStatus:element(),
+    // Title polling is unrelated pane refresh at this draft-protection seam;
+    // its real timer lifecycle is exercised by collaboration-title.test.ts.
+    collaborationTitlePolling:{setPending(){}},
     refreshCollaborationRunOwner(){},showWorkspaceDestination(){},
     collaborationDrafts:new Map(),collaborationUnsavedDrafts:new Set(),collaborationDraftWrites:new Map(),
     collaborationDraftSaveTimers:new Map(),collaborationTargetDates:new Map(),collaborationSendingDrafts:new Set(),

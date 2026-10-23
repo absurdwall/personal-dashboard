@@ -10,6 +10,7 @@ acceptance_directory_owned_by_supervisor=0
 app_bundle=""
 app_executable=""
 app_pid=""
+app_launch_ownership_unknown=0
 app_pid_file=""
 acceptance_data_directory=""
 acceptance_baseline_file=""
@@ -346,12 +347,12 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4 today-time-axis-a-cards today-time-axis today-unlocated-panel-layout; do
+  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4 today-time-axis-a-cards today-time-axis today-unlocated-panel-layout habit-sleep; do
     run_bounded_scenario "$scenario"
   done
 
   echo "Packaged IPC Personal Dashboard 4.0 local candidate gate passed"
-  echo "Coverage: integrated bilingual Today, Calendar, Habits, Settings, Tasks, appearance, and history workflows"
+  echo "Coverage: integrated bilingual Today, Calendar, Habits, Settings, Tasks, appearance, history, and canonical Habit sleep workflows"
   echo "Retirement: former 2.0 cutover and Exercise/Profile runtime scenarios remain explicit historical seams and are not part of normal-startup 4.0 acceptance"
   echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
   echo "Boundary: actual Drive cloud/version/trash acceptance remains a separate dependency and is not implied by this local gate"
@@ -379,6 +380,9 @@ fi
 
 stop_app() {
   local app_process_pids=""
+  if (( app_launch_ownership_unknown == 1 )); then
+    return 1
+  fi
 
   if [[ -n "$app_pid" ]] && pid_is_running "$app_pid"; then
     app_process_pids="$(collect_process_tree "$app_pid")"
@@ -419,6 +423,9 @@ cleanup() {
     app_stopped=1
   else
     echo "Packaged IPC acceptance cleanup warning: app process did not exit" >&2
+  fi
+  if (( app_stopped == 1 )) && [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_LAUNCH_SERVICES:-0}" == "1" && -n "$app_bundle" ]]; then
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$app_bundle" >/dev/null 2>&1 || true
   fi
   if (( app_stopped == 1 && acceptance_directory_owned_by_supervisor == 0 )); then
     if ! remove_acceptance_directory "$acceptance_directory"; then
@@ -503,6 +510,10 @@ frontmost_process_name="$(/usr/bin/osascript \
 
 launch_app() {
   current_step="launching isolated packaged app"
+  if [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_LAUNCH_SERVICES:-0}" == "1" ]]; then
+    launch_app_via_launch_services
+    return
+  fi
   if [[ "$acceptance_scenario" == "today-time-axis" && "$today_time_axis_real_clock" == "1" ]]; then
     /usr/bin/env -u PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS \
       -u PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES \
@@ -6452,7 +6463,7 @@ run_collaboration_layout_scenario() {
   local session_title="Automatic morning plan · layout probe"
   local draft="Synthetic retained draft 中文 English"
   local index=0 mode window_size
-  mkdir -p "$vault/.obsidian" "$acceptance_data_directory" "$captures"
+  mkdir -p "$vault/.obsidian" "$vault/life/Journal/Daily" "$acceptance_data_directory" "$captures"
   printf '{"schemaVersion":1,"selectedVault":"%s"}\n' "$vault" > "$acceptance_data_directory/today-workspace.json"
   printf '{"schemaVersion":1,"interfaceLanguage":"en"}\n' > "$acceptance_data_directory/interface-language.json"
   launch_app_waiting_for_text "Today" 30
@@ -6478,7 +6489,18 @@ NODE
   launch_app_waiting_for_text "Today" 30
   run_driver press "Collaboration" 10
   run_driver press "$session_title" 10
-  for window_size in "1440x900" "1040x800" "640x720" "1440x900"; do
+  run_driver set-size "1440x900" 10
+  # WebKit pane preferences can outlive this isolated native profile. Establish
+  # the scenario's initial state through the actual disclosure/splitter owners.
+  if "$driver_binary" "$app_pid" assert-active-text "Current context" 10 >/dev/null 2>&1; then
+    run_driver press "Close current work context" 10
+  fi
+  if ! "$driver_binary" "$app_pid" assert-role-text "AXGroup|Sessions" 1 >/dev/null 2>&1; then
+    run_driver press "Toggle sessions sidebar" 10
+  fi
+  run_driver focus "Resize session history" 10
+  run_driver press-key "home" 10
+  for window_size in "1440x900" "1040x800" "640x800" "1440x900"; do
     index=$((index + 1))
     current_step="checking collaboration columns at $window_size"
     run_driver set-size "$window_size" 10
@@ -6487,38 +6509,85 @@ NODE
     run_driver capture-window "$captures/collaboration-$index-$window_size.png" 10
     run_driver dump-text "" 10 > "$captures/collaboration-$index-$window_size-accessibility.txt"
     case "$window_size" in
-      "640x720") mode=single ;;
-      "1040x800") mode=two ;;
-      *) mode=three ;;
+      "640x800") mode=single ;;
+      *) mode=two ;;
     esac
-    run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context" 10
+    run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context|$draft|Send" 10
     if [[ "$mode" != "single" ]]; then run_driver assert-window-visible "New chat" 10; fi
     run_driver assert-text "$draft" 10
   done
-  current_step="checking intermediate disclosure and manual collapse"
-  run_driver set-size "1040x800" 10
-  run_driver press "Current work" 10
-  run_driver assert-collaboration-columns "two-context|Sessions|$session_title|Current context" 10
+  for window_size in "1440x900" "1040x800" "640x800"; do
+    current_step="checking attached context disclosure and retained composer at $window_size"
+    run_driver set-size "$window_size" 10
+    case "$window_size" in "640x800") mode=single ;; *) mode=two ;; esac
+    run_driver press "Context" 10
+    if [[ "$window_size" == "640x800" ]]; then
+      # The narrow overlay scrolls behind the raised composer; reach complete
+      # normal body text with its existing keyboard scroll owner and sticky head.
+      run_driver focus "Close current work context" 10
+      run_driver press-key "pagedown" 10
+    fi
+    run_driver assert-collaboration-columns "$mode-context|Sessions|$session_title|Current context|$draft|Send" 10
+    run_driver assert-window-visible "Current context" 10
+    run_driver assert-active-absent-text "Read failed" 10
+    run_driver focus "$draft" 10
+    run_driver assert-visible-focus "$draft" 10
+    run_driver capture-window "$captures/collaboration-context-$window_size.png" 10
+    run_driver press "Close current work context" 10
+    run_driver assert-focused-text "Context" 10
+    run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context|$draft|Send" 10
+  done
+  # The shipped <=720px/<=740px content viewport deliberately scrolls rather
+  # than squeezing its 42rem conversation. Verify access in separate stages.
+  current_step="checking short narrow Collaboration scroll reachability"
+  run_driver set-size "640x720" 10
+  run_driver assert-size "640x720" 10
+  run_driver scroll-text-visible "$draft" 10
+  run_driver scroll-text-visible "Send" 10
+  run_driver focus "$draft" 10
+  run_driver assert-visible-focus "$draft" 10
+  run_driver assert-collaboration-columns "single-scroll|Sessions|$session_title|Current context|$draft|Send" 10
+  run_driver capture-window "$captures/collaboration-short-composer.png" 10
+  run_driver scroll-text-visible "Context" 10
+  run_driver assert-window-visible "Context" 10
+  run_driver press "Context" 10
   run_driver scroll-text-visible "Current context" 10
-  run_driver assert-window-visible "Current context" 10
-  run_driver capture-window "$captures/collaboration-context-disclosed.png" 10
-  run_driver scroll-text-visible "Current work" 10
-  run_driver press "Current work" 10
-  run_driver press "Session history" 10
-  run_driver assert-collaboration-columns "single|Sessions|$session_title|Current context" 10
-  run_driver press "Session history" 10
-  run_driver assert-collaboration-columns "two|Sessions|$session_title|Current context" 10
+  run_driver assert-collaboration-columns "single-scroll-evidence|Sessions|$session_title|Current context|$draft|Send" 10
+  run_driver assert-active-absent-text "Read failed" 10
+  run_driver capture-window "$captures/collaboration-short-context.png" 10
+  run_driver scroll-text-visible "$draft" 10
+  run_driver scroll-text-visible "Send" 10
+  run_driver focus "$draft" 10
+  run_driver assert-visible-focus "$draft" 10
+  run_driver assert-collaboration-columns "single-scroll-context|Sessions|$session_title|Current context|$draft|Send" 10
+  run_driver scroll-text-visible "Close current work context" 10
+  run_driver assert-window-visible "Close current work context" 10
+  run_driver press "Close current work context" 10
+  run_driver assert-focused-text "Context" 10
+  run_driver assert-window-visible "Context" 10
+  current_step="checking manual history collapse with the attached context closed"
+  run_driver set-size "1040x800" 10
+  run_driver press "Toggle sessions sidebar" 10
+  run_driver assert-collaboration-columns "single|Sessions|$session_title|Current context|$draft|Send" 10
+  run_driver press "Toggle sessions sidebar" 10
+  run_driver assert-collaboration-columns "two|Sessions|$session_title|Current context|$draft|Send" 10
   current_step="checking bilingual collaboration and restart"
   run_driver press "Switch to Chinese" 10
-  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context" 10
+  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context|$draft|发送" 10
   run_driver assert-text "$draft" 10
+  run_driver press "上下文" 10
+  run_driver assert-collaboration-columns "two-context|会话|$session_title|当前 context|$draft|发送" 10
+  run_driver focus "$draft" 10
+  run_driver assert-visible-focus "$draft" 10
+  run_driver press "收起当前 context" 10
+  run_driver assert-focused-text "上下文" 10
   run_driver capture-window "$captures/collaboration-two-zh.png" 10
   stop_app || fail "isolated app did not stop before restart"
   launch_app_waiting_for_text "今天" 30
   run_driver press "协作" 10
   run_driver set-size "1040x800" 10
   run_driver press "$session_title" 10
-  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context" 10
+  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context|$draft|发送" 10
   run_driver assert-text "$draft" 10
   run_driver capture-window "$captures/collaboration-restarted-zh.png" 10
   echo "Packaged collaboration width/disclosure/bilingual/restart sequence passed; captures: $captures"
@@ -6746,7 +6815,17 @@ run_live_daily_cycle_scenario() {
   echo "Boundary: the packaged app wrote the canonical Markdown through Tauri IPC without an app-owned life ledger"
 }
 
+source "$script_directory/scenarios/habit-sleep.sh"
+source "$script_directory/scenarios/task-saved-readback.sh"
+source "$script_directory/scenarios/collaboration-profile.sh"
+source "$script_directory/scenarios/synthetic-dictation.sh"
+source "$script_directory/scenarios/collaboration-composer.sh"
+source "$script_directory/scenarios/launch-services-candidate.sh"
+
 case "$acceptance_scenario" in
+  habit-sleep) run_habit_sleep_scenario ;;
+  task-saved-readback) run_task_saved_readback_scenario ;;
+  collaboration-composer) run_collaboration_composer_scenario ;;
   shell) run_shell_scenario ;;
   direct) run_direct_record_scenario ;;
   state-semantics) run_state_semantics_scenario ;;
