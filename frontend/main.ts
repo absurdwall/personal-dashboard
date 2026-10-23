@@ -12548,6 +12548,18 @@ function taskEditor(
   const history = taskChangeHistory(task, view);
   if (history) editorForm.append(history);
   if (!usesModal && !compact) editorForm.append(close);
+  let closeEditorDialog = (): void => {
+    if (binding) taskEditDrafts.delete(taskDraftKey(binding, task.id));
+    editorForm.hidden = true;
+    if (surface === "today" && currentTodayView) {
+      const openEditors = openTodayTaskEditorIds(currentTodayView);
+      openEditors.delete(task.id);
+      renderTodayTasks(currentTodayView, openEditors);
+      document.querySelector<HTMLButtonElement>(
+        `[data-task-editor-row="${CSS.escape(task.id)}"][data-task-surface="today"] [data-task-editor-open]`,
+      )?.focus();
+    }
+  };
   const dialog = usesModal ? document.createElement("div") : null;
   if (dialog) {
     dialog.className = "task-editor-dialog";
@@ -12629,7 +12641,7 @@ function taskEditor(
     titlebar.className = "task-editor-titlebar";
     titlebar.append(nameLabel, menu);
     editorForm.prepend(titlebar, meta);
-    const closeEdit = (): void => {
+    closeEditorDialog = (): void => {
       if (binding) taskEditDrafts.delete(taskDraftKey(binding, task.id));
       const collapsedDisclosureId =
         surface === "tasks" && currentTasksView
@@ -12744,7 +12756,7 @@ function taskEditor(
     close.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      closeEdit();
+      closeEditorDialog();
     });
   }
   if (surface === "tasks") {
@@ -12774,26 +12786,12 @@ function taskEditor(
   }
   row.append(heading);
   if (!dialog) row.append(editorForm);
-  const closeEditorDialog = (): void => {
-    if (dialog) {
-      dialog.hidden = true;
-      if (surface === "calendar") selectedCalendarTaskDetailId = null;
-      else selectedTaskDetailId = null;
-      taskEditorDialogRootForSurface(surface)?.toggleAttribute("hidden", true);
-      row.classList.remove("is-selected");
-      title.focus();
-    } else {
-      editorForm.hidden = true;
-    }
-    row.querySelectorAll<HTMLButtonElement>("button[data-task-editor-open]").forEach((button) => {
-      button.setAttribute("aria-expanded", "false");
-    });
-  };
   [detailsButton, title].forEach((toggle) => {
     toggle.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      toggleTaskEditorDetails(toggle);
+      if (!usesModal && !editorForm.hidden) closeEditorDialog();
+      else toggleTaskEditorDetails(toggle);
     });
   });
   close.addEventListener("click", (event) => {
