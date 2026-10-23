@@ -1326,8 +1326,8 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.7.1");
-    assert_eq!(binding["toolSetVersion"], "1.6.1");
+    assert_eq!(binding["skillVersion"], "1.7.2");
+    assert_eq!(binding["toolSetVersion"], "1.6.2");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));
@@ -8059,7 +8059,7 @@ fn personal_retro_reads_three_real_histories_for_complete_lived_days_without_bus
     assert_eq!(explicit.usage_bindings.len(),2);
     for binding in &explicit.usage_bindings {
         assert_eq!(binding.skill_name,"personal-dashboard-collaboration");
-        assert_eq!(binding.skill_version,"1.7.1");
+        assert_eq!(binding.skill_version,"1.7.2");
         assert_eq!(binding.registered_tools.iter().filter(|tool|*tool=="dashboard_read_history").count(),1);
     }
     if let Ok(destination)=std::env::var("PDCR_RETRO_EVIDENCE_DIR") {
@@ -8304,6 +8304,14 @@ fn first_task_requests_from_the_registered_contract_save_and_read_back_without_r
             assert!(schema["properties"]["listId"]["description"].is_string());
             assert!(schema["properties"]["date"]["description"].as_str().unwrap().contains("YYYY-MM-DD"));
             assert!(schema["properties"]["time"]["description"].as_str().unwrap().contains("HH:MM"));
+            let end = &schema["properties"]["executionEnd"]["properties"];
+            assert!(end["date"]["description"].as_str().is_some_and(|text| text.contains("YYYY-MM-DD")));
+            assert!(end["time"]["description"].as_str().is_some_and(|text| text.contains("HH:MM")));
+            assert_eq!(end["date"]["pattern"], r"^\d{4}-\d{2}-\d{2}$");
+            assert_eq!(end["time"]["pattern"], r"^([01]\d|2[0-3]):[0-5]\d$");
+            if operation == "updateTask" {
+                assert!(schema["properties"]["operation"]["description"].as_str().unwrap().contains("executionEnd={date:YYYY-MM-DD,time:HH:MM}"));
+            }
         } else { assert!(call.arguments.get("listId").is_none()); }
     }
     let restored = TaskApplication::new(vault, FixedClock, FileTaskStore).read().unwrap();

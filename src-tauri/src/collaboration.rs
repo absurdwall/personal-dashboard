@@ -9964,7 +9964,10 @@ fn collaboration_task_tool_spec(
     let string = json!({ "type": "string" });
     let nullable_string = json!({ "type": ["string", "null"] });
     let execution_end = json!({
-        "type": ["object", "null"], "properties": {"date": {"type":"string"}, "time": {"type":"string"}},
+        "type": ["object", "null"], "properties": {
+            "date": {"type":"string", "description":usage::description("task.executionEnd.date"), "pattern":r"^\d{4}-\d{2}-\d{2}$"},
+            "time": {"type":"string", "description":usage::description("task.executionEnd.time"), "pattern":r"^([01]\d|2[0-3]):[0-5]\d$"}
+        },
         "required": ["date", "time"], "additionalProperties": false,
         "description": "Optional planned execution end, with its actual calendar date. Start remains Task date/time. In updateTask omission retains the end, null explicitly clears it. An interval is planned allocation, not actual activity or a deadline."
     });
