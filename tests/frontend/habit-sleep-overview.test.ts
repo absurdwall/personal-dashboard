@@ -65,6 +65,48 @@ const navigate=String.raw`
   await until(()=>document.querySelector('.habit-snapshot-row[data-habit-key="wake"]'));
 `;
 
+for(const [width,height]of [[830,758],[969,723],[1280,720]])for(const language of ['en','zh'])test(`history disclosure receives pointer hits without overlapping dates at ${width} ${language}`,{skip:process.platform!=='darwin'},()=>{
+  const result=probe(width,navigate+`
+    const states=[];
+    for(const key of ['wake','sleep','nutrition']){
+      const row=document.querySelector('.habit-snapshot-row[data-habit-key="'+key+'"]');
+      const disclosure=row.querySelector('.habit-expand');
+      disclosure.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
+      const collapsedBox=disclosure.getBoundingClientRect();
+      let box=disclosure.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2;
+      const openTarget=document.elementFromPoint(x,y);
+      openTarget?.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:x,clientY:y}));
+      const history=row.querySelector('.habit-history');
+      disclosure.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
+      box=disclosure.getBoundingClientRect();x=box.left+box.width/2;y=box.top+box.height/2;
+      const hit=document.elementFromPoint(x,y),historyBox=history.getBoundingClientRect();
+      const grid=history.querySelector('.habit-history-grid'),heading=history.querySelector('.habit-history-heading strong'),headingRange=document.createRange();headingRange.selectNodeContents(heading);
+      const state={key,opened:!history.hidden,hit:hit===disclosure||disclosure.contains(hit),dateHit:hit?.closest('[data-habit-date]')?.dataset.habitDate??null,overlap:Math.max(0,Math.min(box.right,historyBox.right)-Math.max(box.left,historyBox.left))*Math.max(0,Math.min(box.bottom,historyBox.bottom)-Math.max(box.top,historyBox.top)),dateOverflow:grid.scrollWidth-grid.clientWidth,headingLines:new Set([...headingRange.getClientRects()].map(r=>r.top)).size,headerControlStable:Math.abs(box.left-collapsedBox.left)<1&&Math.abs(box.width-collapsedBox.width)<1,maxDateWidth:Math.max(...[...grid.querySelectorAll('button')].map(button=>button.getBoundingClientRect().width)),box:rect(disclosure),historyBox:rect(history)};
+      hit?.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:x,clientY:y}));
+      state.closed=history.hidden&&disclosure.getAttribute('aria-expanded')==='false';
+      state.dates=history.querySelectorAll('button[data-habit-date]').length;
+      states.push(state);
+    }
+    return JSON.stringify({states,writes:calls.filter(c=>/save_|set_habit|dated_note/.test(c.command)).length,errors:window.probeErrors});
+  `,true,height,{interface_language_preferences:{interfaceLanguage:language}},canonicalBoundary+`
+    const normalHabit=habit;habit=key=>({...normalHabit(key),...(key==='reading'?{key:'nutrition',name:'Nutrition',localizedNames:{zh:'营养'}}:{}),sourceLabels:['Synthetic source: 81 retained dates with independently verified threshold evidence'],coverageLabel:'Complete coverage across 81 independently retained dates',goalHistory:[{weekOf:'2026-08-03',label:'Retained historical source context',goalLabel:'Daily target from the explicitly retained source, with its historical coverage preserved'}]});
+    const layoutInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      const result=await layoutInvoke(command,args);
+      if(command==='habit_snapshot')result.habits.push(...Array.from({length:5},(_,i)=>({...normalHabit('reading'),key:'synthetic-extra-'+i,name:'Synthetic Habit '+i})));
+      return result;
+    };
+  `);
+  for(const state of result.states){
+    assert.equal(state.opened,true,JSON.stringify(result.states));assert.equal(state.hit,true,JSON.stringify(result.states));
+    assert.equal(state.dateHit,null,JSON.stringify(state));assert.equal(state.overlap,0,JSON.stringify(state));
+    assert.equal(state.closed,true,JSON.stringify(state));assert.equal(state.dates,84);
+    assert.equal(state.dateOverflow,0,JSON.stringify(state));assert.equal(state.headingLines,1,JSON.stringify(state));
+    assert.equal(state.headerControlStable,true,JSON.stringify(state));assert.ok(state.maxDateWidth<=24,JSON.stringify(state));
+  }
+  assert.equal(result.writes,0);assert.deepEqual(result.errors,[]);
+});
+
 test('row disclosure keeps wake and sleep twelve-week history inline like ordinary Habits',{skip:process.platform!=='darwin'},()=>{
   const result=probe(969,navigate+`
     const states=[];
