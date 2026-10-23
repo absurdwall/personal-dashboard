@@ -436,6 +436,28 @@ pub struct SleepView {
     pub facts: Vec<SleepEndpointFact>,
     pub overview: Option<SleepOverview>,
 }
+/// Cardinality of canonical facts for one Habit and lived date.
+pub(crate) enum SleepFactLookup<'a> {
+    Absent,
+    Unique(&'a SleepEndpointFact),
+    Ambiguous,
+}
+impl SleepView {
+    pub(crate) fn fact_for_lived_date(
+        &self,
+        habit_key: SleepHabitKey,
+        date: &str,
+    ) -> SleepFactLookup<'_> {
+        let mut facts = self.facts.iter().filter(|fact| {
+            fact.habit_key == habit_key && fact.lived_date.as_deref() == Some(date)
+        });
+        match (facts.next(), facts.next()) {
+            (None, _) => SleepFactLookup::Absent,
+            (Some(fact), None) => SleepFactLookup::Unique(fact),
+            (Some(_), Some(_)) => SleepFactLookup::Ambiguous,
+        }
+    }
+}
 /// A read-only endpoint projection. Its date never comes from the night index.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -919,18 +941,13 @@ pub(crate) fn project_habits(view: &mut crate::habits::HabitSnapshotView, sleep:
             .chain(habit.recent.iter_mut())
             .chain(habit.history.iter_mut())
         {
-            let mut facts = sleep.facts.iter().filter(|fact| {
-                fact.habit_key == key
-                    && fact.lived_date.as_deref() == Some(cell.date.as_str())
-            });
-            let Some(fact) = facts.next() else {
-                continue;
-            };
-            if facts.next().is_some() {
-                view.sleep_error = Some("同一 Habit 日期存在多条作息端点；请明确记录身份。".into());
-                continue;
+            match sleep.fact_for_lived_date(key, &cell.date) {
+                SleepFactLookup::Absent => {}
+                SleepFactLookup::Unique(fact) => cell.sleep_fact = Some(fact.clone()),
+                SleepFactLookup::Ambiguous => {
+                    view.sleep_error = Some("同一 Habit 日期存在多条作息端点；请明确记录身份。".into());
+                }
             }
-            cell.sleep_fact = Some(fact.clone());
         }
     }
 }

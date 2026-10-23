@@ -1,6 +1,6 @@
 //! Read-only Habit overview semantics; the frontend owns only chart geometry.
 use crate::{
-    sleep::{SleepEndpoint, SleepHabitKey, SleepPoint, SleepView},
+    sleep::{SleepEndpoint, SleepFactLookup, SleepHabitKey, SleepPoint, SleepView},
     today::CalendarDate,
 };
 use serde::{Deserialize, Serialize};
@@ -93,15 +93,10 @@ impl SleepView {
             let Some(date) = fact.lived_date.as_ref() else {
                 continue;
             };
-            if self
-                .facts
-                .iter()
-                .filter(|other| {
-                    other.habit_key == SleepHabitKey::Wake && other.lived_date.as_ref() == Some(date)
-                })
-                .count()
-                != 1
-            {
+            if !matches!(
+                self.fact_for_lived_date(SleepHabitKey::Wake, date),
+                SleepFactLookup::Unique(_)
+            ) {
                 continue;
             }
             let Some(record) = self
@@ -149,16 +144,8 @@ impl SleepView {
                             qualities.push(sample.approximate);
                             approximate |= sample.approximate;
                         }
-                    } else {
-                        let facts: Vec<_> = self
-                            .facts
-                            .iter()
-                            .filter(|fact| {
-                                Some(fact.habit_key) == metric.habit_key()
-                                    && fact.lived_date.as_deref() == Some(&day)
-                            })
-                            .collect();
-                        if let [fact] = facts.as_slice() {
+                    } else if let Some(key) = metric.habit_key() {
+                        if let SleepFactLookup::Unique(fact) = self.fact_for_lived_date(key, &day) {
                             if let SleepEndpoint::Point { point } = &fact.endpoint {
                                 let minutes = crate::sleep::clock_minutes(&point.time)
                                     .expect("validated canonical time");
