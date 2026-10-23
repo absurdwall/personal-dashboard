@@ -7452,7 +7452,7 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
         return;
     };
     let window_start = day.unix_days() * 1440 + 240;
-    let point_minute = |point: &crate::sleep::SleepPoint| -> Option<i64> {
+    let local_calendar_minutes = |point: &crate::sleep::SleepPoint| -> Option<i64> {
         let day = CalendarDate::parse(&point.date)?;
         let (hour, minute) = point.time.split_once(':')?;
         Some(day.unix_days() * 1440 + hour.parse::<i64>().ok()? * 60 + minute.parse::<i64>().ok()?)
@@ -7471,7 +7471,7 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
                     })
                 }
                 SleepEndpoint::Range { start, end, .. } => {
-                    matches!((point_minute(start), point_minute(end)), (Some(start), Some(end))
+                    matches!((local_calendar_minutes(start), local_calendar_minutes(end)), (Some(start), Some(end))
                         if start < window_start + 1440 && end >= window_start)
                 }
                 _ => false,
@@ -7493,7 +7493,7 @@ fn project_sleep_time_axis(axis: &mut TimeAxisView, sleep: &crate::sleep::SleepV
         };
         entry.sleep_fact = Some(fact.clone());
         if let SleepEndpoint::Point { point } = &fact.endpoint {
-            let projected = point_minute(point).map(|minute| minute - day.unix_days() * 1440);
+            let projected = local_calendar_minutes(point).map(|minute| minute - day.unix_days() * 1440);
             if let Some(minute) = projected.filter(|minute| (240..1680).contains(minute)) {
                 entry.start_minute = Some(minute as u16);
                 entry.source_date = point.date.clone();
