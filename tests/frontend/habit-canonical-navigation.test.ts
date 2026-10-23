@@ -5,6 +5,7 @@ import { stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
 import { interfaceCopy } from "../../frontend/interface-language.ts";
 import { LatestRequest } from "../../frontend/latest-request.ts";
+import { SelectedVaultRequestSnapshot } from "../../frontend/vault-selection.ts";
 const source = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 function production(name: string) {
   const start = source.indexOf(`function ${name}(`);
@@ -16,7 +17,7 @@ test("canonical Habit arrival reads every exact key/date and discards an older d
   const requests: { date: string; resolve: (view: any) => void }[] = [];
   const context = vm.createContext({ selectedHabitCell: null, currentHabitDateView: null, habitNoteStatus: null,
     vaultSelectionInProgress: false, selectedVaultPath: "/Synthetic/A", collaborationVaultSelectionRevision: 0,
-    habitDateRequests: new LatestRequest(), renderSelectedHabitCell() {},
+    habitDateRequests: new LatestRequest(), SelectedVaultRequestSnapshot, renderSelectedHabitCell() {},
     window: { __TAURI__: { core: { invoke(command: string, { date }: { date: string }) {
       assert.equal(command, "read_daily_view");
       return new Promise(resolve => requests.push({ date, resolve }));

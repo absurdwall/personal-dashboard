@@ -78,3 +78,56 @@ test('saving a Daily Record note reloads open Today Task fields from canonical v
   assert.equal(result.note,'');
   assert.deepEqual(result.errors,[]);
 });
+
+for (const surface of ['tasks', 'calendar', 'today'] as const) {
+  test(`${surface} Task cancel discards edited controls before reopen and later saved readback`, {skip:process.platform !== 'darwin'}, () => {
+    const result=probe(969, `
+      const surface=${JSON.stringify(surface)},id='cancel-readback';
+      const root=surface==='tasks'?'#task-editor-dialog-root':surface==='calendar'?'#calendar-task-editor-dialog-root':'.day-task-panel';
+      const form=()=>document.querySelector(root+' [data-task-editor="'+id+'"]');
+      const opener=()=>document.querySelector((surface==='tasks'?'#tasks-list':surface==='calendar'?'#calendar-task-list':'.day-task-panel')+' [data-task-editor-open="'+id+'"]');
+      const navigate=async(destination)=>{document.querySelector('[data-workspace-destination="'+destination+'"]').click();
+        await until(()=>document.querySelector('.app-shell').dataset.workspaceDestination===destination);};
+      const open=async()=>{await until(opener);if(!form()||form().hidden||form().closest('[hidden]'))opener().click();await until(()=>form()&&!form().hidden&&!form().closest('[hidden]'));};
+      const read=()=>Object.fromEntries(['name','content','date','time'].map(field=>[field,form().querySelector('[data-task-'+field+']').value]));
+      const edit=()=>{for(const [field,value] of Object.entries({name:'Unsaved name',content:'Unsaved content',time:'12:45'})){
+        const input=form().querySelector('[data-task-'+field+']');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));}};
+      const cancelEditor=(cancel)=>{
+        if(cancel==='toggle')opener().click();
+        else if(cancel==='footer')form().querySelector('[data-task-editor-close]').click();
+        else {const dialog=form().closest('[data-task-editor-dialog]');
+          if(cancel==='escape')dialog.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+          else dialog.click();}
+      };
+      await navigate(surface);
+      const reopened=[];
+      for(const cancel of surface==='today'?['toggle','footer']:['escape','backdrop','footer']){
+        await open();edit();cancelEditor(cancel);
+        const closed=surface==='today'?form().hidden:document.querySelector(root).hidden;
+        await open();reopened.push({cancel,closed,values:read()});
+      }
+      // Read a later canonical response after cancelling, without retaining its controls.
+      edit();cancelEditor(surface==='today'?'footer':'escape');
+      responses.tasks_view={...responses.tasks_view,revision:'saved-after-cancel',tasks:[{...view.tasks.tasks[0],name:'Later saved name',content:null,time:null}]};
+      responses.today_view={...view,tasks:responses.tasks_view};responses.read_daily_view=responses.today_view;
+      if(surface==='tasks'){
+        const reads=calls.filter(c=>c.command==='tasks_view').length;document.querySelector('#refresh-tasks').click();
+        await until(()=>calls.filter(c=>c.command==='tasks_view').length>reads);await new Promise(resolve=>setTimeout(resolve,20));
+      }else if(surface==='today'){
+        const reads=calls.filter(c=>c.command==='today_view').length;document.querySelector('#refresh-today').click();
+        await until(()=>calls.filter(c=>c.command==='today_view').length>reads);await new Promise(resolve=>setTimeout(resolve,20));
+      }else {await navigate('today');await navigate('calendar');await new Promise(resolve=>setTimeout(resolve,20));}
+      await open();
+      return JSON.stringify({reopened,later:read(),writes:calls.filter(c=>/^(update_task|set_task|create_task|delete_task)/.test(c.command)).length,errors:window.probeErrors});
+    `,true,758,{},`
+      view.tasks={...view.tasks,state:'ready',revision:'saved-before-cancel',tasks:[{id:'cancel-readback',name:'Saved name',content:'Saved content',date:view.date,time:'10:00',executionEnd:null,listId:'inbox',parentTaskId:null,priority:null,tagIds:[],state:'pending',deletedAt:null,completion:null,source:{kind:'manual',reference:null},changes:[]}]};
+      responses.tasks_view=view.tasks;
+    `);
+    for(const reopened of result.reopened){
+      assert.equal(reopened.closed,true,`${surface} ${reopened.cancel} closes the editor`);
+      assert.deepEqual(reopened.values,{name:'Saved name',content:'Saved content',date:'2026-08-10',time:'10:00'},`${surface} ${reopened.cancel} discards unsaved fields`);
+    }
+    assert.deepEqual(result.later,{name:'Later saved name',content:'',date:'2026-08-10',time:''});
+    assert.equal(result.writes,0);assert.deepEqual(result.errors,[]);
+  });
+}
