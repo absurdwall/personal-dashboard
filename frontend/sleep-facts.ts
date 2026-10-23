@@ -4,8 +4,9 @@ export type SleepHabitKey='wake'|'sleep';
 export function isSleepHabitKey(value:unknown):value is SleepHabitKey{return value==='wake'||value==='sleep';}
 
 export type SleepPoint = Readonly<{date:string;time:string;utcOffsetMinutes:number;approximate?:boolean}>;
-export type HabitSleepPointRequest=Readonly<{livedDate:string;time:string;approximate:boolean}>;
-export type HabitSleepRangeRequest=Readonly<{livedDate:string;startTime:string;endTime:string;reportedText:string}>;
+export type HabitSleepPointRequest=Readonly<{livedDate:string;time:string;approximate:boolean;existingPoint?:SleepPoint}>;
+export type SleepRangeProvenance=Readonly<{start:SleepPoint;end:SleepPoint}>;
+export type HabitSleepRangeRequest=Readonly<{livedDate:string;startTime:string;endTime:string;reportedText:string;existingRange?:SleepRangeProvenance}>;
 export type SleepEndpoint =
   | (SleepPoint & Readonly<{kind:'point'}>)
   | Readonly<{kind:'range';start:SleepPoint;end:SleepPoint;reportedText:string}>

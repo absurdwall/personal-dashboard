@@ -2393,11 +2393,19 @@ where
             lived_date,
             time,
             approximate,
+            existing_point,
         } = request;
         let day = CalendarDate::parse(lived_date)
             .ok_or("需要明确、有效的 YYYY-MM-DD 日期；日期含糊时请先澄清。")?;
         let minutes = crate::sleep::clock_minutes(time)?;
         let date = if minutes < 240 { day.plus_days(1) } else { day }.to_string();
+        if let Some(existing) = existing_point {
+            let corrected = existing.corrected(&date, time, *approximate)?;
+            if existing.lived_date() != *lived_date {
+                return Err("端点与所选 lived day 不一致或跨越边界；未写入。".into());
+            }
+            return Ok(corrected);
+        }
         self.resolve_sleep_calendar_point(&date, time, *approximate)
     }
 
@@ -2412,12 +2420,14 @@ where
             start_time,
             end_time,
             reported_text,
+            existing_range,
         } = request;
         crate::sleep::clock_minutes(end_time)?;
         let start = self.resolve_habit_sleep_point(&crate::sleep::HabitSleepPointRequest {
             lived_date: lived_date.clone(),
             time: start_time.clone(),
             approximate: false,
+            existing_point: existing_range.as_ref().map(|source| source.start.clone()),
         })?;
         let first = CalendarDate::parse(&start.date).expect("validated actual date");
         let end_date = if end_time < start_time {
@@ -2426,6 +2436,16 @@ where
             first
         }
         .to_string();
+        if let Some(existing) = existing_range {
+            // Wording-only edits retain known repeated-hour dates even when the
+            // end clock precedes the start clock across a UTC-offset transition.
+            let end_date = if *start_time == existing.start.time && *end_time == existing.end.time {
+                &existing.end.date
+            } else {
+                &end_date
+            };
+            return existing.corrected(&start.date, start_time, end_date, end_time, reported_text);
+        }
         let end = self.resolve_sleep_calendar_point(&end_date, end_time, false)?;
         Ok(crate::sleep::SleepEndpoint::Range {
             start,

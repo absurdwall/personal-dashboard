@@ -27,6 +27,8 @@ pub struct HabitSleepPointRequest {
     pub lived_date: String,
     pub time: String,
     pub approximate: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing_point: Option<SleepPoint>,
 }
 
 /// A reported range carries both wall times with one fixed lived-day context.
@@ -37,10 +39,58 @@ pub struct HabitSleepRangeRequest {
     pub start_time: String,
     pub end_time: String,
     pub reported_text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing_range: Option<SleepRangeProvenance>,
+}
+
+/// Known endpoint provenance is independent of the machine's current timezone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SleepRangeProvenance {
+    pub start: SleepPoint,
+    pub end: SleepPoint,
+}
+impl SleepRangeProvenance {
+    pub(crate) fn corrected(
+        &self,
+        start_date: &str,
+        start_time: &str,
+        end_date: &str,
+        end_time: &str,
+        reported_text: &str,
+    ) -> Result<SleepEndpoint, String> {
+        if point_seconds(&self.end)? < point_seconds(&self.start)? {
+            return Err("时间范围需要可靠且有序的上下界与原文。".into());
+        }
+        let endpoint = SleepEndpoint::Range {
+            start: self
+                .start
+                .corrected(start_date, start_time, self.start.approximate)?,
+            end: self
+                .end
+                .corrected(end_date, end_time, self.end.approximate)?,
+            reported_text: reported_text.into(),
+        };
+        endpoint.validate()?;
+        Ok(endpoint)
+    }
 }
 
 impl SleepPoint {
-    fn lived_date(&self) -> String {
+    /// Correct wall time without reinterpreting a known fact in the current zone.
+    pub(crate) fn corrected(&self, date: &str, time: &str, approximate: bool) -> Result<Self, String> {
+        point_seconds(self)?;
+        let corrected = Self {
+            date: date.into(),
+            time: time.into(),
+            approximate,
+            ..self.clone()
+        };
+        point_seconds(&corrected)?;
+        Ok(corrected)
+    }
+
+    pub(crate) fn lived_date(&self) -> String {
         crate::today::TodayClockView {
             date: self.date.clone(),
             time: self.time.clone(),
@@ -84,6 +134,41 @@ impl SleepEndpoint {
                 (first == end.lived_date()).then_some(first)
             }
             _ => None,
+        }
+    }
+
+    // These bounds are only a clarification signal. A crossing range remains
+    // unlocated; its possible lived days never assign it to a night or display day.
+    fn possible_lived_dates(&self) -> Option<(String, String)> {
+        match self {
+            Self::Point { point } => {
+                let day = point.lived_date();
+                Some((day.clone(), day))
+            }
+            Self::Range { start, end, .. } => {
+                let first = start.lived_date();
+                let last = end.lived_date();
+                if first <= last {
+                    Some((first, last))
+                } else {
+                    Some((last, first))
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn may_include_lived_date(&self, date: &str) -> bool {
+        self.possible_lived_dates()
+            .is_some_and(|(first, last)| first.as_str() <= date && date <= last.as_str())
+    }
+
+    fn may_share_lived_date(&self, other: &Self) -> bool {
+        match (self.possible_lived_dates(), other.possible_lived_dates()) {
+            (Some((first, last)), Some((other_first, other_last))) => {
+                first <= other_last && other_first <= last
+            }
+            _ => false,
         }
     }
 
@@ -567,9 +652,12 @@ impl<S: SleepStore> SleepWorkflow<S> {
         } else {
             input.lived_date.clone()
         };
+        let opposite_context = crate::today::CalendarDate::parse(&input.lived_date)
+            .unwrap()
+            .plus_days(if onset { 1 } else { -1 })
+            .to_string();
         if input.record_id.is_none() && matching.is_empty() {
-            if let SleepEndpoint::Point { point } = &input.endpoint {
-                let incoming = point_seconds(point)?;
+            if let Some((incoming_earliest, incoming_latest)) = input.endpoint.bounds()? {
                 let opposite_key = input.habit_key.opposite();
                 for candidate in &document.records {
                     if candidate.night_index == night_date {
@@ -577,17 +665,19 @@ impl<S: SleepStore> SleepWorkflow<S> {
                     }
                     for fact in record_facts(candidate) {
                         if fact.habit_key != opposite_key
-                            || fact.lived_date.as_deref() != Some(input.lived_date.as_str())
+                            || !(input.endpoint.may_share_lived_date(&fact.endpoint)
+                                || fact.endpoint.may_include_lived_date(&opposite_context))
                         {
                             continue;
                         }
-                        if let SleepEndpoint::Point { point: opposite } = &fact.endpoint {
-                            let opposite = point_seconds(opposite)?;
-                            // A compatible opposite endpoint on this lived day is a
-                            // clarification signal, including when its night is complete.
+                        if let Some((opposite_earliest, opposite_latest)) = fact.endpoint.bounds()? {
+                            // A compatible opposite endpoint in the selected context
+                            // is a clarification signal, even when its night is complete.
                             // It never identifies a night by chronology or distance.
-                            if (onset && incoming <= opposite) || (!onset && opposite <= incoming) {
-                                return Err("同一 lived day 的另一条记录有可兼容的相反端点；请先澄清是否属于同一晚，再通过 Collaboration 明确记录身份；未写入。".into());
+                            if (onset && incoming_earliest <= opposite_latest)
+                                || (!onset && opposite_earliest <= incoming_latest)
+                            {
+                                return Err("所选夜晚的另一条记录有可兼容的相反端点；请先澄清是否属于同一晚，再通过 Collaboration 明确记录身份；未写入。".into());
                             }
                         }
                     }

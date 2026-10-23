@@ -348,3 +348,102 @@ for(const knownDate of [null,'2026-08-11'])test(`original wording preserves its 
   assert.equal(result.input.livedDate,'2026-08-10');assert.equal(result.input.endpoint.date,knownDate);
   assert.equal(result.input.endpoint.text,'around 2 a.m., not normalized');assert.match(result.preview,knownDate?/2026-08-11/:/actual calendar date.*unknown/i);assert.deepEqual(result.errors,[]);
 });
+
+test('editing a stored point after travel retains its actual date and offset for approximate and time corrections', {skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const saved=[];
+    for(const time of ['07:30','07:55']){
+      await until(()=>document.querySelector('[data-habit-time-edit="wake"]')&&!document.querySelector('[data-habit-time-edit="wake"]').disabled);
+      document.querySelector('[data-habit-time-edit="wake"]').click();
+      const form=document.querySelector('[data-habit-time-form="wake"]');
+      form.querySelector('[data-habit-time-point]').value=time;
+      if(time==='07:30')form.querySelector('[data-habit-time-approximate]').click();
+      form.requestSubmit();
+      await until(()=>!document.querySelector('[data-habit-time-form="wake"]'));
+      saved.push(calls.filter(c=>c.command==='save_habit_sleep_time').at(-1).args.input.endpoint);
+    }
+    return JSON.stringify({saved,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+String.raw`
+    sleepState={...sleepState,revision:'before-travel',facts:[{recordId:'original-night',habitKey:'wake',livedDate:view.date,dayRelation:'same-day',endpoint:{kind:'point',date:view.date,time:'07:30',utcOffsetMinutes:540,approximate:false}}]};
+    const travelInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      if(command==='resolve_habit_sleep_point'&&args.existingPoint){calls.push({command,args});return {...args.existingPoint,time:args.time,approximate:args.approximate};}
+      return travelInvoke(command,args);
+    };
+  `);
+  assert.deepEqual(result.saved,[
+    {kind:'point',date:'2026-08-10',time:'07:30',utcOffsetMinutes:540,approximate:true},
+    {kind:'point',date:'2026-08-10',time:'07:55',utcOffsetMinutes:540,approximate:true},
+  ]);
+  assert.deepEqual(result.errors,[]);
+});
+
+test('editing a stored range retains independent actual endpoint dates and offsets after travel', {skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const saved=[];
+    for(const times of [['23:00','01:00'],['23:15','01:15']]){
+      await until(()=>document.querySelector('[data-habit-time-edit="sleep"]')&&!document.querySelector('[data-habit-time-edit="sleep"]').disabled);
+      document.querySelector('[data-habit-time-edit="sleep"]').click();
+      const form=document.querySelector('[data-habit-time-form="sleep"]');
+      form.querySelector('[data-habit-time-point]').value=times[0];
+      form.querySelector('[data-habit-time-end]').value=times[1];
+      form.querySelector('[data-habit-time-original]').value='corrected wording';
+      form.requestSubmit();
+      await until(()=>!document.querySelector('[data-habit-time-form="sleep"]'));
+      saved.push(calls.filter(c=>c.command==='save_habit_sleep_time').at(-1).args.input.endpoint);
+    }
+    return JSON.stringify({saved,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+String.raw`
+    sleepState={...sleepState,revision:'before-travel',facts:[{recordId:'original-night',habitKey:'sleep',livedDate:view.date,dayRelation:'unresolved',endpoint:{kind:'range',start:{date:'2026-08-10',time:'23:00',utcOffsetMinutes:60,approximate:true},end:{date:'2026-08-11',time:'01:00',utcOffsetMinutes:0,approximate:false},reportedText:'original wording'}}]};
+    const travelInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      if(command==='resolve_habit_sleep_range'){
+        calls.push({command,args});
+        const source=args.existingRange??{start:{date:'2026-08-10',utcOffsetMinutes:-240,approximate:false},end:{date:'2026-08-11',utcOffsetMinutes:-240,approximate:false}};
+        return {kind:'range',start:{...source.start,time:args.startTime},end:{...source.end,time:args.endTime},reportedText:args.reportedText};
+      }
+      return travelInvoke(command,args);
+    };
+  `);
+  assert.deepEqual(result.saved,[
+    {kind:'range',start:{date:'2026-08-10',time:'23:00',utcOffsetMinutes:60,approximate:true},end:{date:'2026-08-11',time:'01:00',utcOffsetMinutes:0,approximate:false},reportedText:'corrected wording'},
+    {kind:'range',start:{date:'2026-08-10',time:'23:15',utcOffsetMinutes:60,approximate:true},end:{date:'2026-08-11',time:'01:15',utcOffsetMinutes:0,approximate:false},reportedText:'corrected wording'},
+  ]);
+  assert.deepEqual(result.errors,[]);
+});
+
+test('stored point corrections keep a non-hour offset while the fixed Habit context interprets dates in both directions across 04:00', {skip:process.platform!=='darwin'},()=>{
+  const result=probe(969,`
+    const saved=[],previews=[];
+    for(const time of ['02:00','23:30','02:00']){
+      document.title='offset-correction:open '+time;
+      await until(()=>document.querySelector('[data-habit-time-edit="wake"]')&&!document.querySelector('[data-habit-time-edit="wake"]').disabled);
+      document.querySelector('[data-habit-time-edit="wake"]').click();
+      const form=document.querySelector('[data-habit-time-form="wake"]');
+      const input=form.querySelector('[data-habit-time-point]');input.value=time;input.dispatchEvent(new Event('input',{bubbles:true}));
+      document.title='offset-correction:preview '+time;
+      const expectedDate=time==='02:00'?'2026-08-11':'2026-08-10';
+      await until(()=>form.querySelector('[data-habit-time-preview]').textContent.includes(expectedDate)&&form.querySelector('[data-habit-time-preview]').textContent.includes(time));
+      previews.push(form.querySelector('[data-habit-time-preview]').textContent);
+      document.title='offset-correction:submit '+time;
+      document.querySelector('[data-habit-time-form="wake"]').requestSubmit();
+      await until(()=>!document.querySelector('[data-habit-time-form="wake"]'));
+      document.title='offset-correction:saved '+time;
+      saved.push(calls.filter(c=>c.command==='save_habit_sleep_time').at(-1).args.input.endpoint);
+    }
+    return JSON.stringify({saved,previews,errors:window.probeErrors});
+  `,true,723,{},canonicalBoundary+String.raw`
+    sleepState={...sleepState,revision:'before-travel',facts:[{recordId:'original-night',habitKey:'wake',livedDate:view.date,dayRelation:'same-day',endpoint:{kind:'point',date:view.date,time:'07:30',utcOffsetMinutes:345,approximate:false}}]};
+    const travelInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>{
+      if(command==='resolve_habit_sleep_point'&&args.existingPoint){calls.push({command,args});return {...args.existingPoint,date:args.time==='02:00'?'2026-08-11':'2026-08-10',time:args.time,approximate:args.approximate};}
+      return travelInvoke(command,args);
+    };
+  `);
+  assert.deepEqual(result.saved,[
+    {kind:'point',date:'2026-08-11',time:'02:00',utcOffsetMinutes:345,approximate:false},
+    {kind:'point',date:'2026-08-10',time:'23:30',utcOffsetMinutes:345,approximate:false},
+    {kind:'point',date:'2026-08-11',time:'02:00',utcOffsetMinutes:345,approximate:false},
+  ]);
+  assert.deepEqual(result.errors,[]);
+});
