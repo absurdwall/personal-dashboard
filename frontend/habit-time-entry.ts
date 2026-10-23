@@ -2,7 +2,7 @@ import {setInterfaceCopy,setInterfaceAttribute,setInterfaceError,type InterfaceL
 import {isSleepHabitKey,sleepFactsForLivedDate,sleepEndpointCopy,setSleepEndpointCopy,type SleepHabitKey,type SleepEndpoint,type SleepEndpointFact,type SleepView,type SleepPoint,type HabitSleepPointRequest,type HabitSleepRangeRequest} from './sleep-facts.js';
 
 type Context=Readonly<{date:string;vaultPath:string;canRecord:boolean;habits:readonly Readonly<{key:string;name:string}>[]}>;
-type Draft={habitKey:SleepHabitKey;kind:SleepEndpoint['kind'];time:string;endTime:string;approximate:boolean;text:string;textDate:string|null;expanded:boolean;recordId?:string;targetBinding:string;expectedRevision:string|null;changeId:string};
+type Draft={originalEndpoint?:SleepEndpoint;habitKey:SleepHabitKey;kind:SleepEndpoint['kind'];time:string;endTime:string;approximate:boolean;text:string;textDate:string|null;expanded:boolean;recordId?:string;targetBinding:string;expectedRevision:string|null;changeId:string};
 type Options=Readonly<{
   language:()=>InterfaceLanguage;
   invoke:<T>(command:string,args?:Record<string,unknown>)=>Promise<T>;
@@ -75,7 +75,7 @@ export class HabitTimeEntry {
     if(this.selectionPending||!this.data||!this.context?.canRecord||this.saving)return;
     if(this.facts(key).length>1){this.pendingFocus=null;this.status={key:'sleep.conflictHelp'};this.render();return;}
     const fact=this.fact(key),endpoint=fact?.endpoint;
-    this.draft={habitKey:key,kind:endpoint?.kind??'point',time:endpoint?.kind==='point'?endpoint.time:endpoint?.kind==='range'?endpoint.start.time:'',endTime:endpoint?.kind==='range'?endpoint.end.time:'',approximate:endpoint?.kind==='point'?Boolean(endpoint.approximate):false,text:endpoint?.kind==='text'?endpoint.text:endpoint?.kind==='range'?endpoint.reportedText:'',textDate:endpoint?.kind==='text'?endpoint.date??null:null,expanded:Boolean(endpoint&&endpoint.kind!=='point'),recordId:fact?.recordId,targetBinding:this.data.targetBinding,expectedRevision:this.data.revision,changeId:`habit-time-${globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random()}`}`};
+    this.draft={originalEndpoint:endpoint,habitKey:key,kind:endpoint?.kind??'point',time:endpoint?.kind==='point'?endpoint.time:endpoint?.kind==='range'?endpoint.start.time:'',endTime:endpoint?.kind==='range'?endpoint.end.time:'',approximate:endpoint?.kind==='point'?Boolean(endpoint.approximate):false,text:endpoint?.kind==='text'?endpoint.text:endpoint?.kind==='range'?endpoint.reportedText:'',textDate:endpoint?.kind==='text'?endpoint.date??null:null,expanded:Boolean(endpoint&&endpoint.kind!=='point'),recordId:fact?.recordId,targetBinding:this.data.targetBinding,expectedRevision:this.data.revision,changeId:`habit-time-${globalThis.crypto?.randomUUID?.()??`${Date.now()}-${Math.random()}`}`};
     this.pendingFocus=null;this.status=null;this.render();
     if(focus){const target=this.root.querySelector<HTMLInputElement>(`[data-habit-time-form="${key}"] [data-habit-time-point]`);this.root.scrollIntoView({block:'nearest'});target?.focus({preventScroll:true});}
   }
@@ -160,10 +160,14 @@ export class HabitTimeEntry {
   }
   private async resolveTimedDraft(livedDate:string,draft:Draft):Promise<SleepEndpoint>{
     if(draft.kind==='range'){
-      const request:HabitSleepRangeRequest={livedDate,startTime:draft.time,endTime:draft.endTime,reportedText:draft.text};
+      const original=draft.originalEndpoint;
+      const existingRange=original?.kind==='range'?{start:original.start,end:original.end}:undefined;
+      const request:HabitSleepRangeRequest={livedDate,startTime:draft.time,endTime:draft.endTime,reportedText:draft.text,...(existingRange?{existingRange}:{})};
       return this.options.invoke<SleepEndpoint>('resolve_habit_sleep_range',request);
     }
-    const request:HabitSleepPointRequest={livedDate,time:draft.time,approximate:draft.approximate};
+    const original=draft.originalEndpoint;
+    const existingPoint=original?.kind==='point'?{date:original.date,time:original.time,utcOffsetMinutes:original.utcOffsetMinutes,approximate:original.approximate}:undefined;
+    const request:HabitSleepPointRequest={livedDate,time:draft.time,approximate:draft.approximate,...(existingPoint?{existingPoint}:{})};
     return {kind:'point',...await this.options.invoke<SleepPoint>('resolve_habit_sleep_point',request)};
   }
   private async save(draft:Draft,context:Context):Promise<boolean>{

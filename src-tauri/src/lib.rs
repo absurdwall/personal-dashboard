@@ -797,11 +797,13 @@ fn resolve_habit_sleep_point(
     lived_date: String,
     time: String,
     approximate: bool,
+    existing_point: Option<sleep::SleepPoint>,
 ) -> Result<sleep::SleepPoint, String> {
     application.resolve_habit_sleep_point(&sleep::HabitSleepPointRequest {
         lived_date,
         time,
         approximate,
+        existing_point,
     })
 }
 
@@ -812,12 +814,14 @@ fn resolve_habit_sleep_range(
     start_time: String,
     end_time: String,
     reported_text: String,
+    existing_range: Option<sleep::SleepRangeProvenance>,
 ) -> Result<sleep::SleepEndpoint, String> {
     application.resolve_habit_sleep_range(&sleep::HabitSleepRangeRequest {
         lived_date,
         start_time,
         end_time,
         reported_text,
+        existing_range,
     })
 }
 
