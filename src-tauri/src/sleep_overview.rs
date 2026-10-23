@@ -20,21 +20,21 @@ impl OverviewMetric {
             Self::Duration => None,
         }
     }
-    fn mean(self, values: &[i64]) -> Option<i64> {
-        if values.is_empty() {
+    fn mean(self, samples: &[StatisticSample]) -> Option<i64> {
+        if samples.is_empty() {
             return None;
         }
         match self {
             Self::Duration => {
-                Some((values.iter().sum::<i64>() as f64 / values.len() as f64).round() as i64)
+                Some((samples.iter().map(|sample| sample.value).sum::<i64>() as f64 / samples.len() as f64).round() as i64)
             }
             Self::Wake | Self::Sleep => {
-                let angles = values
+                let angles = samples
                     .iter()
-                    .map(|value| *value as f64 / 1440.0 * std::f64::consts::TAU);
+                    .map(|sample| sample.value as f64 / 1440.0 * std::f64::consts::TAU);
                 let (sine, cosine) =
                     angles.fold((0.0, 0.0), |(s, c), a| (s + a.sin(), c + a.cos()));
-                (sine.hypot(cosine) / values.len() as f64 > 1e-6).then(|| {
+                (sine.hypot(cosine) / samples.len() as f64 > 1e-6).then(|| {
                     ((sine.atan2(cosine) / std::f64::consts::TAU * 1440.0)
                         .rem_euclid(1440.0)
                         .round() as i64)
@@ -82,6 +82,13 @@ pub struct OverviewStatistics {
     pub approximate: bool,
     pub earliest_approximate: bool,
     pub latest_approximate: bool,
+}
+struct StatisticSample {
+    /// Elapsed duration minutes or minute-of-day for circular clock means.
+    value: i64,
+    /// Duration minutes or anchored plot minutes for ordered extrema.
+    ordered_value: i64,
+    approximate: bool,
 }
 impl SleepView {
     pub(crate) fn project_overview(mut self, date: &str) -> Self {
@@ -131,51 +138,49 @@ impl SleepView {
             OverviewMetric::Duration,
         ] {
             for period in [7, 30] {
-                let mut values = Vec::new();
-                let mut ordered = Vec::new();
-                let mut approximate = false;
-                let mut qualities = Vec::new();
+                let mut samples = Vec::new();
                 for offset in 0..period {
                     let day = end.plus_days(-(offset as i64)).to_string();
                     if metric == OverviewMetric::Duration {
                         if let Some(sample) = durations.iter().find(|sample| sample.date == day) {
-                            values.push(sample.minutes);
-                            ordered.push(sample.minutes);
-                            qualities.push(sample.approximate);
-                            approximate |= sample.approximate;
+                            samples.push(StatisticSample {
+                                value: sample.minutes,
+                                ordered_value: sample.minutes,
+                                approximate: sample.approximate,
+                            });
                         }
                     } else if let Some(key) = metric.habit_key() {
                         if let SleepFactLookup::Unique(fact) = self.fact_for_lived_date(key, &day) {
                             if let SleepEndpoint::Point { point } = &fact.endpoint {
                                 let minutes = crate::sleep::clock_minutes(&point.time)
                                     .expect("validated canonical time");
-                                values.push(i64::from(minutes));
-                                ordered.push(
-                                    fact.clock_plot_minutes.expect("canonical point coordinate"),
-                                );
-                                qualities.push(point.approximate);
-                                approximate |= point.approximate;
+                                samples.push(StatisticSample {
+                                    value: i64::from(minutes),
+                                    ordered_value: fact.clock_plot_minutes.expect("canonical point coordinate"),
+                                    approximate: point.approximate,
+                                });
                             }
                         }
                     }
                 }
-                let mean = metric.mean(&values);
-                let earliest = (values.len() > 1).then(|| *ordered.iter().min().unwrap());
-                let latest = (values.len() > 1).then(|| *ordered.iter().max().unwrap());
+                let mean = metric.mean(&samples);
+                let earliest = (samples.len() > 1)
+                    .then(|| samples.iter().map(|sample| sample.ordered_value).min().unwrap());
+                let latest = (samples.len() > 1)
+                    .then(|| samples.iter().map(|sample| sample.ordered_value).max().unwrap());
                 let extreme_approximate = |extreme: Option<i64>| {
-                    ordered
-                        .iter()
-                        .zip(&qualities)
-                        .any(|(value, approximate)| Some(*value) == extreme && *approximate)
+                    samples.iter().any(|sample| {
+                        Some(sample.ordered_value) == extreme && sample.approximate
+                    })
                 };
                 statistics.push(OverviewStatistics {
                     metric,
                     period,
-                    count: values.len(),
+                    count: samples.len(),
                     mean,
                     earliest,
                     latest,
-                    approximate,
+                    approximate: samples.iter().any(|sample| sample.approximate),
                     earliest_approximate: extreme_approximate(earliest),
                     latest_approximate: extreme_approximate(latest),
                 });
