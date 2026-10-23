@@ -339,6 +339,7 @@ const interfaceCopies = {
   "collaboration.automaticPlanCompleted": { zh: "自动计划已保存到 Daily Record。", en: "The automatic plan was saved to the Daily Record." },
   "collaboration.automaticPlanExisting": { zh: "已有计划受到保护，没有再次生成。", en: "An existing plan was preserved; no duplicate was generated." },
   "collaboration.automaticPlanReadError": { zh: "Daily Record 读取失败；自动生成未开始。", en: "Daily Record could not be read; generation did not start." },
+  "collaboration.automaticPlanReadRetryDetail": { zh: "无法读取 Daily Record；自动安排正在等待重试：{error}", en: "Daily Record could not be read; automation is waiting to retry: {error}" },
   "collaboration.automaticPlanDamaged": { zh: "Daily Record 损坏或无法解码；未写入计划。", en: "The Daily Record is damaged or could not be decoded; no plan was written." },
   "collaboration.automaticPlanNeedsReview": { zh: "自动运行中断或保存结果待核对；检查协作会话与 Daily Record 后再重试。", en: "The automatic run was interrupted or its save needs checking. Review the collaboration session and Daily Record before retrying." },
   "collaboration.automaticPlanStopped": { zh: "自动运行已停止。", en: "The automatic run was stopped." },

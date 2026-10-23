@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { probe } from './helpers/complete-page.ts';
 
 const html = readFileSync(new URL("../../frontend/index.html", import.meta.url), "utf8");
 const main = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
@@ -135,4 +136,28 @@ test("automatic morning planning has an explicit local schedule and external-tas
   assert.match(skill, /user-enabled automatic morning-plan round keeps its existing scope/);
   assert.match(skill, /one initial plan for the captured current date/);
   assert.match(skill, /no Task\/Habit\/background\/file mutations/);
+});
+
+for(const language of ['zh','en'] as const)test(`automatic read-retry tooltip translates its fixed prefix while preserving the diagnostic in ${language}`,{skip:process.platform!=='darwin'},()=>{
+  const diagnostic='/Synthetic Vault/保留原文.md: I/O error 5; Keep exact {{value}}';
+  const message='Daily Record could not be read; automation is waiting to retry: '+diagnostic;
+  const result=probe(969,`
+    document.querySelector('#workspace-settings').click();document.querySelector('[data-settings-section="codex"]').click();
+    await until(()=>document.querySelector('#collaboration-automatic-plan-status').dataset.state==='readError');
+    const status=document.querySelector('#collaboration-automatic-plan-status');
+    const first={title:status.title,text:status.textContent};
+    document.querySelector('#workspace-language').click();
+    await until(()=>document.documentElement.lang.startsWith('${language==='zh'?'en':'zh'}'));
+    return JSON.stringify({first,switched:{title:status.title,text:status.textContent},same:status===document.querySelector('#collaboration-automatic-plan-status'),writes:calls.filter(c=>/save_|update_|set_habit/.test(c.command)).length,errors:window.probeErrors});
+  `,true,723,{
+    interface_language_preferences:{interfaceLanguage:language},
+    collaboration_connection:{executablePath:null,version:null,experimental:true,readOnlyTextTurnsAvailable:false,textTurnUnavailableReason:null,authenticated:false,authMode:null,accountEmail:null,planType:null,models:[],selectedModel:null,selectedReasoningEffort:null,error:null},
+    collaboration_daily_plan_automation:{settings:{enabled:true,time:'06:00',externalSchedulePresent:false,externalScheduleHandoffConfirmed:false},date:'2026-08-10',time:'09:30',vaultConfigured:true,currentRun:{date:'2026-08-10',state:'readError',message,sessionId:null,executionId:null,updatedAt:'2026-08-10T09:30:00-04:00'}},
+  },`
+    const languageInvoke=window.__TAURI__.core.invoke;
+    window.__TAURI__.core.invoke=async(command,args)=>command==='set_interface_language'?{interfaceLanguage:args.interfaceLanguage}:languageInvoke(command,args);
+  `);
+  const expected=(lang:string)=>(lang==='zh'?'无法读取 Daily Record；自动安排正在等待重试：':'Daily Record could not be read; automation is waiting to retry: ')+diagnostic;
+  assert.equal(result.first.title,expected(language));assert.equal(result.switched.title,expected(language==='zh'?'en':'zh'));
+  assert.equal(result.same,true);assert.equal(result.writes,0);assert.deepEqual(result.errors,[]);
 });

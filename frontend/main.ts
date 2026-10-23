@@ -1885,6 +1885,8 @@ let currentHabitSnapshot: HabitSnapshotView | null = null;
 type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
 type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>;
 let selectedHabitCell: HabitCellSelection | null = null;
+// Mini-date evidence and the user's history disclosure remain independent across row rebuilds.
+const expandedSleepHabitHistories = new Set<string>();
 let currentHabitDateView: TodayView | null = null;
 let habitDateOperationCount = 0;
 let habitCompletionOperationCount = 0;
@@ -2122,6 +2124,7 @@ function resetVaultScopedWorkspaceState(): void {
   showInactiveHabits = false;
   habitLifecycleOperationIds.clear();
   selectedHabitCell = null;
+  expandedSleepHabitHistories.clear();
   currentHabitDateView = null;
   activeHabitDefinitionBinding = null;
   activeHabitDefinitionDraftKey = null;
@@ -2653,8 +2656,14 @@ function renderDailyPlanAutomation(view: DailyPlanAutomationView | null): void {
       const copy = stateCopy[run.state] ?? "collaboration.automaticPlanNeedsReview";
       setCopy(collaborationAutomaticPlanStatus, copy);
       collaborationAutomaticPlanStatus.dataset.state = run.state;
+      collaborationAutomaticPlanStatus.removeAttribute("data-i18n-title");
       if (run.message && run.state !== "completed") {
-        collaborationAutomaticPlanStatus.title = run.message;
+        const retryPrefix = "Daily Record could not be read; automation is waiting to retry: ";
+        if (run.message.startsWith(retryPrefix)) {
+          setInterfaceAttribute(collaborationAutomaticPlanStatus, "title", "collaboration.automaticPlanReadRetryDetail", currentInterfaceLanguage, { error: run.message.slice(retryPrefix.length) });
+        } else {
+          collaborationAutomaticPlanStatus.title = run.message;
+        }
       } else {
         collaborationAutomaticPlanStatus.removeAttribute("title");
       }
@@ -9432,6 +9441,28 @@ function setHabitHistoryDisclosureCopy(
   button.setAttribute("aria-label", t(labelKey, variables));
 }
 
+function setHabitHistoryExpanded(row: HTMLElement, expanded: boolean, habit?: HabitView): void {
+  const history = row.querySelector<HTMLElement>(".habit-history");
+  const recent = row.querySelector<HTMLElement>(".habit-recent");
+  const expand = row.querySelector<HTMLButtonElement>("button[data-habit-expand]");
+  if (!history) return;
+  history.hidden = !expanded;
+  if (recent) recent.hidden = expanded;
+  row.classList.toggle("is-expanded", expanded);
+  expand?.setAttribute("aria-expanded", String(expanded));
+  if (expand && habit) setHabitHistoryDisclosureCopy(expand, habit, expanded);
+  else if (expand) setCopy(expand, expanded ? "habits.collapse" : "habits.expand");
+  const key = row.dataset.habitKey;
+  if (isSleepHabitKey(key)) {
+    if (expanded) expandedSleepHabitHistories.add(key);
+    else expandedSleepHabitHistories.delete(key);
+    if (!expanded) {
+      const detail = row.querySelector<HTMLElement>(".habit-sleep-day-evidence");
+      if (detail) detail.hidden = true;
+    }
+  }
+}
+
 function habitRow(habit: HabitView): HTMLElement {
   const article = document.createElement("article");
   article.className = "habit-snapshot-row";
@@ -9580,6 +9611,7 @@ function habitRow(habit: HabitView): HTMLElement {
       statusCopy: habitStatusLabels[habit.today.status], actualTimeLabel: habit.today.actualTimeLabel,
       details: habit.today.details,
     }, { identity, completion, expand, history, detail });
+    setHabitHistoryExpanded(article, expandedSleepHabitHistories.has(habit.key), habit);
   } else {
     article.append(identity, value, completion, recent, expand, history);
   }
@@ -10191,14 +10223,7 @@ function renderSelectedHabitCell(): void {
     return;
   }
   const { habit, cell, row, detail } = context;
-  const history = row.querySelector<HTMLElement>(".habit-history");
-  const recent = row.querySelector<HTMLElement>(".habit-recent");
-  const expand = row.querySelector<HTMLButtonElement>("button[data-habit-expand]");
-  if (history) history.hidden = false;
-  if (recent) recent.hidden = true;
-  row.classList.add("is-expanded");
-  expand?.setAttribute("aria-expanded", "true");
-  if (expand) setHabitHistoryDisclosureCopy(expand, habit, true);
+  setHabitHistoryExpanded(row, true, habit);
 
   const heading = document.createElement("strong");
   const state = document.createElement("span");
@@ -16398,29 +16423,16 @@ habitsDestination?.addEventListener("click", (event) => {
   if (expand) {
     const row = expand.closest<HTMLElement>(".habit-snapshot-row");
     const history = row?.querySelector<HTMLElement>(".habit-history");
-    const recent = row?.querySelector<HTMLElement>(".habit-recent");
-    if (!history) return;
-    history.hidden = !history.hidden;
-    if (recent) recent.hidden = !history.hidden;
-    row?.classList.toggle("is-expanded", !history.hidden);
-    expand.setAttribute("aria-expanded", String(!history.hidden));
+    if (!row || !history) return;
     const habit = currentHabitSnapshot?.habits.find(
       (candidate) => candidate.key === expand.dataset.habitExpand,
     );
-    if (habit) {
-      setHabitHistoryDisclosureCopy(expand, habit, !history.hidden);
-    } else {
-      setCopy(expand, history.hidden ? "habits.expand" : "habits.collapse");
-    }
+    setHabitHistoryExpanded(row, Boolean(history.hidden), habit);
     if (history.hidden && selectedHabitCell?.habitKey === row?.dataset.habitKey) {
       habitDateRequests.invalidate();
       selectedHabitCell = null;
       currentHabitDateView = null;
       habitNoteStatus = null;
-    }
-    if (history.hidden) {
-      const detail = row?.querySelector<HTMLElement>(".habit-sleep-day-evidence");
-      if (detail) detail.hidden = true;
     }
     return;
   }
