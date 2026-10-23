@@ -3051,3 +3051,74 @@ fn sleep_tool_advertises_wording_bounds_for_both_save_actions() {
         }
     }
 }
+
+#[test]
+fn legacy_oversized_range_retries_confirm_existing_receipts_without_writes() {
+    for action in ["save", "saveHabitTime"] {
+        let root = vault(&format!("legacy-range-retry-{action}"));
+        let app = application(&root);
+        let opened = app.sleep_records().unwrap();
+        let endpoint = json!({"kind":"range","start":{"date":"2026-10-21","time":"21:00","utcOffsetMinutes":-240},"end":{"date":"2026-10-21","time":"22:00","utcOffsetMinutes":-240},"reportedText":"original"});
+        let mut input = json!({"changeId":"old-save","targetBinding":opened.target_binding,"expectedRevision":opened.revision});
+        let field = if action == "save" {
+            input["wakeDate"] = json!("2026-10-22");
+            "sleepOnset"
+        } else {
+            input["habitKey"] = json!("sleep");
+            input["livedDate"] = json!("2026-10-21");
+            "endpoint"
+        };
+        input[field] = endpoint;
+        if action == "save" {
+            app.save_sleep_record(serde_json::from_value(input.clone()).unwrap())
+                .unwrap();
+        } else {
+            app.save_habit_sleep_time(serde_json::from_value(input.clone()).unwrap())
+                .unwrap();
+        }
+        let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+        let mut legacy: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let wording = "睡".repeat(2001);
+        legacy["records"][0]["sleepOnset"]["reportedText"] = json!(wording);
+        legacy["operations"][0]["input"]["sleepOnset"]["reportedText"] = json!(wording);
+        if action == "saveHabitTime" {
+            legacy["operations"][0]["habitRequest"]["endpoint"]["reportedText"] = json!(wording);
+        }
+        input[field]["reportedText"] = json!(wording);
+        fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let before = fs::read(&path).unwrap();
+        let saved = application(&root).sleep_records().unwrap();
+        let retry = if action == "save" {
+            app.save_sleep_record(serde_json::from_value(input.clone()).unwrap())
+        } else {
+            app.save_habit_sleep_time(serde_json::from_value(input.clone()).unwrap())
+        };
+        assert_eq!(
+            retry.unwrap_or_else(|error| panic!("{action}: {error}")),
+            saved
+        );
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            before,
+            "{action}: retry must not write"
+        );
+        input["changeId"] = json!("new-write");
+        input["expectedRevision"] = json!(saved.revision);
+        let new_write = if action == "save" {
+            app.save_sleep_record(serde_json::from_value(input).unwrap())
+        } else {
+            app.save_habit_sleep_time(serde_json::from_value(input).unwrap())
+        };
+        assert_eq!(
+            new_write.unwrap_err(),
+            "时间范围需要可靠且有序的上下界与原文。"
+        );
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            before,
+            "{action}: new over-limit write must reject"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+}

@@ -735,15 +735,6 @@ impl<S: SleepStore> SleepWorkflow<S> {
         if input.mutation.target_binding != binding(&self.path()?) {
             return Err("所选 Vault 已改变；未写入。".into());
         }
-        // Bound newly supplied wording in both save APIs, without making legacy
-        // records unreadable or rejecting an untouched opposite endpoint.
-        for endpoint in input.sleep_onset.iter().chain(input.get_up.iter()) {
-            if let SleepEndpoint::Range { reported_text, .. } = endpoint {
-                if reported_text.encode_utf16().count() > 2000 {
-                    return Err("时间范围需要可靠且有序的上下界与原文。".into());
-                }
-            }
-        }
         let (path, mut document, original) = self.load()?;
         let revision = original
             .as_ref()
@@ -790,6 +781,15 @@ impl<S: SleepStore> SleepWorkflow<S> {
                 return Ok(view(&path, document, revision));
             }
             return Err("changeId 已用于不同作息修改；未写入。".into());
+        }
+        // Bound new writes after exact receipts can confirm without rewriting.
+        // Legacy records and untouched opposite endpoints remain readable.
+        for endpoint in input.sleep_onset.iter().chain(input.get_up.iter()) {
+            if let SleepEndpoint::Range { reported_text, .. } = endpoint {
+                if reported_text.encode_utf16().count() > 2000 {
+                    return Err("时间范围需要可靠且有序的上下界与原文。".into());
+                }
+            }
         }
         if revision != input.mutation.expected_revision {
             return Err("作息已更新，请重新读取后修改；未写入。".into());
