@@ -3824,9 +3824,9 @@ where
         }
         let recorded = sleep.result.as_ref().map(|view| view.facts.as_slice()).unwrap_or_default();
         snapshot.habits.into_iter().filter(|habit| {
-            if !["wake", "sleep"].contains(&habit.key.as_str()) {
+            let Ok(key) = crate::sleep::SleepHabitKey::parse(&habit.key) else {
                 return false;
-            }
+            };
             let started = habit.definition.as_ref()
                 .and_then(|definition| definition.start_date.as_deref())
                 .is_none_or(|start| start <= date);
@@ -3835,7 +3835,7 @@ where
             }
             // Canonical history outlives pausing, start-date edits and the snapshot window.
             started || recorded.iter().any(|fact| {
-                fact.habit_key.as_str() == habit.key && fact.lived_date.as_deref() == Some(date)
+                fact.habit_key == key && fact.lived_date.as_deref() == Some(date)
             })
         }).map(|habit| HabitTimeHabitView {
             key: habit.key,
