@@ -6980,7 +6980,7 @@ impl CollaborationApplication {
             };
             Ok((session_view(session), title_job))
         })?;
-        title::launch(self, &vault_key, session_id, execution_id, title_job, title_generator);
+        title::launch(self, title::TitleJobIdentity::new(&vault_key, session_id, execution_id), title_job, title_generator);
         if !recovery_required_for_vault_state(
             &self.read_state(|state| state.clone())?,
             Some(&vault_key),
@@ -8026,7 +8026,7 @@ impl CollaborationApplication {
             let job = session.claim_title_generation(run_id, can_generate, &settings);
             Ok(job)
         })?;
-        title::launch(self, vault_key, session_id, run_id, job, generator);
+        title::launch(self, title::TitleJobIdentity::new(vault_key, session_id, run_id), job, generator);
         Ok(())
     }
 

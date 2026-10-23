@@ -125,39 +125,49 @@ impl StoredCollaborationSession {
     }
 }
 
+#[derive(Clone)]
+pub(super) struct TitleJobIdentity {
+    vault_key: String,
+    session_id: String,
+    execution_id: String,
+}
+impl TitleJobIdentity {
+    pub(super) fn new(vault_key: &str, session_id: &str, execution_id: &str) -> Self {
+        Self {
+            vault_key: vault_key.to_owned(),
+            session_id: session_id.to_owned(),
+            execution_id: execution_id.to_owned(),
+        }
+    }
+}
+
 pub(super) fn launch(
     application: &CollaborationApplication,
-    vault_key: &str,
-    session_id: &str,
-    execution_id: &str,
+    identity: TitleJobIdentity,
     job: Option<RuntimeSessionTitleRequest>,
     generator: Option<RuntimeSessionTitleGenerator>,
 ) {
     if let Some(job) = job {
         if let Ok(mut titles) = application.title_jobs.shutdowns.lock() {
-            titles.insert(session_id.to_owned(), job.cancellation.clone());
+            titles.insert(identity.session_id.clone(), job.cancellation.clone());
             if application.shutting_down.load(Ordering::SeqCst) {
                 job.cancellation.request_shutdown();
             }
         }
         let worker_application = application.clone();
-        let vault = vault_key.to_owned();
-        let session = session_id.to_owned();
-        let execution = execution_id.to_owned();
+        let worker_identity = identity.clone();
         let worker = thread::Builder::new()
             .name("collaboration-session-title".into())
             .spawn(move || {
                 let result = generator
                     .ok_or_else(|| "Title generation unavailable".to_owned())
                     .and_then(|generate| generate(job));
-                finish(&worker_application, &vault, &session, &execution, result);
+                finish(&worker_application, &worker_identity, result);
             });
         if worker.is_err() {
             finish(
                 application,
-                vault_key,
-                session_id,
-                execution_id,
+                &identity,
                 Err("Title worker unavailable".into()),
             );
         }
@@ -166,18 +176,17 @@ pub(super) fn launch(
 
 fn finish(
     application: &CollaborationApplication,
-    vault_key: &str,
-    session_id: &str,
-    execution_id: &str,
+    identity: &TitleJobIdentity,
     result: Result<String, String>,
 ) {
     if let Ok(mut titles) = application.title_jobs.shutdowns.lock() {
-        titles.remove(session_id);
+        titles.remove(&identity.session_id);
     }
     let _ = application.update_state(|state| {
-        let session = matching_session_mut(state, vault_key, session_id)?;
+        let session = matching_session_mut(state, &identity.vault_key, &identity.session_id)?;
         let Some(title) = session.title_generation.as_mut().filter(|title| {
-            title.execution_id == execution_id && title.status == SessionTitleStatus::Generating
+            title.execution_id == identity.execution_id
+                && title.status == SessionTitleStatus::Generating
         }) else {
             return Ok(());
         };
