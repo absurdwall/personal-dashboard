@@ -2425,3 +2425,62 @@ fn a_conflicting_habit_date_retains_the_captured_view_and_other_dates_statistics
     }
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn repeated_hour_range_clock_corrections_preserve_known_end_date() {
+    assert_repeated_hour_range_correction("end", "01:45", "01:10");
+}
+
+#[test]
+fn repeated_hour_range_clock_corrections_preserve_known_start_date() {
+    assert_repeated_hour_range_correction("start", "01:50", "01:15");
+}
+
+fn assert_repeated_hour_range_correction(label: &str, start_time: &str, end_time: &str) {
+    let root = vault(&format!("repeated-hour-correct-{label}"));
+    let app = TodayApplication::new(Selected(root.clone()), NoSelection, TransitionClock);
+    let original = json!({"start":{"date":"2026-11-01","time":"01:45","utcOffsetMinutes":-240,"approximate":true},"end":{"date":"2026-11-01","time":"01:15","utcOffsetMinutes":-300,"approximate":false}});
+    let initial = app.sleep_records().unwrap();
+    let before = app.save_sleep_record(serde_json::from_value(json!({"wakeDate":"2026-11-01","sleepOnset":{"kind":"range","start":original["start"],"end":original["end"],"reportedText":"original"},"changeId":"seed","targetBinding":initial.target_binding,"expectedRevision":initial.revision})).unwrap()).unwrap();
+    let endpoint = app.resolve_habit_sleep_range(&serde_json::from_value(json!({"livedDate":"2026-10-31","startTime":start_time,"endTime":end_time,"reportedText":"corrected clock","existingRange":original})).unwrap()).unwrap();
+    let saved = app.save_habit_sleep_time(serde_json::from_value(json!({"habitKey":"sleep","livedDate":"2026-10-31","recordId":before.records[0].id,"endpoint":endpoint,"changeId":"clock-correction","targetBinding":before.target_binding,"expectedRevision":before.revision})).unwrap()).unwrap();
+    let reopened = app.sleep_records().unwrap();
+    let mut expected_start = original["start"].clone();
+    expected_start["time"] = json!(start_time);
+    let mut expected_end = original["end"].clone();
+    expected_end["time"] = json!(end_time);
+    assert_eq!(serde_json::to_value(&reopened.records[0].sleep_onset).unwrap(),json!({"kind":"range","start":expected_start,"end":expected_end,"reportedText":"corrected clock"}),"{label}: only the explicitly corrected clock changes");
+    assert_eq!(reopened.records[0].id, before.records[0].id);
+    assert_eq!(reopened.records[0].night_index, before.records[0].night_index);
+    assert_eq!(reopened.records[0].sleep_onset_lived_date.as_deref(), Some("2026-10-31"));
+    assert_eq!(reopened.facts[0].lived_date.as_deref(), Some("2026-10-31"));
+    assert_eq!(reopened, saved);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn invalid_known_date_range_clock_corrections_clarify_end_without_adding_a_day() {
+    assert_invalid_known_date_range_correction("end", "01:45", "00:30");
+}
+
+#[test]
+fn invalid_known_date_range_clock_corrections_clarify_start_without_adding_a_day() {
+    assert_invalid_known_date_range_correction("start", "02:30", "01:15");
+}
+
+fn assert_invalid_known_date_range_correction(label: &str, start_time: &str, end_time: &str) {
+    let root = vault(&format!("repeated-hour-invalid-{label}"));
+    let app = TodayApplication::new(Selected(root.clone()), NoSelection, TransitionClock);
+    let original = json!({"start":{"date":"2026-11-01","time":"01:45","utcOffsetMinutes":-240},"end":{"date":"2026-11-01","time":"01:15","utcOffsetMinutes":-300}});
+    let initial = app.sleep_records().unwrap();
+    let before = app.save_sleep_record(serde_json::from_value(json!({"wakeDate":"2026-11-01","sleepOnset":{"kind":"range","start":original["start"],"end":original["end"],"reportedText":"original"},"changeId":"seed","targetBinding":initial.target_binding,"expectedRevision":initial.revision})).unwrap()).unwrap();
+    let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+    let bytes = fs::read(&path).unwrap();
+    let result = app.resolve_habit_sleep_range(&serde_json::from_value(json!({"livedDate":"2026-10-31","startTime":start_time,"endTime":end_time,"reportedText":"needs clarification","existingRange":original})).unwrap())
+        .and_then(|endpoint| app.save_habit_sleep_time(serde_json::from_value(json!({"habitKey":"sleep","livedDate":"2026-10-31","recordId":before.records[0].id,"endpoint":endpoint,"changeId":"invalid-correction","targetBinding":before.target_binding,"expectedRevision":before.revision})).unwrap()));
+    assert!(result.is_err(),"{label}: invalid known-date chronology must not silently become a next-day range");
+    assert!(result.unwrap_err().contains("澄清"));
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert_eq!(app.sleep_records().unwrap(), before);
+    fs::remove_dir_all(root).unwrap();
+}

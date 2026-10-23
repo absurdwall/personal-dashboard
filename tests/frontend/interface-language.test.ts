@@ -619,6 +619,8 @@ test('local-only Habit fixed metadata changes language without translating unkno
 
 test("reported Habit-time workflow diagnostics localize without translating source paths or original words", () => {
   for (const [diagnostic, expected] of [
+    ["请在 Collaboration 中澄清范围的实际日期；未写入：时间范围需要可靠且有序的上下界与原文。", "Clarify the range's actual dates in Collaboration. Nothing was written: A time range needs reliable ordered bounds and the reported wording."],
+    ["请在 Collaboration 中澄清范围的实际日期；未写入：原话 PRIVATE_PATH /奇怪: 文件", "Clarify the range's actual dates in Collaboration. Nothing was written: 原话 PRIVATE_PATH /奇怪: 文件"],
     ["端点与所选 lived day 不一致或跨越边界；未写入。", "The endpoint differs from the selected lived day or crosses its boundary; nothing was written."],
     ["所选 Vault 在操作期间改变；结果属于原 Vault，请重新读取核对。", "The selected Vault changed during the operation; the result belongs to the original Vault. Read again to verify."],
     ["同一 Habit 日期存在多条作息端点；请明确记录身份。", "Multiple sleep endpoints belong to this Habit date; specify the record identity."],
