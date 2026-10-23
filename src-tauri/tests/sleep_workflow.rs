@@ -2484,3 +2484,78 @@ fn assert_invalid_known_date_range_correction(label: &str, start_time: &str, end
     assert_eq!(app.sleep_records().unwrap(), before);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn habit_unrecorded_receipt_retries_keep_full_selected_operation_identity() {
+    assert_habit_receipt_identity("unrecorded", json!({"kind":"unrecorded"}));
+}
+
+#[test]
+fn habit_cross_boundary_range_receipt_retries_keep_full_selected_operation_identity() {
+    assert_habit_receipt_identity("cross-boundary", json!({"kind":"range","start":{"date":"2026-10-22","time":"03:30","utcOffsetMinutes":-240},"end":{"date":"2026-10-22","time":"04:30","utcOffsetMinutes":-240},"reportedText":"known crossing range"}));
+}
+
+fn assert_habit_receipt_identity(label: &str, endpoint: serde_json::Value) {
+    let mut acknowledged_conflicts = Vec::new();
+    for explicit_record in [false, true] {
+        let root = vault(&format!("receipt-{label}-{explicit_record}"));
+        let app = application(&root);
+        let before = if explicit_record {
+            // The stable night identity is deliberately independent of the selected lived day.
+            save(&app, json!({"wakeDate":"2026-10-24","sleepOnset":{"kind":"unknown"},"changeId":"seed"}))
+        } else { app.sleep_records().unwrap() };
+        let mut request = json!({"habitKey":"sleep","livedDate":"2026-10-21","endpoint":endpoint,"changeId":"habit-operation","targetBinding":before.target_binding,"expectedRevision":before.revision});
+        if explicit_record { request["recordId"] = json!(before.records[0].id); }
+        let saved = app.save_habit_sleep_time(serde_json::from_value(request.clone()).unwrap()).unwrap();
+        let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+        let bytes = fs::read(&path).unwrap();
+        assert_eq!(app.save_habit_sleep_time(serde_json::from_value(request.clone()).unwrap()).unwrap(), saved);
+        assert_eq!(fs::read(&path).unwrap(), bytes, "exact delivery is read-only");
+        let mut mismatches = Vec::new();
+        let mut changed = request.clone(); changed["livedDate"] = json!("2026-10-22"); mismatches.push(("date", changed));
+        let mut changed = request.clone(); changed["habitKey"] = json!("wake"); mismatches.push(("key", changed));
+        let mut changed = request.clone();
+        if explicit_record { changed.as_object_mut().unwrap().remove("recordId"); }
+        else { changed["recordId"] = json!(saved.records[0].id); }
+        mismatches.push(("record intent", changed));
+        let mut changed = request.clone(); changed["recordId"] = json!("another-record"); mismatches.push(("record identity", changed));
+        let mut changed = request.clone(); changed["targetBinding"] = json!("other-vault"); mismatches.push(("binding", changed));
+        let mut changed = request.clone(); changed["expectedRevision"] = json!("different-revision"); mismatches.push(("revision", changed));
+        let mut changed = request.clone(); changed["endpoint"] = json!({"kind":"unknown"}); mismatches.push(("endpoint", changed));
+        for (field, changed) in mismatches {
+            if app.save_habit_sleep_time(serde_json::from_value(changed).unwrap()).is_ok() {
+                acknowledged_conflicts.push(format!("{label}, explicit={explicit_record}: {field}"));
+            }
+            assert_eq!(fs::read(&path).unwrap(), bytes, "{field}: no write after conflicting retry");
+            assert_eq!(app.sleep_records().unwrap(), saved);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+    assert!(acknowledged_conflicts.is_empty(), "conflicting Habit requests acknowledged as old receipts: {acknowledged_conflicts:?}");
+}
+
+#[test]
+fn legacy_sleep_receipts_remain_readable_and_directly_replayable_without_guessing_habit_context() {
+    for endpoint in [json!({"kind":"unrecorded"}), json!({"kind":"range","start":{"date":"2026-10-22","time":"03:30","utcOffsetMinutes":-240},"end":{"date":"2026-10-22","time":"04:30","utcOffsetMinutes":-240},"reportedText":"legacy crossing range"})] {
+        let root = vault("legacy-receipt-identity");
+        let app = application(&root);
+        let before = app.sleep_records().unwrap();
+        let request = json!({"habitKey":"sleep","livedDate":"2026-10-21","endpoint":endpoint,"changeId":"legacy-habit-operation","targetBinding":before.target_binding,"expectedRevision":before.revision});
+        app.save_habit_sleep_time(serde_json::from_value(request.clone()).unwrap()).unwrap();
+        let path = root.join("life/.personal-dashboard/sleep/v1/sessions.json");
+        let mut legacy: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        for operation in legacy["operations"].as_array_mut().unwrap() { operation.as_object_mut().unwrap().remove("habitRequest"); }
+        let generic_request = legacy["operations"][0]["input"].clone();
+        let bytes = serde_json::to_vec(&legacy).unwrap();
+        fs::write(&path, &bytes).unwrap();
+        let read = app.sleep_records().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), bytes, "legacy reads never migrate the receipt");
+        let result = app.save_habit_sleep_time(serde_json::from_value(request).unwrap());
+        assert!(result.is_err(), "missing original Habit request identity cannot prove this wrapper retry");
+        assert!(result.unwrap_err().contains("changeId"));
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!(app.save_sleep_record(serde_json::from_value(generic_request).unwrap()).unwrap(), read, "the complete generic request still proves its legitimate retry");
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
