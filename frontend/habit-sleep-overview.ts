@@ -1,12 +1,20 @@
+import {createHabitTimeEntryButton} from './habit-time-entry.js';
+import {type HabitLocalCompletionState} from './habit-completion.js';
 import {shiftDateOnly} from './date-only.js';
 import {formatClockMinutes} from './clock-time.js';
-import {setInterfaceCopy, setInterfaceAttribute, setInterfaceError, type InterfaceCopyKey, type InterfaceLanguage,type InterfaceCopyVariables,type InterfaceCopyValue} from './interface-language.js';
+import {setInterfaceCopy, setInterfaceAttribute, setInterfaceError, setHabitDetailCopy, type HabitDetail, type InterfaceCopyKey, type InterfaceLanguage,type InterfaceCopyVariables,type InterfaceCopyValue} from './interface-language.js';
 import {sleepFactsForLivedDate,sleepEndpointCopy,sleepElapsedCopy,setSleepCopy,setSleepEndpointCopy, type SleepEndpointFact, type SleepView, type SleepHabitKey} from './sleep-facts.js';
 
 type HabitKey=SleepHabitKey;
 type Metric=HabitKey|'duration';
 type Sample=Readonly<{date:string;value:number|null;approximate:boolean;label:InterfaceCopyValue}>;
 type HabitContext=Readonly<{key:HabitKey;name:string;date:string}>;
+type SleepHabitSelection=Readonly<{
+  key:HabitKey;date:string;name:string;todayDate:string;
+  cell:Readonly<{statusCopy:InterfaceCopyKey;coverage:string;details:readonly HabitDetail[]}>|null;
+  localChanges:readonly Readonly<{state:HabitLocalCompletionState;changedAt:string}>[];
+  error?:string;
+}>;
 const svgNamespace='http://www.w3.org/2000/svg';
 function element<K extends keyof HTMLElementTagNameMap>(tag:K,className='',text=''):HTMLElementTagNameMap[K]{
   const node=document.createElement(tag);node.className=className;node.textContent=text;return node;
@@ -166,6 +174,44 @@ export class HabitSleepOverview {
     const form=element('form');const label=element('label');label.append(this.copyElement('span','','sleep.overview.historyDate'));const date=element('input');date.type='date';date.required=true;date.max=context.date;date.value=context.date;date.dataset.sleepHistoryDate='';this.copyAttribute(date,'aria-label','sleep.overview.historyDate');label.append(date);
     const open=this.copyElement('button','secondary-button','sleep.overview.historyOpen');open.type='submit';form.append(label,open);
     form.addEventListener('submit',event=>{event.preventDefault();if(!form.reportValidity())return;const button=element('button');button.type='button';button.dataset.habitDetailDate=date.value;button.dataset.habitDetailDateKey=metrics[this.metric].dateHabit;root.append(button);this.selected={metric:this.metric,date:date.value};button.click();button.remove();});history.append(form);root.append(history);return root;
+  }
+  renderSelection(destination:HTMLElement|null,context:SleepHabitSelection):boolean{
+    const row=[...(destination?.querySelectorAll<HTMLElement>('.habit-snapshot-row')??[])]
+      .find(item=>item.dataset.habitKey===context.key);
+    const detail=row?.querySelector<HTMLElement>('.habit-sleep-day-evidence');
+    if(!detail)return false;
+    destination?.querySelectorAll<HTMLElement>('.habit-sleep-day-evidence').forEach(item=>item.hidden=item!==detail);
+    detail.hidden=false;
+    const heading=document.createElement('strong');
+    heading.textContent=`${context.date} · ${context.name}`;
+    detail.replaceChildren(heading,this.dayEvidence(context.key,context.date));
+    const cell=context.cell;
+    if(cell){
+      const state=document.createElement('span');
+      setInterfaceCopy(state,'habits.statusCoverage',this.language(),{status:{copy:cell.statusCopy},coverage:cell.coverage});
+      const sources=document.createElement('ul');
+      for(const line of cell.details){
+        const item=document.createElement('li');
+        setHabitDetailCopy(item,line,this.language());
+        sources.append(item);
+      }
+      for(const change of context.localChanges){
+        const item=document.createElement('li');
+        setInterfaceCopy(item,change.state==='completed'?'history.localCompletedAt':'history.localWithdrawnAt',this.language(),{changedAt:change.changedAt});
+        sources.append(item);
+      }
+      detail.append(state,sources);
+    }else{
+      const coverage=document.createElement('span');
+      setInterfaceCopy(coverage,'habits.canonicalCoverage',this.language());detail.append(coverage);
+    }
+    if(context.date<=context.todayDate){
+      detail.append(createHabitTimeEntryButton({habitKey:context.key,date:context.date,habitName:context.name},this.language()));
+    }
+    if(context.error){
+      const error=document.createElement('p');setInterfaceError(error,'habits.loadDateFailed',context.error,this.language());detail.append(error);
+    }
+    return true;
   }
   dayEvidence(key:HabitKey,date:string):HTMLElement{
     const root=element('div','habit-sleep-day-values');

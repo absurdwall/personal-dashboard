@@ -1,7 +1,7 @@
 import {shiftDateOnly} from "./date-only.js";
 import {formatClockMinutes} from "./clock-time.js";
 import { HabitSleepOverview } from "./habit-sleep-overview.js";
-import { HabitTimeEntry, createHabitTimeEntryButton } from "./habit-time-entry.js";
+import { HabitTimeEntry } from "./habit-time-entry.js";
 import { SleepFactPresentation, isSleepHabitKey, type SleepEndpointFact, type SleepView } from "./sleep-facts.js";
 import { CollaborationTitlePolling } from "./collaboration-title-polling.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
@@ -60,7 +60,6 @@ import {
   habitActualTimeCopy,
   localizeHabitCoverageLabel,
   localizeHabitDetail,
-  setHabitDetailCopy,
   localizeHabitGoalLabel,
   updateTodayAxisMarkerAccessibleName,
   setApplicationMessage,
@@ -10181,45 +10180,16 @@ function renderSleepHabitSelection(): boolean {
   const selected = selectedHabitCell;
   if (!selected || !isSleepHabitKey(selected.habitKey)) return false;
   const habit = currentHabitSnapshot?.habits.find(item => item.key === selected.habitKey);
-  const row = [...(habitsDestination?.querySelectorAll<HTMLElement>(".habit-snapshot-row") ?? [])]
-    .find(item => item.dataset.habitKey === selected.habitKey);
-  const detail = row?.querySelector<HTMLElement>(".habit-sleep-day-evidence");
-  if (!habit || !detail) return false;
-  habitsDestination?.querySelectorAll<HTMLElement>(".habit-sleep-day-evidence").forEach(item => item.hidden = item !== detail);
-  detail.hidden = false;
-  const heading = document.createElement("strong");
-  heading.textContent = `${selected.date} · ${displayHabitName(habit)}`;
-  detail.replaceChildren(heading, habitSleepOverview.dayEvidence(selected.habitKey, selected.date));
+  if (!habit) return false;
   const canonical = currentHabitDateView?.date === selected.date
     ? currentHabitDateView.habitCorrections.habits.find(item => item.key === selected.habitKey) : null;
   const cell = canonical?.cell ?? habit.history.find(item => item.date === selected.date)
     ?? habit.recent.find(item => item.date === selected.date) ?? (habit.today.date === selected.date ? habit.today : null);
-  if (cell) {
-    const state = document.createElement("span");
-    setInterfaceCopy(state, "habits.statusCoverage", currentInterfaceLanguage, {status: {copy:habitStatusLabels[cell.status]}, coverage: cell.coverage});
-    const sources = document.createElement("ul");
-    for (const line of cell.details) {
-      const item = document.createElement("li");
-      setHabitDetailCopy(item,line,currentInterfaceLanguage);
-      sources.append(item);
-    }
-    for (const change of canonical?.localChanges ?? []) {
-      const item = document.createElement("li");
-      setCopy(item, change.state === "completed" ? "history.localCompletedAt" : "history.localWithdrawnAt", {changedAt: change.changedAt});
-      sources.append(item);
-    }
-    detail.append(state, sources);
-  } else {
-    const coverage = document.createElement("span");
-    setCopy(coverage, "habits.canonicalCoverage");detail.append(coverage);
-  }
-  if (selected.date <= habit.today.date) {
-    detail.append(createHabitTimeEntryButton({habitKey:selected.habitKey,date:selected.date,habitName:displayHabitName(habit)},currentInterfaceLanguage));
-  }
-  if (habitNoteStatus?.error) {
-    const error = document.createElement("p");setCopyError(error, "habits.loadDateFailed", habitNoteStatus.error);detail.append(error);
-  }
-  return true;
+  return habitSleepOverview.renderSelection(habitsDestination, {
+    key: selected.habitKey, date: selected.date, name: displayHabitName(habit), todayDate: habit.today.date,
+    cell: cell ? { statusCopy: habitStatusLabels[cell.status], coverage: cell.coverage, details: cell.details } : null,
+    localChanges: canonical?.localChanges ?? [], error: habitNoteStatus?.error,
+  });
 }
 
 function renderSelectedHabitCell(): void {
