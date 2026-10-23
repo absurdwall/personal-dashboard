@@ -9539,10 +9539,15 @@ function habitRow(habit: HabitView): HTMLElement {
   const historyHeading = document.createElement("div");
   historyHeading.className = "habit-history-heading";
   const heading = document.createElement("strong");
+  const legend = document.createElement("details");
+  legend.className = "habit-history-legend";
+  const legendToggle = document.createElement("summary");
   const caption = document.createElement("small");
   setCopy(heading, "habits.history");
+  setCopy(legendToggle, "habits.historyLegend");
   setCopy(caption, "habits.historyCaption");
-  historyHeading.append(heading, caption);
+  legend.append(legendToggle, caption);
+  historyHeading.append(heading, legend);
   const grid = document.createElement("div");
   grid.className = "habit-history-grid";
   const weeks = Array.from({ length: 12 }, (_, week) =>
