@@ -476,7 +476,10 @@
                 <aside class="tasks-list-sidebar" aria-labelledby="tasks-lists-heading">
                   <div class="tasks-list-heading">
                     <span id="tasks-lists-heading" class="section-label" data-i18n="tasks.listsNavHeading">清单</span>
-                    <button id="task-new-list" type="button" class="tasks-icon-button" aria-label="新建清单" title="新建清单" data-i18n-aria-label="tasks.newList" data-i18n-title="tasks.newList">＋</button>
+                  </div>
+                  <div class="task-list-create-actions">
+                    <button id="task-new-list" type="button" class="text-button" data-i18n="tasks.newList">新建清单</button>
+                    <button id="task-new-folder" type="button" class="text-button" data-i18n="tasks.newFolder">新建文件夹</button>
                   </div>
                   <div id="tasks-list-scopes" class="task-list-navigation" role="tablist" aria-label="任务清单" data-i18n-aria-label="tasks.scope">
                     <button type="button" class="task-list-button" role="tab" data-task-scope="all" aria-selected="true" aria-current="page" data-i18n="tasks.scopeAll">All</button>
@@ -485,36 +488,15 @@
                     <button type="button" class="task-list-button" role="tab" data-task-scope="archived" aria-selected="false" data-i18n="tasks.scopeArchived">Archived</button>
                   </div>
                   <p class="tasks-list-note" data-i18n="tasks.listBoundary">归档只移出日常入口，不删除任务历史。</p>
-                  <section id="tasks-list-management-panel" class="tasks-list-management-panel" aria-labelledby="tasks-list-management-heading" hidden>
-                    <div class="tasks-list-manager-heading">
-                      <div>
-                        <p class="section-label" data-i18n="tasks.listsSection">清单 · 分类与归档</p>
-                        <h3 id="tasks-list-management-heading" data-i18n="tasks.listsHeading">任务清单</h3>
-                      </div>
-                      <button id="tasks-list-management-close" type="button" class="tasks-icon-button" aria-label="关闭清单管理" data-i18n-aria-label="tasks.closeListManager">×</button>
-                    </div>
-                    <form id="task-list-create-form" class="task-list-create-form" hidden>
-                      <label>
-                        <span data-i18n="tasks.newListName">新清单名称</span>
-                        <input id="task-list-create-name" type="text" maxlength="80" required placeholder="例如：家庭" data-i18n-placeholder="tasks.newListPlaceholder" />
-                      </label>
-                      <button id="task-list-create-submit" type="submit" data-i18n="tasks.createList">新建清单</button>
-                    </form>
-                    <form id="task-folder-create-form" class="task-folder-create-form" hidden>
-                      <label>
-                        <span data-i18n="tasks.newFolderName">新文件夹名称</span>
-                        <input id="task-folder-create-name" type="text" maxlength="80" required placeholder="例如：生活安排" data-i18n-placeholder="tasks.folderNamePlaceholder" />
-                      </label>
-                      <button id="task-folder-create-submit" type="submit" class="secondary-button" data-i18n="tasks.createFolder">新建文件夹</button>
-                    </form>
-                    <div id="tasks-lists-management" class="tasks-lists-management" aria-live="polite"></div>
-                  </section>
                 </aside>
                 <section class="tasks-content" aria-labelledby="tasks-list-heading">
                   <div class="tasks-toolbar">
                     <div>
                       <p id="tasks-list-kicker" class="section-label" data-i18n="tasks.inbox">收集箱</p>
-                      <h3 id="tasks-list-heading" data-i18n="tasks.allTasks">全部任务</h3>
+                      <div class="tasks-scope-heading">
+                        <h3 id="tasks-list-heading" data-i18n="tasks.allTasks">全部任务</h3>
+                        <button id="task-list-settings" type="button" class="text-button" data-i18n="tasks.listSettings" hidden>清单设置</button>
+                      </div>
                     </div>
                     <div class="tasks-toolbar-actions">
                       <span id="tasks-count" class="tasks-count" aria-live="polite"></span>
@@ -553,6 +535,30 @@
                       </label>
                     </div>
                   </div>
+                  <section id="tasks-list-management-panel" class="tasks-list-management-panel" aria-labelledby="tasks-list-management-heading" hidden>
+                    <div class="tasks-list-manager-heading">
+                      <div>
+                        <p id="tasks-list-management-kicker" class="section-label" data-i18n="tasks.listsSection">清单 · 分类与归档</p>
+                        <h3 id="tasks-list-management-heading">任务清单</h3>
+                      </div>
+                      <button id="tasks-list-management-close" type="button" class="tasks-icon-button" aria-label="关闭清单管理" data-i18n-aria-label="tasks.closeListManager">×</button>
+                    </div>
+                    <form id="task-list-create-form" class="task-list-create-form" hidden>
+                      <label>
+                        <span data-i18n="tasks.newListName">新清单名称</span>
+                        <input id="task-list-create-name" type="text" maxlength="80" required placeholder="例如：家庭" data-i18n-placeholder="tasks.newListPlaceholder" />
+                      </label>
+                      <button id="task-list-create-submit" type="submit" data-i18n="tasks.createList">新建清单</button>
+                    </form>
+                    <form id="task-folder-create-form" class="task-folder-create-form" hidden>
+                      <label>
+                        <span data-i18n="tasks.newFolderName">新文件夹名称</span>
+                        <input id="task-folder-create-name" type="text" maxlength="80" required placeholder="例如：生活安排" data-i18n-placeholder="tasks.folderNamePlaceholder" />
+                      </label>
+                      <button id="task-folder-create-submit" type="submit" class="secondary-button" data-i18n="tasks.createFolder">新建文件夹</button>
+                    </form>
+                    <div id="tasks-lists-management" class="tasks-lists-management" aria-live="polite"></div>
+                  </section>
                   <form id="task-quick-form" class="task-quick-form" hidden>
                     <input id="task-quick-name" type="text" maxlength="160" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" data-task-name />
                     <label id="task-quick-folder-target" class="task-quick-folder-target" hidden>

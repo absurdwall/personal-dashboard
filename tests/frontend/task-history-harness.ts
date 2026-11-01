@@ -32,13 +32,14 @@ export class Element {
 }
 export function renderer() {
   const context: any = { ...presentation, canMutateTodayTasks: () => true, todayOperationCount: 0,
-    todayPresentationFresh: true, document: { createElement: (tag: string) => new Element(tag) },
+    todayPresentationFresh: true, document: { createElement: (tag: string) => new Element(tag), querySelector: () => null },
     CSS: { escape: (value: string) => value }, tasksList: new Element(), tasksCount: new Element(), taskScope: "all", taskStateScope: "all",
-    taskOperationCount: 0, currentTaskLivedDate: null, taskCreateOpen: false, taskListManagementOpen: false,
+    taskOperationCount: 0, currentTaskLivedDate: null, taskCreateOpen: false, taskListManagementOpen: false, taskListManagementMode: "edit", taskListFolderCreationForId: null, taskArchivedEditListId: null,
     taskHistoryFocusDisclosureRequest: null, closeTodayAxisTaskPopup() {}, closeTodayAxisFactPopup() {},
     taskFocusRequestId: null, selectedTaskDetailId: null, selectedTaskDetailBinding: null, taskEditorDialogRoot: null, taskReturnToCollaborationSessionId: null,
     taskCreateDrafts: new Map(), taskCreateAttempts: new Map(), taskListCreateDrafts: new Map(),
-    setCopy: (element: any, key: string, params: any) => { element.copyKey = key; element.params = params; },
+    setCopy: (element: any, key: string, params: any) => { if (element) { element.copyKey = key; element.params = params; } },
+    setRawText: (element: any, text: string) => { if (element) element.textContent = text; }, t: (key: string) => key,
     taskEditor: (task: any) => Object.assign(new Element("task"), {id: task.id}),
     taskQuickPropertyDrafts: new Map(), taskQuickDrafts: new Map(),
     taskFolderIdsByList: () => new Map(), taskPrioritySort: false, collapsedTaskTreeNodesByBinding: new Map(),
@@ -48,7 +49,7 @@ export function renderer() {
     renderTaskListManagement: () => {}, clearTaskEditorDialogs: () => {},
     updateTaskCreationControls: () => {},
   };
-  for (const name of ["taskListScopes", "taskFilter", "tasksStatus", "tasksEmpty", "taskListsManagementPanel",
+  for (const name of ["taskNewListButton", "taskNewFolderButton", "taskListSettingsButton", "taskListsManagementClose", "taskListScopes", "taskFilter", "tasksStatus", "tasksEmpty", "taskListsManagementPanel",
     "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton", "taskQuickForm", "taskQuickName", "taskQuickSubmit", "taskQuickList", "taskQuickFolderList", "taskQuickFolderTarget", "taskQuickFolderEmpty", "taskQuickPriority", "taskQuickTagChoices", "taskQuickParent", "taskFolderCreateForm"]) context[name] = null;
   for (const name of ["todayTaskStatus", "todayTaskEmpty", "todayTaskOverdueSection", "todayTaskOverdueEmpty",
     "todayTaskCreateForm", "todayTaskCreateName", "todayTaskCreateContent", "todayTaskCreateDate", "todayTaskCreateTime", "todayTaskCreateSubmit"]) context[name] = null;

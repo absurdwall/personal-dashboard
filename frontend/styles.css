@@ -11944,3 +11944,39 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   flex: 1 1 0;
   min-width: 0;
 }
+
+/* List navigation stays separate from the currently selected list's settings. */
+.task-list-create-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.task-list-create-actions button {
+  width: 100%;
+  min-height: 22px;
+  padding: 3px 2px;
+  text-align: center;
+  font-size: 10px;
+}
+.tasks-scope-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.tasks-scope-heading > h3 { flex: 1 1 120px; min-width: min(120px, 100%); overflow-wrap: anywhere; }
+.tasks-content > .tasks-list-management-panel {
+  width: min(100%, 28rem);
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 14px 0 20px;
+  padding: 18px;
+  border: 1px solid var(--parity-border);
+  border-radius: 10px;
+  background: var(--parity-surface);
+}
+.tasks-content > .tasks-list-management-panel[hidden] { display: none; }
+.tasks-list-management-panel .task-list-row,
+.tasks-list-management-panel .task-folder-row { min-width: 0; }
+.tasks-list-management-panel input { width: 100%; box-sizing: border-box; }
+.tasks-list-management-panel .task-list-row-form,
+.tasks-list-management-panel .task-folder-row-form { gap: 10px; }
+.tasks-list-management-panel .task-list-folder-assignment { gap: 6px; }
+.tasks-list-management-panel .task-list-folder-controls { display: grid; gap: 6px; }
+.tasks-list-management-panel .task-list-folder-controls > .text-button { text-align: left; }
+.tasks-list-management-panel .task-list-row-form > .secondary-button { margin-top: 8px; }
