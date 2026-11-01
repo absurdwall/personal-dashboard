@@ -39,6 +39,17 @@ async function pageFixture({width=1280,extraTasks=[],tags=[],language='en',folde
       if(command==='application_identity')return {productName:'Personal Dashboard'};
       if(command==='interface_language_preferences')return {interfaceLanguage:language};
       if(command==='today_clock')return {date:v.date,time:v.currentTime};
+      if(['create_task_list','rename_task_list','archive_task_list','restore_task_list','create_task_folder','rename_task_folder','delete_task_folder','set_task_list_folder'].includes(command)) {
+        const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        if(command==='create_task_list')t.lists.push({id:input.listId,name:input.name,isSystem:false,archived:false,folderId:null});
+        if(command==='rename_task_list')t.lists.find(x=>x.id===input.listId).name=input.name;
+        if(command==='archive_task_list'||command==='restore_task_list')t.lists.find(x=>x.id===input.listId).archived=command==='archive_task_list';
+        if(command==='create_task_folder')t.folders.push({id:input.folderId,name:input.name});
+        if(command==='rename_task_folder')t.folders.find(x=>x.id===input.folderId).name=input.name;
+        if(command==='delete_task_folder'){t.folders=t.folders.filter(x=>x.id!==input.folderId);for(const list of t.lists)if(list.folderId===input.folderId)list.folderId=null;}
+        if(command==='set_task_list_folder')t.lists.find(x=>x.id===input.listId).folderId=input.folderId;
+        t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
+      }
       if(command==='create_task'){
         const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
         if(!t.tasks.some(x=>x.id===input.taskId))t.tasks.push({id:input.taskId,...input,priority:null,tagIds:[],source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-10T09:00-04:00',modifiedAt:'2026-10-10T09:00-04:00',changes:[]});
@@ -88,12 +99,21 @@ async function pageFixture({width=1280,extraTasks=[],tags=[],language='en',folde
 }
 
 // Production document, real click/keyboard input. Only Tauri IPC is replaced.
-test('list management keeps readable full-width controls in the sidebar at every window size',async()=>{
+test('selected list settings stay focused and readable at every window size',async()=>{
   for(const language of ['zh','en']) {
     const f=await pageFixture({language,folders:[{id:'family',name:language==='zh'?'生活安排':'Family arrangements'}]});
     const {page}=f;
     try {
-      await page.locator('#task-new-list').click();
+      await page.locator('[data-task-scope="list:home"]').click();
+      assert.equal(await page.locator('#task-list-settings').count(),1,'selected list has an explicit settings entry');
+      await page.locator('#task-list-settings').click();
+      const panel=page.locator('#tasks-list-management-panel');
+      assert.equal(await panel.locator('.task-list-row').count(),1,'only the selected list is edited');
+      assert.equal(await panel.locator('.task-folder-row').count(),0,'other folders are not edited here');
+      assert.equal(await panel.locator('[data-task-list-editor=home]').count(),1);
+      assert.equal(await panel.locator('#task-list-create-form').isVisible(),false);
+      assert.equal(await panel.locator('#task-folder-create-form').isVisible(),false);
+      assert.equal(await panel.locator('[data-task-list-new-folder=home]').isVisible(),true,'folder creation is next to folder selection');
       for(const width of [1280,800,960,640,1600]) {
         await page.setViewportSize({width,height:850});
         const panel=page.locator('#tasks-list-management-panel');
@@ -101,11 +121,12 @@ test('list management keeps readable full-width controls in the sidebar at every
         const issues=await panel.evaluate(panel=>{
           const issues=[];
           for(const row of panel.querySelectorAll('.task-list-row,.task-folder-row')) {
-            const heading=row.querySelector('.task-list-row-heading').getBoundingClientRect();
+            const heading=row.querySelector('.task-list-row-heading')?.getBoundingClientRect();
             const body=row.lastElementChild.getBoundingClientRect();
-            if(body.top<heading.bottom-1)issues.push('list heading and editor share a narrow row');
+            if(heading&&body.top<heading.bottom-1)issues.push('list heading and editor share a narrow row');
           }
           for(const control of panel.querySelectorAll('input,select,button:not(.tasks-icon-button)')) {
+            if(!control.getClientRects().length)continue;
             const box=control.getBoundingClientRect();
             if(box.width<100)issues.push(`${control.tagName} too narrow: ${Math.round(box.width)}px`);
             if(control.scrollWidth>control.clientWidth+1)issues.push(`${control.tagName} clips its label`);
@@ -125,6 +146,69 @@ test('list management keeps readable full-width controls in the sidebar at every
       assert.equal(await page.locator('#tasks-list-management-panel').isVisible(),false);
     } finally {await f.close();}
   }
+});
+
+test('folder creation from a selected list creates and moves only that list, with a recoverable assignment failure',async()=>{
+  const f=await pageFixture({language:'zh'});const {page}=f;
+  try {
+    await page.locator('[data-task-scope="list:home"]').click();
+    await page.locator('#task-list-settings').click();
+    await page.locator('[data-task-list-new-folder=home]').click();
+    await page.locator('#task-folder-create-name').fill('生活安排');
+    await page.evaluate(()=>window.__failNext='set_task_list_folder');
+    await page.locator('#task-folder-create-submit').click();
+    await page.waitForFunction(()=>window.__calls.some(x=>x.command==='set_task_list_folder'));
+    await page.waitForFunction(()=>!document.querySelector('[data-task-list-folder=home]').disabled);
+    const folder=await page.evaluate(()=>window.__fixture.tasks.folders[0]);
+    assert.equal(folder.name,'生活安排');
+    assert.equal(await page.locator('[data-task-list-folder=home]').inputValue(),'','failed move does not claim the list was moved');
+    assert.match(await page.locator('#tasks-status').textContent(),/Synthetic save failure/);
+    assert.equal(await page.locator('#task-folder-create-form').isVisible(),false,'created folder is available for retry without creating a duplicate');
+    await page.locator('[data-task-list-folder=home]').selectOption(folder.id);
+    await page.waitForFunction(id=>window.__fixture.tasks.lists.find(x=>x.id==='home').folderId===id,folder.id);
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.lists.find(x=>x.id==='inbox').folderId??null),null);
+    assert.equal(await page.locator('#tasks-lists-management [data-task-list-editor]').count(),1);
+    await page.locator('#tasks-list-management-close').click();
+    await page.locator('#task-new-folder').click();
+    assert.equal(await page.locator('#task-folder-create-form').isVisible(),true,'global folder creation has its own visible entry');
+    assert.equal(await page.locator('#tasks-lists-management .task-list-row').count(),0);
+  } finally {await f.close();}
+});
+
+test('new lists, rename drafts, archive restore and folder settings keep distinct scopes',async()=>{
+  const f=await pageFixture({language:'zh',folders:[{id:'family',name:'生活安排'}]});const {page}=f;
+  try {
+    await page.locator('#task-new-list').click();
+    assert.equal(await page.locator('#task-folder-create-form').isVisible(),false);
+    await page.locator('#task-list-create-name').fill('每月订阅');
+    await page.locator('#task-list-create-submit').click();
+    await page.waitForFunction(()=>document.querySelector('#tasks-list-heading').textContent==='每月订阅');
+    const id=await page.evaluate(()=>window.__fixture.tasks.lists.find(x=>x.name==='每月订阅').id);
+    await page.locator('#task-list-settings').click();
+    let editor=page.locator(`[data-task-list-editor="${id}"]`);
+    await editor.locator('[data-task-list-name]').fill('月度订阅');
+    await page.locator('[data-task-scope="list:home"]').click();
+    assert.equal(await page.locator('#tasks-list-management-panel').isVisible(),false,'switching lists closes unrelated settings');
+    await page.locator(`[data-task-scope="list:${id}"]`).click();
+    await page.locator('#task-list-settings').click();
+    editor=page.locator(`[data-task-list-editor="${id}"]`);
+    assert.equal(await editor.locator('[data-task-list-name]').inputValue(),'月度订阅','unsaved rename survives switching away and back');
+    await editor.locator('button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('#tasks-list-heading').textContent==='月度订阅');
+    await page.locator(`[data-task-list-archive="${id}"]`).click();
+    await page.waitForFunction(()=>document.querySelector('[data-task-list-restore]'));
+    assert.equal(await page.locator('#tasks-list-heading').textContent(),'已归档');
+    assert.equal(await page.locator('#tasks-lists-management .task-list-row').count(),1);
+    await page.locator(`[data-task-list-restore="${id}"]`).click();
+    await page.waitForFunction(id=>window.__fixture.tasks.lists.find(x=>x.id===id).archived===false,id);
+    await page.locator('[data-task-scope="folder:family"]').click();
+    await page.locator('#task-list-settings').click();
+    assert.equal(await page.locator('#tasks-lists-management .task-list-row').count(),0);
+    assert.equal(await page.locator('[data-task-folder-editor=family]').count(),1);
+    await page.locator('[data-task-folder-name=family]').fill('生活分类');
+    await page.locator('[data-task-folder-editor=family] button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('#tasks-list-heading').textContent==='生活分类');
+  } finally {await f.close();}
 });
 
 test('Tasks compact rows select one full detail while completion stays independent',async()=>{

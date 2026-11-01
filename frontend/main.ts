@@ -1510,6 +1510,8 @@ const taskCreateCancel = document.querySelector<HTMLButtonElement>("#task-create
 const taskNewButton = document.querySelector<HTMLButtonElement>("#task-new");
 const taskReturnToCollaborationButton = document.querySelector<HTMLButtonElement>("#task-return-to-collaboration");
 const taskNewListButton = document.querySelector<HTMLButtonElement>("#task-new-list");
+const taskNewFolderButton = document.querySelector<HTMLButtonElement>("#task-new-folder");
+const taskListSettingsButton = document.querySelector<HTMLButtonElement>("#task-list-settings");
 const taskListScopes = document.querySelector<HTMLElement>("#tasks-list-scopes");
 const taskListCreateForm = document.querySelector<HTMLFormElement>("#task-list-create-form");
 const taskListCreateName = document.querySelector<HTMLInputElement>("#task-list-create-name");
@@ -1793,6 +1795,9 @@ let taskHistoryFocusDisclosureRequest: Readonly<{
 let taskCreateOpen = false;
 const composingTaskCreateForms = new WeakSet<HTMLFormElement>();
 let taskListManagementOpen = false;
+let taskListManagementMode: "create-list" | "create-folder" | "edit" = "edit";
+let taskListFolderCreationForId: string | null = null;
+let taskArchivedEditListId: string | null = null;
 const expandedTaskFolderIds = new Set<string>();
 const taskFolderRenameDrafts = new Map<string, string>();
 const taskFolderCreateDrafts = new Map<string, string>();
@@ -2112,6 +2117,8 @@ function resetVaultScopedWorkspaceState(): void {
   taskStateScope = "all";
   taskCreateOpen = false;
   taskListManagementOpen = false;
+  taskListFolderCreationForId = null;
+  taskArchivedEditListId = null;
   expandedTaskFolderIds.clear();
   taskRefreshQueued = false;
   currentHabitSnapshot = null;
@@ -11682,7 +11689,33 @@ function renderTaskFolderSelect(
 
 function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
   if (!taskListsManagement) return;
-  const folderRows = (view.folders ?? []).map((folder) => {
+  const editing = taskListManagementOpen && taskListManagementMode === "edit";
+  const archivedLists = view.lists.filter((list) => list.archived);
+  if (!archivedLists.some((list) => list.id === taskArchivedEditListId)) {
+    taskArchivedEditListId = archivedLists[0]?.id ?? null;
+  }
+  const selectedListId = taskScope === "archived" ? taskArchivedEditListId : taskListIdFromScope(taskScope);
+  const selectedFolderId = taskFolderIdFromScope(taskScope);
+  const picker: HTMLElement[] = [];
+  if (editing && taskScope === "archived" && archivedLists.length) {
+    const label = document.createElement("label");
+    label.className = "task-list-folder-assignment";
+    const caption = document.createElement("span");
+    setCopy(caption, "tasks.chooseArchivedList");
+    const select = document.createElement("select");
+    select.dataset.taskArchivedList = "";
+    for (const list of archivedLists) select.append(Object.assign(document.createElement("option"), {value: list.id, textContent: list.name}));
+    select.value = selectedListId ?? "";
+    select.disabled = !canOperate;
+    select.addEventListener("change", () => {
+      taskArchivedEditListId = select.value;
+      taskListFolderCreationForId = null;
+      if (currentTasksView) renderTasks(currentTasksView);
+    });
+    label.append(caption, select);
+    picker.push(label);
+  }
+  const folderRows = (view.folders ?? []).filter((folder) => editing && folder.id === selectedFolderId).map((folder) => {
     const row = document.createElement("article");
     row.className = "task-folder-row";
     const heading = document.createElement("div");
@@ -11726,29 +11759,11 @@ function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
     row.append(heading, form);
     return row;
   });
-  const listRows = view.lists.map((list) => {
+  const listRows = view.lists.filter((list) => editing && list.id === selectedListId).map((list) => {
     const row = document.createElement("article");
     row.className = "task-list-row";
     row.classList.toggle("is-archived", list.archived);
-    const heading = document.createElement("div");
-    heading.className = "task-list-row-heading";
-    const title = document.createElement("strong");
     const displayName = taskListDisplayName(list, t("tasks.inbox"));
-    title.textContent = displayName;
-    const count = document.createElement("small");
-    count.className = "task-meta";
-    setCopy(count, "tasks.listCount", {
-      count: taskListCount(view.tasks, list.id, taskStateScope),
-    });
-    heading.append(title, count);
-    row.append(heading);
-    if (list.isSystem) {
-      const permanent = document.createElement("small");
-      setCopy(permanent, "tasks.permanentList");
-      permanent.className = "task-meta";
-      row.append(permanent);
-      return row;
-    }
     const form = document.createElement("form");
     form.className = "task-list-row-form";
     form.dataset.taskListEditor = list.id;
@@ -11786,12 +11801,31 @@ function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
     folderSelect.addEventListener("change", () => {
       void pendingWrites.track(setTaskListFolder(list.id, folderSelect.value || null));
     });
+    const newFolder = document.createElement("button");
+    newFolder.type = "button";
+    newFolder.className = "text-button";
+    newFolder.dataset.taskListNewFolder = list.id;
+    newFolder.disabled = !canOperate;
+    setCopy(newFolder, "tasks.createFolder");
+    newFolder.addEventListener("click", () => {
+      taskListFolderCreationForId = list.id;
+      if (currentTasksView) renderTasks(currentTasksView);
+      taskFolderCreateName?.focus();
+    });
     folderLabel.append(folderCaption, folderSelect);
-    form.append(input, save, folderLabel, archive);
+    const folderControls = document.createElement("div");
+    folderControls.className = "task-list-folder-controls";
+    folderControls.append(folderLabel, newFolder);
+    const nameLabel = document.createElement("label");
+    nameLabel.className = "task-list-folder-assignment";
+    const nameCaption = document.createElement("span");
+    setCopy(nameCaption, "tasks.name");
+    nameLabel.append(nameCaption, input);
+    form.append(nameLabel, save, folderControls, archive);
     row.append(form);
     return row;
   });
-  taskListsManagement.replaceChildren(...folderRows, ...listRows);
+  taskListsManagement.replaceChildren(...picker, ...folderRows, ...listRows);
 }
 
 function renderTaskPropertyFilters(view: TasksView): void {
@@ -13300,18 +13334,20 @@ function renderTasks(view: TasksView): void {
         : focusedList ? taskListScopeForId(focused.listId) : "all";
     }
   }
+  const candidateListId = taskListIdFromScope(taskScope);
+  const candidateList = candidateListId ? taskListForId(view, candidateListId) : undefined;
+  const candidateFolderId = taskFolderIdFromScope(taskScope);
+  if ((candidateListId && !candidateList) ||
+    (candidateFolderId && !taskFolderForId(view, candidateFolderId))) {
+    taskScope = "all";
+  } else if (candidateList?.archived) {
+    taskArchivedEditListId = candidateList.id;
+    taskScope = "archived";
+  }
   const folderScopeId = taskFolderIdFromScope(taskScope);
   const scopedListId = taskListIdFromScope(taskScope);
   const scopedList = scopedListId ? taskListForId(view, scopedListId) : undefined;
   const scopedFolder = folderScopeId ? taskFolderForId(view, folderScopeId) : undefined;
-  if (
-    (taskScope.startsWith("list:") && !scopedList) ||
-    (taskScope.startsWith("folder:") && !scopedFolder)
-  ) {
-    taskScope = "all";
-  } else if (scopedList?.archived) {
-    taskScope = "archived";
-  }
   renderTaskListScopeButtons(view);
   renderTaskPropertyFilters(view);
   const quickProperties = view.targetBinding
@@ -13430,21 +13466,43 @@ function renderTasks(view: TasksView): void {
     view.state !== "unconfigured" &&
     taskOperationCount === 0;
   const writable = canOperate && taskStateScope !== "deleted";
-  renderTaskListManagement(view, canOperate);
-  if (taskListsManagementPanel) {
-    taskListsManagementPanel.hidden = !taskListManagementOpen;
+  const canEditScope = Boolean(scopedList && !scopedList.isSystem) || Boolean(scopedFolder) ||
+    (taskScope === "archived" && view.lists.some((list) => list.archived));
+  if (taskListManagementMode === "edit" && !canEditScope) taskListManagementOpen = false;
+  if (taskListSettingsButton) {
+    taskListSettingsButton.hidden = !canEditScope;
+    taskListSettingsButton.disabled = !canOperate;
+    setCopy(taskListSettingsButton, scopedFolder ? "tasks.folderSettings" : taskScope === "archived" ? "tasks.archivedListSettings" : "tasks.listSettings");
   }
+  const scopeHeading = document.querySelector<HTMLElement>("#tasks-list-heading");
+  const scopeKicker = document.querySelector<HTMLElement>("#tasks-list-kicker");
+  if (scopedList) setRawText(scopeHeading, taskListDisplayName(scopedList, t("tasks.inbox")));
+  else if (scopedFolder) setRawText(scopeHeading, scopedFolder.name);
+  else setCopy(scopeHeading, taskScope === "today" ? "tasks.scopeToday" : taskScope === "archived" ? "tasks.scopeArchived" : "tasks.allTasks");
+  setCopy(scopeKicker, scopedFolder ? "tasks.folder" : "tasks.list");
+  renderTaskListManagement(view, canOperate);
+  const creatingList = taskListManagementMode === "create-list";
+  const creatingFolder = taskListManagementMode === "create-folder";
+  const managementHeading = document.querySelector<HTMLElement>("#tasks-list-management-heading");
+  const managementKicker = document.querySelector<HTMLElement>("#tasks-list-management-kicker");
+  setCopy(managementKicker, creatingList ? "tasks.newList" : creatingFolder ? "tasks.createFolder" : scopedFolder ? "tasks.folderSettings" : "tasks.listSettings");
+  if (creatingList || creatingFolder) setCopy(managementHeading, creatingList ? "tasks.newList" : "tasks.createFolder");
+  else setRawText(managementHeading, scopedFolder?.name ?? scopedList?.name ?? t("tasks.scopeArchived"));
+  if (taskListsManagementPanel) taskListsManagementPanel.hidden = !taskListManagementOpen;
   if (taskListCreateForm) {
-    taskListCreateForm.hidden = !canOperate || !taskListManagementOpen;
-    if (view.targetBinding && taskListCreateName) {
-      taskListCreateName.value = taskListCreateDrafts.get(view.targetBinding) ?? "";
-    }
+    taskListCreateForm.hidden = !taskListManagementOpen || !creatingList;
+    if (view.targetBinding && taskListCreateName) taskListCreateName.value = taskListCreateDrafts.get(view.targetBinding) ?? "";
   }
   if (taskFolderCreateForm) {
-    taskFolderCreateForm.hidden = !canOperate || !taskListManagementOpen;
-    if (view.targetBinding && taskFolderCreateName) {
-      taskFolderCreateName.value = taskFolderCreateDrafts.get(view.targetBinding) ?? "";
-    }
+    taskFolderCreateForm.hidden = !taskListManagementOpen || (!creatingFolder && !taskListFolderCreationForId);
+    if (view.targetBinding && taskFolderCreateName) taskFolderCreateName.value = taskFolderCreateDrafts.get(view.targetBinding) ?? "";
+  }
+  setCopy(document.querySelector("#task-folder-create-submit"), taskListFolderCreationForId ? "tasks.createFolderAndMove" : "tasks.createFolder");
+  taskNewListButton?.toggleAttribute("disabled", !canOperate);
+  taskNewFolderButton?.toggleAttribute("disabled", !canOperate);
+  taskListsManagementClose?.toggleAttribute("disabled", taskOperationCount > 0);
+  for (const form of [taskListCreateForm, taskFolderCreateForm]) {
+    form?.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button").forEach((field) => {field.disabled = !canOperate;});
   }
   if (taskCreateForm) {
     taskCreateForm.hidden = !writable || taskScope === "archived" || !taskCreateOpen;
@@ -13700,10 +13758,14 @@ function updateTaskOperationState(delta: number): void {
   taskFolderCreateForm?.querySelectorAll("input, button").forEach((element) => {
     (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
   });
+  taskListsManagementClose?.toggleAttribute("disabled", busy);
+  taskListSettingsButton?.toggleAttribute("disabled", busy || !canOperate);
+  taskNewListButton?.toggleAttribute("disabled", busy || !canOperate);
+  taskNewFolderButton?.toggleAttribute("disabled", busy || !canOperate);
   taskListScopes?.querySelectorAll<HTMLButtonElement>("[data-task-scope]").forEach((button) =>
     button.toggleAttribute("disabled", busy),
   );
-  taskListsManagement?.querySelectorAll("input, button").forEach((element) => {
+  taskListsManagement?.querySelectorAll("input, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLSelectElement | HTMLButtonElement).disabled = busy || !canOperate;
   });
   updateTaskMutationControls(tasksList, canOperate, busy);
@@ -14347,7 +14409,8 @@ async function createTaskFolder(): Promise<boolean> {
   const operationKey = JSON.stringify([binding, "folder-create", name.toLocaleLowerCase()]);
   const folderId = stableTaskOperationId(operationKey, "task-folder");
   taskFolderCreateDrafts.set(binding, name);
-  return saveTaskFolderMutation(
+  const moveListId = taskListFolderCreationForId;
+  const created = await saveTaskFolderMutation(
     "create_task_folder",
     loaded,
     {targetBinding: binding, expectedRevision: loaded.revision, folderId, name},
@@ -14357,8 +14420,19 @@ async function createTaskFolder(): Promise<boolean> {
     () => {
       taskFolderCreateDrafts.delete(binding);
       taskFolderCreateForm?.reset();
+      taskListFolderCreationForId = null;
+      if (!moveListId) {
+        taskListManagementOpen = false;
+        taskScope = taskFolderScopeForId(folderId);
+      }
     },
   );
+  if (!created) return false;
+  if (moveListId && currentTasksView?.targetBinding === binding) {
+    // Folder creation and list movement retain their own confirmed outcomes.
+    return setTaskListFolder(moveListId, folderId);
+  }
+  return true;
 }
 
 async function renameTaskFolder(folderId: string, input: HTMLInputElement): Promise<boolean> {
@@ -14413,6 +14487,8 @@ async function setTaskListFolder(listId: string, folderId: string | null): Promi
     {targetBinding: binding, expectedRevision: loaded.revision, listId, folderId},
     operationKey,
     (view) => view.lists.some((list) => list.id === listId && (list.folderId ?? null) === folderId),
+    undefined,
+    () => { if (folderId) expandedTaskFolderIds.add(folderId); },
   );
 }
 
@@ -14584,6 +14660,8 @@ async function createTaskList(): Promise<boolean> {
     () => {
       taskListCreateDrafts.delete(binding);
       if (taskListCreateForm) taskListCreateForm.reset();
+      taskListManagementOpen = false;
+      taskScope = taskListScopeForId(listId);
     },
   );
 }
@@ -15882,15 +15960,29 @@ taskCreateDialog?.addEventListener("close", () => {
   taskNewButton?.focus();
 });
 
-taskNewListButton?.addEventListener("click", () => {
-  taskListManagementOpen = !taskListManagementOpen;
+function openTaskListManagement(mode: typeof taskListManagementMode): void {
+  if (taskOperationCount > 0) return;
+  selectedTaskDetailId = null;
+  taskListManagementMode = mode;
+  taskListManagementOpen = true;
+  taskListFolderCreationForId = null;
   if (currentTasksView) renderTasks(currentTasksView);
-  if (taskListManagementOpen) taskListCreateName?.focus();
-});
+  taskListsManagementPanel?.scrollIntoView({block: "nearest"});
+  if (mode === "create-list") taskListCreateName?.focus();
+  else if (mode === "create-folder") taskFolderCreateName?.focus();
+  else taskListsManagement?.querySelector<HTMLInputElement>("input")?.focus();
+}
+
+taskNewListButton?.addEventListener("click", () => openTaskListManagement("create-list"));
+taskNewFolderButton?.addEventListener("click", () => openTaskListManagement("create-folder"));
+taskListSettingsButton?.addEventListener("click", () => openTaskListManagement("edit"));
 
 taskListsManagementClose?.addEventListener("click", () => {
+  if (taskOperationCount > 0) return;
   taskListManagementOpen = false;
+  taskListFolderCreationForId = null;
   if (currentTasksView) renderTasks(currentTasksView);
+  (taskListManagementMode === "edit" ? taskListSettingsButton : taskListManagementMode === "create-list" ? taskNewListButton : taskNewFolderButton)?.focus();
 });
 
 refreshTasksButton?.addEventListener("click", () => {
@@ -16194,6 +16286,8 @@ tasksDestination?.addEventListener("click", (event) => {
       (scope.startsWith("folder:") && Boolean(taskFolderIdFromScope(scope as TaskListScope)) &&
         Boolean(currentTasksView && taskFolderForId(currentTasksView, taskFolderIdFromScope(scope as TaskListScope)!))))
   ) {
+    taskListManagementOpen = false;
+    taskListFolderCreationForId = null;
     taskScope = scope as TaskListScope;
     if (currentTasksView) renderTasks(currentTasksView);
     return;
