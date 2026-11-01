@@ -120,6 +120,9 @@ test('selected list settings stay focused and readable at every window size',asy
         await panel.waitFor({state:'visible'});
         const issues=await panel.evaluate(panel=>{
           const issues=[];
+          for(const button of document.querySelectorAll('.task-list-create-actions button')) {
+            if(button.scrollWidth>button.clientWidth+1)issues.push('navigation creation label clips');
+          }
           for(const row of panel.querySelectorAll('.task-list-row,.task-folder-row')) {
             const heading=row.querySelector('.task-list-row-heading')?.getBoundingClientRect();
             const body=row.lastElementChild.getBoundingClientRect();

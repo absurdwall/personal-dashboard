@@ -1020,6 +1020,7 @@ const interfaceCopies = {
   "tasks.newListPlaceholder": { zh: "例如：家庭", en: "For example: Home" },
   "tasks.createList": { zh: "新建清单", en: "Create list" },
   "tasks.newFolderName": { zh: "新文件夹名称", en: "New folder name" },
+  "tasks.newFolder": { zh: "新建文件夹", en: "New folder" },
   "tasks.folderNamePlaceholder": { zh: "例如：生活安排", en: "For example: Personal" },
   "tasks.createFolder": { zh: "新建文件夹", en: "Create folder" },
   "tasks.saveFolder": { zh: "保存文件夹", en: "Save folder" },

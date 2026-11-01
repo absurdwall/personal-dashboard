@@ -11948,18 +11948,18 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 /* List navigation stays separate from the currently selected list's settings. */
 .task-list-create-actions {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
-  margin-top: 12px;
 }
 .task-list-create-actions button {
   width: 100%;
-  min-height: 30px;
-  padding: 5px 8px;
-  text-align: left;
-  font-size: 11px;
+  min-height: 22px;
+  padding: 3px 2px;
+  text-align: center;
+  font-size: 10px;
 }
 .tasks-scope-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.tasks-scope-heading > h3 { overflow-wrap: anywhere; }
+.tasks-scope-heading > h3 { flex: 1 1 120px; min-width: min(120px, 100%); overflow-wrap: anywhere; }
 .tasks-content > .tasks-list-management-panel {
   width: min(100%, 28rem);
   min-width: 0;
