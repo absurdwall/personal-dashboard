@@ -7470,7 +7470,7 @@ body {
 
 .task-list-row {
   display: grid;
-  grid-template-columns: minmax(7rem, 0.7fr) minmax(0, 1.5fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 0.7rem;
   padding-top: 0.5rem;
@@ -8028,12 +8028,17 @@ body {
   justify-content: space-between;
 }
 
+.task-list-row-heading > small {
+  flex: 0 0 auto;
+}
+
 .task-list-row-heading strong {
   font-size: 11px;
 }
 
 .task-list-row-form {
   display: flex;
+  min-width: 0;
   align-items: stretch;
   flex-direction: column;
 }
@@ -8387,7 +8392,6 @@ body {
     grid-column: auto;
   }
 
-  .tasks-list-manager-heading,
   .task-list-create-form,
   .task-list-row-form {
     align-items: stretch;
@@ -8402,11 +8406,6 @@ body {
   .task-list-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.4rem;
-  }
-
-  .task-list-row-form {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .task-editor-heading {
@@ -10578,7 +10577,7 @@ button.habit-cell:focus-visible {
   padding-top: 0.5rem;
   border-top: 1px solid color-mix(in srgb, var(--parity-border) 70%, transparent);
 }
-.task-folder-row-form { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
+.task-folder-row-form { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
 .task-folder-row-form input { flex: initial; }
 .task-list-folder-assignment { display: grid; min-width: 0; gap: 0.2rem; color: var(--parity-muted); font-size: 0.58rem; }
 .task-list-folder-assignment select { min-height: 1.75rem; }
