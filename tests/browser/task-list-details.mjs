@@ -19,7 +19,7 @@ const view = {state:'missing',date:'2026-10-10',isToday:true,currentTime:'09:00'
   dayTasks:{state:'empty',message:'',planError:null,revision:null,targetBinding:null,tasks:[]},habitCorrections:{state:'missing',message:'',date:'2026-10-10',canRecord:false,completionRevision:null,completionTargetBinding:null,namesConfigurationState:'missing',habits:[]},
   timeAxis:{currentArrangement:[],confirmedFacts:[],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
 
-async function pageFixture({width=1280,extraTasks=[],tags=[]}={}) {
+async function pageFixture({width=1280,extraTasks=[],tags=[],language='en',folders=[]}={}) {
   const server=createServer(async(req,res)=>{try {const url=new URL(req.url,'http://localhost');const file=resolve(root,'dist',url.pathname==='/'?'index.html':url.pathname.slice(1));
     if(!file.startsWith(resolve(root,'dist')+'/'))throw Error('invalid path');
     res.setHeader('content-type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(await readFile(file));}catch {res.statusCode=404;res.end('not found');}});
@@ -27,8 +27,8 @@ async function pageFixture({width=1280,extraTasks=[],tags=[]}={}) {
   const browser=await chromium.launch({channel:'chrome',headless:true});
   const page=await browser.newPage({viewport:{width,height:758}});
   const errors=[];page.on('pageerror',error=>errors.push(String(error)));
-  const fixtureView=structuredClone(view);fixtureView.tasks.tags=structuredClone(tags);fixtureView.tasks.tasks[0].changes=[{id:'synthetic-rename',kind:'renamed',changedAt:'2026-10-10T08:30-04:00',source:'user'}];fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false});
-  await page.addInitScript(({view})=>{
+  const fixtureView=structuredClone(view);fixtureView.tasks.tags=structuredClone(tags);fixtureView.tasks.folders=structuredClone(folders);fixtureView.tasks.tasks[0].changes=[{id:'synthetic-rename',kind:'renamed',changedAt:'2026-10-10T08:30-04:00',source:'user'}];fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false});
+  await page.addInitScript(({view,language})=>{
     window.__fixture=view;window.__calls=[];window.__failNext=null;
     window.__TAURI__={core:{invoke:async(command,args)=>{
       window.__calls.push({command,args});
@@ -37,7 +37,7 @@ async function pageFixture({width=1280,extraTasks=[],tags=[]}={}) {
       if(['today_view','daily_view','read_daily_view'].includes(command))return structuredClone(v);
       if(command==='tasks_view')return structuredClone(t);
       if(command==='application_identity')return {productName:'Personal Dashboard'};
-      if(command==='interface_language_preferences')return {interfaceLanguage:'en'};
+      if(command==='interface_language_preferences')return {interfaceLanguage:language};
       if(command==='today_clock')return {date:v.date,time:v.currentTime};
       if(command==='create_task'){
         const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
@@ -73,7 +73,7 @@ async function pageFixture({width=1280,extraTasks=[],tags=[]}={}) {
       }
       throw Error('Unsupported browser fixture boundary '+command);
     }}};
-  },{view:fixtureView});
+  },{view:fixtureView,language});
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   try {
     await page.locator('[data-workspace-destination=tasks]').click();
@@ -88,6 +88,45 @@ async function pageFixture({width=1280,extraTasks=[],tags=[]}={}) {
 }
 
 // Production document, real click/keyboard input. Only Tauri IPC is replaced.
+test('list management keeps readable full-width controls in the sidebar at every window size',async()=>{
+  for(const language of ['zh','en']) {
+    const f=await pageFixture({language,folders:[{id:'family',name:language==='zh'?'生活安排':'Family arrangements'}]});
+    const {page}=f;
+    try {
+      await page.locator('#task-new-list').click();
+      for(const width of [1280,800,960,640,1600]) {
+        await page.setViewportSize({width,height:850});
+        const panel=page.locator('#tasks-list-management-panel');
+        await panel.waitFor({state:'visible'});
+        const issues=await panel.evaluate(panel=>{
+          const issues=[];
+          for(const row of panel.querySelectorAll('.task-list-row,.task-folder-row')) {
+            const heading=row.querySelector('.task-list-row-heading').getBoundingClientRect();
+            const body=row.lastElementChild.getBoundingClientRect();
+            if(body.top<heading.bottom-1)issues.push('list heading and editor share a narrow row');
+          }
+          for(const control of panel.querySelectorAll('input,select,button:not(.tasks-icon-button)')) {
+            const box=control.getBoundingClientRect();
+            if(box.width<100)issues.push(`${control.tagName} too narrow: ${Math.round(box.width)}px`);
+            if(control.scrollWidth>control.clientWidth+1)issues.push(`${control.tagName} clips its label`);
+            const row=control.closest('form').getBoundingClientRect();
+            if(box.left<row.left-1||box.right>row.right+1)issues.push(`${control.tagName} overflows its form`);
+          }
+          return issues;
+        });
+        if(process.env.PDEX_SCREENSHOT_DIR&&width===1280) {
+          await mkdir(process.env.PDEX_SCREENSHOT_DIR,{recursive:true});
+          await panel.locator('.task-list-row').last().scrollIntoViewIfNeeded();
+          await page.screenshot({path:resolve(process.env.PDEX_SCREENSHOT_DIR,`list-management-${language}.png`),fullPage:true});
+        }
+        assert.deepEqual(issues,[],`${language}, ${width}px window`);
+      }
+      await page.locator('#tasks-list-management-close').click();
+      assert.equal(await page.locator('#tasks-list-management-panel').isVisible(),false);
+    } finally {await f.close();}
+  }
+});
+
 test('Tasks compact rows select one full detail while completion stays independent',async()=>{
   const f=await pageFixture();const {page}=f;
   try {
